@@ -347,6 +347,17 @@ pre {
   font-size: 0.82rem;
 }
 
+.session-source-kind {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .detail-shell {
   min-height: calc(100vh - 130px);
 }

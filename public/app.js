@@ -7,7 +7,7 @@ const state = {
   facets: null,
   stats: null,
   sessions: [],
-  selectedSessionId: null,
+  selectedSessionKey: null,
   activeTab: "conversation",
   hasMore: false,
   nextCursor: null,
@@ -16,6 +16,7 @@ const state = {
   currentDetail: null,
   filters: {
     provider: "",
+    source_kind: "",
     date: "",
     cwd: ""
   }
@@ -46,6 +47,7 @@ function toggleArchive(id) {
 const elements = {
   sessionRoot: document.querySelector("#session-root"),
   sessionCount: document.querySelector("#session-count"),
+  sourceKindFilter: document.querySelector("#source-kind-filter"),
   providerFilter: document.querySelector("#provider-filter"),
   dateFilter: document.querySelector("#date-filter"),
   cwdFilter: document.querySelector("#cwd-filter"),
@@ -76,10 +78,11 @@ const elements = {
 function syncUrl() {
   const params = new URLSearchParams();
   if (state.filters.provider) params.set("provider", state.filters.provider);
+  if (state.filters.source_kind) params.set("source_kind", state.filters.source_kind);
   if (state.filters.date) params.set("date", state.filters.date);
   if (state.filters.cwd) params.set("cwd", state.filters.cwd);
   if (state.searchQuery) params.set("q", state.searchQuery);
-  if (state.selectedSessionId) params.set("session", state.selectedSessionId);
+  if (state.selectedSessionKey) params.set("session", state.selectedSessionKey);
   const search = params.toString();
   history.replaceState(null, "", search ? `?${search}` : location.pathname);
 }
@@ -87,10 +90,11 @@ function syncUrl() {
 function restoreFromUrl() {
   const params = new URLSearchParams(location.search);
   state.filters.provider = params.get("provider") || "";
+  state.filters.source_kind = params.get("source_kind") || "";
   state.filters.date = params.get("date") || "";
   state.filters.cwd = params.get("cwd") || "";
   state.searchQuery = params.get("q") || "";
-  state.selectedSessionId = params.get("session") || null;
+  state.selectedSessionKey = params.get("session") || null;
 }
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -134,13 +138,19 @@ function updateFacetFilters() {
     return;
   }
 
+  fillSelect(elements.sourceKindFilter, state.facets.source_kinds || []);
   fillSelect(elements.providerFilter, state.facets.providers);
   fillSelect(elements.dateFilter, state.facets.dates);
   fillSelect(elements.cwdFilter, state.facets.cwds);
 }
 
 function syncSessionRoot() {
-  elements.sessionRoot.textContent = state.facets?.session_root || t("loading");
+  const roots = state.facets?.session_roots;
+  if (!roots || !roots.length) {
+    elements.sessionRoot.textContent = t("loading");
+    return;
+  }
+  elements.sessionRoot.textContent = roots.join(", ");
 }
 
 function rerenderLocalizedContent() {
@@ -189,14 +199,14 @@ async function fetchJson(url) {
 function appendSessionItems(sessions) {
   const archivedIds = getArchivedIds();
   sessions.forEach((session) => {
-    const archived = archivedIds.has(session.id);
+    const archived = archivedIds.has(session._key);
     if (archived && !state.showArchived) return;
 
     const fragment = elements.sessionItemTemplate.content.cloneNode(true);
     const button = fragment.querySelector(".session-item");
-    button.dataset.sessionId = session.id;
+    button.dataset.sessionKey = session._key;
     button.setAttribute("role", "option");
-    button.setAttribute("aria-selected", session.id === state.selectedSessionId ? "true" : "false");
+    button.setAttribute("aria-selected", session._key === state.selectedSessionKey ? "true" : "false");
     button.querySelector(".session-time").textContent = formatTimestamp(
       session.timestamp || session.last_timestamp
     );
@@ -204,7 +214,8 @@ function appendSessionItems(sessions) {
     button.querySelector(".session-cwd").textContent = session.cwd || t("noCwd");
     button.querySelector(".session-events").textContent = t("eventsCount", { n: session.event_count });
     button.querySelector(".session-source").textContent = session.source || session.originator || t("unknownSource");
-    if (session.id === state.selectedSessionId) {
+    button.querySelector(".session-source-kind").textContent = session.display_source || session.source_kind || "";
+    if (session._key === state.selectedSessionKey) {
       button.classList.add("active");
     }
     if (archived) {
@@ -217,20 +228,20 @@ function appendSessionItems(sessions) {
     archiveBtn.textContent = archived ? "↩" : "⊗";
     archiveBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      toggleArchive(session.id);
+      toggleArchive(session._key);
       renderSessionList();
     });
     button.append(archiveBtn);
 
     button.addEventListener("click", () => {
-      selectSession(session.id, button);
+      selectSession(session._key, button);
     });
     elements.sessionList.append(fragment);
   });
 }
 
-function selectSession(id, buttonEl) {
-  state.selectedSessionId = id;
+function selectSession(key, buttonEl) {
+  state.selectedSessionKey = key;
   elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
     el.classList.remove("active");
     el.setAttribute("aria-selected", "false");
@@ -240,7 +251,7 @@ function selectSession(id, buttonEl) {
     buttonEl.setAttribute("aria-selected", "true");
   }
   syncUrl();
-  loadSessionDetail(id);
+  loadSessionDetail(key);
 }
 
 function renderLoadMoreButton() {
@@ -264,7 +275,7 @@ function renderSessionList() {
   elements.sessionList.innerHTML = "";
 
   const archivedIds = getArchivedIds();
-  const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s.id));
+  const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s._key));
 
   if (!visible.length) {
     const empty = document.createElement("p");
@@ -321,6 +332,7 @@ function exportSessionJson(detail) {
 function renderSummaryGrid(summary) {
   elements.detailSummary.innerHTML = "";
   const entries = [
+    [t("sourceKindLabel"), summary.display_source || summary.source_kind || "-"],
     ["Provider", summary.model_provider || "unknown"],
     [t("startTime"), formatTimestamp(summary.timestamp)],
     [t("lastTime"), formatTimestamp(summary.last_timestamp)],
@@ -456,25 +468,26 @@ async function loadSessions() {
       state.hasMore = data.has_more;
       state.nextCursor = data.next_cursor;
     }
-    elements.sessionRoot.textContent = data.session_root || "";
+    state.facets = { ...state.facets, session_roots: data.session_roots };
+    syncSessionRoot();
 
-    if (state.selectedSessionId && !state.sessions.find((session) => session.id === state.selectedSessionId)) {
-      state.selectedSessionId = null;
+    if (state.selectedSessionKey && !state.sessions.find((session) => session._key === state.selectedSessionKey)) {
+      state.selectedSessionKey = null;
     }
 
     renderSessionList();
 
-    if (!state._initialized && !state.selectedSessionId && state.sessions[0]) {
+    if (!state._initialized && !state.selectedSessionKey && state.sessions[0]) {
       const archivedIds = getArchivedIds();
-      const first = state.sessions.find((s) => !archivedIds.has(s.id)) || state.sessions[0];
-      state.selectedSessionId = first.id;
+      const first = state.sessions.find((s) => !archivedIds.has(s._key)) || state.sessions[0];
+      state.selectedSessionKey = first._key;
     }
 
-    if (state.selectedSessionId) {
+    if (state.selectedSessionKey) {
       elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
-        el.classList.toggle("active", el.dataset.sessionId === state.selectedSessionId);
+        el.classList.toggle("active", el.dataset.sessionKey === state.selectedSessionKey);
       });
-      await loadSessionDetail(state.selectedSessionId);
+      await loadSessionDetail(state.selectedSessionKey);
     } else {
       elements.detailView.classList.add("hidden");
       elements.detailEmpty.classList.remove("hidden");
@@ -533,6 +546,7 @@ function renderStats(stats) {
   c.innerHTML = "";
   const sections = [
     { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(0, 14) },
+    { title: t("statsCommonSourceKind"), items: stats.by_source_kind || [] },
     { title: t("statsCommonProvider"), items: stats.by_provider || [] },
     { title: t("statsCommonCwd"), items: (stats.by_cwd || []).slice(0, 8) }
   ];
@@ -564,12 +578,19 @@ async function initialize() {
   syncSessionRoot();
   updateFacetFilters();
 
+  if (state.filters.source_kind) elements.sourceKindFilter.value = state.filters.source_kind;
   if (state.filters.provider) elements.providerFilter.value = state.filters.provider;
   if (state.filters.date) elements.dateFilter.value = state.filters.date;
   if (state.filters.cwd) elements.cwdFilter.value = state.filters.cwd;
   if (state.searchQuery) elements.searchInput.value = state.searchQuery;
 
   await loadStats();
+
+  elements.sourceKindFilter.addEventListener("change", async (event) => {
+    state.filters.source_kind = event.target.value;
+    syncUrl();
+    await loadSessions();
+  });
 
   elements.providerFilter.addEventListener("change", async (event) => {
     state.filters.provider = event.target.value;
@@ -590,8 +611,9 @@ async function initialize() {
   });
 
   elements.resetFilters.addEventListener("click", async () => {
-    state.filters = { provider: "", date: "", cwd: "" };
+    state.filters = { provider: "", source_kind: "", date: "", cwd: "" };
     state.searchQuery = "";
+    elements.sourceKindFilter.value = "";
     elements.providerFilter.value = "";
     elements.dateFilter.value = "";
     elements.cwdFilter.value = "";
@@ -676,8 +698,8 @@ async function initialize() {
       next = idx > 0 ? idx - 1 : items.length - 1;
     }
     items[next].focus();
-    const sid = items[next].dataset.sessionId;
-    if (sid) selectSession(sid, items[next]);
+    const skey = items[next].dataset.sessionKey;
+    if (skey) selectSession(skey, items[next]);
   });
 
   updateStaticI18n();
@@ -698,7 +720,8 @@ async function initialize() {
   eventSource.addEventListener("session-added", (e) => {
     try {
       const summary = JSON.parse(e.data);
-      if (!state.sessions.find((s) => s.id === summary.id)) {
+      const key = summary._key || summary.id;
+      if (!state.sessions.find((s) => s._key === key || s.id === summary.id)) {
         state.sessions.push(summary);
         state.sessions.sort((a, b) => {
           const ta = a.timestamp || a.last_timestamp || "";
@@ -707,7 +730,7 @@ async function initialize() {
         });
         renderSessionList();
         const archivedIds = getArchivedIds();
-        const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s.id));
+        const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s._key));
         elements.sessionCount.textContent = String(visible.length);
 
         const ariaLive = document.querySelector("#aria-live");
@@ -722,7 +745,8 @@ async function initialize() {
   eventSource.addEventListener("session-updated", (e) => {
     try {
       const summary = JSON.parse(e.data);
-      const idx = state.sessions.findIndex((s) => s.id === summary.id);
+      const key = summary._key || summary.id;
+      const idx = state.sessions.findIndex((s) => s._key === key || s.id === summary.id);
       if (idx >= 0) {
         state.sessions[idx] = summary;
         state.sessions.sort((a, b) => {
@@ -731,8 +755,8 @@ async function initialize() {
           return tb.localeCompare(ta);
         });
       }
-      if (state.selectedSessionId === summary.id) {
-        loadSessionDetail(summary.id);
+      if (state.selectedSessionKey === key) {
+        loadSessionDetail(key);
       }
       renderSessionList();
     } catch { /* ignore parse errors */ }
@@ -741,9 +765,10 @@ async function initialize() {
   eventSource.addEventListener("session-deleted", (e) => {
     try {
       const { id } = JSON.parse(e.data);
-      state.sessions = state.sessions.filter((s) => s.id !== id);
-      if (state.selectedSessionId === id) {
-        state.selectedSessionId = null;
+      const key = id;
+      state.sessions = state.sessions.filter((s) => s._key !== key && s.id !== id);
+      if (state.selectedSessionKey === key) {
+        state.selectedSessionKey = null;
         elements.detailView.classList.add("hidden");
         elements.detailEmpty.classList.remove("hidden");
       }

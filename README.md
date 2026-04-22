@@ -1,67 +1,70 @@
-# Codex 本地会话查看器
+# Codex Session Viewer
 
-一个仅供本机使用的极简网页工具，用来浏览 `~/.codex/sessions` 下的 Codex 本地会话历史。
+[中文文档](./README.zh-CN.md)
 
-## 功能
+A lightweight, local-only web viewer for browsing Codex session history stored in `~/.codex/sessions`.
 
-- 浏览本地会话列表
-- 按 `provider`、日期、工作目录筛选
-- 查看单个会话详情
-- 在“对话视图”和“原始事件流”之间切换
+## Features
 
-## 运行要求
+- Browse local session list
+- Filter by provider, date, and working directory
+- View individual session details
+- Switch between "Conversation" and "Raw Events" views
+- Chinese-English language switching
+- Real-time file system watch with auto-refresh
 
-- Node.js 20 或更高版本
-- 默认会话目录存在于 `~/.codex/sessions`
+## Requirements
 
-## 启动方式
+- Node.js 20 or later
+- Default session directory at `~/.codex/sessions`
+
+## Quick Start
 
 ```bash
+pnpm install
 pnpm start
 ```
 
-默认会启动在：
+The viewer starts at `http://127.0.0.1:3210` by default.
 
-```text
-http://127.0.0.1:3210
-```
+## Environment Variables
 
-## 可选环境变量
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `3210` |
+| `HOST` | Bind address | `127.0.0.1` |
+| `CODEX_SESSIONS_DIR` | Session root directory | `~/.codex/sessions` |
 
-- `PORT`：自定义端口，默认 `3210`
-- `HOST`：自定义监听地址，默认 `127.0.0.1`
-- `CODEX_SESSIONS_DIR`：自定义会话根目录，默认 `~/.codex/sessions`
-
-示例：
+Example:
 
 ```bash
 PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 ```
 
-## 已知边界
+## Notes
 
-- 仅支持本机查看，不做登录和远程访问控制
-- 默认只读 `~/.codex/sessions`
-- 对历史格式差异较大的旧会话，只保证原始事件流可见
-- 对加密字段只展示占位或原样结构，不尝试解密
-- 启动时会全量扫描会话并缓存摘要；详情页按需读取单文件
-- 第一版不包含全文搜索、多目录聚合、统计面板、自动热刷新
+- Local-only: no authentication or remote access control
+- Read-only access to the session directory
+- Legacy sessions with incompatible formats fall back to raw event view
+- Encrypted fields are shown as-is without decryption
+- Scans all sessions on startup and caches summaries; details are read on demand
 
-## 测试
+## Development
 
 ```bash
+# Run tests
 pnpm test
-```
 
-## 代码规范与构建
-
-```bash
-# 代码检查与自动修复
+# Lint and auto-fix
 pnpm lint
 
-# 格式化
+# Format code
 pnpm format
 
-# 前端构建（输出到 dist/）
+# Build frontend (outputs to dist/)
 pnpm build
 ```
+
+## License
+
+Apache-2.0

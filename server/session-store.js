@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import fss from "node:fs";
 import path from "node:path";
 
 import { compareSummariesDesc, parseSessionFile } from "./session-parser.js";
@@ -69,7 +70,8 @@ export class SessionStore {
     this.summaries = [];
     this.summaryById = new Map();
     this._detailCache = new Map();
-    this._watcher = null;
+    this._watchers = [];
+    this._watchedDirs = new Set();
     this._debounceTimer = null;
     this._pendingChanges = new Set();
     this._onChangeCallbacks = [];
@@ -106,6 +108,30 @@ export class SessionStore {
       }
       this._searchIndex.get(token).add(sessionId);
     }
+  }
+
+  _unindexSessionText(sessionId) {
+    const text = this._sessionTexts.get(sessionId);
+    if (!text) return;
+    const tokens = tokenize(text);
+    const uniqueTokens = new Set(tokens);
+    for (const token of uniqueTokens) {
+      const ids = this._searchIndex.get(token);
+      if (ids) {
+        ids.delete(sessionId);
+        if (ids.size === 0) {
+          this._searchIndex.delete(token);
+        }
+      }
+    }
+    this._sessionTexts.delete(sessionId);
+  }
+
+  _removeSession(sessionId) {
+    this.summaries = this.summaries.filter((s) => s.id !== sessionId);
+    this.summaryById.delete(sessionId);
+    this._detailCache.delete(sessionId);
+    this._unindexSessionText(sessionId);
   }
 
   search(query) {
@@ -215,29 +241,62 @@ export class SessionStore {
     this._onChangeCallbacks.forEach((cb) => cb(event));
   }
 
-  watch() {
+  _watchDir(dir) {
+    if (this._watchedDirs.has(dir)) return;
     try {
-      this._watcher = fs.watch(this.sessionRoot, { recursive: true }, (eventType, filename) => {
-        if (!filename || !filename.endsWith(".jsonl")) return;
-        clearTimeout(this._debounceTimer);
-        this._pendingChanges.add(path.join(this.sessionRoot, filename));
-        this._debounceTimer = setTimeout(() => this._processPendingChanges(), DEBOUNCE_MS);
+      const watcher = fss.watch(dir, (eventType, filename) => {
+        if (!filename) return;
+        const fullPath = path.join(dir, filename);
+        if (filename.endsWith(".jsonl")) {
+          clearTimeout(this._debounceTimer);
+          this._pendingChanges.add(fullPath);
+          this._debounceTimer = setTimeout(() => this._processPendingChanges(), DEBOUNCE_MS);
+          return;
+        }
+        try {
+          const stat = fss.statSync(fullPath);
+          if (stat.isDirectory()) {
+            this._watchRecursive(fullPath);
+          }
+        } catch { /* ignore */ }
       });
-      this._watcher.on("error", (err) => {
-        console.error("文件监听错误:", err.message);
+      watcher.on("error", (err) => {
+        console.error(`File watcher error (${dir}):`, err.message);
       });
-      console.log("已启用文件系统监听");
+      this._watchedDirs.add(dir);
+      this._watchers.push(watcher);
     } catch (err) {
-      console.error("无法启用文件监听:", err.message);
+      console.error(`Cannot watch directory (${dir}):`, err.message);
     }
+  }
+
+  async _watchRecursive(rootDir) {
+    this._watchDir(rootDir);
+    let entries = [];
+    try {
+      entries = await fs.readdir(rootDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        await this._watchRecursive(path.join(rootDir, entry.name));
+      }
+    }
+  }
+
+  async watch() {
+    await this._watchRecursive(this.sessionRoot);
+    console.log("File system watcher enabled");
   }
 
   stopWatching() {
     clearTimeout(this._debounceTimer);
-    if (this._watcher) {
-      this._watcher.close();
-      this._watcher = null;
+    for (const w of this._watchers) {
+      w.close();
     }
+    this._watchers = [];
+    this._watchedDirs.clear();
   }
 
   async _processPendingChanges() {
@@ -250,16 +309,27 @@ export class SessionStore {
         const summary = detail.summary;
         const existingIndex = this.summaries.findIndex((s) => s.id === summary.id);
         if (existingIndex >= 0) {
+          this._unindexSessionText(summary.id);
           this.summaries[existingIndex] = summary;
+          this.summaries.sort(compareSummariesDesc);
           this._detailCache.delete(summary.id);
+          this._indexSessionText(summary.id, detail.conversation_messages);
+          this._notifyChange({ type: "session-updated", summary });
         } else {
           this.summaries.push(summary);
           this.summaries.sort(compareSummariesDesc);
+          this._indexSessionText(summary.id, detail.conversation_messages);
           this._notifyChange({ type: "session-added", summary });
         }
         this.summaryById.set(summary.id, summary);
       } catch (err) {
-        // File may have been deleted or is being written; skip silently
+        if (err && typeof err === "object" && err.code === "ENOENT") {
+          const match = this.summaries.find((s) => s.file_path === filePath);
+          if (match) {
+            this._removeSession(match.id);
+            this._notifyChange({ type: "session-deleted", id: match.id });
+          }
+        }
       }
     }
   }

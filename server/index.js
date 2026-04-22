@@ -11,7 +11,7 @@ const publicDir = path.join(currentDir, "..", "public");
 async function main() {
   const store = new SessionStore({ sessionRoot: SESSION_ROOT });
   await store.initialize();
-  store.watch();
+  await store.watch();
 
   const server = createHttpServer({
     store,
@@ -20,13 +20,13 @@ async function main() {
   });
 
   server.listen(PORT, HOST, () => {
-    console.log(`会话查看器已启动: http://${HOST}:${PORT}`);
-    console.log(`会话根目录: ${SESSION_ROOT}`);
-    console.log(`已缓存会话数: ${store.summaries.length}`);
+    console.log(`Session viewer started: http://${HOST}:${PORT}`);
+    console.log(`Session root: ${SESSION_ROOT}`);
+    console.log(`Cached sessions: ${store.summaries.length}`);
   });
 }
 
 main().catch((error) => {
-  console.error("启动失败:", error);
+  console.error("Startup failed:", error);
   process.exitCode = 1;
 });

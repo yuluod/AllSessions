@@ -22,11 +22,15 @@ function sanitizeFilterValue(value) {
 }
 
 function validateSessionId(raw) {
-  const id = decodeURIComponent(raw);
-  if (!SESSION_ID_RE.test(id)) {
+  try {
+    const id = decodeURIComponent(raw);
+    if (!SESSION_ID_RE.test(id)) {
+      return null;
+    }
+    return id;
+  } catch {
     return null;
   }
-  return id;
 }
 
 function sendJson(response, statusCode, payload) {
@@ -51,7 +55,7 @@ async function sendStaticFile(publicDir, pathname, request, response) {
   const relative = path.relative(publicDir, filePath);
 
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    sendText(response, 403, "禁止访问");
+    sendText(response, 403, "Forbidden");
     return;
   }
 
@@ -60,13 +64,13 @@ async function sendStaticFile(publicDir, pathname, request, response) {
     stat = await fs.stat(filePath);
   } catch (error) {
     if (error && typeof error === "object" && error.code === "ENOENT") {
-      sendText(response, 404, "未找到页面");
+      sendText(response, 404, "Page not found");
       return;
     }
     throw error;
   }
 
-  const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}"`;
+  const etag = `"${Math.floor(stat.mtimeMs).toString(36)}-${stat.size.toString(36)}"`;
   if (request.headers["if-none-match"] === etag) {
     response.writeHead(304, { ETag: etag });
     response.end();
@@ -103,9 +107,29 @@ async function sendStaticFile(publicDir, pathname, request, response) {
 export function createHttpServer({ store, publicDir, sessionRoot }) {
   const sseClients = new Set();
 
+  const SSE_PING_INTERVAL = 30_000;
+  let ssePingTimer = null;
+
+  function startSsePing() {
+    if (ssePingTimer) return;
+    ssePingTimer = setInterval(() => {
+      for (const client of sseClients) {
+        try {
+          client.write(":ping\n\n");
+        } catch {
+          sseClients.delete(client);
+        }
+      }
+      if (sseClients.size === 0) {
+        clearInterval(ssePingTimer);
+        ssePingTimer = null;
+      }
+    }, SSE_PING_INTERVAL);
+  }
+
   store.onChange((event) => {
-    if (event.type === "session-added") {
-      const data = `event: session-added\ndata: ${JSON.stringify(event.summary)}\n\n`;
+    if (event.type === "session-added" || event.type === "session-updated" || event.type === "session-deleted") {
+      const data = `event: ${event.type}\ndata: ${JSON.stringify(event.type === "session-deleted" ? { id: event.id } : event.summary)}\n\n`;
       for (const client of sseClients) {
         try { client.write(data); } catch { sseClients.delete(client); }
       }
@@ -115,13 +139,18 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
   return http.createServer(async (request, response) => {
     const startMs = Date.now();
     if (!request.url) {
-      sendText(response, 400, "无效请求");
+      sendText(response, 400, "Bad request");
       return;
     }
 
     const url = new URL(request.url, "http://127.0.0.1");
 
     try {
+      if (url.pathname.startsWith("/api/") && request.method !== "GET") {
+        sendText(response, 405, "Only GET is supported");
+        return;
+      }
+
       if (url.pathname === "/api/sessions") {
         const filters = {
           provider: sanitizeFilterValue(url.searchParams.get("provider")),
@@ -129,7 +158,11 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
           cwd: sanitizeFilterValue(url.searchParams.get("cwd"))
         };
         const limitParam = url.searchParams.get("limit");
-        const limit = limitParam ? Math.min(Number.parseInt(limitParam, 10) || 50, 200) : undefined;
+        let limit;
+        if (limitParam !== null) {
+          const parsed = Number.parseInt(limitParam, 10);
+          limit = Number.isNaN(parsed) ? 50 : Math.min(parsed, 200);
+        }
         const cursor = sanitizeFilterValue(url.searchParams.get("cursor")) || undefined;
         const result = store.listSessions(filters, { limit, cursor });
         sendJson(response, 200, {
@@ -185,6 +218,7 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
         });
         response.write(`event: connected\ndata: {}\n\n`);
         sseClients.add(response);
+        startSsePing();
         request.on("close", () => sseClients.delete(response));
         return;
       }
@@ -192,7 +226,7 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
       if (url.pathname === "/api/search") {
         const q = sanitizeFilterValue(url.searchParams.get("q"));
         if (!q) {
-          sendJson(response, 400, { error: "缺少搜索关键词" });
+          sendJson(response, 400, { error: "Missing search query" });
           return;
         }
         const results = store.search(q);
@@ -204,27 +238,22 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
         const rawId = url.pathname.replace("/api/sessions/", "");
         const id = validateSessionId(rawId);
         if (!id) {
-          sendJson(response, 400, { error: "无效的会话 ID" });
+          sendJson(response, 400, { error: "Invalid session ID" });
           return;
         }
         const detail = await store.getSessionDetail(id);
         if (!detail) {
-          sendJson(response, 404, { error: "会话不存在" });
+          sendJson(response, 404, { error: "Session not found" });
           return;
         }
         sendJson(response, 200, detail);
         return;
       }
 
-      if (request.method !== "GET") {
-        sendText(response, 405, "仅支持 GET");
-        return;
-      }
-
       await sendStaticFile(publicDir, url.pathname, request, response);
     } catch (error) {
       console.error(`[ERROR] ${request.method} ${url.pathname}:`, error);
-      sendJson(response, 500, { error: "服务器内部错误" });
+      sendJson(response, 500, { error: "Internal server error" });
     } finally {
       const duration = Date.now() - startMs;
       console.log(`${request.method} ${url.pathname} ${response.statusCode} ${duration}ms`);

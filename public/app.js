@@ -1,8 +1,11 @@
+import { t, setLang, getLang, updateStaticI18n } from "./i18n.js";
+
 const PAGE_LIMIT = 50;
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 
 const state = {
   facets: null,
+  stats: null,
   sessions: [],
   selectedSessionId: null,
   activeTab: "conversation",
@@ -49,6 +52,7 @@ const elements = {
   searchInput: document.querySelector("#search-input"),
   resetFilters: document.querySelector("#reset-filters"),
   refreshBtn: document.querySelector("#refresh-btn"),
+  langToggle: document.querySelector("#lang-toggle"),
   showArchivedToggle: document.querySelector("#show-archived-toggle"),
   sessionList: document.querySelector("#session-list"),
   detailEmpty: document.querySelector("#detail-empty"),
@@ -92,7 +96,7 @@ function restoreFromUrl() {
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
 function formatTimestamp(value) {
   if (!value) {
-    return "未知时间";
+    return t("unknownTime");
   }
 
   const date = new Date(value);
@@ -100,7 +104,9 @@ function formatTimestamp(value) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
+  const locale = getLang() === "zh" ? "zh-CN" : "en";
+
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(date);
@@ -116,7 +122,7 @@ function createOption(value, label) {
 function fillSelect(select, values) {
   const currentValue = select.value;
   select.innerHTML = "";
-  select.append(createOption("", "全部"));
+  select.append(createOption("", t("all")));
   values.forEach((value) => {
     select.append(createOption(value, value));
   });
@@ -133,6 +139,26 @@ function updateFacetFilters() {
   fillSelect(elements.cwdFilter, state.facets.cwds);
 }
 
+function syncSessionRoot() {
+  elements.sessionRoot.textContent = state.facets?.session_root || t("loading");
+}
+
+function rerenderLocalizedContent() {
+  syncSessionRoot();
+  updateFacetFilters();
+  renderSessionList();
+  if (state.currentDetail) {
+    elements.detailTitle.textContent = state.currentDetail.summary.cwd || t("noWorkDir");
+    renderSummaryGrid(state.currentDetail.summary);
+    renderConversation(state.currentDetail.conversation_messages);
+    renderRawEvents(state.currentDetail.raw_events);
+    updateTabs();
+  }
+  if (state.stats) {
+    renderStats(state.stats);
+  }
+}
+
 function buildSessionQuery() {
   const params = new URLSearchParams();
   Object.entries(state.filters).forEach(([key, value]) => {
@@ -143,11 +169,19 @@ function buildSessionQuery() {
   return params.toString();
 }
 
+function buildSessionsUrl({ cursor } = {}) {
+  const query = buildSessionQuery();
+  const prefix = query ? `/api/sessions?${query}&` : "/api/sessions?";
+  let url = `${prefix}limit=${PAGE_LIMIT}`;
+  if (cursor) url += `&cursor=${cursor}`;
+  return url;
+}
+
 async function fetchJson(url) {
   const response = await fetch(url);
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(errorBody || `请求失败: ${response.status}`);
+    throw new Error(errorBody || t("requestFailed", { status: response.status }));
   }
   return response.json();
 }
@@ -167,9 +201,9 @@ function appendSessionItems(sessions) {
       session.timestamp || session.last_timestamp
     );
     button.querySelector(".session-provider").textContent = session.model_provider || "unknown";
-    button.querySelector(".session-cwd").textContent = session.cwd || "(无工作目录)";
-    button.querySelector(".session-events").textContent = `${session.event_count} 条事件`;
-    button.querySelector(".session-source").textContent = session.source || session.originator || "未知来源";
+    button.querySelector(".session-cwd").textContent = session.cwd || t("noCwd");
+    button.querySelector(".session-events").textContent = t("eventsCount", { n: session.event_count });
+    button.querySelector(".session-source").textContent = session.source || session.originator || t("unknownSource");
     if (session.id === state.selectedSessionId) {
       button.classList.add("active");
     }
@@ -179,7 +213,7 @@ function appendSessionItems(sessions) {
 
     const archiveBtn = document.createElement("button");
     archiveBtn.className = "session-archive-btn";
-    archiveBtn.title = archived ? "取消归档" : "归档此会话";
+    archiveBtn.title = archived ? t("unarchive") : t("archive");
     archiveBtn.textContent = archived ? "↩" : "⊗";
     archiveBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -217,9 +251,9 @@ function renderLoadMoreButton() {
 
   btn = document.createElement("button");
   btn.className = "ghost-button load-more-btn";
-  btn.textContent = "加载更多";
+  btn.textContent = t("loadMore");
   btn.addEventListener("click", async () => {
-    btn.textContent = "加载中...";
+    btn.textContent = t("loadingMore");
     btn.disabled = true;
     await loadMoreSessions();
   });
@@ -235,7 +269,7 @@ function renderSessionList() {
   if (!visible.length) {
     const empty = document.createElement("p");
     empty.className = "hero-copy";
-    empty.textContent = "当前筛选条件下没有会话。";
+    empty.textContent = t("noResults");
     elements.sessionList.append(empty);
     elements.sessionCount.textContent = "0";
     return;
@@ -260,12 +294,12 @@ function downloadBlob(content, filename, type) {
 function exportSessionMarkdown(detail) {
   const { summary, conversation_messages: messages } = detail;
   const lines = [
-    `# 会话: ${summary.cwd || summary.id}`,
+    `# ${t("session")}: ${summary.cwd || summary.id}`,
     ``,
-    `- **时间**: ${formatTimestamp(summary.timestamp)}`,
+    `- **${t("startTime")}**: ${formatTimestamp(summary.timestamp)}`,
     `- **Provider**: ${summary.model_provider || "unknown"}`,
-    `- **来源**: ${summary.source || summary.originator || "-"}`,
-    `- **会话 ID**: ${summary.id}`,
+    `- **${t("source")}**: ${summary.source || summary.originator || "-"}`,
+    `- **${t("sessionId")}**: ${summary.id}`,
     ``
   ];
   messages.forEach((msg) => {
@@ -288,14 +322,14 @@ function renderSummaryGrid(summary) {
   elements.detailSummary.innerHTML = "";
   const entries = [
     ["Provider", summary.model_provider || "unknown"],
-    ["开始时间", formatTimestamp(summary.timestamp)],
-    ["最后时间", formatTimestamp(summary.last_timestamp)],
-    ["来源", summary.source || summary.originator || "-"],
-    ["发起端", summary.originator || "-"],
-    ["工作目录", summary.cwd || "-"],
-    ["事件数", String(summary.event_count)],
-    ["会话 ID", summary.id],
-    ["文件路径", summary.file_path]
+    [t("startTime"), formatTimestamp(summary.timestamp)],
+    [t("lastTime"), formatTimestamp(summary.last_timestamp)],
+    [t("source"), summary.source || summary.originator || "-"],
+    [t("originator"), summary.originator || "-"],
+    [t("cwdLabel"), summary.cwd || "-"],
+    [t("eventCount"), String(summary.event_count)],
+    [t("sessionId"), summary.id],
+    [t("filePath"), summary.file_path]
   ];
 
   entries.forEach(([label, value]) => {
@@ -315,7 +349,7 @@ function renderConversation(messages) {
   if (!messages.length) {
     const empty = document.createElement("p");
     empty.className = "hero-copy";
-    empty.textContent = "这个会话没有可整理的对话消息，建议切到原始事件流查看。";
+    empty.textContent = t("noConversations");
     elements.conversationList.append(empty);
     return;
   }
@@ -330,15 +364,15 @@ function renderConversation(messages) {
 
     const copyBtn = document.createElement("button");
     copyBtn.className = "message-copy-btn";
-    copyBtn.title = "复制消息内容";
-    copyBtn.textContent = "复制";
+    copyBtn.title = t("copyMessage");
+    copyBtn.textContent = t("copy");
     copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(message.text).then(() => {
         copyBtn.textContent = "✓";
-        setTimeout(() => { copyBtn.textContent = "复制"; }, 1500);
+        setTimeout(() => { copyBtn.textContent = t("copy"); }, 1500);
       }).catch(() => {
-        copyBtn.textContent = "失败";
-        setTimeout(() => { copyBtn.textContent = "复制"; }, 1500);
+        copyBtn.textContent = t("copyFailed");
+        setTimeout(() => { copyBtn.textContent = t("copy"); }, 1500);
       });
     });
     fragment.querySelector(".message-card header").append(copyBtn);
@@ -354,7 +388,7 @@ function renderRawEvents(events) {
     const fragment = elements.rawEventTemplate.content.cloneNode(true);
     fragment.querySelector(".raw-event-type").textContent = event.type;
     fragment.querySelector(".raw-event-time").textContent = formatTimestamp(event.timestamp);
-    fragment.querySelector(".raw-event-line").textContent = `第 ${event.line_number} 行`;
+    fragment.querySelector(".raw-event-line").textContent = t("linePrefix", { n: event.line_number });
     fragment.querySelector(".raw-event-payload").textContent = JSON.stringify(
       event.payload,
       null,
@@ -397,14 +431,14 @@ async function loadSessionDetail(id) {
     state.currentDetail = detail;
     elements.detailEmpty.classList.add("hidden");
     elements.detailView.classList.remove("hidden");
-    elements.detailTitle.textContent = detail.summary.cwd || "未记录工作目录";
+    elements.detailTitle.textContent = detail.summary.cwd || t("noWorkDir");
     renderSummaryGrid(detail.summary);
     renderConversation(detail.conversation_messages);
     renderRawEvents(detail.raw_events);
     updateTabs();
   } catch (error) {
     console.error(error);
-    showError(`加载会话详情失败: ${error.message}`);
+    showError(`${t("loadDetailFailed")}: ${error.message}`);
   }
 }
 
@@ -417,10 +451,7 @@ async function loadSessions() {
       state.hasMore = false;
       state.nextCursor = null;
     } else {
-      const query = buildSessionQuery();
-      const sep = query ? "&" : "?";
-      const url = `/api/sessions${query ? `?${query}` : ""}${sep}limit=${PAGE_LIMIT}`;
-      data = await fetchJson(url);
+      data = await fetchJson(buildSessionsUrl());
       state.sessions = data.sessions;
       state.hasMore = data.has_more;
       state.nextCursor = data.next_cursor;
@@ -433,7 +464,7 @@ async function loadSessions() {
 
     renderSessionList();
 
-    if (!state.selectedSessionId && state.sessions[0]) {
+    if (!state._initialized && !state.selectedSessionId && state.sessions[0]) {
       const archivedIds = getArchivedIds();
       const first = state.sessions.find((s) => !archivedIds.has(s.id)) || state.sessions[0];
       state.selectedSessionId = first.id;
@@ -451,16 +482,13 @@ async function loadSessions() {
     syncUrl();
   } catch (error) {
     console.error(error);
-    showError(`加载会话列表失败: ${error.message}`);
+    showError(`${t("loadListFailed")}: ${error.message}`);
   }
 }
 
 async function loadMoreSessions() {
   try {
-    const query = buildSessionQuery();
-    const sep = query ? "&" : "?";
-    const url = `/api/sessions${query ? `?${query}` : ""}${sep}limit=${PAGE_LIMIT}&cursor=${state.nextCursor}`;
-    const data = await fetchJson(url);
+    const data = await fetchJson(buildSessionsUrl({ cursor: state.nextCursor }));
     state.sessions = state.sessions.concat(data.sessions);
     state.hasMore = data.has_more;
     state.nextCursor = data.next_cursor;
@@ -473,7 +501,7 @@ async function loadMoreSessions() {
     elements.sessionCount.textContent = String(state.sessions.length);
   } catch (error) {
     console.error(error);
-    showError(`加载更多失败: ${error.message}`);
+    showError(`${t("loadMoreFailed")}: ${error.message}`);
   }
 }
 
@@ -504,9 +532,9 @@ function renderStats(stats) {
   if (!c) return;
   c.innerHTML = "";
   const sections = [
-    { title: "近期每日会话数", items: (stats.by_date || []).slice(0, 14) },
-    { title: "常用 Provider", items: stats.by_provider || [] },
-    { title: "常用工作目录", items: (stats.by_cwd || []).slice(0, 8) }
+    { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(0, 14) },
+    { title: t("statsCommonProvider"), items: stats.by_provider || [] },
+    { title: t("statsCommonCwd"), items: (stats.by_cwd || []).slice(0, 8) }
   ];
   sections.forEach(({ title, items }) => {
     if (!items.length) return;
@@ -524,15 +552,16 @@ function renderStats(stats) {
 async function loadStats() {
   try {
     const stats = await fetchJson("/api/stats");
+    state.stats = stats;
     renderStats(stats);
-  } catch { /* 统计面板加载失败时静默处理 */ }
+  } catch { /* silently ignore stats loading errors */ }
 }
 
 async function initialize() {
   restoreFromUrl();
 
   state.facets = await fetchJson("/api/facets");
-  elements.sessionRoot.textContent = state.facets.session_root;
+  syncSessionRoot();
   updateFacetFilters();
 
   if (state.filters.provider) elements.providerFilter.value = state.filters.provider;
@@ -574,15 +603,15 @@ async function initialize() {
   if (elements.refreshBtn) {
     elements.refreshBtn.addEventListener("click", async () => {
       elements.refreshBtn.disabled = true;
-      elements.refreshBtn.textContent = "刷新中...";
+      elements.refreshBtn.textContent = t("refreshing");
       try {
         await fetchJson("/api/refresh");
         await Promise.all([loadSessions(), loadStats()]);
       } catch (error) {
-        showError(`刷新失败: ${error.message}`);
+        showError(`${t("refreshFailed")}: ${error.message}`);
       } finally {
         elements.refreshBtn.disabled = false;
-        elements.refreshBtn.textContent = "刷新";
+        elements.refreshBtn.textContent = t("refresh");
       }
     });
   }
@@ -651,7 +680,19 @@ async function initialize() {
     if (sid) selectSession(sid, items[next]);
   });
 
+  updateStaticI18n();
+  document.documentElement.lang = getLang() === "zh" ? "zh-CN" : "en";
+
+  if (elements.langToggle) {
+    elements.langToggle.addEventListener("click", () => {
+      const next = getLang() === "zh" ? "en" : "zh";
+      setLang(next);
+      rerenderLocalizedContent();
+    });
+  }
+
   await loadSessions();
+  state._initialized = true;
 
   const eventSource = new EventSource("/api/events");
   eventSource.addEventListener("session-added", (e) => {
@@ -659,25 +700,59 @@ async function initialize() {
       const summary = JSON.parse(e.data);
       if (!state.sessions.find((s) => s.id === summary.id)) {
         state.sessions.push(summary);
-        const loadMoreBtn = elements.sessionList.querySelector(".load-more-btn");
-        if (loadMoreBtn) loadMoreBtn.remove();
-        appendSessionItems([summary]);
-        renderLoadMoreButton();
+        state.sessions.sort((a, b) => {
+          const ta = a.timestamp || a.last_timestamp || "";
+          const tb = b.timestamp || b.last_timestamp || "";
+          return tb.localeCompare(ta);
+        });
+        renderSessionList();
         const archivedIds = getArchivedIds();
         const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s.id));
         elements.sessionCount.textContent = String(visible.length);
 
         const ariaLive = document.querySelector("#aria-live");
         if (ariaLive) {
-          ariaLive.textContent = `新会话已添加: ${summary.cwd || summary.id}`;
+          ariaLive.textContent = `${t("newSessionAdded")}: ${summary.cwd || summary.id}`;
           setTimeout(() => { ariaLive.textContent = ""; }, 3000);
         }
       }
+    } catch { /* ignore parse errors */ }
+  });
+
+  eventSource.addEventListener("session-updated", (e) => {
+    try {
+      const summary = JSON.parse(e.data);
+      const idx = state.sessions.findIndex((s) => s.id === summary.id);
+      if (idx >= 0) {
+        state.sessions[idx] = summary;
+        state.sessions.sort((a, b) => {
+          const ta = a.timestamp || a.last_timestamp || "";
+          const tb = b.timestamp || b.last_timestamp || "";
+          return tb.localeCompare(ta);
+        });
+      }
+      if (state.selectedSessionId === summary.id) {
+        loadSessionDetail(summary.id);
+      }
+      renderSessionList();
+    } catch { /* ignore parse errors */ }
+  });
+
+  eventSource.addEventListener("session-deleted", (e) => {
+    try {
+      const { id } = JSON.parse(e.data);
+      state.sessions = state.sessions.filter((s) => s.id !== id);
+      if (state.selectedSessionId === id) {
+        state.selectedSessionId = null;
+        elements.detailView.classList.add("hidden");
+        elements.detailEmpty.classList.remove("hidden");
+      }
+      renderSessionList();
     } catch { /* ignore parse errors */ }
   });
 }
 
 initialize().catch((error) => {
   console.error(error);
-  elements.sessionList.innerHTML = `<p class="hero-copy">加载失败：${error.message}</p>`;
+  elements.sessionList.innerHTML = `<p class="hero-copy">${t("loadListFailed")}: ${error.message}</p>`;
 });

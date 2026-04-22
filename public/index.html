@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Codex 会话查看器</title>
+    <title data-i18n-page-title="title">Codex 会话查看器</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -12,18 +12,21 @@
         <div class="toolbar-brand">
           <p class="eyebrow">LOCAL SESSION VIEWER</p>
           <div class="toolbar-heading">
-            <h1>Codex 会话查看器</h1>
-            <p class="toolbar-copy">筛选、切换并查看本机 Codex 历史会话。</p>
+            <h1 data-i18n="title">Codex 会话查看器</h1>
+            <p class="toolbar-copy" data-i18n="description">筛选、切换并查看本机 Codex 历史会话。</p>
           </div>
         </div>
         <div class="toolbar-meta">
+          <div class="toolbar-actions">
+            <button id="lang-toggle" class="ghost-button" type="button" title="Toggle language">中/EN</button>
+          </div>
           <div class="meta-chip">
-            <span class="meta-label">会话数量</span>
+            <span class="meta-label" data-i18n="metaSessionCount">会话数量</span>
             <strong id="session-count" class="meta-strong">-</strong>
           </div>
           <div class="meta-chip meta-chip-wide">
-            <span class="meta-label">数据源</span>
-            <span id="session-root" class="meta-value">加载中...</span>
+            <span class="meta-label" data-i18n="metaDataSource">数据源</span>
+            <span id="session-root" class="meta-value" data-i18n="loading">加载中...</span>
           </div>
         </div>
       </header>
@@ -31,7 +34,7 @@
       <details id="stats-panel" class="stats-panel" open>
         <summary class="stats-summary">
           <span class="eyebrow">STATISTICS</span>
-          <span>会话统计概览</span>
+          <span data-i18n="statsOverview">会话统计概览</span>
         </summary>
         <div id="stats-content" class="stats-content"></div>
       </details>
@@ -42,49 +45,49 @@
             <div class="sidebar-header">
               <div>
                 <p class="eyebrow">FILTER & BROWSE</p>
-                <h2>会话列表</h2>
+                <h2 data-i18n="sessionList">会话列表</h2>
               </div>
               <div class="sidebar-actions">
-                <button id="refresh-btn" class="ghost-button" type="button">刷新</button>
-                <button id="reset-filters" class="ghost-button" type="button">清空</button>
+                <button id="refresh-btn" class="ghost-button" type="button" data-i18n="refresh">刷新</button>
+                <button id="reset-filters" class="ghost-button" type="button" data-i18n="clear">清空</button>
               </div>
             </div>
             <label class="archive-toggle-label">
               <input id="show-archived-toggle" type="checkbox" />
-              <span>显示已归档会话</span>
+              <span data-i18n="showArchived">显示已归档会话</span>
             </label>
 
             <div class="filter-bar">
               <label class="field">
-                <span>搜索</span>
-                <input id="search-input" type="search" placeholder="搜索会话内容..." />
+                <span data-i18n="search">搜索</span>
+                <input id="search-input" type="search" placeholder="搜索会话内容..." data-i18n-placeholder="searchPlaceholder" />
               </label>
               <label class="field">
                 <span>Provider</span>
                 <select id="provider-filter">
-                  <option value="">全部</option>
+                  <option value="" data-i18n="all">全部</option>
                 </select>
               </label>
               <label class="field">
-                <span>日期</span>
+                <span data-i18n="date">日期</span>
                 <select id="date-filter">
-                  <option value="">全部</option>
+                  <option value="" data-i18n="all">全部</option>
                 </select>
               </label>
               <label class="field">
-                <span>工作目录</span>
+                <span data-i18n="cwd">工作目录</span>
                 <select id="cwd-filter">
-                  <option value="">全部</option>
+                  <option value="" data-i18n="all">全部</option>
                 </select>
               </label>
             </div>
 
             <div class="session-list-shell">
               <div class="session-list-header">
-                <span>按时间倒序</span>
-                <span class="session-list-hint">选择一条会话查看详情</span>
+                <span data-i18n="sortDesc">按时间倒序</span>
+                <span class="session-list-hint" data-i18n="listHint">选择一条会话查看详情</span>
               </div>
-              <div id="session-list" class="session-list" role="listbox" aria-label="会话列表"></div>
+              <div id="session-list" class="session-list" role="listbox" aria-label="会话列表" data-i18n="listAriaLabel" data-i18n-attr="aria-label"></div>
             </div>
           </div>
         </section>
@@ -92,8 +95,8 @@
         <section class="content">
           <div class="detail-shell">
             <div id="detail-empty" class="empty-state">
-              <h2>选择一个会话</h2>
-              <p>左侧会显示所有已解析会话。选中后，右侧会保持在当前工作台里展示摘要、对话视图和原始事件流。</p>
+              <h2 data-i18n="selectSession">选择一个会话</h2>
+              <p data-i18n="selectSessionDesc">左侧会显示所有已解析会话。选中后，右侧会保持在当前工作台里展示摘要、对话视图和原始事件流。</p>
             </div>
 
             <div id="detail-view" class="detail-view hidden">
@@ -103,13 +106,13 @@
                   <h2 id="detail-title">-</h2>
                 </div>
                 <div class="detail-topbar-right">
-                  <div class="tabs" role="tablist" aria-label="详情视图切换">
-                    <button class="tab-button active" data-tab="conversation" type="button" role="tab" aria-selected="true" aria-controls="conversation-tab">对话视图</button>
-                    <button class="tab-button" data-tab="raw" type="button" role="tab" aria-selected="false" aria-controls="raw-tab">原始事件流</button>
+                  <div class="tabs" role="tablist" aria-label="详情视图切换" data-i18n="tabsAriaLabel" data-i18n-attr="aria-label">
+                    <button class="tab-button active" data-tab="conversation" type="button" role="tab" aria-selected="true" aria-controls="conversation-tab" data-i18n="tabConversation">对话视图</button>
+                    <button class="tab-button" data-tab="raw" type="button" role="tab" aria-selected="false" aria-controls="raw-tab" data-i18n="tabRaw">原始事件流</button>
                   </div>
                   <div class="export-actions">
-                    <button id="export-md-btn" class="ghost-button" type="button" title="导出为 Markdown 文件">↓ MD</button>
-                    <button id="export-json-btn" class="ghost-button" type="button" title="导出为 JSON 文件">↓ JSON</button>
+                    <button id="export-md-btn" class="ghost-button" type="button" data-i18n-title="exportMd">↓ MD</button>
+                    <button id="export-json-btn" class="ghost-button" type="button" data-i18n-title="exportJson">↓ JSON</button>
                   </div>
                 </div>
               </div>

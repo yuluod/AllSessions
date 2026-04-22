@@ -2,9 +2,9 @@ const LANG_KEY = "codex_viewer_lang";
 
 const DICT = {
   zh: {
-    title: "Codex 会话查看器",
+    title: "AI 会话查看器",
     eyebrowLocal: "LOCAL SESSION VIEWER",
-    description: "筛选、切换并查看本机 Codex 历史会话。",
+    description: "筛选、切换并查看本机 AI 会话历史。",
     metaSessionCount: "会话数量",
     metaDataSource: "数据源",
     loading: "加载中...",
@@ -83,9 +83,9 @@ const DICT = {
     serverError: "服务器内部错误",
   },
   en: {
-    title: "Codex Session Viewer",
+    title: "AI Session Viewer",
     eyebrowLocal: "LOCAL SESSION VIEWER",
-    description: "Filter, switch, and browse local Codex session history.",
+    description: "Filter, switch, and browse local AI session history.",
     metaSessionCount: "Session Count",
     metaDataSource: "Data Source",
     loading: "Loading...",

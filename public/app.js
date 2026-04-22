@@ -60,7 +60,8 @@ const elements = {
   detailEmpty: document.querySelector("#detail-empty"),
   detailView: document.querySelector("#detail-view"),
   detailTitle: document.querySelector("#detail-title"),
-  detailSummary: document.querySelector("#detail-summary"),
+  detailTags: document.querySelector("#detail-tags"),
+  propsContent: document.querySelector("#props-content"),
   conversationList: document.querySelector("#conversation-list"),
   rawEvents: document.querySelector("#raw-events"),
   conversationTab: document.querySelector("#conversation-tab"),
@@ -68,7 +69,9 @@ const elements = {
   tabButtons: Array.from(document.querySelectorAll(".tab-button")),
   exportMdBtn: document.querySelector("#export-md-btn"),
   exportJsonBtn: document.querySelector("#export-json-btn"),
-  statsContent: document.querySelector("#stats-content"),
+  statsDashboard: document.querySelector("#stats-dashboard"),
+  statsMetrics: document.querySelector("#stats-metrics"),
+  statsGrid: document.querySelector("#stats-grid"),
   sessionItemTemplate: document.querySelector("#session-item-template"),
   conversationItemTemplate: document.querySelector("#conversation-item-template"),
   rawEventTemplate: document.querySelector("#raw-event-template")
@@ -158,8 +161,11 @@ function rerenderLocalizedContent() {
   updateFacetFilters();
   renderSessionList();
   if (state.currentDetail) {
-    elements.detailTitle.textContent = state.currentDetail.summary.cwd || t("noWorkDir");
-    renderSummaryGrid(state.currentDetail.summary);
+    const fullCwd = state.currentDetail.summary.cwd || t("noWorkDir");
+    elements.detailTitle.textContent = fullCwd.split(/[\\/]/).pop() || fullCwd;
+    elements.detailTitle.title = fullCwd;
+    renderDetailTags(state.currentDetail.summary);
+    renderPropsPanel(state.currentDetail.summary);
     renderConversation(state.currentDetail.conversation_messages);
     renderRawEvents(state.currentDetail.raw_events);
     updateTabs();
@@ -328,31 +334,86 @@ function exportSessionJson(detail) {
   downloadBlob(JSON.stringify(detail, null, 2), filename, "application/json; charset=utf-8");
 }
 
-// ── 摘要渲染 ──────────────────────────────────────────────────────────────────
-function renderSummaryGrid(summary) {
-  elements.detailSummary.innerHTML = "";
-  const entries = [
-    [t("sourceKindLabel"), summary.display_source || summary.source_kind || "-"],
-    ["Provider", summary.model_provider || "unknown"],
-    [t("startTime"), formatTimestamp(summary.timestamp)],
-    [t("lastTime"), formatTimestamp(summary.last_timestamp)],
-    [t("source"), summary.source || summary.originator || "-"],
-    [t("originator"), summary.originator || "-"],
-    [t("cwdLabel"), summary.cwd || "-"],
-    [t("eventCount"), String(summary.event_count)],
-    [t("sessionId"), summary.id],
-    [t("filePath"), summary.file_path]
+// ── 详情标签行 ──────────────────────────────────────────────────────────────────
+function renderDetailTags(summary) {
+  elements.detailTags.innerHTML = "";
+  const tags = [
+    { text: formatTimestamp(summary.timestamp), icon: "calendar" },
+    { text: summary.model_provider || "unknown", cls: "tag-provider" },
+    { text: summary.display_source || summary.source_kind || "", cls: "tag-source" },
+    { text: summary.source || summary.originator || "", cls: "" },
+    { text: t("eventsCount", { n: summary.event_count }), icon: "hash" }
   ];
 
-  entries.forEach(([label, value]) => {
-    const card = document.createElement("article");
-    const title = document.createElement("dt");
-    const body = document.createElement("dd");
-    title.textContent = label;
-    body.textContent = value || "-";
-    card.append(title, body);
-    elements.detailSummary.append(card);
+  tags.forEach(({ text, cls, icon }) => {
+    if (!text) return;
+    const span = document.createElement("span");
+    span.className = `detail-tag ${cls || ""}`.trim();
+    if (icon === "calendar") {
+      span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ${text}`;
+    } else if (icon === "hash") {
+      span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg> ${text}`;
+    } else {
+      span.textContent = text;
+    }
+    elements.detailTags.append(span);
   });
+}
+
+// ── 属性面板 ────────────────────────────────────────────────────────────────────
+function renderPropsPanel(summary) {
+  const basic = [
+    { label: "Provider", value: summary.model_provider || "unknown" },
+    { label: t("source"), value: summary.display_source || summary.source_kind || "-" }
+  ];
+  const tech = [
+    { label: t("sessionId"), value: summary.id, copyable: true },
+    { label: t("filePath"), value: summary.file_path, copyable: true },
+    { label: t("cwdLabel"), value: summary.cwd || "-", copyable: true }
+  ];
+
+  function section(title, rows) {
+    const wrap = document.createElement("div");
+    wrap.className = "props-section";
+    const h3 = document.createElement("h3");
+    h3.textContent = title;
+    wrap.append(h3);
+    const dl = document.createElement("dl");
+    rows.forEach(({ label, value, copyable }) => {
+      const row = document.createElement("div");
+      row.className = "prop-row";
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      const valSpan = document.createElement("span");
+      valSpan.className = "prop-value";
+      valSpan.textContent = value || "-";
+      valSpan.title = value || "";
+      dd.append(valSpan);
+      if (copyable && value) {
+        const btn = document.createElement("button");
+        btn.className = "prop-copy";
+        btn.textContent = "copy";
+        btn.addEventListener("click", () => {
+          navigator.clipboard.writeText(value).then(() => {
+            btn.textContent = "✓";
+            setTimeout(() => { btn.textContent = "copy"; }, 1500);
+          });
+        });
+        dd.append(btn);
+      }
+      row.append(dt, dd);
+      dl.append(row);
+    });
+    wrap.append(dl);
+    return wrap;
+  }
+
+  elements.propsContent.innerHTML = "";
+  elements.propsContent.append(
+    section(t("basicInfo"), basic),
+    section(t("techInfo"), tech)
+  );
 }
 
 function renderConversation(messages) {
@@ -443,8 +504,11 @@ async function loadSessionDetail(id) {
     state.currentDetail = detail;
     elements.detailEmpty.classList.add("hidden");
     elements.detailView.classList.remove("hidden");
-    elements.detailTitle.textContent = detail.summary.cwd || t("noWorkDir");
-    renderSummaryGrid(detail.summary);
+    const fullCwd = detail.summary.cwd || t("noWorkDir");
+    elements.detailTitle.textContent = fullCwd.split(/[\\/]/).pop() || fullCwd;
+    elements.detailTitle.title = fullCwd;
+    renderDetailTags(detail.summary);
+    renderPropsPanel(detail.summary);
     renderConversation(detail.conversation_messages);
     renderRawEvents(detail.raw_events);
     updateTabs();
@@ -521,14 +585,14 @@ async function loadMoreSessions() {
 }
 
 // ── 统计面板 ──────────────────────────────────────────────────────────────────
-function renderBar(label, count, max) {
+function renderBar(label, count, max, displayLabel = label) {
   const row = document.createElement("div");
   row.className = "stats-bar-row";
   const pct = max > 0 ? Math.round((count / max) * 100) : 0;
   const labelEl = document.createElement("span");
   labelEl.className = "stats-bar-label";
   labelEl.title = label;
-  labelEl.textContent = label;
+  labelEl.textContent = displayLabel;
   const track = document.createElement("div");
   track.className = "stats-bar-track";
   const fill = document.createElement("div");
@@ -543,31 +607,200 @@ function renderBar(label, count, max) {
 }
 
 function renderStats(stats) {
-  const c = elements.statsContent;
-  if (!c) return;
-  c.innerHTML = "";
-  const sections = [
-    { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(0, 14) },
-    { title: t("statsCommonSourceKind"), items: stats.by_source_kind || [] },
-    { title: t("statsCommonProvider"), items: stats.by_provider || [] },
-    { title: t("statsCommonCwd"), items: (stats.by_cwd || []).slice(0, 8) }
-  ];
-  sections.forEach(({ title, items }) => {
-    if (!items.length) return;
-    const section = document.createElement("div");
-    section.className = "stats-section";
-    const h = document.createElement("h3");
-    h.textContent = title;
-    section.append(h);
-    const max = Math.max(...items.map((i) => i.count));
-    items.forEach(({ label, count }) => section.append(renderBar(label, count, max)));
-    c.append(section);
-  });
+  const dashboard = elements.statsDashboard;
+  if (!dashboard) return;
+
+  // metrics: compute from backend fields, fallback to by_date/by_provider sums for compatibility
+  const metrics = elements.statsMetrics;
+  if (metrics) {
+    metrics.innerHTML = "";
+    const byDate = stats.by_date || [];
+    const total = stats.total ?? byDate.reduce((s, d) => s + (d.count || 0), 0);
+    const activeDays = stats.active_days ?? byDate.length;
+    const avg = stats.avg_daily ?? (activeDays > 0 ? (total / activeDays).toFixed(1) : "0");
+    const cards = [
+      { label: t("statsTotalSessions"), value: String(total) },
+      { label: t("statsActiveDays"), value: String(activeDays) },
+      { label: t("statsAvgDaily"), value: String(avg) },
+      { label: t("statsEvents"), value: "—" }
+    ];
+    cards.forEach(({ label, value }, idx) => {
+      const card = document.createElement("div");
+      card.className = "metric-card";
+      card.dataset.metricIdx = String(idx);
+      const val = document.createElement("div");
+      val.className = "metric-value";
+      val.textContent = value;
+      const lbl = document.createElement("div");
+      lbl.className = "metric-label";
+      lbl.textContent = label;
+      const spark = document.createElement("div");
+      spark.className = "metric-spark";
+      const sparkInner = document.createElement("div");
+      sparkInner.className = "metric-spark-bar";
+      const dates = stats.by_date || [];
+      sparkInner.style.width = dates.length
+        ? `${Math.min(100, (dates.reduce((s, d) => s + d.count, 0) / (dates.length * 10)) * 100)}%`
+        : "0%";
+      spark.append(sparkInner);
+      card.append(val, lbl, spark);
+      metrics.append(card);
+    });
+  }
+
+  // trend chart
+  const trendBody = document.querySelector("#trend-chart-body");
+  if (trendBody) {
+    trendBody.innerHTML = "";
+    const dates = (stats.by_date || []).slice(-14);
+    if (dates.length) {
+      const max = Math.max(...dates.map((d) => d.count), 1);
+      const wrap = document.createElement("div");
+      wrap.className = "trend-bars";
+      dates.forEach(({ label, count }) => {
+        const col = document.createElement("div");
+        col.className = "trend-col";
+
+        const val = document.createElement("span");
+        val.className = "trend-val";
+        val.textContent = String(count);
+
+        const barWrap = document.createElement("div");
+        barWrap.className = "trend-bar-wrap";
+        const bar = document.createElement("div");
+        bar.className = "trend-bar";
+        bar.style.height = `${(count / max) * 100}%`;
+        bar.title = `${label}: ${count}`;
+        barWrap.append(bar);
+
+        const date = document.createElement("span");
+        date.className = "trend-date";
+        date.textContent = label.slice(5);
+
+        col.append(val, barWrap, date);
+        wrap.append(col);
+      });
+      trendBody.append(wrap);
+    } else {
+      trendBody.innerHTML = '<div style="text-align:center;color:var(--muted);padding:60px 0;">—</div>';
+    }
+  }
+
+  // donut chart
+  const donutBody = document.querySelector("#donut-chart-body");
+  if (donutBody) {
+    donutBody.innerHTML = "";
+    const items = (stats.by_provider || []).slice(0, 6);
+    if (items.length) {
+      const total = items.reduce((s, i) => s + i.count, 0);
+      const colors = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+      let acc = 0;
+      const stops = items.map((item, idx) => {
+        const pct = (item.count / total) * 100;
+        const start = acc;
+        acc += pct;
+        return `${colors[idx % colors.length]} ${start.toFixed(2)}% ${acc.toFixed(2)}%`;
+      });
+      const wrap = document.createElement("div");
+      wrap.className = "donut-wrap";
+
+      const donut = document.createElement("div");
+      donut.className = "donut-chart";
+      donut.style.background = `conic-gradient(${stops.join(", ")})`;
+      donut.style.mask = "radial-gradient(transparent 55%, black 56%)";
+      donut.style.webkitMask = "radial-gradient(transparent 55%, black 56%)";
+
+      const legend = document.createElement("div");
+      legend.className = "donut-legend";
+      items.forEach((item, idx) => {
+        const row = document.createElement("div");
+        row.className = "donut-legend-item";
+        const dot = document.createElement("span");
+        dot.className = "donut-dot";
+        dot.style.background = colors[idx % colors.length];
+        const name = document.createElement("span");
+        name.textContent = item.label;
+        const count = document.createElement("span");
+        count.textContent = String(item.count);
+        count.style.textAlign = "right";
+        const pct = document.createElement("span");
+        pct.className = "donut-pct";
+        pct.textContent = `${((item.count / total) * 100).toFixed(1)}%`;
+        row.append(dot, name, count, pct);
+        legend.append(row);
+      });
+
+      wrap.append(donut, legend);
+      donutBody.append(wrap);
+    } else {
+      donutBody.innerHTML = '<div style="text-align:center;color:var(--muted);padding:60px 0;">—</div>';
+    }
+  }
+
+  // grid charts
+  const grid = elements.statsGrid;
+  if (grid) {
+    grid.innerHTML = "";
+    const sections = [
+      { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(0, 14) },
+      { title: t("statsCommonSourceKind"), items: stats.by_source_kind || [] },
+      { title: t("statsCommonProvider"), items: stats.by_provider || [] },
+      { title: t("statsCommonCwd"), items: (stats.by_cwd || []).slice(0, 8), isPath: true }
+    ];
+    sections.forEach(({ title, items, isPath }) => {
+      if (!items.length) return;
+      const section = document.createElement("div");
+      section.className = "stats-section";
+      const h = document.createElement("h3");
+      h.textContent = title;
+      section.append(h);
+      const max = Math.max(...items.map((i) => i.count));
+      items.forEach(({ label, count }) => {
+        if (isPath) {
+          const basename = label.split("/").pop() || label;
+          section.append(renderBar(label, count, max, basename));
+        } else {
+          section.append(renderBar(label, count, max));
+        }
+      });
+      grid.append(section);
+    });
+  }
+
+  // right panel: render filter summary card
+  const propsContent = elements.propsContent;
+  if (propsContent) {
+    propsContent.innerHTML = "";
+    const card = document.createElement("div");
+    card.className = "stats-filter-summary";
+    const h = document.createElement("h4");
+    h.textContent = "当前筛选";
+    card.append(h);
+    const makeRow = (label, value) => {
+      const row = document.createElement("div");
+      row.className = "filter-summary-row";
+      const lbl = document.createElement("span");
+      lbl.textContent = label;
+      const val = document.createElement("strong");
+      val.textContent = value || "全部";
+      row.append(lbl, val);
+      return row;
+    };
+    card.append(
+      makeRow("来源", state.filters.source_kind),
+      makeRow("Provider", state.filters.provider),
+      makeRow("日期", state.filters.date),
+      makeRow("目录", state.filters.cwd)
+    );
+    propsContent.append(card);
+  }
 }
 
 async function loadStats() {
   try {
-    const stats = await fetchJson("/api/stats");
+    const params = buildSessionQuery();
+    const url = `/api/stats${params ? "?" + params : ""}`;
+    const stats = await fetchJson(url);
     state.stats = stats;
     renderStats(stats);
   } catch { /* silently ignore stats loading errors */ }
@@ -591,25 +824,25 @@ async function initialize() {
   elements.sourceKindFilter.addEventListener("change", async (event) => {
     state.filters.source_kind = event.target.value;
     syncUrl();
-    await loadSessions();
+    await Promise.all([loadSessions(), loadStats()]);
   });
 
   elements.providerFilter.addEventListener("change", async (event) => {
     state.filters.provider = event.target.value;
     syncUrl();
-    await loadSessions();
+    await Promise.all([loadSessions(), loadStats()]);
   });
 
   elements.dateFilter.addEventListener("change", async (event) => {
     state.filters.date = event.target.value;
     syncUrl();
-    await loadSessions();
+    await Promise.all([loadSessions(), loadStats()]);
   });
 
   elements.cwdFilter.addEventListener("change", async (event) => {
     state.filters.cwd = event.target.value;
     syncUrl();
-    await loadSessions();
+    await Promise.all([loadSessions(), loadStats()]);
   });
 
   elements.resetFilters.addEventListener("click", async () => {
@@ -621,7 +854,7 @@ async function initialize() {
     elements.cwdFilter.value = "";
     elements.searchInput.value = "";
     syncUrl();
-    await loadSessions();
+    await Promise.all([loadSessions(), loadStats()]);
   });
 
   if (elements.refreshBtn) {
@@ -644,6 +877,45 @@ async function initialize() {
     elements.showArchivedToggle.addEventListener("change", () => {
       state.showArchived = elements.showArchivedToggle.checked;
       renderSessionList();
+    });
+  }
+
+  document.querySelectorAll(".sidebar-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const panel = tab.dataset.sidebarTab;
+      document.querySelectorAll(".sidebar-tab").forEach((t) => {
+        t.classList.toggle("active", t === tab);
+        t.setAttribute("aria-selected", t === tab ? "true" : "false");
+      });
+      document.querySelectorAll(".sidebar-body").forEach((p) => {
+        p.classList.toggle("hidden", p.dataset.sidebarPanel !== panel);
+      });
+
+      const detailPanel = document.querySelector("#detail-panel");
+      const propsPanel = document.querySelector("#props-panel");
+      const statsDashboard = document.querySelector("#stats-dashboard");
+      const propsEyebrow = document.querySelector("#props-eyebrow");
+      if (panel === "stats") {
+        if (detailPanel) detailPanel.classList.add("hidden");
+        if (statsDashboard) statsDashboard.classList.remove("hidden");
+        if (propsEyebrow) propsEyebrow.textContent = "当前筛选";
+      } else {
+        if (detailPanel) detailPanel.classList.remove("hidden");
+        if (propsPanel) propsPanel.classList.remove("hidden");
+        if (statsDashboard) statsDashboard.classList.add("hidden");
+        if (propsEyebrow) propsEyebrow.textContent = "PROPERTIES";
+        // clear stats filter summary from props panel
+        const pc = document.querySelector("#props-content");
+        if (pc && pc.querySelector(".stats-filter-summary")) pc.innerHTML = "";
+      }
+    });
+  });
+
+  const filterToggle = document.querySelector("#filter-toggle");
+  if (filterToggle) {
+    filterToggle.addEventListener("click", () => {
+      const tab = document.querySelector('.sidebar-tab[data-sidebar-tab="stats"]');
+      if (tab && !tab.classList.contains("active")) tab.click();
     });
   }
 

@@ -261,6 +261,48 @@ export class SessionStore {
     };
   }
 
+  getStats(filters = {}) {
+    const data = this.summaries.filter((summary) => matchesFilter(summary, filters));
+
+    const byDate = new Map();
+    const bySourceKind = new Map();
+    const byProvider = new Map();
+    const byCwd = new Map();
+
+    data.forEach((summary) => {
+      const date = dateKeyFromTimestamp(summary.timestamp || summary.last_timestamp);
+      if (date) {
+        byDate.set(date, (byDate.get(date) || 0) + 1);
+      }
+      if (summary.source_kind) {
+        bySourceKind.set(summary.source_kind, (bySourceKind.get(summary.source_kind) || 0) + 1);
+      }
+      if (summary.model_provider) {
+        byProvider.set(summary.model_provider, (byProvider.get(summary.model_provider) || 0) + 1);
+      }
+      if (summary.cwd) {
+        byCwd.set(summary.cwd, (byCwd.get(summary.cwd) || 0) + 1);
+      }
+    });
+
+    const toArray = (map) =>
+      Array.from(map.entries())
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count);
+
+    return {
+      total: data.length,
+      active_days: byDate.size,
+      avg_daily: byDate.size > 0 ? (data.length / byDate.size).toFixed(1) : "0",
+      by_date: Array.from(byDate.entries())
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      by_source_kind: toArray(bySourceKind),
+      by_provider: toArray(byProvider),
+      by_cwd: toArray(byCwd).slice(0, 16)
+    };
+  }
+
   async getSessionDetail(key) {
     let summary = this.summaryByKey.get(key);
     if (!summary) {

@@ -118,6 +118,12 @@ test("GET /api/sessions/:id 无效 ID 返回 400", async (t) => {
   assert.equal(res.status, 400);
 });
 
+test("GET /api/sessions/:id 非法百分号编码返回 400", async (t) => {
+  const { address } = await setupServer(t);
+  const res = await fetchFromServer(address.port, "/api/sessions/%E0%A4%A");
+  assert.equal(res.status, 400);
+});
+
 test("GET /styles.css 返回 CSS 文件", async (t) => {
   const { address } = await setupServer(t);
   const res = await fetchFromServer(address.port, "/styles.css");

@@ -68,7 +68,7 @@ test("session root 使用动态 i18n", async () => {
   const source = await readProjectFile("public/app.js");
 
   assert.match(html, /id="session-root" class="meta-value" data-i18n="loading">加载中\.\.\.<\/span>/);
-  assert.match(source, /function syncSessionRoot\(\)[\s\S]*state\.facets\?\.session_root \|\| t\("loading"\)/);
+  assert.match(source, /function syncSessionRoot\(\)[\s\S]*session_roots[\s\S]*t\("loading"\)/);
 });
 
 test("详情 tabs 的 aria-label 使用已定义的 i18n key", async () => {

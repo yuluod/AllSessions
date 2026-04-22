@@ -54,7 +54,7 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
   await fs.writeFile(path.join(firstDir, "one.jsonl"), sessionOne, "utf8");
   await fs.writeFile(path.join(secondDir, "two.jsonl"), sessionTwo, "utf8");
 
-  const store = new SessionStore({ sessionRoot: rootDir });
+  const store = new SessionStore({ sources: [{ kind: "codex", rootDir, filePattern: "**/*.jsonl" }] });
   await store.initialize();
 
   const allResult = store.listSessions();
@@ -80,10 +80,10 @@ test("_watchDir 创建失败时不会污染 watchedDirs", async (t) => {
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
-  const store = new SessionStore({ sessionRoot: rootDir });
+  const store = new SessionStore({ sources: [{ kind: "codex", rootDir, filePattern: "**/*.jsonl" }] });
   const missingDir = path.join(rootDir, "missing");
 
-  store._watchDir(missingDir);
+  store._watchDir(missingDir, { kind: "codex", rootDir, filePattern: "**/*.jsonl" });
 
   assert.equal(store._watchedDirs.has(missingDir), false);
 });
@@ -97,7 +97,7 @@ test("stopWatching 会清空 watchedDirs", async (t) => {
   const nestedDir = path.join(rootDir, "2026", "04", "21");
   await fs.mkdir(nestedDir, { recursive: true });
 
-  const store = new SessionStore({ sessionRoot: rootDir });
+  const store = new SessionStore({ sources: [{ kind: "codex", rootDir, filePattern: "**/*.jsonl" }] });
   await store.watch();
 
   assert.ok(store._watchedDirs.has(rootDir));

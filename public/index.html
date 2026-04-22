@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex 会话查看器</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="toolbar">
+        <div class="toolbar-brand">
+          <p class="eyebrow">LOCAL SESSION VIEWER</p>
+          <div class="toolbar-heading">
+            <h1>Codex 会话查看器</h1>
+            <p class="toolbar-copy">筛选、切换并查看本机 Codex 历史会话。</p>
+          </div>
+        </div>
+        <div class="toolbar-meta">
+          <div class="meta-chip">
+            <span class="meta-label">会话数量</span>
+            <strong id="session-count" class="meta-strong">-</strong>
+          </div>
+          <div class="meta-chip meta-chip-wide">
+            <span class="meta-label">数据源</span>
+            <span id="session-root" class="meta-value">加载中...</span>
+          </div>
+        </div>
+      </header>
+
+      <details id="stats-panel" class="stats-panel" open>
+        <summary class="stats-summary">
+          <span class="eyebrow">STATISTICS</span>
+          <span>会话统计概览</span>
+        </summary>
+        <div id="stats-content" class="stats-content"></div>
+      </details>
+
+      <main class="app-layout">
+        <section class="sidebar">
+          <div class="sidebar-panel">
+            <div class="sidebar-header">
+              <div>
+                <p class="eyebrow">FILTER & BROWSE</p>
+                <h2>会话列表</h2>
+              </div>
+              <div class="sidebar-actions">
+                <button id="refresh-btn" class="ghost-button" type="button">刷新</button>
+                <button id="reset-filters" class="ghost-button" type="button">清空</button>
+              </div>
+            </div>
+            <label class="archive-toggle-label">
+              <input id="show-archived-toggle" type="checkbox" />
+              <span>显示已归档会话</span>
+            </label>
+
+            <div class="filter-bar">
+              <label class="field">
+                <span>搜索</span>
+                <input id="search-input" type="search" placeholder="搜索会话内容..." />
+              </label>
+              <label class="field">
+                <span>Provider</span>
+                <select id="provider-filter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>日期</span>
+                <select id="date-filter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>工作目录</span>
+                <select id="cwd-filter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="session-list-shell">
+              <div class="session-list-header">
+                <span>按时间倒序</span>
+                <span class="session-list-hint">选择一条会话查看详情</span>
+              </div>
+              <div id="session-list" class="session-list" role="listbox" aria-label="会话列表"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="content">
+          <div class="detail-shell">
+            <div id="detail-empty" class="empty-state">
+              <h2>选择一个会话</h2>
+              <p>左侧会显示所有已解析会话。选中后，右侧会保持在当前工作台里展示摘要、对话视图和原始事件流。</p>
+            </div>
+
+            <div id="detail-view" class="detail-view hidden">
+              <div class="detail-topbar">
+                <div class="detail-heading">
+                  <p class="eyebrow">SESSION DETAIL</p>
+                  <h2 id="detail-title">-</h2>
+                </div>
+                <div class="detail-topbar-right">
+                  <div class="tabs" role="tablist" aria-label="详情视图切换">
+                    <button class="tab-button active" data-tab="conversation" type="button" role="tab" aria-selected="true" aria-controls="conversation-tab">对话视图</button>
+                    <button class="tab-button" data-tab="raw" type="button" role="tab" aria-selected="false" aria-controls="raw-tab">原始事件流</button>
+                  </div>
+                  <div class="export-actions">
+                    <button id="export-md-btn" class="ghost-button" type="button" title="导出为 Markdown 文件">↓ MD</button>
+                    <button id="export-json-btn" class="ghost-button" type="button" title="导出为 JSON 文件">↓ JSON</button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="detail-summary" class="detail-meta-strip"></div>
+
+              <section id="conversation-tab" class="detail-tab" role="tabpanel">
+                <div id="conversation-list" class="conversation-list"></div>
+              </section>
+
+              <section id="raw-tab" class="detail-tab hidden" role="tabpanel">
+                <div id="raw-events" class="raw-events"></div>
+              </section>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="session-item-template">
+      <button class="session-item" type="button">
+        <div class="session-primary">
+          <span class="session-time"></span>
+          <strong class="session-provider"></strong>
+        </div>
+        <div class="session-secondary">
+          <span class="session-cwd"></span>
+        </div>
+        <div class="session-tertiary">
+          <span class="session-events"></span>
+          <span class="session-source"></span>
+        </div>
+      </button>
+    </template>
+
+    <template id="conversation-item-template">
+      <article class="message-card">
+        <header>
+          <span class="message-role"></span>
+          <time class="message-time"></time>
+        </header>
+        <pre class="message-text"></pre>
+      </article>
+    </template>
+
+    <template id="raw-event-template">
+      <article class="raw-event-card">
+        <header>
+          <span class="raw-event-type"></span>
+          <span class="raw-event-time"></span>
+          <span class="raw-event-line"></span>
+        </header>
+        <pre class="raw-event-payload"></pre>
+      </article>
+    </template>
+
+    <div id="aria-live" class="hidden" aria-live="polite" role="status"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

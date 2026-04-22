@@ -43,10 +43,10 @@ async function setupServer(t) {
   await fs.writeFile(path.join(publicDir, "index.html"), "<html>test</html>", "utf8");
   await fs.writeFile(path.join(publicDir, "styles.css"), "body{margin:0}", "utf8");
 
-  const store = new SessionStore({ sessionRoot: sessionDir });
+  const store = new SessionStore({ sources: [{ kind: "codex", rootDir: sessionDir, filePattern: "**/*.jsonl" }] });
   await store.initialize();
 
-  const server = createHttpServer({ store, publicDir, sessionRoot: sessionDir });
+  const server = createHttpServer({ store, publicDir, sessionRoots: [sessionDir] });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();

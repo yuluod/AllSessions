@@ -70,3 +70,12 @@ test("session root 使用动态 i18n", async () => {
   assert.match(html, /id="session-root" class="meta-value" data-i18n="loading">加载中\.\.\.<\/span>/);
   assert.match(source, /function syncSessionRoot\(\)[\s\S]*state\.facets\?\.session_root \|\| t\("loading"\)/);
 });
+
+test("详情 tabs 的 aria-label 使用已定义的 i18n key", async () => {
+  const html = await readProjectFile("public/index.html");
+  const dict = await readProjectFile("public/i18n.js");
+
+  assert.match(html, /data-i18n="tabsAriaLabel" data-i18n-attr="aria-label"/);
+  assert.match(dict, /zh:[\s\S]*tabsAriaLabel: "详情视图切换"/);
+  assert.match(dict, /en:[\s\S]*tabsAriaLabel: "Detail view tabs"/);
+});

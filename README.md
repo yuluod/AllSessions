@@ -1,8 +1,29 @@
+<div align="center">
+
 # Codex Session Viewer
 
-[中文文档](./README.zh-CN.md)
+<p>A lightweight, local-only web viewer for browsing Codex session history stored in <code>~/.codex/sessions</code>.</p>
 
-A lightweight, local-only web viewer for browsing Codex session history stored in `~/.codex/sessions`.
+<p>
+  <a href="./README.zh-CN.md">中文文档</a>
+  ·
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#features">Features</a>
+  ·
+  <a href="#development">Development</a>
+</p>
+
+<p>
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white" />
+  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-10%2B-F69220?logo=pnpm&logoColor=white" />
+  <img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" />
+  <img alt="i18n" src="https://img.shields.io/badge/i18n-ZH%20%7C%20EN-7B61FF" />
+</p>
+
+</div>
+
+Browse, filter, search, and inspect local Codex sessions in a compact browser UI with real-time file watching.
 
 ## Features
 

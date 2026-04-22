@@ -189,29 +189,13 @@ export function createHttpServer({ store, publicDir, sessionRoots }) {
       }
 
       if (url.pathname === "/api/stats") {
-        const byDateMap = new Map();
-        const byProviderMap = new Map();
-        const byCwdMap = new Map();
-        const bySourceKindMap = new Map();
-        for (const s of store.summaries) {
-          const date = (s.timestamp || s.last_timestamp || "").slice(0, 10);
-          if (date) byDateMap.set(date, (byDateMap.get(date) || 0) + 1);
-          if (s.model_provider) byProviderMap.set(s.model_provider, (byProviderMap.get(s.model_provider) || 0) + 1);
-          if (s.cwd) byCwdMap.set(s.cwd, (byCwdMap.get(s.cwd) || 0) + 1);
-          if (s.source_kind) bySourceKindMap.set(s.source_kind, (bySourceKindMap.get(s.source_kind) || 0) + 1);
-        }
-        const toSorted = (map) =>
-          Array.from(map.entries())
-            .map(([label, count]) => ({ label, count }))
-            .sort((a, b) => b.count - a.count);
-        sendJson(response, 200, {
-          by_date: Array.from(byDateMap.entries())
-            .map(([label, count]) => ({ label, count }))
-            .sort((a, b) => b.label.localeCompare(a.label)),
-          by_provider: toSorted(byProviderMap),
-          by_source_kind: toSorted(bySourceKindMap),
-          by_cwd: toSorted(byCwdMap)
+        const stats = store.getStats({
+          provider: sanitizeFilterValue(url.searchParams.get("provider")),
+          source_kind: sanitizeFilterValue(url.searchParams.get("source_kind")),
+          date: sanitizeFilterValue(url.searchParams.get("date")),
+          cwd: sanitizeFilterValue(url.searchParams.get("cwd"))
         });
+        sendJson(response, 200, stats);
         return;
       }
 

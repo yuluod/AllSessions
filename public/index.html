@@ -10,58 +10,69 @@
     <div class="page-shell">
       <header class="toolbar">
         <div class="toolbar-brand">
-          <p class="eyebrow">LOCAL SESSION VIEWER</p>
+          <svg class="toolbar-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
           <div class="toolbar-heading">
             <h1 data-i18n="title">AI 会话查看器</h1>
             <p class="toolbar-copy" data-i18n="description">筛选、切换并查看本机 AI 会话历史。</p>
           </div>
         </div>
-        <div class="toolbar-meta">
-          <div class="toolbar-actions">
-            <button id="lang-toggle" class="ghost-button" type="button" title="Toggle language">中/EN</button>
+        <div class="toolbar-center">
+          <div class="search-box">
+            <input id="search-input" type="search" placeholder="搜索会话内容 / 路径 / 关键词..." data-i18n-placeholder="searchPlaceholder" />
+            <kbd class="search-kbd">⌘ K</kbd>
           </div>
+          <button id="filter-toggle" class="ghost-button filter-toggle-btn" type="button" title="筛选器" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+            <span data-i18n="filter">筛选</span>
+          </button>
+        </div>
+        <div class="toolbar-right">
           <div class="meta-chip">
-            <span class="meta-label" data-i18n="metaSessionCount">会话数量</span>
             <strong id="session-count" class="meta-strong">-</strong>
+            <span class="meta-label" data-i18n="metaSessionCount">Sessions</span>
           </div>
           <div class="meta-chip meta-chip-wide">
-            <span class="meta-label" data-i18n="metaDataSource">数据源</span>
             <span id="session-root" class="meta-value" data-i18n="loading">加载中...</span>
           </div>
+          <button id="lang-toggle" class="ghost-button" type="button" title="Toggle language">中/EN</button>
         </div>
       </header>
 
-      <details id="stats-panel" class="stats-panel" open>
-        <summary class="stats-summary">
-          <span class="eyebrow">STATISTICS</span>
-          <span data-i18n="statsOverview">会话统计概览</span>
-        </summary>
-        <div id="stats-content" class="stats-content"></div>
-      </details>
-
       <main class="app-layout">
-        <section class="sidebar">
-          <div class="sidebar-panel">
-            <div class="sidebar-header">
-              <div>
-                <p class="eyebrow">FILTER & BROWSE</p>
-                <h2 data-i18n="sessionList">会话列表</h2>
-              </div>
-              <div class="sidebar-actions">
-                <button id="refresh-btn" class="ghost-button" type="button" data-i18n="refresh">刷新</button>
-                <button id="reset-filters" class="ghost-button" type="button" data-i18n="clear">清空</button>
-              </div>
-            </div>
+        <aside class="sidebar-left">
+          <div class="sidebar-tabs" role="tablist">
+            <button class="sidebar-tab active" data-sidebar-tab="list" type="button" role="tab" aria-selected="true" data-i18n="sessionList">会话列表</button>
+            <button class="sidebar-tab" data-sidebar-tab="stats" type="button" role="tab" aria-selected="false" data-i18n="statsOverview">统计概览</button>
+          </div>
+
+          <div class="sidebar-body" data-sidebar-panel="list">
             <label class="archive-toggle-label">
               <input id="show-archived-toggle" type="checkbox" />
               <span data-i18n="showArchived">显示已归档会话</span>
             </label>
+            <div class="session-list-shell">
+              <div class="session-list-header">
+                <span data-i18n="sortDesc">按时间倒序</span>
+                <span class="session-list-hint" data-i18n="listHint">选择一条会话查看详情</span>
+              </div>
+              <div id="session-list" class="session-list" role="listbox" aria-label="会话列表" data-i18n="listAriaLabel" data-i18n-attr="aria-label"></div>
+            </div>
+          </div>
 
+          <div class="sidebar-body hidden" data-sidebar-panel="stats">
+            <div class="stats-sidebar-summary" id="stats-sidebar-summary"></div>
+          </div>
+
+          <div class="sidebar-filters">
+            <div class="sidebar-filter-actions">
+              <button id="refresh-btn" class="ghost-button" type="button" data-i18n="refresh">刷新</button>
+              <button id="reset-filters" class="ghost-button" type="button" data-i18n="clear">清空</button>
+            </div>
             <div class="filter-bar">
-              <label class="field">
-                <span data-i18n="search">搜索</span>
-                <input id="search-input" type="search" placeholder="搜索会话内容..." data-i18n-placeholder="searchPlaceholder" />
-              </label>
               <label class="field">
                 <span data-i18n="sourceKind">来源</span>
                 <select id="source-kind-filter">
@@ -87,29 +98,21 @@
                 </select>
               </label>
             </div>
-
-            <div class="session-list-shell">
-              <div class="session-list-header">
-                <span data-i18n="sortDesc">按时间倒序</span>
-                <span class="session-list-hint" data-i18n="listHint">选择一条会话查看详情</span>
-              </div>
-              <div id="session-list" class="session-list" role="listbox" aria-label="会话列表" data-i18n="listAriaLabel" data-i18n-attr="aria-label"></div>
-            </div>
           </div>
-        </section>
+        </aside>
 
-        <section class="content">
-          <div class="detail-shell">
+        <section class="content-main">
+          <div class="detail-shell" id="detail-panel">
             <div id="detail-empty" class="empty-state">
               <h2 data-i18n="selectSession">选择一个会话</h2>
-              <p data-i18n="selectSessionDesc">左侧会显示所有已解析会话。选中后，右侧会保持在当前工作台里展示摘要、对话视图和原始事件流。</p>
+              <p data-i18n="selectSessionDesc">左侧会显示所有已解析会话。选中后，详情和属性会在这里展示。</p>
             </div>
 
             <div id="detail-view" class="detail-view hidden">
               <div class="detail-topbar">
                 <div class="detail-heading">
-                  <p class="eyebrow">SESSION DETAIL</p>
                   <h2 id="detail-title">-</h2>
+                  <div id="detail-tags" class="detail-tags"></div>
                 </div>
                 <div class="detail-topbar-right">
                   <div class="tabs" role="tablist" aria-label="详情视图切换" data-i18n="tabsAriaLabel" data-i18n-attr="aria-label">
@@ -123,18 +126,42 @@
                 </div>
               </div>
 
-              <div id="detail-summary" class="detail-meta-strip"></div>
+              <div class="detail-body">
+                <section id="conversation-tab" class="detail-tab" role="tabpanel">
+                  <div id="conversation-list" class="conversation-list"></div>
+                </section>
 
-              <section id="conversation-tab" class="detail-tab" role="tabpanel">
-                <div id="conversation-list" class="conversation-list"></div>
-              </section>
-
-              <section id="raw-tab" class="detail-tab hidden" role="tabpanel">
-                <div id="raw-events" class="raw-events"></div>
-              </section>
+                <section id="raw-tab" class="detail-tab hidden" role="tabpanel">
+                  <div id="raw-events" class="raw-events"></div>
+                </section>
+              </div>
             </div>
           </div>
+
+          <div class="stats-dashboard hidden" id="stats-dashboard">
+            <div class="stats-metrics" id="stats-metrics"></div>
+            <div class="stats-charts" id="stats-charts">
+              <div class="chart-card">
+                <h3 data-i18n="statsTrend">会话趋势</h3>
+                <div class="chart-body" id="trend-chart-body"></div>
+              </div>
+              <div class="chart-card">
+                <h3 data-i18n="statsProviderDist">按 Provider 分布</h3>
+                <div class="chart-body" id="donut-chart-body"></div>
+              </div>
+            </div>
+            <div class="stats-grid" id="stats-grid"></div>
+          </div>
         </section>
+
+        <aside class="props-panel" id="props-panel">
+          <div class="props-header">
+            <span class="eyebrow" id="props-eyebrow">PROPERTIES</span>
+          </div>
+          <div id="props-content" class="props-content">
+            <div class="props-empty" data-i18n="selectSession">选择一个会话</div>
+          </div>
+        </aside>
       </main>
     </div>
 

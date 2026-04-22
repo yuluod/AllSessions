@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { HOST, PORT, SESSION_ROOT } from "./config.js";
+import { HOST, PORT, SOURCES } from "./config.js";
 import { createHttpServer } from "./http-server.js";
 import { SessionStore } from "./session-store.js";
 
@@ -9,19 +9,20 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(currentDir, "..", "public");
 
 async function main() {
-  const store = new SessionStore({ sessionRoot: SESSION_ROOT });
+  const store = new SessionStore({ sources: SOURCES });
   await store.initialize();
   await store.watch();
 
   const server = createHttpServer({
     store,
     publicDir,
-    sessionRoot: SESSION_ROOT
+    sessionRoots: SOURCES.map((s) => s.rootDir)
   });
 
   server.listen(PORT, HOST, () => {
     console.log(`Session viewer started: http://${HOST}:${PORT}`);
-    console.log(`Session root: ${SESSION_ROOT}`);
+    const roots = SOURCES.map((s) => s.displayName + ": " + s.rootDir).join(", ");
+    console.log(`Session roots: ${roots || "none"}`);
     console.log(`Cached sessions: ${store.summaries.length}`);
   });
 }

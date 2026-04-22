@@ -104,7 +104,7 @@ async function sendStaticFile(publicDir, pathname, request, response) {
   }
 }
 
-export function createHttpServer({ store, publicDir, sessionRoot }) {
+export function createHttpServer({ store, publicDir, sessionRoots }) {
   const sseClients = new Set();
 
   const SSE_PING_INTERVAL = 30_000;
@@ -154,6 +154,7 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
       if (url.pathname === "/api/sessions") {
         const filters = {
           provider: sanitizeFilterValue(url.searchParams.get("provider")),
+          source_kind: sanitizeFilterValue(url.searchParams.get("source_kind")),
           date: sanitizeFilterValue(url.searchParams.get("date")),
           cwd: sanitizeFilterValue(url.searchParams.get("cwd"))
         };
@@ -166,7 +167,7 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
         const cursor = sanitizeFilterValue(url.searchParams.get("cursor")) || undefined;
         const result = store.listSessions(filters, { limit, cursor });
         sendJson(response, 200, {
-          session_root: sessionRoot,
+          session_roots: sessionRoots,
           ...result
         });
         return;
@@ -174,7 +175,7 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
 
       if (url.pathname === "/api/facets") {
         sendJson(response, 200, {
-          session_root: sessionRoot,
+          session_roots: sessionRoots,
           ...store.getFacets()
         });
         return;
@@ -190,11 +191,13 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
         const byDateMap = new Map();
         const byProviderMap = new Map();
         const byCwdMap = new Map();
+        const bySourceKindMap = new Map();
         for (const s of store.summaries) {
           const date = (s.timestamp || s.last_timestamp || "").slice(0, 10);
           if (date) byDateMap.set(date, (byDateMap.get(date) || 0) + 1);
           if (s.model_provider) byProviderMap.set(s.model_provider, (byProviderMap.get(s.model_provider) || 0) + 1);
           if (s.cwd) byCwdMap.set(s.cwd, (byCwdMap.get(s.cwd) || 0) + 1);
+          if (s.source_kind) bySourceKindMap.set(s.source_kind, (bySourceKindMap.get(s.source_kind) || 0) + 1);
         }
         const toSorted = (map) =>
           Array.from(map.entries())
@@ -205,6 +208,7 @@ export function createHttpServer({ store, publicDir, sessionRoot }) {
             .map(([label, count]) => ({ label, count }))
             .sort((a, b) => b.label.localeCompare(a.label)),
           by_provider: toSorted(byProviderMap),
+          by_source_kind: toSorted(bySourceKindMap),
           by_cwd: toSorted(byCwdMap)
         });
         return;

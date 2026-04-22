@@ -1,8 +1,8 @@
 <div align="center">
 
-# Codex Session Viewer
+# AI Session Viewer
 
-<p>A lightweight, local-only web viewer for browsing Codex session history stored in <code>~/.codex/sessions</code>.</p>
+<p>A lightweight, local-only web viewer for browsing AI session history, designed to grow beyond a single source over time.</p>
 
 <p>
   <a href="./README.zh-CN.md">中文文档</a>
@@ -23,7 +23,30 @@
 
 </div>
 
-Browse, filter, search, and inspect local Codex sessions in a compact browser UI with real-time file watching.
+Browse, filter, search, and inspect local AI sessions in a compact browser UI with real-time file watching.
+
+> **Positioning**
+> A local AI session viewer with a current Codex-first implementation.
+>
+> **Current status**
+> Codex is supported today. Claude and additional sources are planned, but not implemented in this release.
+>
+> **Direction**
+> Evolve toward a unified local viewer for multiple AI coding assistant histories.
+
+## Current Scope
+
+- Current implementation: Codex session parsing and viewing
+- Planned direction: support for additional session sources such as Claude
+- Non-goal for this release: multi-source parsing or unified provider ingestion
+
+## Source Support
+
+| Source | Status | Notes |
+|--------|--------|-------|
+| Codex | Supported | Reads local session files from `~/.codex/sessions` or `CODEX_SESSIONS_DIR` |
+| Claude | Planned | Not implemented in the current release |
+| Other AI tools | Planned | Future expansion area, no compatibility promise yet |
 
 ## Features
 
@@ -33,6 +56,13 @@ Browse, filter, search, and inspect local Codex sessions in a compact browser UI
 - Switch between "Conversation" and "Raw Events" views
 - Chinese-English language switching
 - Real-time file system watch with auto-refresh
+
+## Use Cases
+
+- Review recent local AI sessions without opening raw JSONL files
+- Search previous conversations, tool calls, and event streams
+- Inspect session metadata such as provider, working directory, and timestamps
+- Keep a lightweight local viewer running while new Codex sessions are written to disk
 
 ## Requirements
 
@@ -47,6 +77,8 @@ pnpm start
 ```
 
 The viewer starts at `http://127.0.0.1:3210` by default.
+
+Then open the URL in your browser and the app will scan the current Codex session directory automatically.
 
 ## Environment Variables
 
@@ -66,9 +98,17 @@ PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 
 - Local-only: no authentication or remote access control
 - Read-only access to the session directory
+- Current release only supports Codex session files; Claude and other sources are not implemented yet
 - Legacy sessions with incompatible formats fall back to raw event view
 - Encrypted fields are shown as-is without decryption
 - Scans all sessions on startup and caches summaries; details are read on demand
+
+## Roadmap
+
+- Keep the current Codex viewer stable and lightweight
+- Introduce a cleaner source abstraction for additional session formats
+- Add optional support for Claude-style local exports or session logs
+- Move toward a unified local viewer for multiple AI coding assistant histories
 
 ## Development
 

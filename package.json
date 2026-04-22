@@ -1,11 +1,11 @@
 {
   "name": "codex-session-viewer",
   "version": "1.0.0",
-  "description": "A lightweight, local-only web viewer for browsing Codex session history.",
+  "description": "A lightweight, local-only web viewer for browsing AI session history, currently focused on Codex sessions.",
   "type": "module",
   "license": "Apache-2.0",
   "packageManager": "pnpm@10.0.0",
-  "keywords": ["codex", "session", "viewer", "local", "cli"],
+  "keywords": ["ai", "codex", "session", "viewer", "local", "cli", "claude"],
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",

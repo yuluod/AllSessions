@@ -107,3 +107,69 @@ test("stopWatching 会清空 watchedDirs", async (t) => {
 
   assert.equal(store._watchedDirs.size, 0);
 });
+
+test("多来源同 raw id 不串", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const codexDir = path.join(rootDir, "codex");
+  const claudeDir = path.join(rootDir, "claude", "sessions");
+  await fs.mkdir(codexDir, { recursive: true });
+  await fs.mkdir(claudeDir, { recursive: true });
+
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const codexSession = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "shared-id",
+        timestamp: "2026-04-21T10:00:00.000Z",
+        cwd: "/tmp/codex",
+        source: "cli",
+        model_provider: "openai"
+      }
+    })
+  ].join("\n");
+
+  await fs.writeFile(path.join(codexDir, "session.jsonl"), codexSession, "utf8");
+
+  const claudeSession = JSON.stringify({
+    sessionId: "shared-id",
+    cwd: "/tmp/claude",
+    startedAt: 1713670800000,
+    entrypoint: "claude",
+    kind: "default"
+  });
+
+  await fs.writeFile(path.join(claudeDir, "shared-id.json"), claudeSession, "utf8");
+
+  const store = new SessionStore({
+    sources: [
+      { kind: "codex", rootDir: codexDir, filePattern: "**/*.jsonl" },
+      { kind: "claude_code", rootDir: claudeDir, filePattern: "sessions/*.json" }
+    ]
+  });
+  await store.initialize();
+
+  assert.equal(store.listSessions().sessions.length, 2);
+
+  const codexKey = "codex:shared-id";
+  const claudeKey = "claude_code:shared-id";
+
+  const codexDetail = await store.getSessionDetail(codexKey);
+  assert.equal(codexDetail.summary.source_kind, "codex");
+  assert.equal(codexDetail.summary.cwd, "/tmp/codex");
+
+  const claudeDetail = await store.getSessionDetail(claudeKey);
+  assert.equal(claudeDetail.summary.source_kind, "claude_code");
+  assert.equal(claudeDetail.summary.cwd, "/tmp/claude");
+
+  const filtered = store.listSessions({ source_kind: "claude_code" });
+  assert.equal(filtered.sessions.length, 1);
+  assert.equal(filtered.sessions[0]._key, claudeKey);
+
+  const facets = store.getFacets();
+  assert.deepEqual(facets.source_kinds, ["claude_code", "codex"]);
+});

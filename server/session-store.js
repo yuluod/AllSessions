@@ -10,7 +10,18 @@ function sessionKey(sourceKind, id) {
   return `${sourceKind}:${id}`;
 }
 
-async function collectFiles(rootDir, pattern) {
+function matchesSourceFile(filePath, source) {
+  const filename = path.basename(filePath);
+  if (source.filePattern === "**/*.jsonl") {
+    return filePath.endsWith(".jsonl");
+  }
+  if (source.filePattern === "sessions/*.json") {
+    return filePath.endsWith(".json") && filePath.includes(path.sep + "sessions" + path.sep + filename);
+  }
+  return false;
+}
+
+async function collectFiles(rootDir, source) {
   let entries = [];
   try {
     entries = await fs.readdir(rootDir, { withFileTypes: true });
@@ -25,15 +36,10 @@ async function collectFiles(rootDir, pattern) {
     entries.map(async (entry) => {
       const fullPath = path.join(rootDir, entry.name);
       if (entry.isDirectory()) {
-        return collectFiles(fullPath, pattern);
+        return collectFiles(fullPath, source);
       }
-      if (entry.isFile()) {
-        if (pattern === "**/*.jsonl" && fullPath.endsWith(".jsonl")) {
-          return [fullPath];
-        }
-        if (pattern === "sessions/*.json" && fullPath.endsWith(".json") && rootDir.endsWith("sessions")) {
-          return [fullPath];
-        }
+      if (entry.isFile() && matchesSourceFile(fullPath, source)) {
+        return [fullPath];
       }
       return [];
     })
@@ -102,7 +108,7 @@ export class SessionStore {
     this._sessionTexts.clear();
 
     for (const source of this.sources) {
-      const files = await collectFiles(source.rootDir, source.filePattern);
+      const files = await collectFiles(source.rootDir, source);
       const parsed = await Promise.all(
         files.map(async (filePath) => {
           return parseFile(filePath, source.kind);
@@ -115,7 +121,10 @@ export class SessionStore {
         summary._key = key;
         this.summaries.push(summary);
         this.summaryByKey.set(key, summary);
-        this.summaryById.set(summary.id, summary);
+        if (!this.summaryById.has(summary.id)) {
+          this.summaryById.set(summary.id, new Set());
+        }
+        this.summaryById.get(summary.id).add(key);
         this._filePathToKey.set(summary.file_path, key);
         this._indexSessionText(key, detail.conversation_messages);
       }
@@ -159,7 +168,13 @@ export class SessionStore {
     const summary = this.summaryByKey.get(key);
     if (summary) {
       this.summaryByKey.delete(key);
-      this.summaryById.delete(summary.id);
+      const keySet = this.summaryById.get(summary.id);
+      if (keySet) {
+        keySet.delete(key);
+        if (keySet.size === 0) {
+          this.summaryById.delete(summary.id);
+        }
+      }
       this._filePathToKey.delete(summary.file_path);
     }
     this._detailCache.delete(key);
@@ -247,7 +262,13 @@ export class SessionStore {
   }
 
   async getSessionDetail(key) {
-    const summary = this.summaryByKey.get(key) || this.summaryById.get(key);
+    let summary = this.summaryByKey.get(key);
+    if (!summary) {
+      const keySet = this.summaryById.get(key);
+      if (keySet && keySet.size === 1) {
+        summary = this.summaryByKey.get(keySet.values().next().value);
+      }
+    }
     if (!summary) {
       return null;
     }
@@ -260,6 +281,7 @@ export class SessionStore {
     }
 
     const detail = await parseFile(summary.file_path, summary.source_kind);
+    detail.summary._key = summary._key;
 
     if (this._detailCache.size >= LRU_MAX) {
       const oldest = this._detailCache.keys().next().value;
@@ -284,9 +306,7 @@ export class SessionStore {
       const watcher = fss.watch(dir, (eventType, filename) => {
         if (!filename) return;
         const fullPath = path.join(dir, filename);
-        const isTargetFile =
-          (source.filePattern === "**/*.jsonl" && filename.endsWith(".jsonl")) ||
-          (source.filePattern === "sessions/*.json" && filename.endsWith(".json"));
+        const isTargetFile = matchesSourceFile(fullPath, source);
         if (isTargetFile) {
           clearTimeout(this._debounceTimer);
           this._pendingChanges.add(fullPath);
@@ -357,12 +377,21 @@ export class SessionStore {
         const existingKey = key || summary._key;
         const existingIndex = this.summaries.findIndex((s) => s._key === existingKey);
         if (existingIndex >= 0) {
-          this._unindexSessionText(existingKey);
-          this.summaries[existingIndex] = summary;
-          this.summaries.sort(compareSummariesDesc);
-          this._detailCache.delete(existingKey);
-          this._indexSessionText(existingKey, detail.conversation_messages);
-          this._notifyChange({ type: "session-updated", summary });
+          const needsKeyChange = existingKey !== summary._key;
+          if (needsKeyChange) {
+            this._removeSession(existingKey);
+            this.summaries.push(summary);
+            this.summaries.sort(compareSummariesDesc);
+            this._indexSessionText(summary._key, detail.conversation_messages);
+            this._notifyChange({ type: "session-added", summary });
+          } else {
+            this._unindexSessionText(existingKey);
+            this.summaries[existingIndex] = summary;
+            this.summaries.sort(compareSummariesDesc);
+            this._detailCache.delete(existingKey);
+            this._indexSessionText(existingKey, detail.conversation_messages);
+            this._notifyChange({ type: "session-updated", summary });
+          }
         } else {
           this.summaries.push(summary);
           this.summaries.sort(compareSummariesDesc);
@@ -370,7 +399,10 @@ export class SessionStore {
           this._notifyChange({ type: "session-added", summary });
         }
         this.summaryByKey.set(summary._key, summary);
-        this.summaryById.set(summary.id, summary);
+        if (!this.summaryById.has(summary.id)) {
+          this.summaryById.set(summary.id, new Set());
+        }
+        this.summaryById.get(summary.id).add(summary._key);
         this._filePathToKey.set(summary.file_path, summary._key);
       } catch (err) {
         if (err && typeof err === "object" && err.code === "ENOENT") {

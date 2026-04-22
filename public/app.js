@@ -511,7 +511,9 @@ async function loadMoreSessions() {
 
     appendSessionItems(data.sessions);
     renderLoadMoreButton();
-    elements.sessionCount.textContent = String(state.sessions.length);
+    const archivedIds = getArchivedIds();
+    const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s._key));
+    elements.sessionCount.textContent = String(visible.length);
   } catch (error) {
     console.error(error);
     showError(`${t("loadMoreFailed")}: ${error.message}`);
@@ -720,8 +722,9 @@ async function initialize() {
   eventSource.addEventListener("session-added", (e) => {
     try {
       const summary = JSON.parse(e.data);
-      const key = summary._key || summary.id;
-      if (!state.sessions.find((s) => s._key === key || s.id === summary.id)) {
+      const key = summary._key;
+      if (!key) return;
+      if (!state.sessions.find((s) => s._key === key)) {
         state.sessions.push(summary);
         state.sessions.sort((a, b) => {
           const ta = a.timestamp || a.last_timestamp || "";
@@ -745,8 +748,9 @@ async function initialize() {
   eventSource.addEventListener("session-updated", (e) => {
     try {
       const summary = JSON.parse(e.data);
-      const key = summary._key || summary.id;
-      const idx = state.sessions.findIndex((s) => s._key === key || s.id === summary.id);
+      const key = summary._key;
+      if (!key) return;
+      const idx = state.sessions.findIndex((s) => s._key === key);
       if (idx >= 0) {
         state.sessions[idx] = summary;
         state.sessions.sort((a, b) => {
@@ -766,7 +770,8 @@ async function initialize() {
     try {
       const { id } = JSON.parse(e.data);
       const key = id;
-      state.sessions = state.sessions.filter((s) => s._key !== key && s.id !== id);
+      if (!key) return;
+      state.sessions = state.sessions.filter((s) => s._key !== key);
       if (state.selectedSessionKey === key) {
         state.selectedSessionKey = null;
         elements.detailView.classList.add("hidden");

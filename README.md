@@ -29,29 +29,29 @@ Browse, filter, search, and inspect local AI sessions in a compact browser UI wi
 > A local AI session viewer with a current Codex-first implementation.
 >
 > **Current status**
-> Codex is supported today. Claude and additional sources are planned, but not implemented in this release.
+> Codex and Claude Code are supported today. Additional sources may be added in future releases.
 >
 > **Direction**
 > Evolve toward a unified local viewer for multiple AI coding assistant histories.
 
 ## Current Scope
 
-- Current implementation: Codex session parsing and viewing
-- Planned direction: support for additional session sources such as Claude
-- Non-goal for this release: multi-source parsing or unified provider ingestion
+- Current implementation: Codex and Claude Code session parsing and viewing
+- Unified multi-source aggregation in a single interface
+- Planned direction: support for additional session sources
 
 ## Source Support
 
 | Source | Status | Notes |
 |--------|--------|-------|
 | Codex | Supported | Reads local session files from `~/.codex/sessions` or `CODEX_SESSIONS_DIR` |
-| Claude | Planned | Not implemented in the current release |
+| Claude Code | Supported | Reads sessions from `~/.claude/sessions` and `history.jsonl`, or `CLAUDE_SESSIONS_DIR` |
 | Other AI tools | Planned | Future expansion area, no compatibility promise yet |
 
 ## Features
 
-- Browse local session list
-- Filter by provider, date, and working directory
+- Browse local session list from multiple sources (Codex + Claude Code)
+- Filter by source kind, provider, date, and working directory
 - View individual session details
 - Switch between "Conversation" and "Raw Events" views
 - Chinese-English language switching
@@ -67,7 +67,7 @@ Browse, filter, search, and inspect local AI sessions in a compact browser UI wi
 ## Requirements
 
 - Node.js 20 or later
-- Default session directory at `~/.codex/sessions`
+- At least one supported session source directory present (Codex: `~/.codex/sessions`, Claude Code: `~/.claude`)
 
 ## Quick Start
 
@@ -86,7 +86,8 @@ Then open the URL in your browser and the app will scan the current Codex sessio
 |----------|-------------|---------|
 | `PORT` | Server port | `3210` |
 | `HOST` | Bind address | `127.0.0.1` |
-| `CODEX_SESSIONS_DIR` | Session root directory | `~/.codex/sessions` |
+| `CODEX_SESSIONS_DIR` | Codex session root directory | `~/.codex/sessions` |
+| `CLAUDE_SESSIONS_DIR` | Claude Code session root directory | `~/.claude` |
 
 Example:
 
@@ -98,17 +99,16 @@ PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 
 - Local-only: no authentication or remote access control
 - Read-only access to the session directory
-- Current release only supports Codex session files; Claude and other sources are not implemented yet
+- Supports Codex and Claude Code session files simultaneously
 - Legacy sessions with incompatible formats fall back to raw event view
 - Encrypted fields are shown as-is without decryption
 - Scans all sessions on startup and caches summaries; details are read on demand
 
 ## Roadmap
 
-- Keep the current Codex viewer stable and lightweight
-- Introduce a cleaner source abstraction for additional session formats
-- Add optional support for Claude-style local exports or session logs
-- Move toward a unified local viewer for multiple AI coding assistant histories
+- Keep the current multi-source viewer stable and lightweight
+- Add optional support for additional AI tool session formats
+- Improve Claude Code conversation reconstruction from local history
 
 ## Development
 

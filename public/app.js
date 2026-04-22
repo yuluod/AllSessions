@@ -492,7 +492,7 @@ async function loadSessions() {
       elements.detailView.classList.add("hidden");
       elements.detailEmpty.classList.remove("hidden");
     }
-    syncUrl();
+    if (state._initialized) syncUrl();
   } catch (error) {
     console.error(error);
     showError(`${t("loadListFailed")}: ${error.message}`);

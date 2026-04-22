@@ -63,6 +63,12 @@
                 <input id="search-input" type="search" placeholder="搜索会话内容..." data-i18n-placeholder="searchPlaceholder" />
               </label>
               <label class="field">
+                <span data-i18n="sourceKind">来源</span>
+                <select id="source-kind-filter">
+                  <option value="" data-i18n="all">全部</option>
+                </select>
+              </label>
+              <label class="field">
                 <span>Provider</span>
                 <select id="provider-filter">
                   <option value="" data-i18n="all">全部</option>
@@ -144,6 +150,7 @@
         <div class="session-tertiary">
           <span class="session-events"></span>
           <span class="session-source"></span>
+          <span class="session-source-kind"></span>
         </div>
       </button>
     </template>

@@ -29,29 +29,29 @@
 > 一个本地 AI 会话查看器，当前实现以 Codex 为主。
 >
 > **当前状态**
-> 现在已支持 Codex。Claude 和其他来源属于后续方向，本次版本暂未实现。
+> 现已支持 Codex 和 Claude Code。其他来源可在后续版本继续扩展。
 >
 > **演进方向**
 > 逐步发展为一个统一查看多种 AI 编码助手本地历史的轻量工具。
 
 ## 当前范围
 
-- 当前实现：仅支持 Codex 会话的解析与查看
-- 后续方向：可扩展支持 Claude 等其他会话来源
-- 本次版本不包含：多来源解析与统一接入能力
+- 当前实现：支持 Codex 和 Claude Code 会话的解析与查看
+- 多来源统一聚合，在同一界面中浏览
+- 后续方向：可扩展支持更多会话来源
 
 ## 来源支持情况
 
 | 来源 | 状态 | 说明 |
 |------|------|------|
 | Codex | 已支持 | 读取 `~/.codex/sessions` 或 `CODEX_SESSIONS_DIR` 指向的本地会话文件 |
-| Claude | 计划中 | 当前版本尚未实现 |
+| Claude Code | 已支持 | 读取 `~/.claude/sessions` 和 `history.jsonl`，或 `CLAUDE_SESSIONS_DIR` 指向的目录 |
 | 其他 AI 工具 | 计划中 | 属于后续扩展方向，暂不承诺兼容性 |
 
 ## 功能
 
-- 浏览本地会话列表
-- 按 provider、日期、工作目录筛选
+- 浏览多个来源的本地会话列表（Codex + Claude Code）
+- 按来源类型、provider、日期、工作目录筛选
 - 查看单个会话详情
 - 在「对话视图」和「原始事件流」之间切换
 - 中英文语言切换
@@ -67,7 +67,7 @@
 ## 运行要求
 
 - Node.js 20 或更高版本
-- 默认会话目录存在于 `~/.codex/sessions`
+- 至少存在一个受支持的会话来源目录（Codex: `~/.codex/sessions`，Claude Code: `~/.claude`）
 
 ## 快速启动
 
@@ -90,7 +90,8 @@ http://127.0.0.1:3210
 |------|------|--------|
 | `PORT` | 服务端口号 | `3210` |
 | `HOST` | 监听地址 | `127.0.0.1` |
-| `CODEX_SESSIONS_DIR` | 会话根目录 | `~/.codex/sessions` |
+| `CODEX_SESSIONS_DIR` | Codex 会话根目录 | `~/.codex/sessions` |
+| `CLAUDE_SESSIONS_DIR` | Claude Code 会话根目录 | `~/.claude` |
 
 示例：
 
@@ -102,16 +103,16 @@ PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 
 - 仅支持本机查看，不做登录和远程访问控制
 - 默认只读 `~/.codex/sessions`
-- 当前版本只支持 Codex 会话文件；Claude 等其他来源暂未实现
+- 同时支持 Codex 和 Claude Code 会话文件
 - 对历史格式差异较大的旧会话，只保证原始事件流可见
 - 对加密字段只展示占位或原样结构，不尝试解密
 - 启动时会全量扫描会话并缓存摘要；详情页按需读取单文件
 
 ## 路线图
 
-- 继续保持当前 Codex 查看体验稳定、轻量
-- 为后续接入更多会话格式整理更清晰的来源抽象
-- 逐步探索对 Claude 风格本地导出或会话日志的支持
+- 继续保持多来源查看体验稳定、轻量
+- 为后续接入更多会话格式扩展来源抽象
+- 改进 Claude Code 从本地历史重建对话的能力
 - 最终朝统一查看多种 AI 编码助手本地历史的方向演进
 
 ## 开发

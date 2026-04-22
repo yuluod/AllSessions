@@ -1,10 +1,11 @@
 {
   "name": "codex-session-viewer",
   "version": "1.0.0",
-  "description": "本地网页会话查看器，用于浏览 Codex 本地会话历史。",
+  "description": "A lightweight, local-only web viewer for browsing Codex session history.",
   "type": "module",
-  "private": true,
+  "license": "Apache-2.0",
   "packageManager": "pnpm@10.0.0",
+  "keywords": ["codex", "session", "viewer", "local", "cli"],
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",

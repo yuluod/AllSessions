@@ -13,7 +13,8 @@ const CONTENT_TYPES = {
 };
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_:.-]{1,128}$/;
-const CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/g;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/g;
 
 function sanitizeFilterValue(value) {
   if (!value) return "";

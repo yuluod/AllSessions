@@ -12,7 +12,7 @@ const CONTENT_TYPES = {
   ".svg": "image/svg+xml"
 };
 
-const SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+const SESSION_ID_RE = /^[a-zA-Z0-9_:.-]{1,128}$/;
 const CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/g;
 
 function sanitizeFilterValue(value) {

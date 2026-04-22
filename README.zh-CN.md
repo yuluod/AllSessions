@@ -1,8 +1,29 @@
+<div align="center">
+
 # Codex 本地会话查看器
 
-[English](./README.md)
+<p>一个仅供本机使用的轻量网页工具，用来浏览 <code>~/.codex/sessions</code> 下的 Codex 本地会话历史。</p>
 
-一个仅供本机使用的极简网页工具，用来浏览 `~/.codex/sessions` 下的 Codex 本地会话历史。
+<p>
+  <a href="./README.md">English</a>
+  ·
+  <a href="#快速启动">快速启动</a>
+  ·
+  <a href="#功能">功能</a>
+  ·
+  <a href="#开发">开发</a>
+</p>
+
+<p>
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white" />
+  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-10%2B-F69220?logo=pnpm&logoColor=white" />
+  <img alt="许可证" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" />
+  <img alt="多语言" src="https://img.shields.io/badge/i18n-ZH%20%7C%20EN-7B61FF" />
+</p>
+
+</div>
+
+支持筛选、搜索、详情查看与实时监听刷新，适合本地快速回看 Codex 会话。
 
 ## 功能
 

@@ -109,7 +109,7 @@ export function parseSessionContent(content, filePath) {
         timestamp: null,
         type: "parse_error",
         payload: {
-          message: "JSON 解析失败",
+          message: "JSON parse error",
           raw_line: line,
           error: error instanceof Error ? error.message : String(error)
         }
@@ -189,7 +189,7 @@ export function parseSessionContent(content, filePath) {
         const errorMsg = record.payload.message || record.payload.error || JSON.stringify(record.payload);
         pushConversationMessage(conversationMessages, {
           role: "system",
-          text: `错误: ${errorMsg}`,
+          text: `Error: ${errorMsg}`,
           timestamp: rawEvent.timestamp,
           sourceType: record.type,
           sourceSubtype: record.payload.type

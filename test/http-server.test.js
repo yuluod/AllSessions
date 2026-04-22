@@ -171,6 +171,34 @@ test("GET /api/sessions 支持过滤", async (t) => {
   assert.equal(data2.sessions.length, 0);
 });
 
+test("GET /api/facets 返回 source_kinds", async (t) => {
+  const { address } = await setupServer(t);
+  const res = await fetchFromServer(address.port, "/api/facets");
+  const data = JSON.parse(res.body);
+  assert.ok(Array.isArray(data.source_kinds));
+  assert.deepEqual(data.source_kinds, ["codex"]);
+});
+
+test("GET /api/sessions 支持 source_kind 过滤", async (t) => {
+  const { address } = await setupServer(t);
+  const res = await fetchFromServer(address.port, "/api/sessions?source_kind=codex");
+  const data = JSON.parse(res.body);
+  assert.equal(data.sessions.length, 1);
+
+  const res2 = await fetchFromServer(address.port, "/api/sessions?source_kind=claude_code");
+  const data2 = JSON.parse(res2.body);
+  assert.equal(data2.sessions.length, 0);
+});
+
+test("GET /api/sessions/:_key 用组合 key 返回详情", async (t) => {
+  const { address } = await setupServer(t);
+  const res = await fetchFromServer(address.port, "/api/sessions/codex%3Atest-1");
+  assert.equal(res.status, 200);
+  const data = JSON.parse(res.body);
+  assert.equal(data.summary.id, "test-1");
+  assert.equal(data.summary._key, "codex:test-1");
+});
+
 test("ETag 缓存：第二次请求返回 304", async (t) => {
   const { address } = await setupServer(t);
 

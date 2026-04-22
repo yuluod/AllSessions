@@ -2,11 +2,15 @@ import fs from "node:fs/promises";
 import fss from "node:fs";
 import path from "node:path";
 
-import { compareSummariesDesc, parseSessionFile } from "./session-parser.js";
+import { compareSummariesDesc, parseFile } from "./parsers/index.js";
 
 const DEBOUNCE_MS = 500;
 
-async function collectJsonlFiles(rootDir) {
+function sessionKey(sourceKind, id) {
+  return `${sourceKind}:${id}`;
+}
+
+async function collectFiles(rootDir, pattern) {
   let entries = [];
   try {
     entries = await fs.readdir(rootDir, { withFileTypes: true });
@@ -21,10 +25,15 @@ async function collectJsonlFiles(rootDir) {
     entries.map(async (entry) => {
       const fullPath = path.join(rootDir, entry.name);
       if (entry.isDirectory()) {
-        return collectJsonlFiles(fullPath);
+        return collectFiles(fullPath, pattern);
       }
-      if (entry.isFile() && fullPath.endsWith(".jsonl")) {
-        return [fullPath];
+      if (entry.isFile()) {
+        if (pattern === "**/*.jsonl" && fullPath.endsWith(".jsonl")) {
+          return [fullPath];
+        }
+        if (pattern === "sessions/*.json" && fullPath.endsWith(".json") && rootDir.endsWith("sessions")) {
+          return [fullPath];
+        }
       }
       return [];
     })
@@ -42,6 +51,9 @@ function dateKeyFromTimestamp(timestamp) {
 
 function matchesFilter(summary, filters) {
   if (filters.provider && summary.model_provider !== filters.provider) {
+    return false;
+  }
+  if (filters.source_kind && summary.source_kind !== filters.source_kind) {
     return false;
   }
   if (filters.date && dateKeyFromTimestamp(summary.timestamp || summary.last_timestamp) !== filters.date) {
@@ -65,10 +77,12 @@ function tokenize(text) {
 }
 
 export class SessionStore {
-  constructor({ sessionRoot }) {
-    this.sessionRoot = sessionRoot;
+  constructor({ sources }) {
+    this.sources = sources;
     this.summaries = [];
+    this.summaryByKey = new Map();
     this.summaryById = new Map();
+    this._filePathToKey = new Map();
     this._detailCache = new Map();
     this._watchers = [];
     this._watchedDirs = new Set();
@@ -80,58 +94,76 @@ export class SessionStore {
   }
 
   async initialize() {
-    const files = await collectJsonlFiles(this.sessionRoot);
-    const parsed = await Promise.all(
-      files.map(async (filePath) => {
-        return parseSessionFile(filePath);
-      })
-    );
-
-    this.summaries = parsed.map((d) => d.summary).sort(compareSummariesDesc);
-    this.summaryById = new Map(this.summaries.map((summary) => [summary.id, summary]));
-
+    this.summaries = [];
+    this.summaryByKey.clear();
+    this.summaryById.clear();
+    this._filePathToKey.clear();
     this._searchIndex.clear();
     this._sessionTexts.clear();
-    for (const detail of parsed) {
-      this._indexSessionText(detail.summary.id, detail.conversation_messages);
+
+    for (const source of this.sources) {
+      const files = await collectFiles(source.rootDir, source.filePattern);
+      const parsed = await Promise.all(
+        files.map(async (filePath) => {
+          return parseFile(filePath, source.kind);
+        })
+      );
+
+      for (const detail of parsed) {
+        const summary = detail.summary;
+        const key = sessionKey(summary.source_kind, summary.id);
+        summary._key = key;
+        this.summaries.push(summary);
+        this.summaryByKey.set(key, summary);
+        this.summaryById.set(summary.id, summary);
+        this._filePathToKey.set(summary.file_path, key);
+        this._indexSessionText(key, detail.conversation_messages);
+      }
     }
+
+    this.summaries.sort(compareSummariesDesc);
   }
 
-  _indexSessionText(sessionId, messages) {
+  _indexSessionText(key, messages) {
     const allText = messages.map((m) => m.text).join(" ");
-    this._sessionTexts.set(sessionId, allText);
+    this._sessionTexts.set(key, allText);
     const tokens = tokenize(allText);
     const uniqueTokens = new Set(tokens);
     for (const token of uniqueTokens) {
       if (!this._searchIndex.has(token)) {
         this._searchIndex.set(token, new Set());
       }
-      this._searchIndex.get(token).add(sessionId);
+      this._searchIndex.get(token).add(key);
     }
   }
 
-  _unindexSessionText(sessionId) {
-    const text = this._sessionTexts.get(sessionId);
+  _unindexSessionText(key) {
+    const text = this._sessionTexts.get(key);
     if (!text) return;
     const tokens = tokenize(text);
     const uniqueTokens = new Set(tokens);
     for (const token of uniqueTokens) {
       const ids = this._searchIndex.get(token);
       if (ids) {
-        ids.delete(sessionId);
+        ids.delete(key);
         if (ids.size === 0) {
           this._searchIndex.delete(token);
         }
       }
     }
-    this._sessionTexts.delete(sessionId);
+    this._sessionTexts.delete(key);
   }
 
-  _removeSession(sessionId) {
-    this.summaries = this.summaries.filter((s) => s.id !== sessionId);
-    this.summaryById.delete(sessionId);
-    this._detailCache.delete(sessionId);
-    this._unindexSessionText(sessionId);
+  _removeSession(key) {
+    this.summaries = this.summaries.filter((s) => s._key !== key);
+    const summary = this.summaryByKey.get(key);
+    if (summary) {
+      this.summaryByKey.delete(key);
+      this.summaryById.delete(summary.id);
+      this._filePathToKey.delete(summary.file_path);
+    }
+    this._detailCache.delete(key);
+    this._unindexSessionText(key);
   }
 
   search(query) {
@@ -145,9 +177,9 @@ export class SessionStore {
 
     let resultSets = tokens.map((token) => {
       const matched = new Set();
-      for (const [indexWord, ids] of this._searchIndex) {
+      for (const [indexWord, keys] of this._searchIndex) {
         if (indexWord.includes(token)) {
-          for (const id of ids) matched.add(id);
+          for (const key of keys) matched.add(key);
         }
       }
       return matched;
@@ -155,12 +187,12 @@ export class SessionStore {
 
     let intersection = resultSets[0];
     for (let i = 1; i < resultSets.length; i++) {
-      intersection = new Set([...intersection].filter((id) => resultSets[i].has(id)));
+      intersection = new Set([...intersection].filter((key) => resultSets[i].has(key)));
     }
 
     const summaries = [];
-    for (const id of intersection) {
-      const summary = this.summaryById.get(id);
+    for (const key of intersection) {
+      const summary = this.summaryByKey.get(key);
       if (summary) summaries.push(summary);
     }
 
@@ -171,7 +203,7 @@ export class SessionStore {
     let filtered = this.summaries.filter((summary) => matchesFilter(summary, filters));
 
     if (cursor) {
-      const cursorIndex = filtered.findIndex((s) => s.id === cursor);
+      const cursorIndex = filtered.findIndex((s) => s._key === cursor);
       if (cursorIndex >= 0) {
         filtered = filtered.slice(cursorIndex + 1);
       }
@@ -179,19 +211,23 @@ export class SessionStore {
 
     const hasMore = typeof limit === "number" && limit > 0 && filtered.length > limit;
     const sessions = hasMore ? filtered.slice(0, limit) : filtered;
-    const nextCursor = hasMore && sessions.length > 0 ? sessions[sessions.length - 1].id : null;
+    const nextCursor = hasMore && sessions.length > 0 ? sessions[sessions.length - 1]._key : null;
 
     return { sessions, has_more: hasMore, next_cursor: nextCursor };
   }
 
   getFacets() {
     const providers = new Set();
+    const sourceKinds = new Set();
     const dates = new Set();
     const cwds = new Set();
 
     this.summaries.forEach((summary) => {
       if (summary.model_provider) {
         providers.add(summary.model_provider);
+      }
+      if (summary.source_kind) {
+        sourceKinds.add(summary.source_kind);
       }
       const date = dateKeyFromTimestamp(summary.timestamp || summary.last_timestamp);
       if (date) {
@@ -204,31 +240,32 @@ export class SessionStore {
 
     return {
       providers: Array.from(providers).sort(),
+      source_kinds: Array.from(sourceKinds).sort(),
       dates: Array.from(dates).sort().reverse(),
       cwds: Array.from(cwds).sort()
     };
   }
 
-  async getSessionDetail(id) {
-    const summary = this.summaryById.get(id);
+  async getSessionDetail(key) {
+    const summary = this.summaryByKey.get(key) || this.summaryById.get(key);
     if (!summary) {
       return null;
     }
 
-    if (this._detailCache.has(id)) {
-      const cached = this._detailCache.get(id);
-      this._detailCache.delete(id);
-      this._detailCache.set(id, cached);
+    if (this._detailCache.has(summary._key)) {
+      const cached = this._detailCache.get(summary._key);
+      this._detailCache.delete(summary._key);
+      this._detailCache.set(summary._key, cached);
       return cached;
     }
 
-    const detail = await parseSessionFile(summary.file_path);
+    const detail = await parseFile(summary.file_path, summary.source_kind);
 
     if (this._detailCache.size >= LRU_MAX) {
       const oldest = this._detailCache.keys().next().value;
       this._detailCache.delete(oldest);
     }
-    this._detailCache.set(id, detail);
+    this._detailCache.set(summary._key, detail);
 
     return detail;
   }
@@ -241,13 +278,16 @@ export class SessionStore {
     this._onChangeCallbacks.forEach((cb) => cb(event));
   }
 
-  _watchDir(dir) {
+  _watchDir(dir, source) {
     if (this._watchedDirs.has(dir)) return;
     try {
       const watcher = fss.watch(dir, (eventType, filename) => {
         if (!filename) return;
         const fullPath = path.join(dir, filename);
-        if (filename.endsWith(".jsonl")) {
+        const isTargetFile =
+          (source.filePattern === "**/*.jsonl" && filename.endsWith(".jsonl")) ||
+          (source.filePattern === "sessions/*.json" && filename.endsWith(".json"));
+        if (isTargetFile) {
           clearTimeout(this._debounceTimer);
           this._pendingChanges.add(fullPath);
           this._debounceTimer = setTimeout(() => this._processPendingChanges(), DEBOUNCE_MS);
@@ -256,7 +296,7 @@ export class SessionStore {
         try {
           const stat = fss.statSync(fullPath);
           if (stat.isDirectory()) {
-            this._watchRecursive(fullPath);
+            this._watchRecursive(fullPath, source);
           }
         } catch { /* ignore */ }
       });
@@ -270,8 +310,8 @@ export class SessionStore {
     }
   }
 
-  async _watchRecursive(rootDir) {
-    this._watchDir(rootDir);
+  async _watchRecursive(rootDir, source) {
+    this._watchDir(rootDir, source);
     let entries = [];
     try {
       entries = await fs.readdir(rootDir, { withFileTypes: true });
@@ -280,13 +320,15 @@ export class SessionStore {
     }
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        await this._watchRecursive(path.join(rootDir, entry.name));
+        await this._watchRecursive(path.join(rootDir, entry.name), source);
       }
     }
   }
 
   async watch() {
-    await this._watchRecursive(this.sessionRoot);
+    for (const source of this.sources) {
+      await this._watchRecursive(source.rootDir, source);
+    }
     console.log("File system watcher enabled");
   }
 
@@ -304,30 +346,38 @@ export class SessionStore {
     this._pendingChanges.clear();
 
     for (const filePath of files) {
+      const key = this._filePathToKey.get(filePath);
+      const source = this.sources.find((s) => filePath.startsWith(s.rootDir));
+      if (!source) continue;
+
       try {
-        const detail = await parseSessionFile(filePath);
+        const detail = await parseFile(filePath, source.kind);
         const summary = detail.summary;
-        const existingIndex = this.summaries.findIndex((s) => s.id === summary.id);
+        summary._key = sessionKey(summary.source_kind, summary.id);
+        const existingKey = key || summary._key;
+        const existingIndex = this.summaries.findIndex((s) => s._key === existingKey);
         if (existingIndex >= 0) {
-          this._unindexSessionText(summary.id);
+          this._unindexSessionText(existingKey);
           this.summaries[existingIndex] = summary;
           this.summaries.sort(compareSummariesDesc);
-          this._detailCache.delete(summary.id);
-          this._indexSessionText(summary.id, detail.conversation_messages);
+          this._detailCache.delete(existingKey);
+          this._indexSessionText(existingKey, detail.conversation_messages);
           this._notifyChange({ type: "session-updated", summary });
         } else {
           this.summaries.push(summary);
           this.summaries.sort(compareSummariesDesc);
-          this._indexSessionText(summary.id, detail.conversation_messages);
+          this._indexSessionText(summary._key, detail.conversation_messages);
           this._notifyChange({ type: "session-added", summary });
         }
+        this.summaryByKey.set(summary._key, summary);
         this.summaryById.set(summary.id, summary);
+        this._filePathToKey.set(summary.file_path, summary._key);
       } catch (err) {
         if (err && typeof err === "object" && err.code === "ENOENT") {
-          const match = this.summaries.find((s) => s.file_path === filePath);
-          if (match) {
-            this._removeSession(match.id);
-            this._notifyChange({ type: "session-deleted", id: match.id });
+          const matchKey = key || this._filePathToKey.get(filePath);
+          if (matchKey) {
+            this._removeSession(matchKey);
+            this._notifyChange({ type: "session-deleted", id: matchKey });
           }
         }
       }

@@ -34,6 +34,12 @@ export const SOURCES = [
     displayName: "Claude Code",
     rootDir: resolveDir("CLAUDE_SESSIONS_DIR", path.join(os.homedir(), ".claude")),
     filePattern: "sessions/*.json"
+  },
+  {
+    kind: "gemini",
+    displayName: "Gemini CLI",
+    rootDir: resolveDir("GEMINI_SESSIONS_DIR", path.join(os.homedir(), ".gemini")),
+    filePattern: "tmp/*/logs.json"
   }
 ].filter((s) => dirExists(s.rootDir));
 

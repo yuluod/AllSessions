@@ -1,5 +1,6 @@
 import { parseCodexFile } from "./codex.js";
 import { parseClaudeCodeFile } from "./claude-code.js";
+import { parseGeminiSessions } from "./gemini.js";
 
 const PARSERS = {
   codex: parseCodexFile,
@@ -18,4 +19,5 @@ export async function parseFile(filePath, sourceKind) {
   return parser(filePath);
 }
 
+export { parseGeminiSessions };
 export { compareSummariesDesc } from "./common.js";

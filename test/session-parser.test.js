@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import { parseSessionContent } from "../server/session-parser.js";
+import { parseGeminiSessions } from "../server/parsers/index.js";
+
+async function createTempSessionDir() {
+  return fs.mkdtemp(path.join(os.tmpdir(), "codex-session-viewer-"));
+}
 
 test("能从标准会话中提取摘要和对话消息", () => {
   const content = [
@@ -147,4 +155,38 @@ test("error 类型事件正常解析", () => {
   const detail = parseSessionContent(content, "/tmp/error.jsonl");
   assert.equal(detail.conversation_messages[0].role, "system");
   assert.match(detail.conversation_messages[0].text, /something went wrong/);
+});
+
+test("Gemini 解析使用传入 rootDir 下的 brain 数据", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const logsDir = path.join(rootDir, "tmp", "queue-a");
+  const brainDir = path.join(rootDir, "antigravity", "brain", "gemini-custom-root");
+  await fs.mkdir(logsDir, { recursive: true });
+  await fs.mkdir(brainDir, { recursive: true });
+
+  await fs.writeFile(
+    path.join(logsDir, "logs.json"),
+    JSON.stringify([
+      {
+        sessionId: "gemini-custom-root",
+        messageId: 1,
+        timestamp: "2026-04-21T10:00:00.000Z",
+        type: "user",
+        message: "日志里的 Gemini 提问"
+      }
+    ]),
+    "utf8"
+  );
+  await fs.writeFile(path.join(brainDir, "prompt"), "自定义 rootDir 的 brain 提示", "utf8");
+  await fs.writeFile(path.join(brainDir, "prompt.resolved"), "自定义 rootDir 的 brain 回复", "utf8");
+
+  const sessions = await parseGeminiSessions(rootDir);
+
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].conversation_messages.some((m) => m.text === "自定义 rootDir 的 brain 提示"), true);
+  assert.equal(sessions[0].conversation_messages.some((m) => m.text === "自定义 rootDir 的 brain 回复"), true);
 });

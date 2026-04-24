@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import fss from "node:fs";
 import path from "node:path";
 
-import { compareSummariesDesc, parseFile } from "./parsers/index.js";
+import { compareSummariesDesc, parseFile, parseGeminiSessions } from "./parsers/index.js";
 
 const DEBOUNCE_MS = 500;
 
@@ -18,7 +18,16 @@ function matchesSourceFile(filePath, source) {
   if (source.filePattern === "sessions/*.json") {
     return filePath.endsWith(".json") && filePath.includes(path.sep + "sessions" + path.sep + filename);
   }
+  if (source.filePattern === "tmp/*/logs.json") {
+    const relativeParts = path.relative(source.rootDir, filePath).split(path.sep);
+    return relativeParts.length === 3 && relativeParts[0] === "tmp" && relativeParts[2] === "logs.json";
+  }
   return false;
+}
+
+function isWithinRoot(filePath, rootDir) {
+  const relativePath = path.relative(rootDir, filePath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
 
 async function collectFiles(rootDir, source) {
@@ -108,29 +117,72 @@ export class SessionStore {
     this._sessionTexts.clear();
 
     for (const source of this.sources) {
-      const files = await collectFiles(source.rootDir, source);
-      const parsed = await Promise.all(
-        files.map(async (filePath) => {
-          return parseFile(filePath, source.kind);
-        })
-      );
-
-      for (const detail of parsed) {
-        const summary = detail.summary;
-        const key = sessionKey(summary.source_kind, summary.id);
-        summary._key = key;
-        this.summaries.push(summary);
-        this.summaryByKey.set(key, summary);
-        if (!this.summaryById.has(summary.id)) {
-          this.summaryById.set(summary.id, new Set());
+      if (source.kind === "gemini") {
+        const sessions = await parseGeminiSessions(source.rootDir);
+        for (const detail of sessions) {
+          this._addSessionDetail(detail);
         }
-        this.summaryById.get(summary.id).add(key);
-        this._filePathToKey.set(summary.file_path, key);
-        this._indexSessionText(key, detail.conversation_messages);
+      } else {
+        const files = await collectFiles(source.rootDir, source);
+        const parsed = await Promise.all(
+          files.map(async (filePath) => {
+            return parseFile(filePath, source.kind);
+          })
+        );
+
+        for (const detail of parsed) {
+          this._addSessionDetail(detail);
+        }
       }
     }
 
     this.summaries.sort(compareSummariesDesc);
+  }
+
+  _addSessionDetail(detail) {
+    const summary = detail.summary;
+    const key = sessionKey(summary.source_kind, summary.id);
+    summary._key = key;
+    this.summaries.push(summary);
+    this.summaryByKey.set(key, summary);
+    if (!this.summaryById.has(summary.id)) {
+      this.summaryById.set(summary.id, new Set());
+    }
+    this.summaryById.get(summary.id).add(key);
+    this._filePathToKey.set(summary.file_path, key);
+    this._indexSessionText(key, detail.conversation_messages);
+    return summary;
+  }
+
+  async _reloadGeminiSource(source) {
+    const previousKeys = new Set(
+      this.summaries
+        .filter((summary) => summary.source_kind === "gemini" && summary.file_path.startsWith(source.rootDir))
+        .map((summary) => summary._key)
+    );
+
+    for (const key of previousKeys) {
+      this._removeSession(key);
+    }
+
+    const details = await parseGeminiSessions(source.rootDir);
+    const nextKeys = new Set();
+    const nextSummaries = [];
+    for (const detail of details) {
+      const summary = this._addSessionDetail(detail);
+      nextKeys.add(summary._key);
+      nextSummaries.push(summary);
+    }
+    this.summaries.sort(compareSummariesDesc);
+
+    for (const summary of nextSummaries) {
+      this._notifyChange({ type: previousKeys.has(summary._key) ? "session-updated" : "session-added", summary });
+    }
+    for (const key of previousKeys) {
+      if (!nextKeys.has(key)) {
+        this._notifyChange({ type: "session-deleted", id: key });
+      }
+    }
   }
 
   _indexSessionText(key, messages) {
@@ -322,8 +374,18 @@ export class SessionStore {
       return cached;
     }
 
-    const detail = await parseFile(summary.file_path, summary.source_kind);
-    detail.summary._key = summary._key;
+    let detail;
+    if (summary.source_kind === "gemini") {
+      const { parseGeminiSessionById } = await import("./parsers/gemini.js");
+      const source = this.sources.find((s) => s.kind === "gemini" && isWithinRoot(summary.file_path, s.rootDir));
+      if (!source) return null;
+      detail = await parseGeminiSessionById(source.rootDir, summary.id);
+      if (!detail) return null;
+      detail.summary._key = summary._key;
+    } else {
+      detail = await parseFile(summary.file_path, summary.source_kind);
+      detail.summary._key = summary._key;
+    }
 
     if (this._detailCache.size >= LRU_MAX) {
       const oldest = this._detailCache.keys().next().value;
@@ -409,10 +471,15 @@ export class SessionStore {
 
     for (const filePath of files) {
       const key = this._filePathToKey.get(filePath);
-      const source = this.sources.find((s) => filePath.startsWith(s.rootDir));
+      const source = this.sources.find((s) => isWithinRoot(filePath, s.rootDir));
       if (!source) continue;
 
       try {
+        if (source.kind === "gemini") {
+          await this._reloadGeminiSource(source);
+          continue;
+        }
+
         const detail = await parseFile(filePath, source.kind);
         const summary = detail.summary;
         summary._key = sessionKey(summary.source_kind, summary.id);

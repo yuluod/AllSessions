@@ -173,3 +173,60 @@ test("多来源同 raw id 不串", async (t) => {
   const facets = store.getFacets();
   assert.deepEqual(facets.source_kinds, ["claude_code", "codex"]);
 });
+
+test("Gemini logs 变更会重建 Gemini 来源索引", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const queueDir = path.join(rootDir, "tmp", "queue-a");
+  await fs.mkdir(queueDir, { recursive: true });
+
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const logsPath = path.join(queueDir, "logs.json");
+  await fs.writeFile(
+    logsPath,
+    JSON.stringify([
+      {
+        sessionId: "gemini-session",
+        messageId: 1,
+        timestamp: "2026-04-21T10:00:00.000Z",
+        type: "user",
+        message: "第一次提问"
+      }
+    ]),
+    "utf8"
+  );
+
+  const source = { kind: "gemini", rootDir, filePattern: "tmp/*/logs.json" };
+  const store = new SessionStore({ sources: [source] });
+  await store.initialize();
+
+  assert.equal(store.listSessions().sessions.length, 1);
+  assert.equal(store.search("第一次").length, 1);
+
+  const events = [];
+  store.onChange((event) => events.push(event));
+
+  await fs.writeFile(
+    logsPath,
+    JSON.stringify([
+      {
+        sessionId: "gemini-session",
+        messageId: 1,
+        timestamp: "2026-04-21T10:00:00.000Z",
+        type: "user",
+        message: "第二次提问"
+      }
+    ]),
+    "utf8"
+  );
+
+  store._pendingChanges.add(logsPath);
+  await store._processPendingChanges();
+
+  assert.equal(store.listSessions().sessions.length, 1);
+  assert.equal(store.search("第一次").length, 0);
+  assert.equal(store.search("第二次").length, 1);
+  assert.equal(events.some((event) => event.type === "session-updated"), true);
+});

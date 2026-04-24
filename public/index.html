@@ -49,24 +49,6 @@
             <button class="sidebar-tab" data-sidebar-tab="stats" type="button" role="tab" aria-selected="false" data-i18n="statsOverview">统计概览</button>
           </div>
 
-          <div class="sidebar-body" data-sidebar-panel="list">
-            <label class="archive-toggle-label">
-              <input id="show-archived-toggle" type="checkbox" />
-              <span data-i18n="showArchived">显示已归档会话</span>
-            </label>
-            <div class="session-list-shell">
-              <div class="session-list-header">
-                <span data-i18n="sortDesc">按时间倒序</span>
-                <span class="session-list-hint" data-i18n="listHint">选择一条会话查看详情</span>
-              </div>
-              <div id="session-list" class="session-list" role="listbox" aria-label="会话列表" data-i18n="listAriaLabel" data-i18n-attr="aria-label"></div>
-            </div>
-          </div>
-
-          <div class="sidebar-body hidden" data-sidebar-panel="stats">
-            <div class="stats-sidebar-summary" id="stats-sidebar-summary"></div>
-          </div>
-
           <div class="sidebar-filters">
             <div class="sidebar-filter-actions">
               <button id="refresh-btn" class="ghost-button" type="button" data-i18n="refresh">刷新</button>
@@ -99,6 +81,24 @@
               </label>
             </div>
           </div>
+
+          <div class="sidebar-body" data-sidebar-panel="list">
+            <label class="archive-toggle-label">
+              <input id="show-archived-toggle" type="checkbox" />
+              <span data-i18n="showArchived">显示已归档会话</span>
+            </label>
+            <div class="session-list-shell">
+              <div class="session-list-header">
+                <span data-i18n="sortDesc">按时间倒序</span>
+                <span class="session-list-hint" data-i18n="listHint">选择一条会话查看详情</span>
+              </div>
+              <div id="session-list" class="session-list" role="listbox" aria-label="会话列表" data-i18n="listAriaLabel" data-i18n-attr="aria-label"></div>
+            </div>
+          </div>
+
+          <div class="sidebar-body hidden" data-sidebar-panel="stats">
+            <div class="stats-sidebar-summary" id="stats-sidebar-summary"></div>
+          </div>
         </aside>
 
         <section class="content-main">
@@ -128,6 +128,12 @@
 
               <div class="detail-body">
                 <section id="conversation-tab" class="detail-tab" role="tabpanel">
+                  <div class="role-filter" id="role-filter">
+                    <button class="role-filter-btn active" data-role="" type="button" data-i18n="all">全部</button>
+                    <button class="role-filter-btn" data-role="user" type="button" data-i18n="roleUser">用户</button>
+                    <button class="role-filter-btn" data-role="assistant" type="button" data-i18n="roleAssistant">助手</button>
+                    <button class="role-filter-btn" data-role="developer" type="button" data-i18n="roleDeveloper">开发者</button>
+                  </div>
                   <div id="conversation-list" class="conversation-list"></div>
                 </section>
 
@@ -185,6 +191,8 @@
     <template id="conversation-item-template">
       <article class="message-card">
         <header>
+          <button class="message-toggle" type="button" title="折叠/展开">▶</button>
+          <span class="message-idx"></span>
           <span class="message-role"></span>
           <time class="message-time"></time>
         </header>
@@ -195,6 +203,8 @@
     <template id="raw-event-template">
       <article class="raw-event-card">
         <header>
+          <button class="raw-event-toggle" type="button" title="折叠/展开">▶</button>
+          <span class="raw-event-idx"></span>
           <span class="raw-event-type"></span>
           <span class="raw-event-time"></span>
           <span class="raw-event-line"></span>

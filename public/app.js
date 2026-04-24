@@ -19,7 +19,8 @@ const state = {
     source_kind: "",
     date: "",
     cwd: ""
-  }
+  },
+  roleFilter: ""
 };
 
 function getArchivedIds() {
@@ -115,7 +116,7 @@ function formatTimestamp(value) {
 
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "medium"
   }).format(date);
 }
 
@@ -419,7 +420,11 @@ function renderPropsPanel(summary) {
 function renderConversation(messages) {
   elements.conversationList.innerHTML = "";
 
-  if (!messages.length) {
+  const filtered = state.roleFilter
+    ? messages.map((m, i) => ({ ...m, _origIdx: i })).filter((m) => m.role === state.roleFilter)
+    : messages.map((m, i) => ({ ...m, _origIdx: i }));
+
+  if (!filtered.length) {
     const empty = document.createElement("p");
     empty.className = "hero-copy";
     empty.textContent = t("noConversations");
@@ -427,13 +432,22 @@ function renderConversation(messages) {
     return;
   }
 
-  messages.forEach((message) => {
+  filtered.forEach((message) => {
     const fragment = elements.conversationItemTemplate.content.cloneNode(true);
     const card = fragment.querySelector(".message-card");
     card.dataset.role = message.role;
+    card.classList.add("collapsed");
+    fragment.querySelector(".message-idx").textContent = `#${message._origIdx + 1}`;
     fragment.querySelector(".message-role").textContent = message.role;
     fragment.querySelector(".message-time").textContent = formatTimestamp(message.timestamp);
     fragment.querySelector(".message-text").textContent = message.text;
+
+    const toggleBtn = fragment.querySelector(".message-toggle");
+    toggleBtn.textContent = "▶";
+    toggleBtn.addEventListener("click", () => {
+      card.classList.toggle("collapsed");
+      toggleBtn.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
+    });
 
     const copyBtn = document.createElement("button");
     copyBtn.className = "message-copy-btn";
@@ -457,8 +471,11 @@ function renderConversation(messages) {
 function renderRawEvents(events) {
   elements.rawEvents.innerHTML = "";
 
-  events.forEach((event) => {
+  events.forEach((event, idx) => {
     const fragment = elements.rawEventTemplate.content.cloneNode(true);
+    const card = fragment.querySelector(".raw-event-card");
+    card.classList.add("collapsed");
+    fragment.querySelector(".raw-event-idx").textContent = `#${idx + 1}`;
     fragment.querySelector(".raw-event-type").textContent = event.type;
     fragment.querySelector(".raw-event-time").textContent = formatTimestamp(event.timestamp);
     fragment.querySelector(".raw-event-line").textContent = t("linePrefix", { n: event.line_number });
@@ -467,6 +484,12 @@ function renderRawEvents(events) {
       null,
       2
     );
+    const toggleBtn = fragment.querySelector(".raw-event-toggle");
+    toggleBtn.textContent = "▶";
+    toggleBtn.addEventListener("click", () => {
+      card.classList.toggle("collapsed");
+      toggleBtn.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
+    });
     elements.rawEvents.append(fragment);
   });
 }
@@ -502,6 +525,10 @@ async function loadSessionDetail(id) {
   try {
     const detail = await fetchJson(`/api/sessions/${encodeURIComponent(id)}`);
     state.currentDetail = detail;
+    state.roleFilter = "";
+    document.querySelectorAll("#role-filter .role-filter-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.role === "");
+    });
     elements.detailEmpty.classList.add("hidden");
     elements.detailView.classList.remove("hidden");
     const fullCwd = detail.summary.cwd || t("noWorkDir");
@@ -675,7 +702,7 @@ function renderStats(stats) {
 
         const date = document.createElement("span");
         date.className = "trend-date";
-        date.textContent = label.slice(5);
+        date.textContent = label.length > 5 ? label.slice(5) : label;
 
         col.append(val, barWrap, date);
         wrap.append(col);
@@ -754,7 +781,7 @@ function renderStats(stats) {
       const h = document.createElement("h3");
       h.textContent = title;
       section.append(h);
-      const max = Math.max(...items.map((i) => i.count));
+      const max = Math.max(...items.map((i) => i.count), 1);
       items.forEach(({ label, count }) => {
         if (isPath) {
           const basename = label.split("/").pop() || label;
@@ -765,34 +792,6 @@ function renderStats(stats) {
       });
       grid.append(section);
     });
-  }
-
-  // right panel: render filter summary card
-  const propsContent = elements.propsContent;
-  if (propsContent) {
-    propsContent.innerHTML = "";
-    const card = document.createElement("div");
-    card.className = "stats-filter-summary";
-    const h = document.createElement("h4");
-    h.textContent = "当前筛选";
-    card.append(h);
-    const makeRow = (label, value) => {
-      const row = document.createElement("div");
-      row.className = "filter-summary-row";
-      const lbl = document.createElement("span");
-      lbl.textContent = label;
-      const val = document.createElement("strong");
-      val.textContent = value || "全部";
-      row.append(lbl, val);
-      return row;
-    };
-    card.append(
-      makeRow("来源", state.filters.source_kind),
-      makeRow("Provider", state.filters.provider),
-      makeRow("日期", state.filters.date),
-      makeRow("目录", state.filters.cwd)
-    );
-    propsContent.append(card);
   }
 }
 
@@ -821,38 +820,38 @@ async function initialize() {
 
   await loadStats();
 
-  elements.sourceKindFilter.addEventListener("change", async (event) => {
+  elements.sourceKindFilter?.addEventListener("change", async (event) => {
     state.filters.source_kind = event.target.value;
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
   });
 
-  elements.providerFilter.addEventListener("change", async (event) => {
+  elements.providerFilter?.addEventListener("change", async (event) => {
     state.filters.provider = event.target.value;
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
   });
 
-  elements.dateFilter.addEventListener("change", async (event) => {
+  elements.dateFilter?.addEventListener("change", async (event) => {
     state.filters.date = event.target.value;
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
   });
 
-  elements.cwdFilter.addEventListener("change", async (event) => {
+  elements.cwdFilter?.addEventListener("change", async (event) => {
     state.filters.cwd = event.target.value;
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
   });
 
-  elements.resetFilters.addEventListener("click", async () => {
+  elements.resetFilters?.addEventListener("click", async () => {
     state.filters = { provider: "", source_kind: "", date: "", cwd: "" };
     state.searchQuery = "";
-    elements.sourceKindFilter.value = "";
-    elements.providerFilter.value = "";
-    elements.dateFilter.value = "";
-    elements.cwdFilter.value = "";
-    elements.searchInput.value = "";
+    if (elements.sourceKindFilter) elements.sourceKindFilter.value = "";
+    if (elements.providerFilter) elements.providerFilter.value = "";
+    if (elements.dateFilter) elements.dateFilter.value = "";
+    if (elements.cwdFilter) elements.cwdFilter.value = "";
+    if (elements.searchInput) elements.searchInput.value = "";
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
   });
@@ -894,19 +893,14 @@ async function initialize() {
       const detailPanel = document.querySelector("#detail-panel");
       const propsPanel = document.querySelector("#props-panel");
       const statsDashboard = document.querySelector("#stats-dashboard");
-      const propsEyebrow = document.querySelector("#props-eyebrow");
       if (panel === "stats") {
         if (detailPanel) detailPanel.classList.add("hidden");
+        if (propsPanel) propsPanel.classList.add("hidden");
         if (statsDashboard) statsDashboard.classList.remove("hidden");
-        if (propsEyebrow) propsEyebrow.textContent = "当前筛选";
       } else {
         if (detailPanel) detailPanel.classList.remove("hidden");
         if (propsPanel) propsPanel.classList.remove("hidden");
         if (statsDashboard) statsDashboard.classList.add("hidden");
-        if (propsEyebrow) propsEyebrow.textContent = "PROPERTIES";
-        // clear stats filter summary from props panel
-        const pc = document.querySelector("#props-content");
-        if (pc && pc.querySelector(".stats-filter-summary")) pc.innerHTML = "";
       }
     });
   });
@@ -932,7 +926,7 @@ async function initialize() {
   }
 
   let searchDebounce = null;
-  elements.searchInput.addEventListener("input", (event) => {
+  elements.searchInput?.addEventListener("input", (event) => {
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(async () => {
       state.searchQuery = event.target.value.trim();
@@ -1051,6 +1045,18 @@ async function initialize() {
       }
       renderSessionList();
     } catch { /* ignore parse errors */ }
+  });
+
+  // role filter
+  document.querySelectorAll("#role-filter .role-filter-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#role-filter .role-filter-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.roleFilter = btn.dataset.role;
+      if (state.currentDetail) {
+        renderConversation(state.currentDetail.conversation_messages || []);
+      }
+    });
   });
 }
 

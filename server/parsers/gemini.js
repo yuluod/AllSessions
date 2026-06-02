@@ -27,6 +27,25 @@ function buildSession(sessionId, entries, queueDirs, rootDir) {
         source_type: "user_input",
         source_subtype: null
       });
+    } else if ((entry.type === "model" || entry.type === "assistant") && entry.message) {
+      const text = typeof entry.message === "string"
+        ? entry.message.trim()
+        : JSON.stringify(entry.message);
+      if (text) {
+        rawEvents.push({
+          line_number: entry.messageId ?? null,
+          timestamp,
+          type: "model_response",
+          payload: { message: entry.message, queueDir: [...queueDirs].join(",") }
+        });
+        conversationMessages.push({
+          role: "assistant",
+          text,
+          timestamp,
+          source_type: "model_response",
+          source_subtype: null
+        });
+      }
     }
   }
 

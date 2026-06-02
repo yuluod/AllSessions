@@ -29,14 +29,14 @@
 > 一个本地 AI 会话查看器，当前实现以 Codex 为主。
 >
 > **当前状态**
-> 现已支持 Codex 和 Claude Code。其他来源可在后续版本继续扩展。
+> 现已支持 Codex、Claude Code 和 Gemini CLI。其他来源可在后续版本继续扩展。
 >
 > **演进方向**
 > 逐步发展为一个统一查看多种 AI 编码助手本地历史的轻量工具。
 
 ## 当前范围
 
-- 当前实现：支持 Codex 和 Claude Code 会话的解析与查看
+- 当前实现：支持 Codex、Claude Code、Gemini CLI 会话的解析与查看
 - 多来源统一聚合，在同一界面中浏览
 - 后续方向：可扩展支持更多会话来源
 
@@ -45,12 +45,14 @@
 | 来源 | 状态 | 说明 |
 |------|------|------|
 | Codex | 已支持 | 读取 `~/.codex/sessions` 或 `CODEX_SESSIONS_DIR` 指向的本地会话文件 |
-| Claude Code | 已支持 | 读取 `~/.claude/sessions` 和 `history.jsonl`，或 `CLAUDE_SESSIONS_DIR` 指向的目录 |
+| Codex 归档 | 已支持 | 读取 `~/.codex/archived_sessions` 或 `CODEX_ARCHIVED_SESSIONS_DIR` 指向的目录 |
+| Claude Code | 已支持 | 读取 `~/.claude` 或 `CLAUDE_SESSIONS_DIR` 指向的目录；本地仅保存用户输入历史 |
+| Gemini CLI | 已支持 | 读取 `~/.gemini/tmp/*/logs.json` 或 `GEMINI_SESSIONS_DIR` 指向的目录 |
 | 其他 AI 工具 | 计划中 | 属于后续扩展方向，暂不承诺兼容性 |
 
 ## 功能
 
-- 浏览多个来源的本地会话列表（Codex + Claude Code）
+- 浏览多个来源的本地会话列表（Codex、Claude Code、Gemini CLI）
 - 按来源类型、provider、日期、工作目录筛选
 - 查看单个会话详情
 - 在「对话视图」和「原始事件流」之间切换
@@ -67,7 +69,10 @@
 ## 运行要求
 
 - Node.js 20 或更高版本
-- 至少存在一个受支持的会话来源目录（Codex: `~/.codex/sessions`，Claude Code: `~/.claude`）
+- 至少存在一个受支持的会话来源目录：
+  - Codex: `~/.codex/sessions`
+  - Claude Code: `~/.claude`
+  - Gemini CLI: `~/.gemini`
 
 ## 快速启动
 
@@ -91,7 +96,9 @@ http://127.0.0.1:3210
 | `PORT` | 服务端口号 | `3210` |
 | `HOST` | 监听地址 | `127.0.0.1` |
 | `CODEX_SESSIONS_DIR` | Codex 会话根目录 | `~/.codex/sessions` |
+| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex 归档会话目录 | `~/.codex/archived_sessions` |
 | `CLAUDE_SESSIONS_DIR` | Claude Code 会话根目录 | `~/.claude` |
+| `GEMINI_SESSIONS_DIR` | Gemini CLI 根目录 | `~/.gemini` |
 
 示例：
 
@@ -99,11 +106,35 @@ http://127.0.0.1:3210
 PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 ```
 
+## Codex Provider 历史迁移
+
+页面方式：启动查看器后打开左侧「工具」页签，使用「Codex Provider 迁移」面板先预览。确认 Codex App 已退出后，再勾选确认并执行迁移。页面会显示备份目录，也可以用该目录回滚。
+
+如果 Codex App 因第三方供应商切换而看不到旧会话，可以先预览 provider 迁移：
+
+```bash
+pnpm codex:provider-migration -- --dry-run
+```
+
+该工具参考 cc-switch v3.16 的方式，将第三方 Codex provider 历史统一到稳定的 `custom` 桶。默认只预览，不会写入 `~/.codex`。
+
+确认结果后，先退出 Codex App，再执行：
+
+```bash
+pnpm codex:provider-migration -- --apply
+```
+
+执行前会备份 `state_5.sqlite` 和将被改写的 JSONL 文件到 `~/.cc-switch/backups/codex-history-provider-migration-v1/`。如需恢复，可使用输出的备份目录：
+
+```bash
+pnpm codex:provider-migration -- --rollback /path/to/backup-dir
+```
+
 ## 已知边界
 
 - 仅支持本机查看，不做登录和远程访问控制
 - 默认只读 `~/.codex/sessions`
-- 同时支持 Codex 和 Claude Code 会话文件
+- 同时支持 Codex、Claude Code 和 Gemini CLI 会话文件
 - 对历史格式差异较大的旧会话，只保证原始事件流可见
 - 对加密字段只展示占位或原样结构，不尝试解密
 - 启动时会全量扫描会话并缓存摘要；详情页按需读取单文件

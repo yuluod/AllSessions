@@ -45,12 +45,14 @@ Browse, filter, search, and inspect local AI sessions in a compact browser UI wi
 | Source | Status | Notes |
 |--------|--------|-------|
 | Codex | Supported | Reads local session files from `~/.codex/sessions` or `CODEX_SESSIONS_DIR` |
-| Claude Code | Supported | Reads sessions from `~/.claude/sessions` and `history.jsonl`, or `CLAUDE_SESSIONS_DIR` |
+| Codex Archived | Supported | Reads from `~/.codex/archived_sessions` or `CODEX_ARCHIVED_SESSIONS_DIR` |
+| Claude Code | Supported | Reads session metadata from `~/.claude` or `CLAUDE_SESSIONS_DIR`; only user inputs are available locally |
+| Gemini CLI | Supported | Reads from `~/.gemini/tmp/*/logs.json` or `GEMINI_SESSIONS_DIR` |
 | Other AI tools | Planned | Future expansion area, no compatibility promise yet |
 
 ## Features
 
-- Browse local session list from multiple sources (Codex + Claude Code)
+- Browse local session list from multiple sources (Codex, Claude Code, Gemini CLI)
 - Filter by source kind, provider, date, and working directory
 - View individual session details
 - Switch between "Conversation" and "Raw Events" views
@@ -67,7 +69,10 @@ Browse, filter, search, and inspect local AI sessions in a compact browser UI wi
 ## Requirements
 
 - Node.js 20 or later
-- At least one supported session source directory present (Codex: `~/.codex/sessions`, Claude Code: `~/.claude`)
+- At least one supported session source directory present:
+  - Codex: `~/.codex/sessions`
+  - Claude Code: `~/.claude`
+  - Gemini CLI: `~/.gemini`
 
 ## Quick Start
 
@@ -87,7 +92,9 @@ Then open the URL in your browser and the app will scan the current Codex sessio
 | `PORT` | Server port | `3210` |
 | `HOST` | Bind address | `127.0.0.1` |
 | `CODEX_SESSIONS_DIR` | Codex session root directory | `~/.codex/sessions` |
+| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex archived session directory | `~/.codex/archived_sessions` |
 | `CLAUDE_SESSIONS_DIR` | Claude Code session root directory | `~/.claude` |
+| `GEMINI_SESSIONS_DIR` | Gemini CLI root directory | `~/.gemini` |
 
 Example:
 
@@ -99,7 +106,7 @@ PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 
 - Local-only: no authentication or remote access control
 - Read-only access to the session directory
-- Supports Codex and Claude Code session files simultaneously
+- Supports Codex, Claude Code, and Gemini CLI session files simultaneously
 - Legacy sessions with incompatible formats fall back to raw event view
 - Encrypted fields are shown as-is without decryption
 - Scans all sessions on startup and caches summaries; details are read on demand

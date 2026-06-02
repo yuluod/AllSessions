@@ -174,6 +174,173 @@ test("多来源同 raw id 不串", async (t) => {
   assert.deepEqual(facets.source_kinds, ["claude_code", "codex"]);
 });
 
+test("搜索结果会继续遵守筛选条件", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const sessionDir = path.join(rootDir, "sessions");
+  await fs.mkdir(sessionDir, { recursive: true });
+
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstSession = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "search-1",
+        timestamp: "2026-04-21T10:00:00.000Z",
+        cwd: "/tmp/search-a",
+        source: "cli",
+        model_provider: "openai"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "共享搜索词" }
+    })
+  ].join("\n");
+
+  const secondSession = [
+    JSON.stringify({
+      timestamp: "2026-04-21T11:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "search-2",
+        timestamp: "2026-04-21T11:00:00.000Z",
+        cwd: "/tmp/search-b",
+        source: "cli",
+        model_provider: "anthropic"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T11:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "共享搜索词" }
+    })
+  ].join("\n");
+
+  await fs.writeFile(path.join(sessionDir, "first.jsonl"), firstSession, "utf8");
+  await fs.writeFile(path.join(sessionDir, "second.jsonl"), secondSession, "utf8");
+
+  const store = new SessionStore({ sources: [{ kind: "codex", rootDir: sessionDir, filePattern: "**/*.jsonl" }] });
+  await store.initialize();
+
+  assert.equal(store.search("共享搜索词").length, 2);
+
+  const filtered = store.search("共享搜索词", { provider: "openai", cwd: "/tmp/search-a" });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "search-1");
+});
+
+test("Codex 归档会话默认隐藏，开启 show_codex_archived 后可见", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const sessionsDir = path.join(rootDir, "sessions");
+  const archivedDir = path.join(rootDir, "archived_sessions");
+  await fs.mkdir(sessionsDir, { recursive: true });
+  await fs.mkdir(archivedDir, { recursive: true });
+
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const activeSession = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "active-codex",
+        timestamp: "2026-04-21T10:00:00.000Z",
+        cwd: "/tmp/active",
+        source: "cli",
+        model_provider: "openai"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "可见搜索词" }
+    })
+  ].join("\n");
+
+  const archivedSession = [
+    JSON.stringify({
+      timestamp: "2026-04-20T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "archived-codex",
+        timestamp: "2026-04-20T10:00:00.000Z",
+        cwd: "/tmp/archived",
+        source: "cli",
+        model_provider: "openai"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-20T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "归档搜索词" }
+    })
+  ].join("\n");
+
+  await fs.writeFile(path.join(sessionsDir, "active.jsonl"), activeSession, "utf8");
+  await fs.writeFile(path.join(archivedDir, "archived.jsonl"), archivedSession, "utf8");
+
+  const store = new SessionStore({
+    sources: [
+      { kind: "codex", rootDir: sessionsDir, filePattern: "**/*.jsonl" },
+      { kind: "codex_archived", rootDir: archivedDir, filePattern: "**/*.jsonl" }
+    ]
+  });
+  await store.initialize();
+
+  assert.equal(store.listSessions().sessions.length, 1);
+  assert.equal(store.search("归档搜索词").length, 0);
+  assert.equal(store.getStats().total, 1);
+
+  const visible = store.listSessions({ show_codex_archived: true }).sessions;
+  assert.equal(visible.length, 2);
+  assert.equal(visible.some((session) => session._key === "codex_archived:archived-codex"), true);
+  assert.equal(store.search("归档搜索词", { show_codex_archived: true }).length, 1);
+  assert.equal(store.getStats({ show_codex_archived: true }).total, 2);
+
+  const detail = await store.getSessionDetail("codex_archived:archived-codex");
+  assert.equal(detail.summary.archived, true);
+  assert.equal(detail.summary.archive_source, "codex");
+});
+
+test("坏 Claude Code 元数据不会阻断其他会话初始化", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const sessionsDir = path.join(rootDir, "sessions");
+  await fs.mkdir(sessionsDir, { recursive: true });
+
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  await fs.writeFile(path.join(sessionsDir, "broken.json"), "{bad json", "utf8");
+  await fs.writeFile(
+    path.join(sessionsDir, "valid.json"),
+    JSON.stringify({
+      sessionId: "valid-claude",
+      cwd: "/tmp/claude-valid",
+      startedAt: 1713670800000,
+      entrypoint: "claude",
+      kind: "default"
+    }),
+    "utf8"
+  );
+
+  const store = new SessionStore({
+    sources: [{ kind: "claude_code", rootDir, filePattern: "sessions/*.json" }]
+  });
+  await store.initialize();
+
+  const sessions = store.listSessions().sessions;
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].id, "valid-claude");
+});
+
 test("Gemini logs 变更会重建 Gemini 来源索引", async (t) => {
   const rootDir = await createTempSessionDir();
   const queueDir = path.join(rootDir, "tmp", "queue-a");

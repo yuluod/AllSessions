@@ -22,24 +22,47 @@ function dirExists(dir) {
   }
 }
 
+const codexDir = resolveDir("CODEX_SESSIONS_DIR", path.join(os.homedir(), ".codex", "sessions"));
+const codexArchivedDir = resolveDir("CODEX_ARCHIVED_SESSIONS_DIR", path.join(os.homedir(), ".codex", "archived_sessions"));
+const claudeDir = resolveDir("CLAUDE_SESSIONS_DIR", path.join(os.homedir(), ".claude"));
+const geminiDir = resolveDir("GEMINI_SESSIONS_DIR", path.join(os.homedir(), ".gemini"));
+
 export const SOURCES = [
   {
     kind: "codex",
     displayName: "Codex",
-    rootDir: resolveDir("CODEX_SESSIONS_DIR", path.join(os.homedir(), ".codex", "sessions")),
-    filePattern: "**/*.jsonl"
+    rootDir: codexDir,
+    filePattern: "**/*.jsonl",
+    matchFn: (filePath) => filePath.endsWith(".jsonl")
+  },
+  {
+    kind: "codex_archived",
+    displayName: "Codex Archived",
+    rootDir: codexArchivedDir,
+    filePattern: "**/*.jsonl",
+    matchFn: (filePath) => filePath.endsWith(".jsonl")
   },
   {
     kind: "claude_code",
     displayName: "Claude Code",
-    rootDir: resolveDir("CLAUDE_SESSIONS_DIR", path.join(os.homedir(), ".claude")),
-    filePattern: "sessions/*.json"
+    rootDir: claudeDir,
+    filePattern: "sessions/*.json",
+    matchFn: (filePath) => {
+      const filename = path.basename(filePath);
+      return filePath.endsWith(".json") &&
+        filePath.includes(path.sep + "sessions" + path.sep + filename);
+    }
   },
   {
     kind: "gemini",
     displayName: "Gemini CLI",
-    rootDir: resolveDir("GEMINI_SESSIONS_DIR", path.join(os.homedir(), ".gemini")),
-    filePattern: "tmp/*/logs.json"
+    rootDir: geminiDir,
+    filePattern: "tmp/*/logs.json",
+    matchFn: (filePath) => {
+      if (!geminiDir) return false;
+      const relativeParts = path.relative(geminiDir, filePath).split(path.sep);
+      return relativeParts.length === 3 && relativeParts[0] === "tmp" && relativeParts[2] === "logs.json";
+    }
   }
 ].filter((s) => dirExists(s.rootDir));
 

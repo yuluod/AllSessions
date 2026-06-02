@@ -10,19 +10,20 @@ function sessionKey(sourceKind, id) {
   return `${sourceKind}:${id}`;
 }
 
-function matchesSourceFile(filePath, source) {
-  const filename = path.basename(filePath);
-  if (source.filePattern === "**/*.jsonl") {
-    return filePath.endsWith(".jsonl");
-  }
+function getMatchFn(source) {
+  if (typeof source.matchFn === "function") return source.matchFn;
+  const filename = (fp) => path.basename(fp);
+  if (source.filePattern === "**/*.jsonl") return (fp) => fp.endsWith(".jsonl");
   if (source.filePattern === "sessions/*.json") {
-    return filePath.endsWith(".json") && filePath.includes(path.sep + "sessions" + path.sep + filename);
+    return (fp) => fp.endsWith(".json") && fp.includes(path.sep + "sessions" + path.sep + filename(fp));
   }
   if (source.filePattern === "tmp/*/logs.json") {
-    const relativeParts = path.relative(source.rootDir, filePath).split(path.sep);
-    return relativeParts.length === 3 && relativeParts[0] === "tmp" && relativeParts[2] === "logs.json";
+    return (fp) => {
+      const parts = path.relative(source.rootDir, fp).split(path.sep);
+      return parts.length === 3 && parts[0] === "tmp" && parts[2] === "logs.json";
+    };
   }
-  return false;
+  return () => false;
 }
 
 function isWithinRoot(filePath, rootDir) {
@@ -30,7 +31,14 @@ function isWithinRoot(filePath, rootDir) {
   return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
 
-async function collectFiles(rootDir, source) {
+const MAX_COLLECT_DEPTH = 15;
+
+async function collectFiles(rootDir, source, depth = 0) {
+  if (depth > MAX_COLLECT_DEPTH) {
+    console.warn(`collectFiles: max depth ${MAX_COLLECT_DEPTH} reached at ${rootDir}, skipping deeper entries`);
+    return [];
+  }
+
   let entries = [];
   try {
     entries = await fs.readdir(rootDir, { withFileTypes: true });
@@ -45,9 +53,9 @@ async function collectFiles(rootDir, source) {
     entries.map(async (entry) => {
       const fullPath = path.join(rootDir, entry.name);
       if (entry.isDirectory()) {
-        return collectFiles(fullPath, source);
+        return collectFiles(fullPath, source, depth + 1);
       }
-      if (entry.isFile() && matchesSourceFile(fullPath, source)) {
+      if (entry.isFile() && getMatchFn(source)(fullPath)) {
         return [fullPath];
       }
       return [];
@@ -65,6 +73,14 @@ function dateKeyFromTimestamp(timestamp) {
 }
 
 function matchesFilter(summary, filters) {
+  const showCodexArchived =
+    filters.show_codex_archived === true ||
+    filters.show_codex_archived === "true" ||
+    filters.show_codex_archived === "1";
+
+  if (summary.archived === true && summary.archive_source === "codex" && !showCodexArchived) {
+    return false;
+  }
   if (filters.provider && summary.model_provider !== filters.provider) {
     return false;
   }
@@ -89,6 +105,16 @@ function tokenize(text) {
     .toLowerCase()
     .split(/[^a-zA-Z0-9\u4e00-\u9fff]+/)
     .filter((w) => w.length >= MIN_WORD_LENGTH);
+}
+
+async function parseFileSafely(filePath, sourceKind) {
+  try {
+    return await parseFile(filePath, sourceKind);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Cannot parse session file (${filePath}): ${message}`);
+    return null;
+  }
 }
 
 export class SessionStore {
@@ -126,12 +152,14 @@ export class SessionStore {
         const files = await collectFiles(source.rootDir, source);
         const parsed = await Promise.all(
           files.map(async (filePath) => {
-            return parseFile(filePath, source.kind);
+            return parseFileSafely(filePath, source.kind);
           })
         );
 
         for (const detail of parsed) {
-          this._addSessionDetail(detail);
+          if (detail) {
+            this._addSessionDetail(detail);
+          }
         }
       }
     }
@@ -233,7 +261,7 @@ export class SessionStore {
     this._unindexSessionText(key);
   }
 
-  search(query) {
+  search(query, filters = {}) {
     if (!query || typeof query !== "string") {
       return [];
     }
@@ -244,8 +272,12 @@ export class SessionStore {
 
     let resultSets = tokens.map((token) => {
       const matched = new Set();
+      const exact = this._searchIndex.get(token);
+      if (exact) {
+        for (const key of exact) matched.add(key);
+      }
       for (const [indexWord, keys] of this._searchIndex) {
-        if (indexWord.includes(token)) {
+        if (indexWord !== token && indexWord.startsWith(token)) {
           for (const key of keys) matched.add(key);
         }
       }
@@ -260,7 +292,7 @@ export class SessionStore {
     const summaries = [];
     for (const key of intersection) {
       const summary = this.summaryByKey.get(key);
-      if (summary) summaries.push(summary);
+      if (summary && matchesFilter(summary, filters)) summaries.push(summary);
     }
 
     return summaries.sort(compareSummariesDesc);
@@ -410,7 +442,7 @@ export class SessionStore {
       const watcher = fss.watch(dir, (eventType, filename) => {
         if (!filename) return;
         const fullPath = path.join(dir, filename);
-        const isTargetFile = matchesSourceFile(fullPath, source);
+        const isTargetFile = getMatchFn(source)(fullPath);
         if (isTargetFile) {
           clearTimeout(this._debounceTimer);
           this._pendingChanges.add(fullPath);

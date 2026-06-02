@@ -13,6 +13,8 @@ const state = {
   nextCursor: null,
   searchQuery: "",
   showArchived: false,
+  showCodexArchived: false,
+  codexMigrationPreview: null,
   currentDetail: null,
   filters: {
     provider: "",
@@ -45,6 +47,10 @@ function toggleArchive(id) {
   setArchivedIds(ids);
 }
 
+function isCodexArchivedSession(session) {
+  return session?.archived === true && session.archive_source === "codex";
+}
+
 const elements = {
   sessionRoot: document.querySelector("#session-root"),
   sessionCount: document.querySelector("#session-count"),
@@ -57,6 +63,7 @@ const elements = {
   refreshBtn: document.querySelector("#refresh-btn"),
   langToggle: document.querySelector("#lang-toggle"),
   showArchivedToggle: document.querySelector("#show-archived-toggle"),
+  showCodexArchivedToggle: document.querySelector("#show-codex-archived-toggle"),
   sessionList: document.querySelector("#session-list"),
   detailEmpty: document.querySelector("#detail-empty"),
   detailView: document.querySelector("#detail-view"),
@@ -73,6 +80,20 @@ const elements = {
   statsDashboard: document.querySelector("#stats-dashboard"),
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
+  toolsDashboard: document.querySelector("#tools-dashboard"),
+  codexMigrationPreviewBtn: document.querySelector("#codex-migration-preview-btn"),
+  codexMigrationApplyBtn: document.querySelector("#codex-migration-apply-btn"),
+  codexMigrationRollbackBtn: document.querySelector("#codex-migration-rollback-btn"),
+  codexMigrationConfirm: document.querySelector("#codex-migration-confirm"),
+  codexMigrationStatus: document.querySelector("#codex-migration-status"),
+  codexMigrationThreadCount: document.querySelector("#codex-migration-thread-count"),
+  codexMigrationJsonlCount: document.querySelector("#codex-migration-jsonl-count"),
+  codexMigrationReplacementCount: document.querySelector("#codex-migration-replacement-count"),
+  codexMigrationProviderList: document.querySelector("#codex-migration-provider-list"),
+  codexMigrationRollbackDir: document.querySelector("#codex-migration-rollback-dir"),
+  codexMigrationBackupNotice: document.querySelector("#codex-migration-backup-notice"),
+  codexMigrationBackupLabel: document.querySelector("#codex-migration-backup-label"),
+  codexMigrationBackupPath: document.querySelector("#codex-migration-backup-path"),
   sessionItemTemplate: document.querySelector("#session-item-template"),
   conversationItemTemplate: document.querySelector("#conversation-item-template"),
   rawEventTemplate: document.querySelector("#raw-event-template")
@@ -86,6 +107,7 @@ function syncUrl() {
   if (state.filters.date) params.set("date", state.filters.date);
   if (state.filters.cwd) params.set("cwd", state.filters.cwd);
   if (state.searchQuery) params.set("q", state.searchQuery);
+  if (state.showCodexArchived) params.set("show_codex_archived", "1");
   if (state.selectedSessionKey) params.set("session", state.selectedSessionKey);
   const search = params.toString();
   history.replaceState(null, "", search ? `?${search}` : location.pathname);
@@ -98,6 +120,8 @@ function restoreFromUrl() {
   state.filters.date = params.get("date") || "";
   state.filters.cwd = params.get("cwd") || "";
   state.searchQuery = params.get("q") || "";
+  state.showCodexArchived = params.get("show_codex_archived") === "1" ||
+    params.get("show_codex_archived") === "true";
   state.selectedSessionKey = params.get("session") || null;
 }
 
@@ -118,6 +142,13 @@ function formatTimestamp(value) {
     dateStyle: "medium",
     timeStyle: "medium"
   }).format(date);
+}
+
+function displaySourceLabel(summary) {
+  if (isCodexArchivedSession(summary)) {
+    return t("codexArchived");
+  }
+  return summary.display_source || summary.source_kind || "";
 }
 
 function createOption(value, label) {
@@ -174,6 +205,11 @@ function rerenderLocalizedContent() {
   if (state.stats) {
     renderStats(state.stats);
   }
+  if (state.codexMigrationPreview) {
+    renderCodexMigrationPreview(state.codexMigrationPreview);
+  } else {
+    resetCodexMigrationMetrics();
+  }
 }
 
 function buildSessionQuery() {
@@ -183,6 +219,9 @@ function buildSessionQuery() {
       params.set(key, value);
     }
   });
+  if (state.showCodexArchived) {
+    params.set("show_codex_archived", "true");
+  }
   return params.toString();
 }
 
@@ -194,8 +233,14 @@ function buildSessionsUrl({ cursor } = {}) {
   return url;
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+function buildSearchUrl() {
+  const params = new URLSearchParams(buildSessionQuery());
+  params.set("q", state.searchQuery);
+  return `/api/search?${params.toString()}`;
+}
+
+async function fetchJson(url, options) {
+  const response = await fetch(url, options);
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(errorBody || t("requestFailed", { status: response.status }));
@@ -221,7 +266,7 @@ function appendSessionItems(sessions) {
     button.querySelector(".session-cwd").textContent = session.cwd || t("noCwd");
     button.querySelector(".session-events").textContent = t("eventsCount", { n: session.event_count });
     button.querySelector(".session-source").textContent = session.source || session.originator || t("unknownSource");
-    button.querySelector(".session-source-kind").textContent = session.display_source || session.source_kind || "";
+    button.querySelector(".session-source-kind").textContent = displaySourceLabel(session);
     if (session._key === state.selectedSessionKey) {
       button.classList.add("active");
     }
@@ -336,12 +381,42 @@ function exportSessionJson(detail) {
 }
 
 // ── 详情标签行 ──────────────────────────────────────────────────────────────────
+function createTagIcon(icon) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("width", "12");
+  svg.setAttribute("height", "12");
+
+  const add = (name, attributes) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+    Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
+    svg.append(node);
+  };
+
+  if (icon === "calendar") {
+    add("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" });
+    add("line", { x1: "16", y1: "2", x2: "16", y2: "6" });
+    add("line", { x1: "8", y1: "2", x2: "8", y2: "6" });
+    add("line", { x1: "3", y1: "10", x2: "21", y2: "10" });
+  } else if (icon === "hash") {
+    add("line", { x1: "4", y1: "9", x2: "20", y2: "9" });
+    add("line", { x1: "4", y1: "15", x2: "20", y2: "15" });
+    add("line", { x1: "10", y1: "3", x2: "8", y2: "21" });
+    add("line", { x1: "16", y1: "3", x2: "14", y2: "21" });
+  }
+
+  return svg;
+}
+
 function renderDetailTags(summary) {
   elements.detailTags.innerHTML = "";
   const tags = [
     { text: formatTimestamp(summary.timestamp), icon: "calendar" },
     { text: summary.model_provider || "unknown", cls: "tag-provider" },
-    { text: summary.display_source || summary.source_kind || "", cls: "tag-source" },
+    { text: displaySourceLabel(summary), cls: "tag-source" },
     { text: summary.source || summary.originator || "", cls: "" },
     { text: t("eventsCount", { n: summary.event_count }), icon: "hash" }
   ];
@@ -350,12 +425,10 @@ function renderDetailTags(summary) {
     if (!text) return;
     const span = document.createElement("span");
     span.className = `detail-tag ${cls || ""}`.trim();
-    if (icon === "calendar") {
-      span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ${text}`;
-    } else if (icon === "hash") {
-      span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg> ${text}`;
+    if (icon) {
+      span.append(createTagIcon(icon), document.createTextNode(` ${text}`));
     } else {
-      span.textContent = text;
+      span.append(document.createTextNode(text));
     }
     elements.detailTags.append(span);
   });
@@ -365,7 +438,7 @@ function renderDetailTags(summary) {
 function renderPropsPanel(summary) {
   const basic = [
     { label: "Provider", value: summary.model_provider || "unknown" },
-    { label: t("source"), value: summary.display_source || summary.source_kind || "-" }
+    { label: t("source"), value: displaySourceLabel(summary) || "-" }
   ];
   const tech = [
     { label: t("sessionId"), value: summary.id, copyable: true },
@@ -521,6 +594,206 @@ function showError(message) {
   }, 5000);
 }
 
+function setCodexMigrationStatus(message, kind = "") {
+  if (!elements.codexMigrationStatus) return;
+  elements.codexMigrationStatus.textContent = message;
+  elements.codexMigrationStatus.dataset.kind = kind;
+}
+
+function updateCodexMigrationApplyState() {
+  const providers = state.codexMigrationPreview?.providers || [];
+  const confirmed = elements.codexMigrationConfirm?.checked === true;
+  if (elements.codexMigrationApplyBtn) {
+    elements.codexMigrationApplyBtn.disabled = !confirmed || providers.length === 0;
+  }
+}
+
+function setCodexMigrationBusy(isBusy) {
+  [
+    elements.codexMigrationPreviewBtn,
+    elements.codexMigrationRollbackBtn
+  ].forEach((button) => {
+    if (button) button.disabled = isBusy;
+  });
+  if (elements.codexMigrationApplyBtn) {
+    elements.codexMigrationApplyBtn.disabled = true;
+  }
+  if (!isBusy) {
+    updateCodexMigrationApplyState();
+  }
+}
+
+function resetCodexMigrationMetrics() {
+  if (elements.codexMigrationThreadCount) elements.codexMigrationThreadCount.textContent = "-";
+  if (elements.codexMigrationJsonlCount) elements.codexMigrationJsonlCount.textContent = "-";
+  if (elements.codexMigrationReplacementCount) elements.codexMigrationReplacementCount.textContent = "-";
+  if (elements.codexMigrationProviderList) {
+    elements.codexMigrationProviderList.textContent = t("migrationNoPreview");
+  }
+}
+
+function formatCount(value) {
+  return new Intl.NumberFormat(getLang() === "zh" ? "zh-CN" : "en").format(Number(value || 0));
+}
+
+function renderCodexMigrationPreview(summary) {
+  state.codexMigrationPreview = summary;
+  if (!summary) {
+    resetCodexMigrationMetrics();
+    updateCodexMigrationApplyState();
+    return;
+  }
+
+  if (elements.codexMigrationThreadCount) {
+    elements.codexMigrationThreadCount.textContent = formatCount(summary.threadMatches);
+  }
+  if (elements.codexMigrationJsonlCount) {
+    elements.codexMigrationJsonlCount.textContent = formatCount(summary.jsonlFilesToChange);
+  }
+  if (elements.codexMigrationReplacementCount) {
+    elements.codexMigrationReplacementCount.textContent = formatCount(summary.jsonlSessionMetaReplacements);
+  }
+
+  if (elements.codexMigrationProviderList) {
+    elements.codexMigrationProviderList.innerHTML = "";
+    const counts = new Map((summary.providerCounts || []).map((row) => [row.provider, row.count]));
+    const providers = summary.providers || [];
+    if (!providers.length) {
+      elements.codexMigrationProviderList.textContent = t("migrationNoProviders");
+    } else {
+      providers.forEach((provider) => {
+        const item = document.createElement("div");
+        item.className = "migration-provider-item";
+        const name = document.createElement("span");
+        name.textContent = provider;
+        const count = document.createElement("strong");
+        count.textContent = formatCount(counts.get(provider));
+        item.append(name, count);
+        elements.codexMigrationProviderList.append(item);
+      });
+    }
+  }
+
+  if (summary.backupDir && elements.codexMigrationRollbackDir) {
+    elements.codexMigrationRollbackDir.value = summary.backupDir;
+  }
+
+  if (elements.codexMigrationBackupNotice) {
+    const notice = elements.codexMigrationBackupNotice;
+    const label = elements.codexMigrationBackupLabel;
+    const pathEl = elements.codexMigrationBackupPath;
+    if (summary.backupDir) {
+      if (label) label.textContent = t("backupSavedAt");
+      if (pathEl) pathEl.textContent = summary.backupDir;
+      notice.classList.remove("hidden");
+      notice.dataset.done = "true";
+    } else if (summary.backupRoot) {
+      if (label) label.textContent = t("backupWillSaveTo");
+      if (pathEl) pathEl.textContent = summary.backupRoot + "/codex-history-provider-migration-v1/";
+      notice.classList.remove("hidden");
+      notice.dataset.done = "false";
+    } else {
+      notice.classList.add("hidden");
+    }
+  }
+
+  updateCodexMigrationApplyState();
+}
+
+async function loadCodexMigrationPreview() {
+  setCodexMigrationBusy(true);
+  setCodexMigrationStatus(t("migrationPreviewing"));
+  try {
+    const summary = await fetchJson("/api/codex-provider-migration/preview");
+    renderCodexMigrationPreview(summary);
+    setCodexMigrationStatus(
+      summary.providers?.length
+        ? t("migrationPreviewReady", { n: summary.providers.length })
+        : t("migrationNoProviders"),
+      "ok"
+    );
+  } catch (error) {
+    console.error(error);
+    setCodexMigrationStatus(`${t("migrationPreviewFailed")}: ${error.message}`, "error");
+  } finally {
+    setCodexMigrationBusy(false);
+  }
+}
+
+async function applyCodexMigration() {
+  if (elements.codexMigrationConfirm?.checked !== true) {
+    setCodexMigrationStatus(t("migrationNeedConfirm"), "error");
+    updateCodexMigrationApplyState();
+    return;
+  }
+
+  setCodexMigrationBusy(true);
+  setCodexMigrationStatus(t("migrationApplying"));
+  try {
+    const summary = await fetchJson("/api/codex-provider-migration/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmedCodexAppClosed: true })
+    });
+    renderCodexMigrationPreview(summary);
+    if (elements.codexMigrationConfirm) {
+      elements.codexMigrationConfirm.checked = false;
+    }
+    setCodexMigrationStatus(
+      summary.backupDir
+        ? t("migrationAppliedWithBackup", { path: summary.backupDir })
+        : t("migrationApplied"),
+      "ok"
+    );
+    await Promise.all([loadSessions(), loadStats()]);
+  } catch (error) {
+    console.error(error);
+    setCodexMigrationStatus(`${t("migrationApplyFailed")}: ${error.message}`, "error");
+  } finally {
+    setCodexMigrationBusy(false);
+  }
+}
+
+async function rollbackCodexMigration() {
+  const backupDir = elements.codexMigrationRollbackDir?.value.trim();
+  if (!backupDir) {
+    setCodexMigrationStatus(t("migrationNeedBackupDir"), "error");
+    return;
+  }
+  if (elements.codexMigrationConfirm?.checked !== true) {
+    setCodexMigrationStatus(t("migrationNeedConfirm"), "error");
+    updateCodexMigrationApplyState();
+    return;
+  }
+
+  setCodexMigrationBusy(true);
+  setCodexMigrationStatus(t("migrationRollbacking"));
+  try {
+    const result = await fetchJson("/api/codex-provider-migration/rollback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backupDir, confirmedCodexAppClosed: true })
+    });
+    if (elements.codexMigrationConfirm) {
+      elements.codexMigrationConfirm.checked = false;
+    }
+    await Promise.all([loadSessions(), loadStats()]);
+    await loadCodexMigrationPreview();
+    setCodexMigrationStatus(
+      t("migrationRollbackDone", {
+        sqlite: result.restoredSqlite,
+        jsonl: result.restoredJsonl
+      }),
+      "ok"
+    );
+  } catch (error) {
+    console.error(error);
+    setCodexMigrationStatus(`${t("migrationRollbackFailed")}: ${error.message}`, "error");
+  } finally {
+    setCodexMigrationBusy(false);
+  }
+}
+
 async function loadSessionDetail(id) {
   try {
     const detail = await fetchJson(`/api/sessions/${encodeURIComponent(id)}`);
@@ -549,7 +822,7 @@ async function loadSessions() {
   try {
     let data;
     if (state.searchQuery) {
-      data = await fetchJson(`/api/search?q=${encodeURIComponent(state.searchQuery)}`);
+      data = await fetchJson(buildSearchUrl());
       state.sessions = data.sessions;
       state.hasMore = false;
       state.nextCursor = null;
@@ -559,7 +832,9 @@ async function loadSessions() {
       state.hasMore = data.has_more;
       state.nextCursor = data.next_cursor;
     }
-    state.facets = { ...state.facets, session_roots: data.session_roots };
+    if (data.session_roots) {
+      state.facets = { ...state.facets, session_roots: data.session_roots };
+    }
     syncSessionRoot();
 
     if (state.selectedSessionKey && !state.sessions.find((session) => session._key === state.selectedSessionKey)) {
@@ -817,6 +1092,10 @@ async function initialize() {
   if (state.filters.date) elements.dateFilter.value = state.filters.date;
   if (state.filters.cwd) elements.cwdFilter.value = state.filters.cwd;
   if (state.searchQuery) elements.searchInput.value = state.searchQuery;
+  if (elements.showCodexArchivedToggle) {
+    elements.showCodexArchivedToggle.checked = state.showCodexArchived;
+  }
+  resetCodexMigrationMetrics();
 
   await loadStats();
 
@@ -847,11 +1126,13 @@ async function initialize() {
   elements.resetFilters?.addEventListener("click", async () => {
     state.filters = { provider: "", source_kind: "", date: "", cwd: "" };
     state.searchQuery = "";
+    state.showCodexArchived = false;
     if (elements.sourceKindFilter) elements.sourceKindFilter.value = "";
     if (elements.providerFilter) elements.providerFilter.value = "";
     if (elements.dateFilter) elements.dateFilter.value = "";
     if (elements.cwdFilter) elements.cwdFilter.value = "";
     if (elements.searchInput) elements.searchInput.value = "";
+    if (elements.showCodexArchivedToggle) elements.showCodexArchivedToggle.checked = false;
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
   });
@@ -879,8 +1160,21 @@ async function initialize() {
     });
   }
 
+  if (elements.showCodexArchivedToggle) {
+    elements.showCodexArchivedToggle.addEventListener("change", async () => {
+      state.showCodexArchived = elements.showCodexArchivedToggle.checked;
+      syncUrl();
+      await Promise.all([loadSessions(), loadStats()]);
+    });
+  }
+
+  elements.codexMigrationPreviewBtn?.addEventListener("click", loadCodexMigrationPreview);
+  elements.codexMigrationConfirm?.addEventListener("change", updateCodexMigrationApplyState);
+  elements.codexMigrationApplyBtn?.addEventListener("click", applyCodexMigration);
+  elements.codexMigrationRollbackBtn?.addEventListener("click", rollbackCodexMigration);
+
   document.querySelectorAll(".sidebar-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
+    tab.addEventListener("click", async () => {
       const panel = tab.dataset.sidebarTab;
       document.querySelectorAll(".sidebar-tab").forEach((t) => {
         t.classList.toggle("active", t === tab);
@@ -893,14 +1187,25 @@ async function initialize() {
       const detailPanel = document.querySelector("#detail-panel");
       const propsPanel = document.querySelector("#props-panel");
       const statsDashboard = document.querySelector("#stats-dashboard");
+      const toolsDashboard = document.querySelector("#tools-dashboard");
       if (panel === "stats") {
         if (detailPanel) detailPanel.classList.add("hidden");
         if (propsPanel) propsPanel.classList.add("hidden");
         if (statsDashboard) statsDashboard.classList.remove("hidden");
+        if (toolsDashboard) toolsDashboard.classList.add("hidden");
+      } else if (panel === "tools") {
+        if (detailPanel) detailPanel.classList.add("hidden");
+        if (propsPanel) propsPanel.classList.add("hidden");
+        if (statsDashboard) statsDashboard.classList.add("hidden");
+        if (toolsDashboard) toolsDashboard.classList.remove("hidden");
+        if (!state.codexMigrationPreview) {
+          await loadCodexMigrationPreview();
+        }
       } else {
         if (detailPanel) detailPanel.classList.remove("hidden");
         if (propsPanel) propsPanel.classList.remove("hidden");
         if (statsDashboard) statsDashboard.classList.add("hidden");
+        if (toolsDashboard) toolsDashboard.classList.add("hidden");
       }
     });
   });
@@ -990,12 +1295,13 @@ async function initialize() {
       const summary = JSON.parse(e.data);
       const key = summary._key;
       if (!key) return;
+      if (isCodexArchivedSession(summary) && !state.showCodexArchived) return;
       if (!state.sessions.find((s) => s._key === key)) {
         state.sessions.push(summary);
         state.sessions.sort((a, b) => {
-          const ta = a.timestamp || a.last_timestamp || "";
-          const tb = b.timestamp || b.last_timestamp || "";
-          return tb.localeCompare(ta);
+          const ta = Date.parse(a.timestamp || a.last_timestamp) || 0;
+          const tb = Date.parse(b.timestamp || b.last_timestamp) || 0;
+          return tb - ta;
         });
         renderSessionList();
         const archivedIds = getArchivedIds();
@@ -1016,13 +1322,23 @@ async function initialize() {
       const summary = JSON.parse(e.data);
       const key = summary._key;
       if (!key) return;
+      if (isCodexArchivedSession(summary) && !state.showCodexArchived) {
+        state.sessions = state.sessions.filter((s) => s._key !== key);
+        if (state.selectedSessionKey === key) {
+          state.selectedSessionKey = null;
+          elements.detailView.classList.add("hidden");
+          elements.detailEmpty.classList.remove("hidden");
+        }
+        renderSessionList();
+        return;
+      }
       const idx = state.sessions.findIndex((s) => s._key === key);
       if (idx >= 0) {
         state.sessions[idx] = summary;
         state.sessions.sort((a, b) => {
-          const ta = a.timestamp || a.last_timestamp || "";
-          const tb = b.timestamp || b.last_timestamp || "";
-          return tb.localeCompare(ta);
+          const ta = Date.parse(a.timestamp || a.last_timestamp) || 0;
+          const tb = Date.parse(b.timestamp || b.last_timestamp) || 0;
+          return tb - ta;
         });
       }
       if (state.selectedSessionKey === key) {

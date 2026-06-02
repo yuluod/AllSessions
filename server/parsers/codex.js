@@ -155,3 +155,12 @@ export async function parseCodexFile(filePath) {
   const content = await fs.readFile(filePath, "utf8");
   return parseCodexContent(content, filePath);
 }
+
+export async function parseCodexArchivedFile(filePath) {
+  const detail = await parseCodexFile(filePath);
+  detail.summary.source_kind = "codex_archived";
+  detail.summary.display_source = "Codex Archived";
+  detail.summary.archived = true;
+  detail.summary.archive_source = "codex";
+  return detail;
+}

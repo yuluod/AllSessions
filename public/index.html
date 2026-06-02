@@ -47,6 +47,7 @@
           <div class="sidebar-tabs" role="tablist">
             <button class="sidebar-tab active" data-sidebar-tab="list" type="button" role="tab" aria-selected="true" data-i18n="sessionList">会话列表</button>
             <button class="sidebar-tab" data-sidebar-tab="stats" type="button" role="tab" aria-selected="false" data-i18n="statsOverview">统计概览</button>
+            <button class="sidebar-tab" data-sidebar-tab="tools" type="button" role="tab" aria-selected="false" data-i18n="tools">工具</button>
           </div>
 
           <div class="sidebar-filters">
@@ -87,6 +88,10 @@
               <input id="show-archived-toggle" type="checkbox" />
               <span data-i18n="showArchived">显示已归档会话</span>
             </label>
+            <label class="archive-toggle-label">
+              <input id="show-codex-archived-toggle" type="checkbox" />
+              <span data-i18n="showCodexArchived">显示 Codex 归档会话</span>
+            </label>
             <div class="session-list-shell">
               <div class="session-list-header">
                 <span data-i18n="sortDesc">按时间倒序</span>
@@ -98,6 +103,13 @@
 
           <div class="sidebar-body hidden" data-sidebar-panel="stats">
             <div class="stats-sidebar-summary" id="stats-sidebar-summary"></div>
+          </div>
+
+          <div class="sidebar-body hidden" data-sidebar-panel="tools">
+            <div class="tool-sidebar-copy">
+              <strong data-i18n="codexProviderMigration">Codex Provider 迁移</strong>
+              <span data-i18n="codexProviderMigrationShort">把第三方 provider 历史统一到 custom。</span>
+            </div>
           </div>
         </aside>
 
@@ -157,6 +169,62 @@
               </div>
             </div>
             <div class="stats-grid" id="stats-grid"></div>
+          </div>
+
+          <div class="tools-dashboard hidden" id="tools-dashboard">
+            <section class="tool-card" aria-labelledby="codex-migration-title">
+              <div class="tool-card-header">
+                <div>
+                  <span class="eyebrow" data-i18n="localTool">LOCAL TOOL</span>
+                  <h2 id="codex-migration-title" data-i18n="codexProviderMigration">Codex Provider 迁移</h2>
+                  <p data-i18n="codexProviderMigrationDesc">解决第三方 provider 切换后 Codex App 旧会话不可见的问题。</p>
+                </div>
+                <button id="codex-migration-preview-btn" class="ghost-button" type="button" data-i18n="previewMigration">预览迁移</button>
+              </div>
+
+              <div class="tool-status" id="codex-migration-status" role="status" aria-live="polite" data-i18n="migrationNotPreviewed">尚未预览</div>
+
+              <div class="migration-metrics" id="codex-migration-metrics">
+                <div class="migration-metric">
+                  <span data-i18n="migrationThreads">匹配线程</span>
+                  <strong id="codex-migration-thread-count">-</strong>
+                </div>
+                <div class="migration-metric">
+                  <span data-i18n="migrationJsonlFiles">JSONL 文件</span>
+                  <strong id="codex-migration-jsonl-count">-</strong>
+                </div>
+                <div class="migration-metric">
+                  <span data-i18n="migrationReplacements">替换条目</span>
+                  <strong id="codex-migration-replacement-count">-</strong>
+                </div>
+              </div>
+
+              <div class="migration-provider-section">
+                <h3 data-i18n="migrationProviders">将迁移的 Providers</h3>
+                <div id="codex-migration-provider-list" class="migration-provider-list"></div>
+              </div>
+
+              <div class="migration-backup-notice hidden" id="codex-migration-backup-notice">
+                <span id="codex-migration-backup-label" data-i18n="backupWillSaveTo">备份将保存到</span>
+                <code id="codex-migration-backup-path"></code>
+              </div>
+
+              <div class="migration-actions">
+                <label class="migration-confirm">
+                  <input id="codex-migration-confirm" type="checkbox" />
+                  <span data-i18n="migrationConfirmClosed">我已退出 Codex App</span>
+                </label>
+                <button id="codex-migration-apply-btn" class="danger-button" type="button" disabled data-i18n="applyMigration">执行迁移</button>
+              </div>
+
+              <div class="migration-backup-row">
+                <label class="field">
+                  <span data-i18n="rollbackBackupDir">备份目录</span>
+                  <input id="codex-migration-rollback-dir" type="text" placeholder="/Users/.../.cc-switch/backups/..." data-i18n-placeholder="rollbackBackupPlaceholder" />
+                </label>
+                <button id="codex-migration-rollback-btn" class="ghost-button" type="button" data-i18n="rollbackMigration">回滚</button>
+              </div>
+            </section>
           </div>
         </section>
 

@@ -81,3 +81,38 @@ test("详情 tabs 的 aria-label 使用已定义的 i18n key", async () => {
   assert.match(dict, /zh:[\s\S]*tabsAriaLabel: "详情视图切换"/);
   assert.match(dict, /en:[\s\S]*tabsAriaLabel: "Detail view tabs"/);
 });
+
+test("详情标签不会用 innerHTML 拼接会话字段", async () => {
+  const source = await readProjectFile("public/app.js");
+
+  assert.match(source, /function createTagIcon\(icon\)/);
+  assert.doesNotMatch(source, /span\.innerHTML\s*=/);
+});
+
+test("Codex 归档会话开关会进入 URL 并触发重新加载", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const dict = await readProjectFile("public/i18n.js");
+
+  assert.match(html, /id="show-codex-archived-toggle"/);
+  assert.match(html, /data-i18n="showCodexArchived"/);
+  assert.match(dict, /showCodexArchived: "显示 Codex 归档会话"/);
+  assert.match(source, /showCodexArchived: false/);
+  assert.match(source, /params\.set\("show_codex_archived", "1"\)/);
+  assert.match(source, /elements\.showCodexArchivedToggle\.addEventListener\("change", async \(\) => \{[\s\S]*loadSessions\(\), loadStats\(\)/);
+});
+
+test("页面提供 Codex Provider 迁移工具入口", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const server = await readProjectFile("server/http-server.js");
+
+  assert.match(html, /data-sidebar-tab="tools"/);
+  assert.match(html, /id="codex-migration-preview-btn"/);
+  assert.match(html, /id="codex-migration-apply-btn"/);
+  assert.match(html, /id="codex-migration-rollback-btn"/);
+  assert.match(source, /\/api\/codex-provider-migration\/preview/);
+  assert.match(source, /confirmedCodexAppClosed: true/);
+  assert.match(server, /\/api\/codex-provider-migration\/apply/);
+  assert.match(server, /runMigration\(\{[\s\S]*apply: true/);
+});

@@ -20,7 +20,16 @@ export async function parseClaudeCodeFile(filePath) {
   const timestamp = msToIso(startedAt);
 
   const historyPath = path.join(path.dirname(path.dirname(filePath)), "history.jsonl");
-  const rawEvents = [];
+  const rawEvents = [
+    {
+      line_number: null,
+      timestamp,
+      type: "info",
+      payload: {
+        message: "Claude Code stores only user input history locally. Assistant responses are not available in local session files."
+      }
+    }
+  ];
   const conversationMessages = [];
 
   let lastTimestamp = timestamp;

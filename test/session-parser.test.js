@@ -4,8 +4,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { parseSessionContent } from "../server/session-parser.js";
+import { parseCodexContent as parseSessionContent } from "../server/parsers/codex.js";
 import { parseGeminiSessions } from "../server/parsers/index.js";
+import { parseCodexArchivedFile } from "../server/parsers/codex.js";
 
 async function createTempSessionDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "codex-session-viewer-"));
@@ -53,6 +54,40 @@ test("能从标准会话中提取摘要和对话消息", () => {
   assert.equal(detail.conversation_messages.length, 2);
   assert.equal(detail.conversation_messages[0].role, "user");
   assert.match(detail.conversation_messages[1].text, /查看会话/);
+});
+
+test("Codex 归档会话会保留 Codex 字段并打归档标记", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const filePath = path.join(rootDir, "rollout-archived.jsonl");
+  await fs.writeFile(
+    filePath,
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "archived-1",
+        timestamp: "2026-04-21T10:00:00.000Z",
+        cwd: "/tmp/archived",
+        source: "cli",
+        model_provider: "newapi"
+      }
+    }),
+    "utf8"
+  );
+
+  const detail = await parseCodexArchivedFile(filePath);
+
+  assert.equal(detail.summary.id, "archived-1");
+  assert.equal(detail.summary.model_provider, "newapi");
+  assert.equal(detail.summary.source, "cli");
+  assert.equal(detail.summary.source_kind, "codex_archived");
+  assert.equal(detail.summary.archived, true);
+  assert.equal(detail.summary.archive_source, "codex");
+  assert.equal(detail.summary.display_source, "Codex Archived");
 });
 
 test("遇到坏行和缺少 session_meta 时仍能回退生成详情", () => {

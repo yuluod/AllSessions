@@ -10,7 +10,8 @@
     "start": "node server/index.js",
     "dev": "node server/index.js",
     "test": "node --test",
-    "lint": "eslint server public --fix",
+    "lint": "eslint server public test scripts",
+    "lint:fix": "eslint server public test scripts --fix",
     "format": "prettier --write .",
     "build": "vite build",
     "codex:provider-migration": "node scripts/migrate-codex-provider-to-custom.mjs"

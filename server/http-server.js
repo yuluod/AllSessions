@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -16,6 +17,7 @@ const CONTENT_TYPES = {
 };
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_:.-]{1,128}$/;
+const MUTATION_TOKEN_HEADER = "x-session-viewer-token";
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/g;
 
@@ -68,6 +70,42 @@ function badRequest(message) {
   const error = new Error(message);
   error.statusCode = 400;
   return error;
+}
+
+function forbidden(message) {
+  const error = new Error(message);
+  error.statusCode = 403;
+  return error;
+}
+
+function requestOriginFromHeader(value) {
+  if (!value || typeof value !== "string") return "";
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
+}
+
+function assertSameBrowserOrigin(request) {
+  const host = request.headers.host;
+  if (!host) return;
+  const allowed = new Set([`http://${host}`, `https://${host}`]);
+  const origin = requestOriginFromHeader(request.headers.origin);
+  const referer = requestOriginFromHeader(request.headers.referer);
+  if (origin && !allowed.has(origin)) {
+    throw forbidden("Cross-origin mutation request is not allowed");
+  }
+  if (!origin && referer && !allowed.has(referer)) {
+    throw forbidden("Cross-origin mutation request is not allowed");
+  }
+}
+
+function assertMutationToken(request, expectedToken) {
+  assertSameBrowserOrigin(request);
+  if (!expectedToken || request.headers[MUTATION_TOKEN_HEADER] !== expectedToken) {
+    throw forbidden("Mutation token is required");
+  }
 }
 
 async function readJsonBody(request, { maxBytes = 64 * 1024 } = {}) {
@@ -155,6 +193,7 @@ async function sendStaticFile(publicDir, pathname, request, response) {
 
 export function createHttpServer({ store, publicDir, sessionRoots, codexMigrationOptions = {} }) {
   const sseClients = new Set();
+  const mutationToken = codexMigrationOptions.mutationToken || crypto.randomBytes(24).toString("base64url");
 
   const SSE_PING_INTERVAL = 30_000;
   let ssePingTimer = null;
@@ -216,6 +255,7 @@ export function createHttpServer({ store, publicDir, sessionRoots, codexMigratio
           apply: false
         });
         summary.backupRoot = codexMigrationOptions.backupRoot || path.join(os.homedir(), ".cc-switch", "backups");
+        summary.mutation_token = mutationToken;
         sendJson(response, 200, summary);
         return;
       }
@@ -225,6 +265,7 @@ export function createHttpServer({ store, publicDir, sessionRoots, codexMigratio
           sendText(response, 405, "Only POST is supported");
           return;
         }
+        assertMutationToken(request, mutationToken);
         const body = await readJsonBody(request);
         if (body.confirmedCodexAppClosed !== true) {
           throw badRequest("Codex App closed confirmation is required");
@@ -244,6 +285,7 @@ export function createHttpServer({ store, publicDir, sessionRoots, codexMigratio
           sendText(response, 405, "Only POST is supported");
           return;
         }
+        assertMutationToken(request, mutationToken);
         const body = await readJsonBody(request);
         if (body.confirmedCodexAppClosed !== true) {
           throw badRequest("Codex App closed confirmation is required");

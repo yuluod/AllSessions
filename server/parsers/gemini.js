@@ -1,6 +1,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import os from "node:os";
+import { finalizeSessionSummary } from "./common.js";
+
+function inferCwd(entries) {
+  const keys = ["cwd", "workingDirectory", "working_directory", "workspace", "workspaceDir", "projectRoot", "project_root"];
+  for (const entry of entries) {
+    for (const key of keys) {
+      if (typeof entry[key] === "string" && entry[key].trim()) {
+        return entry[key].trim();
+      }
+    }
+  }
+  return "";
+}
 
 function buildSession(sessionId, entries, queueDirs, rootDir) {
   entries.sort((a, b) => (a.messageId ?? 0) - (b.messageId ?? 0));
@@ -61,7 +73,7 @@ function buildSession(sessionId, entries, queueDirs, rootDir) {
     display_source: "Gemini CLI",
     timestamp: timestamps[0] || null,
     model_provider: "google",
-    cwd: os.homedir(),
+    cwd: inferCwd(entries),
     source: "cli",
     originator: "google_gemini",
     file_path: path.join(rootDir, "tmp", firstQueueDir, "logs.json"),
@@ -69,6 +81,7 @@ function buildSession(sessionId, entries, queueDirs, rootDir) {
     last_timestamp: timestamps[timestamps.length - 1] || null
   };
 
+  finalizeSessionSummary(summary, conversationMessages);
   return { summary, raw_events: rawEvents, conversation_messages: conversationMessages };
 }
 
@@ -104,7 +117,7 @@ async function enrichWithBrain(rootDir, sessionId, result) {
             const meta = JSON.parse(metaRaw);
             promptTimestamp = meta.updatedAt || null;
           } catch {
-            // ignore
+            // 元数据缺失时仍保留正文。
           }
           result.conversation_messages.push({
             role: "user",
@@ -116,7 +129,7 @@ async function enrichWithBrain(rootDir, sessionId, result) {
         }
       }
     } catch {
-      // ignore
+      // 单个 artifact 读取失败不影响其他消息。
     }
 
     const resolvedTexts = [];
@@ -124,7 +137,7 @@ async function enrichWithBrain(rootDir, sessionId, result) {
       const text = await fs.readFile(resolvedPath, "utf8");
       if (text.trim()) resolvedTexts.push(text.trim());
     } catch {
-      // no main resolved
+      // 没有主 resolved 文件时继续查找分片。
     }
 
     let idx = 0;
@@ -191,6 +204,7 @@ export async function parseGeminiSessions(rootDir) {
     const result = buildSession(sessionId, session.entries, session.queueDirs, rootDir);
     await enrichWithBrain(rootDir, sessionId, result);
     if (result.conversation_messages.length > 0) {
+      finalizeSessionSummary(result.summary, result.conversation_messages);
       results.push(result);
     }
   }
@@ -236,5 +250,6 @@ export async function parseGeminiSessionById(rootDir, sessionId) {
   await enrichWithBrain(rootDir, sessionId, result);
 
   if (result.conversation_messages.length === 0) return null;
+  finalizeSessionSummary(result.summary, result.conversation_messages);
   return result;
 }

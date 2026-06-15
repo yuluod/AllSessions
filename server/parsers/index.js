@@ -28,4 +28,4 @@ export async function parseFile(filePath, sourceKind) {
 }
 
 export { parseGeminiSessions };
-export { compareSummariesDesc } from "./common.js";
+export { compareSummariesDesc, sortTimestampValue } from "./common.js";

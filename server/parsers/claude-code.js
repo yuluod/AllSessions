@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { pushConversationMessage } from "./common.js";
+import { finalizeSessionSummary, pushConversationMessage } from "./common.js";
 
 function msToIso(ms) {
   try {
@@ -105,6 +105,7 @@ export async function parseClaudeCodeFile(filePath) {
     event_count: rawEvents.length,
     last_timestamp: lastTimestamp || timestamp || null
   };
+  finalizeSessionSummary(summary, conversationMessages);
 
   return {
     summary,

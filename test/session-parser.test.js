@@ -7,6 +7,7 @@ import path from "node:path";
 import { parseCodexContent as parseSessionContent } from "../server/parsers/codex.js";
 import { parseGeminiSessions } from "../server/parsers/index.js";
 import { parseCodexArchivedFile } from "../server/parsers/codex.js";
+import { parseClaudeCodeFile } from "../server/parsers/claude-code.js";
 
 async function createTempSessionDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "codex-session-viewer-"));
@@ -51,6 +52,11 @@ test("能从标准会话中提取摘要和对话消息", () => {
   assert.equal(detail.summary.model_provider, "newapi");
   assert.equal(detail.summary.cwd, "/tmp/project-a");
   assert.equal(detail.summary.event_count, 3);
+  assert.equal(detail.summary.title, "你好");
+  assert.equal(detail.summary.preview_text, "你好，我可以帮你查看会话。");
+  assert.equal(detail.summary.message_count, 2);
+  assert.deepEqual(detail.summary.role_counts, { user: 1, assistant: 1 });
+  assert.equal(detail.summary.tool_count, 0);
   assert.equal(detail.conversation_messages.length, 2);
   assert.equal(detail.conversation_messages[0].role, "user");
   assert.match(detail.conversation_messages[1].text, /查看会话/);
@@ -88,6 +94,44 @@ test("Codex 归档会话会保留 Codex 字段并打归档标记", async (t) => 
   assert.equal(detail.summary.archived, true);
   assert.equal(detail.summary.archive_source, "codex");
   assert.equal(detail.summary.display_source, "Codex Archived");
+});
+
+test("Claude Code 摘要会从用户历史派生标题和统计", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const sessionsDir = path.join(rootDir, "sessions");
+  await fs.mkdir(sessionsDir, { recursive: true });
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const filePath = path.join(sessionsDir, "claude-1.json");
+  await fs.writeFile(
+    filePath,
+    JSON.stringify({
+      sessionId: "claude-1",
+      cwd: "/tmp/claude-project",
+      startedAt: 1713670800000,
+      entrypoint: "claude",
+      kind: "default"
+    }),
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(rootDir, "history.jsonl"),
+    JSON.stringify({
+      sessionId: "claude-1",
+      timestamp: 1713670801000,
+      display: "检查 Claude Code 历史"
+    }),
+    "utf8"
+  );
+
+  const detail = await parseClaudeCodeFile(filePath);
+
+  assert.equal(detail.summary.title, "检查 Claude Code 历史");
+  assert.equal(detail.summary.message_count, 1);
+  assert.deepEqual(detail.summary.role_counts, { user: 1 });
+  assert.equal(detail.summary.tool_count, 0);
 });
 
 test("遇到坏行和缺少 session_meta 时仍能回退生成详情", () => {
@@ -136,11 +180,11 @@ test("多条 session_meta 只取第一条", () => {
   assert.equal(detail.summary.model_provider, "openai");
 });
 
-test("非 message 类型的 response_item 不产生对话消息", () => {
+test("未知 response_item 类型不产生对话消息", () => {
   const content = JSON.stringify({
     timestamp: "2026-04-21T10:00:00.000Z",
     type: "response_item",
-    payload: { type: "function_call", name: "read_file" }
+    payload: { type: "reasoning", summary: [] }
   });
 
   const detail = parseSessionContent(content, "/tmp/non-msg.jsonl");
@@ -164,20 +208,51 @@ test("tool_call 和 tool_result 事件类型正常解析", () => {
     JSON.stringify({
       timestamp: "2026-04-21T10:00:01.000Z",
       type: "event_msg",
-      payload: { type: "tool_call", tool_name: "read_file", arguments: "/tmp/test.js" }
+      payload: { type: "tool_call", call_id: "call-1", tool_name: "read_file", arguments: "/tmp/test.js" }
     }),
     JSON.stringify({
       timestamp: "2026-04-21T10:00:02.000Z",
       type: "event_msg",
-      payload: { type: "tool_result", output: "file contents here" }
+      payload: { type: "tool_result", call_id: "call-1", output: "file contents here" }
     })
   ].join("\n");
 
   const detail = parseSessionContent(content, "/tmp/tools.jsonl");
   assert.equal(detail.conversation_messages.length, 2);
   assert.equal(detail.conversation_messages[0].role, "tool");
+  assert.equal(detail.conversation_messages[0].tool_name, "read_file");
+  assert.equal(detail.conversation_messages[0].tool_kind, "tool_call");
+  assert.equal(detail.conversation_messages[0].tool_call_id, "call-1");
+  assert.equal(detail.conversation_messages[1].tool_name, "read_file");
+  assert.equal(detail.conversation_messages[1].tool_kind, "tool_result");
+  assert.equal(detail.conversation_messages[1].tool_call_id, "call-1");
+  assert.equal(detail.summary.tool_count, 2);
+  assert.equal(detail.summary.role_counts.tool, 2);
   assert.match(detail.conversation_messages[0].text, /read_file/);
   assert.equal(detail.conversation_messages[1].text, "file contents here");
+});
+
+test("response_item function_call 和 function_call_output 会配对工具名称", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "response_item",
+      payload: { type: "function_call", call_id: "call-2", name: "list_files", arguments: "{\"path\":\"/tmp\"}" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:02.000Z",
+      type: "response_item",
+      payload: { type: "function_call_output", call_id: "call-2", output: "a.js\nb.js" }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/function-tools.jsonl");
+
+  assert.equal(detail.conversation_messages.length, 2);
+  assert.equal(detail.conversation_messages[0].tool_name, "list_files");
+  assert.equal(detail.conversation_messages[0].tool_kind, "tool_call");
+  assert.equal(detail.conversation_messages[1].tool_name, "list_files");
+  assert.equal(detail.conversation_messages[1].tool_kind, "tool_result");
 });
 
 test("error 类型事件正常解析", () => {
@@ -222,6 +297,9 @@ test("Gemini 解析使用传入 rootDir 下的 brain 数据", async (t) => {
   const sessions = await parseGeminiSessions(rootDir);
 
   assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].summary.title, "日志里的 Gemini 提问");
+  assert.match(sessions[0].summary.preview_text, /自定义 rootDir 的 brain 回复/);
+  assert.equal(sessions[0].summary.message_count, sessions[0].conversation_messages.length);
   assert.equal(sessions[0].conversation_messages.some((m) => m.text === "自定义 rootDir 的 brain 提示"), true);
   assert.equal(sessions[0].conversation_messages.some((m) => m.text === "自定义 rootDir 的 brain 回复"), true);
 });

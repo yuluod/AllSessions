@@ -226,7 +226,7 @@ function fetchFromServer(port, path) {
   });
 }
 
-function postJsonToServer(port, path, body) {
+function postJsonToServer(port, path, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     const req = http.request({
@@ -236,7 +236,8 @@ function postJsonToServer(port, path, body) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(payload)
+        "Content-Length": Buffer.byteLength(payload),
+        ...headers
       }
     }, (res) => {
       const chunks = [];
@@ -274,6 +275,10 @@ test("GET /api/sessions 返回会话列表", async (t) => {
   assert.ok(Array.isArray(data.sessions));
   assert.equal(data.sessions.length, 1);
   assert.equal(data.sessions[0].id, "test-1");
+  assert.equal(data.sessions[0].title, "hello");
+  assert.equal(data.sessions[0].message_count, 1);
+  assert.deepEqual(data.sessions[0].role_counts, { user: 1 });
+  assert.equal(data.sessions[0].tool_count, 0);
   assert.equal(typeof data.has_more, "boolean");
 });
 
@@ -286,6 +291,14 @@ test("GET /api/facets 返回过滤选项", async (t) => {
   assert.deepEqual(data.providers, ["testapi"]);
   assert.ok(Array.isArray(data.dates));
   assert.ok(Array.isArray(data.cwds));
+  assert.deepEqual(data.projects, [{
+    name: "test",
+    path: "/tmp/test",
+    count: 1,
+    last_timestamp: "2026-04-21T10:00:01.000Z",
+    providers: ["testapi"],
+    source_kinds: ["codex"]
+  }]);
 });
 
 test("GET /api/sessions/:id 返回会话详情", async (t) => {
@@ -295,6 +308,7 @@ test("GET /api/sessions/:id 返回会话详情", async (t) => {
 
   const data = JSON.parse(res.body);
   assert.equal(data.summary.id, "test-1");
+  assert.equal(data.summary.title, "hello");
   assert.ok(Array.isArray(data.conversation_messages));
   assert.ok(Array.isArray(data.raw_events));
 });
@@ -434,14 +448,27 @@ test("Codex provider 迁移 HTTP 接口支持预览、确认执行和回滚", as
   const previewData = JSON.parse(preview.body);
   assert.deepEqual(previewData.providers, ["newapi", "right_code"]);
   assert.equal(previewData.threadMatches, 2);
+  assert.equal(typeof previewData.mutation_token, "string");
   assert.equal(await readSessionMetaProvider(activeFile), "newapi");
 
-  const blocked = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {});
+  const missingToken = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {
+    confirmedCodexAppClosed: true
+  });
+  assert.equal(missingToken.status, 403);
+
+  const tokenHeaders = { "X-Session-Viewer-Token": previewData.mutation_token };
+
+  const crossOrigin = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {
+    confirmedCodexAppClosed: true
+  }, { ...tokenHeaders, Origin: "http://evil.example" });
+  assert.equal(crossOrigin.status, 403);
+
+  const blocked = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {}, tokenHeaders);
   assert.equal(blocked.status, 400);
 
   const applied = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {
     confirmedCodexAppClosed: true
-  });
+  }, tokenHeaders);
   assert.equal(applied.status, 200);
   const appliedData = JSON.parse(applied.body);
   assert.ok(appliedData.backupDir);
@@ -451,7 +478,7 @@ test("Codex provider 迁移 HTTP 接口支持预览、确认执行和回滚", as
   const rollback = await postJsonToServer(address.port, "/api/codex-provider-migration/rollback", {
     confirmedCodexAppClosed: true,
     backupDir: appliedData.backupDir
-  });
+  }, tokenHeaders);
   assert.equal(rollback.status, 200);
   assert.equal((await providerCounts(dbPath)).newapi, 1);
   assert.equal(await readSessionMetaProvider(activeFile), "newapi");

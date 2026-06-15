@@ -25,6 +25,61 @@ test("会话列表项具备三段式信息层级", async () => {
   assert.match(html, /class="session-primary"/);
   assert.match(html, /class="session-secondary"/);
   assert.match(html, /class="session-tertiary"/);
+  assert.match(html, /class="session-title"/);
+  assert.match(html, /class="session-preview"/);
+  assert.match(html, /class="session-cwd session-cwd-main"/);
+  assert.match(html, /class="session-cwd-path"/);
+});
+
+test("页面提供项目导航入口并复用 cwd 筛选", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /id="project-list"/);
+  assert.match(source, /function renderProjectNav\(\)/);
+  assert.match(source, /async function setCwdFilter\(cwd\)/);
+  assert.match(source, /state\.filters\.cwd = cwd/);
+  assert.match(source, /showAllProjects/);
+  assert.match(source, /showMoreProjects/);
+  assert.match(css, /\.project-nav\b/);
+  assert.match(css, /\.project-item\b/);
+});
+
+test("详情页提供会话内搜索、工具消息开关和消息导航", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /id="detail-search-input"/);
+  assert.match(html, /id="show-tools-toggle"/);
+  assert.match(html, /id="message-nav-inline-list"/);
+  assert.match(source, /function filteredConversationMessages\(messages\)/);
+  assert.match(source, /function createMessageNavSection\(messages\)/);
+  assert.match(source, /state\.showTools \|\| message\.role !== "tool"/);
+  assert.match(css, /\.conversation-toolbar\b/);
+  assert.match(css, /\.message-nav-list\b/);
+});
+
+test("会话列表支持筛选状态 chips 和日期分组", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /id="active-filter-bar"/);
+  assert.match(source, /function renderActiveFilters\(\)/);
+  assert.match(source, /function appendSessionGroupHeader\(label, count\)/);
+  assert.match(css, /\.active-filter-bar\b/);
+  assert.match(css, /\.filter-chip\b/);
+  assert.match(css, /\.session-group-header\b/);
+});
+
+test("顶部筛选按钮聚焦筛选区而不是切换到统计页", async () => {
+  const source = await readProjectFile("public/app.js");
+
+  assert.match(source, /document\.querySelector\('\.sidebar-tab\[data-sidebar-tab="list"\]'\)/);
+  assert.match(source, /elements\.sourceKindFilter\?\.focus\(\)/);
+  assert.doesNotMatch(source, /document\.querySelector\('\.sidebar-tab\[data-sidebar-tab="stats"\]'\)/);
 });
 
 test("样式包含紧凑工具栏和详情元信息条", async () => {
@@ -106,13 +161,18 @@ test("页面提供 Codex Provider 迁移工具入口", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
   const server = await readProjectFile("server/http-server.js");
+  const apiClient = await readProjectFile("public/api-client.js");
 
   assert.match(html, /data-sidebar-tab="tools"/);
   assert.match(html, /id="codex-migration-preview-btn"/);
   assert.match(html, /id="codex-migration-apply-btn"/);
   assert.match(html, /id="codex-migration-rollback-btn"/);
   assert.match(source, /\/api\/codex-provider-migration\/preview/);
+  assert.match(source, /setMutationToken\(summary\.mutation_token\)/);
+  assert.match(source, /mutation: true/);
+  assert.match(apiClient, /X-Session-Viewer-Token/);
   assert.match(source, /confirmedCodexAppClosed: true/);
   assert.match(server, /\/api\/codex-provider-migration\/apply/);
+  assert.match(server, /assertMutationToken\(request, mutationToken\)/);
   assert.match(server, /runMigration\(\{[\s\S]*apply: true/);
 });

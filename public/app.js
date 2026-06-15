@@ -1,4 +1,5 @@
 import { t, setLang, getLang, updateStaticI18n } from "./i18n.js";
+import { fetchJson as requestJson, setMutationToken } from "./api-client.js";
 
 const PAGE_LIMIT = 50;
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
@@ -14,8 +15,11 @@ const state = {
   searchQuery: "",
   showArchived: false,
   showCodexArchived: false,
+  showAllProjects: false,
   codexMigrationPreview: null,
   currentDetail: null,
+  detailQuery: "",
+  showTools: true,
   filters: {
     provider: "",
     source_kind: "",
@@ -64,12 +68,17 @@ const elements = {
   langToggle: document.querySelector("#lang-toggle"),
   showArchivedToggle: document.querySelector("#show-archived-toggle"),
   showCodexArchivedToggle: document.querySelector("#show-codex-archived-toggle"),
+  projectList: document.querySelector("#project-list"),
+  activeFilterBar: document.querySelector("#active-filter-bar"),
   sessionList: document.querySelector("#session-list"),
   detailEmpty: document.querySelector("#detail-empty"),
   detailView: document.querySelector("#detail-view"),
   detailTitle: document.querySelector("#detail-title"),
   detailTags: document.querySelector("#detail-tags"),
   propsContent: document.querySelector("#props-content"),
+  detailSearchInput: document.querySelector("#detail-search-input"),
+  showToolsToggle: document.querySelector("#show-tools-toggle"),
+  messageNavInlineList: document.querySelector("#message-nav-inline-list"),
   conversationList: document.querySelector("#conversation-list"),
   rawEvents: document.querySelector("#raw-events"),
   conversationTab: document.querySelector("#conversation-tab"),
@@ -144,6 +153,58 @@ function formatTimestamp(value) {
   }).format(date);
 }
 
+function sessionTimestamp(session) {
+  return session.timestamp || session.last_timestamp || "";
+}
+
+function dateKeyFromValue(value) {
+  if (typeof value !== "string" || value.length < 10) {
+    return "";
+  }
+  return value.slice(0, 10);
+}
+
+function localDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateGroup(value) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) {
+    return { key: "unknown", label: t("unknownTime") };
+  }
+
+  const key = dateKeyFromValue(value) || localDateKey(date);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  if (key === localDateKey(today)) {
+    return { key, label: t("today") };
+  }
+  if (key === localDateKey(yesterday)) {
+    return { key, label: t("yesterday") };
+  }
+
+  const locale = getLang() === "zh" ? "zh-CN" : "en";
+  return {
+    key,
+    label: new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)
+  };
+}
+
+function cwdParts(cwd) {
+  if (!cwd) {
+    return { main: t("noCwd"), path: "" };
+  }
+  const parts = String(cwd).split(/[\\/]/).filter(Boolean);
+  const main = parts.at(-1) || cwd;
+  return { main, path: cwd };
+}
+
 function displaySourceLabel(summary) {
   if (isCodexArchivedSession(summary)) {
     return t("codexArchived");
@@ -168,6 +229,83 @@ function fillSelect(select, values) {
   select.value = values.includes(currentValue) ? currentValue : "";
 }
 
+async function setCwdFilter(cwd) {
+  state.filters.cwd = cwd;
+  syncFilterControls();
+  syncUrl();
+  await Promise.all([loadSessions(), loadStats()]);
+}
+
+function renderProjectNav() {
+  if (!elements.projectList) return;
+
+  const projects = state.facets?.projects || [];
+  elements.projectList.innerHTML = "";
+
+  const allButton = document.createElement("button");
+  allButton.className = "project-item";
+  allButton.type = "button";
+  allButton.classList.toggle("active", !state.filters.cwd);
+  const allName = document.createElement("span");
+  allName.className = "project-name";
+  allName.textContent = t("allProjects");
+  const allMeta = document.createElement("span");
+  allMeta.className = "project-meta";
+  allMeta.textContent = t("projectCount", { n: projects.length });
+  allButton.append(allName, allMeta);
+  allButton.addEventListener("click", () => {
+    setCwdFilter("").catch((error) => {
+      console.error(error);
+      showError(`${t("loadListFailed")}: ${error.message}`);
+    });
+  });
+  elements.projectList.append(allButton);
+
+  const visibleProjects = state.showAllProjects ? projects : projects.slice(0, 8);
+  visibleProjects.forEach((project) => {
+    const button = document.createElement("button");
+    button.className = "project-item";
+    button.type = "button";
+    button.classList.toggle("active", state.filters.cwd === project.path);
+    button.title = project.path;
+
+    const name = document.createElement("span");
+    name.className = "project-name";
+    name.textContent = project.name || project.path;
+
+    const meta = document.createElement("span");
+    meta.className = "project-meta";
+    meta.textContent = t("projectSessionCount", { n: project.count });
+
+    const pathEl = document.createElement("span");
+    pathEl.className = "project-path";
+    pathEl.textContent = project.path;
+
+    button.append(name, meta, pathEl);
+    button.addEventListener("click", () => {
+      setCwdFilter(project.path).catch((error) => {
+        console.error(error);
+        showError(`${t("loadListFailed")}: ${error.message}`);
+      });
+    });
+    elements.projectList.append(button);
+  });
+
+  if (projects.length > 8) {
+    const moreButton = document.createElement("button");
+    moreButton.className = "project-item project-more";
+    moreButton.type = "button";
+    moreButton.textContent = state.showAllProjects
+      ? t("showFewerProjects")
+      : t("showMoreProjects", { n: projects.length - 8 });
+    moreButton.addEventListener("click", () => {
+      state.showAllProjects = !state.showAllProjects;
+      renderProjectNav();
+    });
+    elements.projectList.append(moreButton);
+  }
+}
+
 function updateFacetFilters() {
   if (!state.facets) {
     return;
@@ -177,6 +315,7 @@ function updateFacetFilters() {
   fillSelect(elements.providerFilter, state.facets.providers);
   fillSelect(elements.dateFilter, state.facets.dates);
   fillSelect(elements.cwdFilter, state.facets.cwds);
+  renderProjectNav();
 }
 
 function syncSessionRoot() {
@@ -188,16 +327,31 @@ function syncSessionRoot() {
   elements.sessionRoot.textContent = roots.join(", ");
 }
 
+function syncFilterControls() {
+  if (elements.sourceKindFilter) elements.sourceKindFilter.value = state.filters.source_kind;
+  if (elements.providerFilter) elements.providerFilter.value = state.filters.provider;
+  if (elements.dateFilter) elements.dateFilter.value = state.filters.date;
+  if (elements.cwdFilter) elements.cwdFilter.value = state.filters.cwd;
+  if (elements.searchInput) elements.searchInput.value = state.searchQuery;
+  if (elements.showArchivedToggle) elements.showArchivedToggle.checked = state.showArchived;
+  if (elements.showCodexArchivedToggle) {
+    elements.showCodexArchivedToggle.checked = state.showCodexArchived;
+  }
+  renderProjectNav();
+}
+
 function rerenderLocalizedContent() {
   syncSessionRoot();
   updateFacetFilters();
+  syncFilterControls();
   renderSessionList();
   if (state.currentDetail) {
     const fullCwd = state.currentDetail.summary.cwd || t("noWorkDir");
-    elements.detailTitle.textContent = fullCwd.split(/[\\/]/).pop() || fullCwd;
+    elements.detailTitle.textContent =
+      state.currentDetail.summary.title || fullCwd.split(/[\\/]/).pop() || fullCwd;
     elements.detailTitle.title = fullCwd;
     renderDetailTags(state.currentDetail.summary);
-    renderPropsPanel(state.currentDetail.summary);
+    renderPropsPanel(state.currentDetail.summary, state.currentDetail.conversation_messages);
     renderConversation(state.currentDetail.conversation_messages);
     renderRawEvents(state.currentDetail.raw_events);
     updateTabs();
@@ -240,31 +394,162 @@ function buildSearchUrl() {
 }
 
 async function fetchJson(url, options) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(errorBody || t("requestFailed", { status: response.status }));
+  return requestJson(url, options, {
+    formatError: (status) => t("requestFailed", { status })
+  });
+}
+
+function visibleSessions() {
+  const archivedIds = getArchivedIds();
+  return state.sessions.filter((session) => state.showArchived || !archivedIds.has(session._key));
+}
+
+async function clearFilterChip(type) {
+  if (type in state.filters) {
+    state.filters[type] = "";
+  } else if (type === "search") {
+    state.searchQuery = "";
+  } else if (type === "showArchived") {
+    state.showArchived = false;
+    syncFilterControls();
+    renderSessionList();
+    return;
+  } else if (type === "showCodexArchived") {
+    state.showCodexArchived = false;
   }
-  return response.json();
+
+  syncFilterControls();
+  syncUrl();
+
+  if (type === "search") {
+    await loadSessions();
+  } else {
+    await Promise.all([loadSessions(), loadStats()]);
+  }
+}
+
+function activeFilterEntries() {
+  const entries = [];
+  if (state.searchQuery) {
+    entries.push({ type: "search", label: t("filterSearch"), value: state.searchQuery });
+  }
+  if (state.filters.source_kind) {
+    entries.push({ type: "source_kind", label: t("sourceKind"), value: state.filters.source_kind });
+  }
+  if (state.filters.provider) {
+    entries.push({ type: "provider", label: t("provider"), value: state.filters.provider });
+  }
+  if (state.filters.date) {
+    entries.push({ type: "date", label: t("date"), value: state.filters.date });
+  }
+  if (state.filters.cwd) {
+    const { main } = cwdParts(state.filters.cwd);
+    entries.push({ type: "cwd", label: t("cwd"), value: main, title: state.filters.cwd });
+  }
+  if (state.showArchived) {
+    entries.push({ type: "showArchived", label: t("showArchived"), value: t("filterEnabled") });
+  }
+  if (state.showCodexArchived) {
+    entries.push({ type: "showCodexArchived", label: t("showCodexArchived"), value: t("filterEnabled") });
+  }
+  return entries;
+}
+
+function renderActiveFilters() {
+  if (!elements.activeFilterBar) return;
+
+  const entries = activeFilterEntries();
+  elements.activeFilterBar.innerHTML = "";
+  if (!entries.length) {
+    return;
+  }
+
+  const label = document.createElement("span");
+  label.className = "active-filter-label";
+  label.textContent = t("activeFilters");
+  elements.activeFilterBar.append(label);
+
+  entries.forEach((entry) => {
+    const button = document.createElement("button");
+    button.className = "filter-chip";
+    button.type = "button";
+    const clearLabel = t("clearFilter", { label: `${entry.label}: ${entry.value}` });
+    button.title = entry.title ? `${clearLabel} (${entry.title})` : clearLabel;
+    button.setAttribute("aria-label", clearLabel);
+
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "filter-chip-label";
+    labelSpan.textContent = entry.label;
+
+    const valueSpan = document.createElement("span");
+    valueSpan.className = "filter-chip-value";
+    valueSpan.textContent = entry.value;
+
+    const closeSpan = document.createElement("span");
+    closeSpan.className = "filter-chip-close";
+    closeSpan.textContent = "×";
+
+    button.append(labelSpan, valueSpan, closeSpan);
+    button.addEventListener("click", () => {
+      clearFilterChip(entry.type).catch((error) => {
+        console.error(error);
+        showError(`${t("loadListFailed")}: ${error.message}`);
+      });
+    });
+    elements.activeFilterBar.append(button);
+  });
+}
+
+function appendSessionGroupHeader(label, count) {
+  const header = document.createElement("div");
+  header.className = "session-group-header";
+  header.setAttribute("role", "presentation");
+  const title = document.createElement("span");
+  title.textContent = label;
+  const meta = document.createElement("span");
+  meta.textContent = t("groupSessionCount", { n: count });
+  header.append(title, meta);
+  elements.sessionList.append(header);
 }
 
 function appendSessionItems(sessions) {
   const archivedIds = getArchivedIds();
   sessions.forEach((session) => {
     const archived = archivedIds.has(session._key);
-    if (archived && !state.showArchived) return;
 
     const fragment = elements.sessionItemTemplate.content.cloneNode(true);
     const button = fragment.querySelector(".session-item");
     button.dataset.sessionKey = session._key;
     button.setAttribute("role", "option");
     button.setAttribute("aria-selected", session._key === state.selectedSessionKey ? "true" : "false");
-    button.querySelector(".session-time").textContent = formatTimestamp(
-      session.timestamp || session.last_timestamp
-    );
+    const title = session.title || cwdParts(session.cwd).main || session.id;
+    const preview = session.search_snippet
+      ? `${t("searchMatch")}: ${session.search_snippet}`
+      : session.preview_text || "";
+    const titleEl = button.querySelector(".session-title");
+    titleEl.textContent = title;
+    titleEl.title = title;
+    button.querySelector(".session-time").textContent = formatTimestamp(sessionTimestamp(session));
     button.querySelector(".session-provider").textContent = session.model_provider || "unknown";
-    button.querySelector(".session-cwd").textContent = session.cwd || t("noCwd");
+    const pathParts = cwdParts(session.cwd);
+    const cwdMain = button.querySelector(".session-cwd-main");
+    const cwdPath = button.querySelector(".session-cwd-path");
+    cwdMain.textContent = pathParts.main;
+    cwdMain.title = session.cwd || "";
+    if (cwdPath) {
+      cwdPath.textContent = pathParts.path;
+      cwdPath.title = session.cwd || "";
+      cwdPath.classList.toggle("hidden", !pathParts.path);
+    }
+    const previewEl = button.querySelector(".session-preview");
+    previewEl.textContent = preview;
+    previewEl.title = preview;
+    previewEl.classList.toggle("hidden", !preview);
     button.querySelector(".session-events").textContent = t("eventsCount", { n: session.event_count });
+    button.querySelector(".session-messages").textContent = t("messageCount", { n: session.message_count || 0 });
+    const toolsEl = button.querySelector(".session-tools");
+    toolsEl.textContent = t("toolCount", { n: session.tool_count || 0 });
+    toolsEl.classList.toggle("hidden", !session.tool_count);
     button.querySelector(".session-source").textContent = session.source || session.originator || t("unknownSource");
     button.querySelector(".session-source-kind").textContent = displaySourceLabel(session);
     if (session._key === state.selectedSessionKey) {
@@ -325,9 +610,9 @@ function renderLoadMoreButton() {
 
 function renderSessionList() {
   elements.sessionList.innerHTML = "";
+  renderActiveFilters();
 
-  const archivedIds = getArchivedIds();
-  const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s._key));
+  const visible = visibleSessions();
 
   if (!visible.length) {
     const empty = document.createElement("p");
@@ -338,7 +623,22 @@ function renderSessionList() {
     return;
   }
 
-  appendSessionItems(state.sessions);
+  const groupCounts = new Map();
+  visible.forEach((session) => {
+    const group = formatDateGroup(sessionTimestamp(session));
+    groupCounts.set(group.key, (groupCounts.get(group.key) || 0) + 1);
+  });
+
+  let currentGroupKey = "";
+  visible.forEach((session) => {
+    const group = formatDateGroup(sessionTimestamp(session));
+    if (group.key !== currentGroupKey) {
+      currentGroupKey = group.key;
+      appendSessionGroupHeader(group.label, groupCounts.get(group.key) || 0);
+    }
+    appendSessionItems([session]);
+  });
+
   renderLoadMoreButton();
   elements.sessionCount.textContent = String(visible.length);
 }
@@ -378,6 +678,14 @@ function exportSessionMarkdown(detail) {
 function exportSessionJson(detail) {
   const filename = `session-${detail.summary.id.slice(0, 12)}.json`;
   downloadBlob(JSON.stringify(detail, null, 2), filename, "application/json; charset=utf-8");
+}
+
+function compactText(value, maxLength = 90) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return text.slice(0, Math.max(0, maxLength - 3)).trimEnd() + "...";
 }
 
 // ── 详情标签行 ──────────────────────────────────────────────────────────────────
@@ -435,10 +743,12 @@ function renderDetailTags(summary) {
 }
 
 // ── 属性面板 ────────────────────────────────────────────────────────────────────
-function renderPropsPanel(summary) {
+function renderPropsPanel(summary, messages = []) {
   const basic = [
     { label: "Provider", value: summary.model_provider || "unknown" },
-    { label: t("source"), value: displaySourceLabel(summary) || "-" }
+    { label: t("source"), value: displaySourceLabel(summary) || "-" },
+    { label: t("messages"), value: String(summary.message_count || 0) },
+    { label: t("toolCalls"), value: String(summary.tool_count || 0) }
   ];
   const tech = [
     { label: t("sessionId"), value: summary.id, copyable: true },
@@ -486,16 +796,86 @@ function renderPropsPanel(summary) {
   elements.propsContent.innerHTML = "";
   elements.propsContent.append(
     section(t("basicInfo"), basic),
-    section(t("techInfo"), tech)
+    section(t("techInfo"), tech),
+    createMessageNavSection(messages)
   );
+}
+
+function filteredConversationMessages(messages) {
+  const query = state.detailQuery.trim().toLowerCase();
+  return messages
+    .map((message, index) => ({ ...message, _origIdx: index }))
+    .filter((message) => state.showTools || message.role !== "tool")
+    .filter((message) => !state.roleFilter || message.role === state.roleFilter)
+    .filter((message) => !query || String(message.text || "").toLowerCase().includes(query));
+}
+
+function scrollToMessage(index) {
+  const target = document.querySelector(`#message-${index + 1}`);
+  if (!target) return;
+  target.classList.remove("collapsed");
+  const toggle = target.querySelector(".message-toggle");
+  if (toggle) toggle.textContent = "▼";
+  target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function appendMessageNavItems(container, messages) {
+  container.innerHTML = "";
+  if (!messages.length) {
+    const empty = document.createElement("p");
+    empty.className = "props-empty";
+    empty.textContent = t("noMessageNav");
+    container.append(empty);
+    return;
+  }
+
+  messages.forEach((message) => {
+    const button = document.createElement("button");
+    button.className = "message-nav-item";
+    button.type = "button";
+    button.addEventListener("click", () => scrollToMessage(message._origIdx));
+
+    const top = document.createElement("span");
+    top.className = "message-nav-top";
+    top.textContent = `#${message._origIdx + 1} · ${message.tool_kind || message.role}`;
+
+    const text = document.createElement("span");
+    text.className = "message-nav-text";
+    text.textContent = compactText(message.text, 72);
+
+    button.append(top, text);
+    container.append(button);
+  });
+}
+
+function createMessageNavSection(messages) {
+  const wrap = document.createElement("div");
+  wrap.className = "props-section message-nav-section";
+  const h3 = document.createElement("h3");
+  h3.textContent = t("messageNav");
+  const list = document.createElement("div");
+  list.className = "message-nav-list";
+  appendMessageNavItems(list, filteredConversationMessages(messages));
+  wrap.append(h3, list);
+  return wrap;
+}
+
+function renderMessageNavigation(messages) {
+  const filtered = filteredConversationMessages(messages);
+  if (elements.messageNavInlineList) {
+    appendMessageNavItems(elements.messageNavInlineList, filtered);
+  }
+  const propsNavList = elements.propsContent?.querySelector(".message-nav-section .message-nav-list");
+  if (propsNavList) {
+    appendMessageNavItems(propsNavList, filtered);
+  }
 }
 
 function renderConversation(messages) {
   elements.conversationList.innerHTML = "";
 
-  const filtered = state.roleFilter
-    ? messages.map((m, i) => ({ ...m, _origIdx: i })).filter((m) => m.role === state.roleFilter)
-    : messages.map((m, i) => ({ ...m, _origIdx: i }));
+  const filtered = filteredConversationMessages(messages);
+  renderMessageNavigation(messages);
 
   if (!filtered.length) {
     const empty = document.createElement("p");
@@ -508,10 +888,16 @@ function renderConversation(messages) {
   filtered.forEach((message) => {
     const fragment = elements.conversationItemTemplate.content.cloneNode(true);
     const card = fragment.querySelector(".message-card");
+    card.id = `message-${message._origIdx + 1}`;
     card.dataset.role = message.role;
     card.classList.add("collapsed");
     fragment.querySelector(".message-idx").textContent = `#${message._origIdx + 1}`;
     fragment.querySelector(".message-role").textContent = message.role;
+    const toolEl = fragment.querySelector(".message-tool");
+    if (message.tool_kind || message.tool_name) {
+      toolEl.textContent = [message.tool_kind, message.tool_name].filter(Boolean).join(" · ");
+      toolEl.classList.remove("hidden");
+    }
     fragment.querySelector(".message-time").textContent = formatTimestamp(message.timestamp);
     fragment.querySelector(".message-text").textContent = message.text;
 
@@ -638,6 +1024,9 @@ function formatCount(value) {
 
 function renderCodexMigrationPreview(summary) {
   state.codexMigrationPreview = summary;
+  if (summary?.mutation_token) {
+    setMutationToken(summary.mutation_token);
+  }
   if (!summary) {
     resetCodexMigrationMetrics();
     updateCodexMigrationApplyState();
@@ -732,6 +1121,7 @@ async function applyCodexMigration() {
   try {
     const summary = await fetchJson("/api/codex-provider-migration/apply", {
       method: "POST",
+      mutation: true,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirmedCodexAppClosed: true })
     });
@@ -745,6 +1135,7 @@ async function applyCodexMigration() {
         : t("migrationApplied"),
       "ok"
     );
+    await loadFacets();
     await Promise.all([loadSessions(), loadStats()]);
   } catch (error) {
     console.error(error);
@@ -771,12 +1162,14 @@ async function rollbackCodexMigration() {
   try {
     const result = await fetchJson("/api/codex-provider-migration/rollback", {
       method: "POST",
+      mutation: true,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ backupDir, confirmedCodexAppClosed: true })
     });
     if (elements.codexMigrationConfirm) {
       elements.codexMigrationConfirm.checked = false;
     }
+    await loadFacets();
     await Promise.all([loadSessions(), loadStats()]);
     await loadCodexMigrationPreview();
     setCodexMigrationStatus(
@@ -799,16 +1192,23 @@ async function loadSessionDetail(id) {
     const detail = await fetchJson(`/api/sessions/${encodeURIComponent(id)}`);
     state.currentDetail = detail;
     state.roleFilter = "";
+    state.detailQuery = "";
+    if (elements.detailSearchInput) {
+      elements.detailSearchInput.value = "";
+    }
+    if (elements.showToolsToggle) {
+      elements.showToolsToggle.checked = state.showTools;
+    }
     document.querySelectorAll("#role-filter .role-filter-btn").forEach((b) => {
       b.classList.toggle("active", b.dataset.role === "");
     });
     elements.detailEmpty.classList.add("hidden");
     elements.detailView.classList.remove("hidden");
     const fullCwd = detail.summary.cwd || t("noWorkDir");
-    elements.detailTitle.textContent = fullCwd.split(/[\\/]/).pop() || fullCwd;
+    elements.detailTitle.textContent = detail.summary.title || fullCwd.split(/[\\/]/).pop() || fullCwd;
     elements.detailTitle.title = fullCwd;
     renderDetailTags(detail.summary);
-    renderPropsPanel(detail.summary);
+    renderPropsPanel(detail.summary, detail.conversation_messages);
     renderConversation(detail.conversation_messages);
     renderRawEvents(detail.raw_events);
     updateTabs();
@@ -837,15 +1237,14 @@ async function loadSessions() {
     }
     syncSessionRoot();
 
-    if (state.selectedSessionKey && !state.sessions.find((session) => session._key === state.selectedSessionKey)) {
+    if (state.selectedSessionKey && !visibleSessions().find((session) => session._key === state.selectedSessionKey)) {
       state.selectedSessionKey = null;
     }
 
     renderSessionList();
 
     if (!state._initialized && !state.selectedSessionKey && state.sessions[0]) {
-      const archivedIds = getArchivedIds();
-      const first = state.sessions.find((s) => !archivedIds.has(s._key)) || state.sessions[0];
+      const first = visibleSessions()[0] || state.sessions[0];
       state.selectedSessionKey = first._key;
     }
 
@@ -871,15 +1270,7 @@ async function loadMoreSessions() {
     state.sessions = state.sessions.concat(data.sessions);
     state.hasMore = data.has_more;
     state.nextCursor = data.next_cursor;
-
-    const loadMoreBtn = elements.sessionList.querySelector(".load-more-btn");
-    if (loadMoreBtn) loadMoreBtn.remove();
-
-    appendSessionItems(data.sessions);
-    renderLoadMoreButton();
-    const archivedIds = getArchivedIds();
-    const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s._key));
-    elements.sessionCount.textContent = String(visible.length);
+    renderSessionList();
   } catch (error) {
     console.error(error);
     showError(`${t("loadMoreFailed")}: ${error.message}`);
@@ -912,7 +1303,7 @@ function renderStats(stats) {
   const dashboard = elements.statsDashboard;
   if (!dashboard) return;
 
-  // metrics: compute from backend fields, fallback to by_date/by_provider sums for compatibility
+  // 指标卡片：优先使用后端字段，旧数据结构则回退到分组统计。
   const metrics = elements.statsMetrics;
   if (metrics) {
     metrics.innerHTML = "";
@@ -950,7 +1341,7 @@ function renderStats(stats) {
     });
   }
 
-  // trend chart
+  // 趋势图。
   const trendBody = document.querySelector("#trend-chart-body");
   if (trendBody) {
     trendBody.innerHTML = "";
@@ -988,14 +1379,14 @@ function renderStats(stats) {
     }
   }
 
-  // donut chart
+  // Provider 分布图。
   const donutBody = document.querySelector("#donut-chart-body");
   if (donutBody) {
     donutBody.innerHTML = "";
     const items = (stats.by_provider || []).slice(0, 6);
     if (items.length) {
       const total = items.reduce((s, i) => s + i.count, 0);
-      const colors = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+      const colors = ["#0f766e", "#2563eb", "#a15c07", "#b42318", "#16794f", "#7c3aed"];
       let acc = 0;
       const stops = items.map((item, idx) => {
         const pct = (item.count / total) * 100;
@@ -1039,7 +1430,7 @@ function renderStats(stats) {
     }
   }
 
-  // grid charts
+  // 分组排行。
   const grid = elements.statsGrid;
   if (grid) {
     grid.innerHTML = "";
@@ -1077,24 +1468,20 @@ async function loadStats() {
     const stats = await fetchJson(url);
     state.stats = stats;
     renderStats(stats);
-  } catch { /* silently ignore stats loading errors */ }
+  } catch { /* 统计加载失败不阻断主流程。 */ }
+}
+
+async function loadFacets() {
+  state.facets = await fetchJson("/api/facets");
+  syncSessionRoot();
+  updateFacetFilters();
+  syncFilterControls();
 }
 
 async function initialize() {
   restoreFromUrl();
 
-  state.facets = await fetchJson("/api/facets");
-  syncSessionRoot();
-  updateFacetFilters();
-
-  if (state.filters.source_kind) elements.sourceKindFilter.value = state.filters.source_kind;
-  if (state.filters.provider) elements.providerFilter.value = state.filters.provider;
-  if (state.filters.date) elements.dateFilter.value = state.filters.date;
-  if (state.filters.cwd) elements.cwdFilter.value = state.filters.cwd;
-  if (state.searchQuery) elements.searchInput.value = state.searchQuery;
-  if (elements.showCodexArchivedToggle) {
-    elements.showCodexArchivedToggle.checked = state.showCodexArchived;
-  }
+  await loadFacets();
   resetCodexMigrationMetrics();
 
   await loadStats();
@@ -1118,21 +1505,15 @@ async function initialize() {
   });
 
   elements.cwdFilter?.addEventListener("change", async (event) => {
-    state.filters.cwd = event.target.value;
-    syncUrl();
-    await Promise.all([loadSessions(), loadStats()]);
+    await setCwdFilter(event.target.value);
   });
 
   elements.resetFilters?.addEventListener("click", async () => {
     state.filters = { provider: "", source_kind: "", date: "", cwd: "" };
     state.searchQuery = "";
+    state.showArchived = false;
     state.showCodexArchived = false;
-    if (elements.sourceKindFilter) elements.sourceKindFilter.value = "";
-    if (elements.providerFilter) elements.providerFilter.value = "";
-    if (elements.dateFilter) elements.dateFilter.value = "";
-    if (elements.cwdFilter) elements.cwdFilter.value = "";
-    if (elements.searchInput) elements.searchInput.value = "";
-    if (elements.showCodexArchivedToggle) elements.showCodexArchivedToggle.checked = false;
+    syncFilterControls();
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
   });
@@ -1143,6 +1524,7 @@ async function initialize() {
       elements.refreshBtn.textContent = t("refreshing");
       try {
         await fetchJson("/api/refresh");
+        await loadFacets();
         await Promise.all([loadSessions(), loadStats()]);
       } catch (error) {
         showError(`${t("refreshFailed")}: ${error.message}`);
@@ -1213,8 +1595,10 @@ async function initialize() {
   const filterToggle = document.querySelector("#filter-toggle");
   if (filterToggle) {
     filterToggle.addEventListener("click", () => {
-      const tab = document.querySelector('.sidebar-tab[data-sidebar-tab="stats"]');
+      const tab = document.querySelector('.sidebar-tab[data-sidebar-tab="list"]');
       if (tab && !tab.classList.contains("active")) tab.click();
+      document.querySelector(".sidebar-filters")?.scrollIntoView({ block: "nearest" });
+      elements.sourceKindFilter?.focus();
     });
   }
 
@@ -1286,6 +1670,20 @@ async function initialize() {
     });
   }
 
+  elements.detailSearchInput?.addEventListener("input", (event) => {
+    state.detailQuery = event.target.value.trim();
+    if (state.currentDetail) {
+      renderConversation(state.currentDetail.conversation_messages || []);
+    }
+  });
+
+  elements.showToolsToggle?.addEventListener("change", () => {
+    state.showTools = elements.showToolsToggle.checked;
+    if (state.currentDetail) {
+      renderConversation(state.currentDetail.conversation_messages || []);
+    }
+  });
+
   await loadSessions();
   state._initialized = true;
 
@@ -1304,9 +1702,8 @@ async function initialize() {
           return tb - ta;
         });
         renderSessionList();
-        const archivedIds = getArchivedIds();
-        const visible = state.sessions.filter((s) => state.showArchived || !archivedIds.has(s._key));
-        elements.sessionCount.textContent = String(visible.length);
+        elements.sessionCount.textContent = String(visibleSessions().length);
+        loadFacets().catch((error) => console.error(error));
 
         const ariaLive = document.querySelector("#aria-live");
         if (ariaLive) {
@@ -1314,7 +1711,7 @@ async function initialize() {
           setTimeout(() => { ariaLive.textContent = ""; }, 3000);
         }
       }
-    } catch { /* ignore parse errors */ }
+    } catch { /* 忽略事件数据解析失败。 */ }
   });
 
   eventSource.addEventListener("session-updated", (e) => {
@@ -1345,7 +1742,8 @@ async function initialize() {
         loadSessionDetail(key);
       }
       renderSessionList();
-    } catch { /* ignore parse errors */ }
+      loadFacets().catch((error) => console.error(error));
+    } catch { /* 忽略事件数据解析失败。 */ }
   });
 
   eventSource.addEventListener("session-deleted", (e) => {
@@ -1360,10 +1758,11 @@ async function initialize() {
         elements.detailEmpty.classList.remove("hidden");
       }
       renderSessionList();
-    } catch { /* ignore parse errors */ }
+      loadFacets().catch((error) => console.error(error));
+    } catch { /* 忽略事件数据解析失败。 */ }
   });
 
-  // role filter
+  // 角色过滤。
   document.querySelectorAll("#role-filter .role-filter-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#role-filter .role-filter-btn").forEach((b) => b.classList.remove("active"));
@@ -1378,5 +1777,9 @@ async function initialize() {
 
 initialize().catch((error) => {
   console.error(error);
-  elements.sessionList.innerHTML = `<p class="hero-copy">${t("loadListFailed")}: ${error.message}</p>`;
+  elements.sessionList.innerHTML = "";
+  const message = document.createElement("p");
+  message.className = "hero-copy";
+  message.textContent = `${t("loadListFailed")}: ${error.message}`;
+  elements.sessionList.append(message);
 });

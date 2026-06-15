@@ -54,6 +54,7 @@
 
 - 浏览多个来源的本地会话列表（Codex、Claude Code、Gemini CLI）
 - 按来源类型、provider、日期、工作目录筛选
+- 搜索会话正文、项目路径、provider、来源名称和派生标题
 - 查看单个会话详情
 - 在「对话视图」和「原始事件流」之间切换
 - 中英文语言切换
@@ -138,6 +139,7 @@ pnpm codex:provider-migration -- --rollback /path/to/backup-dir
 - 对历史格式差异较大的旧会话，只保证原始事件流可见
 - 对加密字段只展示占位或原样结构，不尝试解密
 - 启动时会全量扫描会话并缓存摘要；详情页按需读取单文件
+- Provider 迁移接口需要本地页面 token，并拒绝跨来源写入请求
 
 ## 路线图
 
@@ -152,8 +154,11 @@ pnpm codex:provider-migration -- --rollback /path/to/backup-dir
 # 运行测试
 pnpm test
 
-# 代码检查与自动修复
+# 代码检查
 pnpm lint
+
+# 代码检查与自动修复
+pnpm lint:fix
 
 # 格式化
 pnpm format

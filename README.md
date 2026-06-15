@@ -29,14 +29,14 @@ Browse, filter, search, and inspect local AI sessions in a compact browser UI wi
 > A local AI session viewer with a current Codex-first implementation.
 >
 > **Current status**
-> Codex and Claude Code are supported today. Additional sources may be added in future releases.
+> Codex, Codex Archived, Claude Code, and Gemini CLI are supported today. Additional sources may be added in future releases.
 >
 > **Direction**
 > Evolve toward a unified local viewer for multiple AI coding assistant histories.
 
 ## Current Scope
 
-- Current implementation: Codex and Claude Code session parsing and viewing
+- Current implementation: Codex, Codex Archived, Claude Code, and Gemini CLI session parsing and viewing
 - Unified multi-source aggregation in a single interface
 - Planned direction: support for additional session sources
 
@@ -54,6 +54,7 @@ Browse, filter, search, and inspect local AI sessions in a compact browser UI wi
 
 - Browse local session list from multiple sources (Codex, Claude Code, Gemini CLI)
 - Filter by source kind, provider, date, and working directory
+- Search session content, project paths, provider names, source names, and derived titles
 - View individual session details
 - Switch between "Conversation" and "Raw Events" views
 - Chinese-English language switching
@@ -110,6 +111,7 @@ PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 - Legacy sessions with incompatible formats fall back to raw event view
 - Encrypted fields are shown as-is without decryption
 - Scans all sessions on startup and caches summaries; details are read on demand
+- Provider migration endpoints require the local page's mutation token and reject cross-origin mutation requests
 
 ## Roadmap
 
@@ -123,8 +125,11 @@ PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 # Run tests
 pnpm test
 
-# Lint and auto-fix
+# Lint
 pnpm lint
+
+# Lint and auto-fix
+pnpm lint:fix
 
 # Format code
 pnpm format

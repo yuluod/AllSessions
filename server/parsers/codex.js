@@ -2,6 +2,7 @@ import {
   compareSummariesDesc,
   createRawEventFromRecord,
   fallbackSessionId,
+  finalizeSessionSummary,
   pushConversationMessage,
   textFromMessageContent
 } from "./common.js";
@@ -16,6 +17,7 @@ export function parseCodexContent(content, filePath) {
   let metaRecord = null;
   let firstTimestamp = null;
   let lastTimestamp = null;
+  const toolCallNamesById = new Map();
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
@@ -62,7 +64,46 @@ export function parseCodexContent(content, filePath) {
           text,
           timestamp: rawEvent.timestamp,
           sourceType: record.type,
-          sourceSubtype: record.payload.type
+            sourceSubtype: record.payload.type
+          });
+      } else if (record.payload.type === "function_call") {
+        const toolName = record.payload.name || record.payload.tool_name || "unknown_tool";
+        const toolCallId = record.payload.call_id || record.payload.id || "";
+        if (toolCallId) {
+          toolCallNamesById.set(toolCallId, toolName);
+        }
+        const toolArgs = typeof record.payload.arguments === "string"
+          ? record.payload.arguments
+          : JSON.stringify(record.payload.arguments ?? record.payload.input ?? {});
+        pushConversationMessage(conversationMessages, {
+          role: "tool",
+          text: `[${toolName}] ${toolArgs}`,
+          timestamp: rawEvent.timestamp,
+          sourceType: record.type,
+          sourceSubtype: record.payload.type,
+          toolName,
+          toolKind: "tool_call",
+          toolCallId
+        });
+      } else if (record.payload.type === "function_call_output") {
+        const toolCallId = record.payload.call_id || record.payload.id || "";
+        const toolName = record.payload.tool_name ||
+          record.payload.name ||
+          (toolCallId && toolCallNamesById.get(toolCallId)) ||
+          toolCallId ||
+          "tool_result";
+        const output = typeof record.payload.output === "string"
+          ? record.payload.output
+          : JSON.stringify(record.payload.output ?? record.payload.content ?? {});
+        pushConversationMessage(conversationMessages, {
+          role: "tool",
+          text: output,
+          timestamp: rawEvent.timestamp,
+          sourceType: record.type,
+          sourceSubtype: record.payload.type,
+          toolName,
+          toolKind: "tool_result",
+          toolCallId
         });
       }
       return;
@@ -87,6 +128,10 @@ export function parseCodexContent(content, filePath) {
         });
       } else if (record.payload.type === "tool_call") {
         const toolName = record.payload.tool_name || record.payload.name || "unknown_tool";
+        const toolCallId = record.payload.call_id || record.payload.id || "";
+        if (toolCallId) {
+          toolCallNamesById.set(toolCallId, toolName);
+        }
         const toolArgs = typeof record.payload.arguments === "string"
           ? record.payload.arguments
           : JSON.stringify(record.payload.arguments ?? record.payload.input ?? {});
@@ -95,9 +140,19 @@ export function parseCodexContent(content, filePath) {
           text: `[${toolName}] ${toolArgs}`,
           timestamp: rawEvent.timestamp,
           sourceType: record.type,
-          sourceSubtype: record.payload.type
+          sourceSubtype: record.payload.type,
+          toolName,
+          toolKind: record.payload.type,
+          toolCallId
         });
       } else if (record.payload.type === "tool_result") {
+        const toolCallId = record.payload.call_id || record.payload.id || "";
+        const toolName =
+          record.payload.tool_name ||
+          record.payload.name ||
+          (toolCallId && toolCallNamesById.get(toolCallId)) ||
+          toolCallId ||
+          "tool_result";
         const output = typeof record.payload.output === "string"
           ? record.payload.output
           : JSON.stringify(record.payload.output ?? record.payload.content ?? {});
@@ -106,7 +161,10 @@ export function parseCodexContent(content, filePath) {
           text: output,
           timestamp: rawEvent.timestamp,
           sourceType: record.type,
-          sourceSubtype: record.payload.type
+          sourceSubtype: record.payload.type,
+          toolName,
+          toolKind: record.payload.type,
+          toolCallId
         });
       } else if (record.payload.type === "error") {
         const errorMsg = record.payload.message || record.payload.error || JSON.stringify(record.payload);
@@ -142,6 +200,7 @@ export function parseCodexContent(content, filePath) {
     event_count: rawEvents.length,
     last_timestamp: lastTimestamp || summaryTimestamp || null
   };
+  finalizeSessionSummary(summary, conversationMessages);
 
   return {
     summary,

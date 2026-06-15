@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import fss from "node:fs";
 import path from "node:path";
 
-import { compareSummariesDesc, parseFile, parseGeminiSessions } from "./parsers/index.js";
+import { compareSummariesDesc, parseFile, parseGeminiSessions, sortTimestampValue } from "./parsers/index.js";
+import { SessionSearchIndex } from "./session-index.js";
 
 const DEBOUNCE_MS = 500;
 
@@ -72,6 +73,13 @@ function dateKeyFromTimestamp(timestamp) {
   return timestamp.slice(0, 10);
 }
 
+function projectNameFromCwd(cwd) {
+  if (!cwd || typeof cwd !== "string") {
+    return "";
+  }
+  return path.basename(cwd) || cwd;
+}
+
 function matchesFilter(summary, filters) {
   const showCodexArchived =
     filters.show_codex_archived === true ||
@@ -97,15 +105,6 @@ function matchesFilter(summary, filters) {
 }
 
 const LRU_MAX = 50;
-const MIN_WORD_LENGTH = 2;
-
-function tokenize(text) {
-  if (!text) return [];
-  return String(text)
-    .toLowerCase()
-    .split(/[^a-zA-Z0-9\u4e00-\u9fff]+/)
-    .filter((w) => w.length >= MIN_WORD_LENGTH);
-}
 
 async function parseFileSafely(filePath, sourceKind) {
   try {
@@ -130,8 +129,7 @@ export class SessionStore {
     this._debounceTimer = null;
     this._pendingChanges = new Set();
     this._onChangeCallbacks = [];
-    this._searchIndex = new Map();
-    this._sessionTexts = new Map();
+    this._searchIndex = new SessionSearchIndex();
   }
 
   async initialize() {
@@ -140,7 +138,6 @@ export class SessionStore {
     this.summaryById.clear();
     this._filePathToKey.clear();
     this._searchIndex.clear();
-    this._sessionTexts.clear();
 
     for (const source of this.sources) {
       if (source.kind === "gemini") {
@@ -178,14 +175,14 @@ export class SessionStore {
     }
     this.summaryById.get(summary.id).add(key);
     this._filePathToKey.set(summary.file_path, key);
-    this._indexSessionText(key, detail.conversation_messages);
+    this._indexSession(summary, detail.conversation_messages);
     return summary;
   }
 
   async _reloadGeminiSource(source) {
     const previousKeys = new Set(
       this.summaries
-        .filter((summary) => summary.source_kind === "gemini" && summary.file_path.startsWith(source.rootDir))
+        .filter((summary) => summary.source_kind === "gemini" && isWithinRoot(summary.file_path, source.rootDir))
         .map((summary) => summary._key)
     );
 
@@ -213,34 +210,12 @@ export class SessionStore {
     }
   }
 
-  _indexSessionText(key, messages) {
-    const allText = messages.map((m) => m.text).join(" ");
-    this._sessionTexts.set(key, allText);
-    const tokens = tokenize(allText);
-    const uniqueTokens = new Set(tokens);
-    for (const token of uniqueTokens) {
-      if (!this._searchIndex.has(token)) {
-        this._searchIndex.set(token, new Set());
-      }
-      this._searchIndex.get(token).add(key);
-    }
+  _indexSession(summary, messages) {
+    this._searchIndex.add(summary._key, summary, messages);
   }
 
   _unindexSessionText(key) {
-    const text = this._sessionTexts.get(key);
-    if (!text) return;
-    const tokens = tokenize(text);
-    const uniqueTokens = new Set(tokens);
-    for (const token of uniqueTokens) {
-      const ids = this._searchIndex.get(token);
-      if (ids) {
-        ids.delete(key);
-        if (ids.size === 0) {
-          this._searchIndex.delete(token);
-        }
-      }
-    }
-    this._sessionTexts.delete(key);
+    this._searchIndex.delete(key);
   }
 
   _removeSession(key) {
@@ -265,34 +240,12 @@ export class SessionStore {
     if (!query || typeof query !== "string") {
       return [];
     }
-    const tokens = tokenize(query);
-    if (tokens.length === 0) {
-      return [];
-    }
-
-    let resultSets = tokens.map((token) => {
-      const matched = new Set();
-      const exact = this._searchIndex.get(token);
-      if (exact) {
-        for (const key of exact) matched.add(key);
-      }
-      for (const [indexWord, keys] of this._searchIndex) {
-        if (indexWord !== token && indexWord.startsWith(token)) {
-          for (const key of keys) matched.add(key);
-        }
-      }
-      return matched;
-    });
-
-    let intersection = resultSets[0];
-    for (let i = 1; i < resultSets.length; i++) {
-      intersection = new Set([...intersection].filter((key) => resultSets[i].has(key)));
-    }
-
     const summaries = [];
-    for (const key of intersection) {
-      const summary = this.summaryByKey.get(key);
-      if (summary && matchesFilter(summary, filters)) summaries.push(summary);
+    for (const result of this._searchIndex.search(query)) {
+      const summary = this.summaryByKey.get(result.key);
+      if (summary && matchesFilter(summary, filters)) {
+        summaries.push(result.snippet ? { ...summary, search_snippet: result.snippet } : summary);
+      }
     }
 
     return summaries.sort(compareSummariesDesc);
@@ -320,6 +273,7 @@ export class SessionStore {
     const sourceKinds = new Set();
     const dates = new Set();
     const cwds = new Set();
+    const projectsByCwd = new Map();
 
     this.summaries.forEach((summary) => {
       if (summary.model_provider) {
@@ -334,14 +288,51 @@ export class SessionStore {
       }
       if (summary.cwd) {
         cwds.add(summary.cwd);
+        if (!projectsByCwd.has(summary.cwd)) {
+          projectsByCwd.set(summary.cwd, {
+            name: projectNameFromCwd(summary.cwd),
+            path: summary.cwd,
+            count: 0,
+            last_timestamp: null,
+            providers: new Set(),
+            source_kinds: new Set()
+          });
+        }
+        const project = projectsByCwd.get(summary.cwd);
+        project.count += 1;
+        const timestamp = summary.last_timestamp || summary.timestamp || null;
+        if (sortTimestampValue(timestamp) > sortTimestampValue(project.last_timestamp)) {
+          project.last_timestamp = timestamp;
+        }
+        if (summary.model_provider) {
+          project.providers.add(summary.model_provider);
+        }
+        if (summary.source_kind) {
+          project.source_kinds.add(summary.source_kind);
+        }
       }
     });
+
+    const projects = Array.from(projectsByCwd.values())
+      .map((project) => ({
+        name: project.name,
+        path: project.path,
+        count: project.count,
+        last_timestamp: project.last_timestamp,
+        providers: Array.from(project.providers).sort(),
+        source_kinds: Array.from(project.source_kinds).sort()
+      }))
+      .sort((left, right) => {
+        const byTime = sortTimestampValue(right.last_timestamp) - sortTimestampValue(left.last_timestamp);
+        return byTime || left.name.localeCompare(right.name);
+      });
 
     return {
       providers: Array.from(providers).sort(),
       source_kinds: Array.from(sourceKinds).sort(),
       dates: Array.from(dates).sort().reverse(),
-      cwds: Array.from(cwds).sort()
+      cwds: Array.from(cwds).sort(),
+      projects
     };
   }
 
@@ -436,7 +427,7 @@ export class SessionStore {
     this._onChangeCallbacks.forEach((cb) => cb(event));
   }
 
-  _watchDir(dir, source) {
+  _watchDir(dir, source, depth = 0) {
     if (this._watchedDirs.has(dir)) return;
     try {
       const watcher = fss.watch(dir, (eventType, filename) => {
@@ -450,9 +441,10 @@ export class SessionStore {
           return;
         }
         try {
-          const stat = fss.statSync(fullPath);
+          const stat = fss.lstatSync(fullPath);
+          if (stat.isSymbolicLink()) return;
           if (stat.isDirectory()) {
-            this._watchRecursive(fullPath, source);
+            this._watchRecursive(fullPath, source, depth + 1);
           }
         } catch { /* ignore */ }
       });
@@ -466,8 +458,12 @@ export class SessionStore {
     }
   }
 
-  async _watchRecursive(rootDir, source) {
-    this._watchDir(rootDir, source);
+  async _watchRecursive(rootDir, source, depth = 0) {
+    if (depth > MAX_COLLECT_DEPTH) {
+      console.warn(`watch: max depth ${MAX_COLLECT_DEPTH} reached at ${rootDir}, skipping deeper entries`);
+      return;
+    }
+    this._watchDir(rootDir, source, depth);
     let entries = [];
     try {
       entries = await fs.readdir(rootDir, { withFileTypes: true });
@@ -476,7 +472,7 @@ export class SessionStore {
     }
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        await this._watchRecursive(path.join(rootDir, entry.name), source);
+        await this._watchRecursive(path.join(rootDir, entry.name), source, depth + 1);
       }
     }
   }
@@ -523,20 +519,20 @@ export class SessionStore {
             this._removeSession(existingKey);
             this.summaries.push(summary);
             this.summaries.sort(compareSummariesDesc);
-            this._indexSessionText(summary._key, detail.conversation_messages);
+            this._indexSession(summary, detail.conversation_messages);
             this._notifyChange({ type: "session-added", summary });
           } else {
             this._unindexSessionText(existingKey);
             this.summaries[existingIndex] = summary;
             this.summaries.sort(compareSummariesDesc);
             this._detailCache.delete(existingKey);
-            this._indexSessionText(existingKey, detail.conversation_messages);
+            this._indexSession(summary, detail.conversation_messages);
             this._notifyChange({ type: "session-updated", summary });
           }
         } else {
           this.summaries.push(summary);
           this.summaries.sort(compareSummariesDesc);
-          this._indexSessionText(summary._key, detail.conversation_messages);
+          this._indexSession(summary, detail.conversation_messages);
           this._notifyChange({ type: "session-added", summary });
         }
         this.summaryByKey.set(summary._key, summary);

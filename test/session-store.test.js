@@ -33,6 +33,11 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
         originator: "desktop",
         model_provider: "newapi"
       }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T09:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "项目 A 的问题" }
     })
   ].join("\n");
 
@@ -48,6 +53,11 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
         originator: "desktop",
         model_provider: "right_code"
       }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-20T08:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "项目 B 的问题" }
     })
   ].join("\n");
 
@@ -69,6 +79,15 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
   assert.deepEqual(facets.providers, ["newapi", "right_code"]);
   assert.deepEqual(facets.dates, ["2026-04-21", "2026-04-20"]);
   assert.deepEqual(facets.cwds, ["/tmp/a", "/tmp/b"]);
+  assert.equal(facets.projects.length, 2);
+  assert.deepEqual(facets.projects[0], {
+    name: "a",
+    path: "/tmp/a",
+    count: 1,
+    last_timestamp: "2026-04-21T09:00:01.000Z",
+    providers: ["newapi"],
+    source_kinds: ["codex"]
+  });
 
   const detail = await store.getSessionDetail("s-1");
   assert.equal(detail.summary.id, "s-1");
@@ -232,6 +251,18 @@ test("搜索结果会继续遵守筛选条件", async (t) => {
   const filtered = store.search("共享搜索词", { provider: "openai", cwd: "/tmp/search-a" });
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "search-1");
+
+  const pathMatch = store.search("search-a");
+  assert.equal(pathMatch.length, 1);
+  assert.equal(pathMatch[0].id, "search-1");
+  assert.match(pathMatch[0].search_snippet, /search-a/);
+
+  const providerMatch = store.search("anthropic");
+  assert.equal(providerMatch.length, 1);
+  assert.equal(providerMatch[0].id, "search-2");
+
+  const singleChineseToken = store.search("共");
+  assert.equal(singleChineseToken.length, 2);
 });
 
 test("Codex 归档会话默认隐藏，开启 show_codex_archived 后可见", async (t) => {

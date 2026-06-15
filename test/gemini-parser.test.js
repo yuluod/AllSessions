@@ -36,8 +36,30 @@ test("parseGeminiSessions 解析单 session 用户消息", async (t) => {
   assert.equal(sessions[0].summary.id, "sess-1");
   assert.equal(sessions[0].summary.source_kind, "gemini");
   assert.equal(sessions[0].summary.model_provider, "google");
+  assert.equal(sessions[0].summary.cwd, "");
   assert.equal(sessions[0].conversation_messages[0].role, "user");
   assert.equal(sessions[0].conversation_messages[0].text, "你好");
+});
+
+test("parseGeminiSessions 优先使用日志中的 cwd 元数据", async (t) => {
+  const rootDir = await createTempDir();
+  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+
+  await writeLogsJson(rootDir, [
+    {
+      sessionId: "sess-cwd",
+      messageId: 1,
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "user",
+      cwd: "/tmp/gemini-project",
+      message: "带 cwd 的 Gemini 消息"
+    }
+  ]);
+
+  const sessions = await parseGeminiSessions(rootDir);
+
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].summary.cwd, "/tmp/gemini-project");
 });
 
 test("parseGeminiSessions 解析助手消息（model 类型）", async (t) => {

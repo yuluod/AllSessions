@@ -84,6 +84,12 @@
           </div>
 
           <div class="sidebar-body" data-sidebar-panel="list">
+            <section class="project-nav" aria-labelledby="project-nav-title">
+              <div class="project-nav-header">
+                <h2 id="project-nav-title" data-i18n="projects">项目</h2>
+              </div>
+              <div id="project-list" class="project-list"></div>
+            </section>
             <label class="archive-toggle-label">
               <input id="show-archived-toggle" type="checkbox" />
               <span data-i18n="showArchived">显示已归档会话</span>
@@ -93,6 +99,7 @@
               <span data-i18n="showCodexArchived">显示 Codex 归档会话</span>
             </label>
             <div class="session-list-shell">
+              <div id="active-filter-bar" class="active-filter-bar" aria-live="polite"></div>
               <div class="session-list-header">
                 <span data-i18n="sortDesc">按时间倒序</span>
                 <span class="session-list-hint" data-i18n="listHint">选择一条会话查看详情</span>
@@ -140,12 +147,25 @@
 
               <div class="detail-body">
                 <section id="conversation-tab" class="detail-tab" role="tabpanel">
-                  <div class="role-filter" id="role-filter">
-                    <button class="role-filter-btn active" data-role="" type="button" data-i18n="all">全部</button>
-                    <button class="role-filter-btn" data-role="user" type="button" data-i18n="roleUser">用户</button>
-                    <button class="role-filter-btn" data-role="assistant" type="button" data-i18n="roleAssistant">助手</button>
-                    <button class="role-filter-btn" data-role="developer" type="button" data-i18n="roleDeveloper">开发者</button>
+                  <div class="conversation-toolbar">
+                    <div class="role-filter" id="role-filter">
+                      <button class="role-filter-btn active" data-role="" type="button" data-i18n="all">全部</button>
+                      <button class="role-filter-btn" data-role="user" type="button" data-i18n="roleUser">用户</button>
+                      <button class="role-filter-btn" data-role="assistant" type="button" data-i18n="roleAssistant">助手</button>
+                      <button class="role-filter-btn" data-role="developer" type="button" data-i18n="roleDeveloper">开发者</button>
+                    </div>
+                    <div class="detail-search-box">
+                      <input id="detail-search-input" type="search" placeholder="搜索当前会话..." data-i18n-placeholder="detailSearchPlaceholder" />
+                    </div>
+                    <label class="tool-toggle-label">
+                      <input id="show-tools-toggle" type="checkbox" checked />
+                      <span data-i18n="showToolMessages">显示工具调用</span>
+                    </label>
                   </div>
+                  <details id="message-nav-inline" class="message-nav-inline">
+                    <summary data-i18n="messageNav">消息导航</summary>
+                    <div id="message-nav-inline-list" class="message-nav-list"></div>
+                  </details>
                   <div id="conversation-list" class="conversation-list"></div>
                 </section>
 
@@ -242,14 +262,19 @@
     <template id="session-item-template">
       <button class="session-item" type="button">
         <div class="session-primary">
+          <strong class="session-title"></strong>
           <span class="session-time"></span>
-          <strong class="session-provider"></strong>
         </div>
         <div class="session-secondary">
-          <span class="session-cwd"></span>
+          <span class="session-preview"></span>
+          <span class="session-cwd session-cwd-main"></span>
+          <span class="session-cwd-path"></span>
         </div>
         <div class="session-tertiary">
+          <strong class="session-provider"></strong>
           <span class="session-events"></span>
+          <span class="session-messages"></span>
+          <span class="session-tools"></span>
           <span class="session-source"></span>
           <span class="session-source-kind"></span>
         </div>
@@ -262,6 +287,7 @@
           <button class="message-toggle" type="button" title="折叠/展开">▶</button>
           <span class="message-idx"></span>
           <span class="message-role"></span>
+          <span class="message-tool hidden"></span>
           <time class="message-time"></time>
         </header>
         <pre class="message-text"></pre>

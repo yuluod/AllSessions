@@ -8,12 +8,14 @@
   "keywords": ["ai", "codex", "session", "viewer", "local", "cli", "claude"],
   "scripts": {
     "start": "node server/index.js",
+    "start:maintenance": "node server/index.js --enable-codex-maintenance",
     "dev": "node server/index.js",
     "test": "node --test",
     "lint": "eslint server public test scripts",
     "lint:fix": "eslint server public test scripts --fix",
     "format": "prettier --write .",
     "build": "vite build",
+    "codex:provider-repair": "node scripts/migrate-codex-provider-to-custom.mjs",
     "codex:provider-migration": "node scripts/migrate-codex-provider-to-custom.mjs"
   },
   "devDependencies": {

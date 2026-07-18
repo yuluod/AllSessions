@@ -144,6 +144,78 @@ async function setupServerWithCodexArchive(t) {
   return { address };
 }
 
+async function setupServerWithHiddenCodex(t) {
+  const rootDir = await createTempSessionDir();
+  const publicDir = path.join(rootDir, "public");
+  await fs.mkdir(publicDir);
+
+  const sessionDir = path.join(rootDir, "sessions");
+  await fs.mkdir(sessionDir, { recursive: true });
+
+  const activeSession = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "active-hidden-http",
+        timestamp: "2026-04-21T10:00:00.000Z",
+        cwd: "/tmp/http-visible",
+        source: "cli",
+        model_provider: "testapi"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "visible hidden test" }
+    })
+  ].join("\n");
+
+  const hiddenSession = [
+    JSON.stringify({
+      timestamp: "2026-04-20T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "subagent-http",
+        timestamp: "2026-04-20T10:00:00.000Z",
+        cwd: "/tmp/http-subagent",
+        source: {
+          subagent: {
+            thread_spawn: "parent"
+          }
+        },
+        model_provider: "testapi"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-20T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "subagent hidden term" }
+    })
+  ].join("\n");
+
+  await fs.writeFile(path.join(sessionDir, "active.jsonl"), activeSession, "utf8");
+  await fs.writeFile(path.join(sessionDir, "hidden.jsonl"), hiddenSession, "utf8");
+  await fs.writeFile(path.join(publicDir, "index.html"), "<html>test</html>", "utf8");
+
+  const store = new SessionStore({
+    sources: [{ kind: "codex", rootDir: sessionDir, filePattern: "**/*.jsonl" }]
+  });
+  await store.initialize();
+
+  const server = createHttpServer({ store, publicDir, sessionRoots: [sessionDir] });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+
+  t.after(async () => {
+    server.close();
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  return { address };
+}
+
 async function setupServerWithCodexMigration(t) {
   const rootDir = await createTempSessionDir();
   const publicDir = path.join(rootDir, "public");
@@ -154,6 +226,12 @@ async function setupServerWithCodexMigration(t) {
   await fs.mkdir(publicDir);
   await fs.mkdir(sessionDir, { recursive: true });
   await fs.mkdir(archivedDir, { recursive: true });
+
+  await fs.writeFile(
+    path.join(codexHome, "config.toml"),
+    "model_provider = \"newapi\"\n\n[model_providers.newapi]\nname = \"HTTP fixture\"\nbase_url = \"https://example.test/v1\"\n",
+    "utf8"
+  );
 
   const dbPath = path.join(codexHome, "state_5.sqlite");
   await runSqlite(dbPath, `
@@ -199,7 +277,12 @@ async function setupServerWithCodexMigration(t) {
     store,
     publicDir,
     sessionRoots: [sessionDir],
-    codexMigrationOptions: { codexHome, backupRoot }
+    codexMaintenanceEnabled: true,
+    codexMigrationOptions: {
+      codexHome,
+      backupRoot,
+      processChecker: async () => []
+    }
   });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -280,6 +363,20 @@ test("GET /api/sessions 返回会话列表", async (t) => {
   assert.deepEqual(data.sessions[0].role_counts, { user: 1 });
   assert.equal(data.sessions[0].tool_count, 0);
   assert.equal(typeof data.has_more, "boolean");
+});
+
+test("默认服务保持只读并且不注册 Codex 维护接口", async (t) => {
+  const { address } = await setupServer(t);
+
+  const capabilities = await fetchFromServer(address.port, "/api/capabilities");
+  assert.equal(capabilities.status, 200);
+  assert.equal(JSON.parse(capabilities.body).codex_maintenance.enabled, false);
+
+  const preview = await fetchFromServer(address.port, "/api/codex-provider-migration/preview");
+  assert.equal(preview.status, 404);
+
+  const apply = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {});
+  assert.equal(apply.status, 404);
 });
 
 test("GET /api/facets 返回过滤选项", async (t) => {
@@ -440,26 +537,78 @@ test("Codex 归档会话默认隐藏，show_codex_archived 后通过 HTTP 可见
   assert.equal(JSON.parse(archiveStats.body).total, 2);
 });
 
+test("hidden subagent 会话默认隐藏，show_hidden 后通过 HTTP 可见", async (t) => {
+  const { address } = await setupServerWithHiddenCodex(t);
+
+  const defaultList = await fetchFromServer(address.port, "/api/sessions");
+  assert.equal(defaultList.status, 200);
+  assert.deepEqual(JSON.parse(defaultList.body).sessions.map((session) => session.id), ["active-hidden-http"]);
+
+  const hiddenList = await fetchFromServer(address.port, "/api/sessions?show_hidden=true");
+  assert.equal(hiddenList.status, 200);
+  const hiddenData = JSON.parse(hiddenList.body);
+  assert.equal(hiddenData.sessions.length, 2);
+  assert.equal(hiddenData.sessions.some((session) => session._key === "codex:subagent-http"), true);
+
+  const defaultSearch = await fetchFromServer(address.port, "/api/search?q=subagent");
+  assert.equal(defaultSearch.status, 200);
+  assert.equal(JSON.parse(defaultSearch.body).sessions.length, 0);
+
+  const hiddenSearch = await fetchFromServer(address.port, "/api/search?q=subagent&show_hidden=true");
+  assert.equal(hiddenSearch.status, 200);
+  assert.equal(JSON.parse(hiddenSearch.body).sessions.length, 1);
+
+  const defaultStats = await fetchFromServer(address.port, "/api/stats");
+  assert.equal(JSON.parse(defaultStats.body).total, 1);
+
+  const hiddenStats = await fetchFromServer(address.port, "/api/stats?show_hidden=true");
+  assert.equal(JSON.parse(hiddenStats.body).total, 2);
+
+  const facets = await fetchFromServer(address.port, "/api/facets");
+  assert.deepEqual(JSON.parse(facets.body).hidden_reasons, ["subagent"]);
+});
+
 test("Codex provider 迁移 HTTP 接口支持预览、确认执行和回滚", async (t) => {
   const { address, dbPath, activeFile } = await setupServerWithCodexMigration(t);
 
-  const preview = await fetchFromServer(address.port, "/api/codex-provider-migration/preview");
+  const capabilities = await fetchFromServer(address.port, "/api/capabilities");
+  assert.equal(JSON.parse(capabilities.body).codex_maintenance.enabled, true);
+
+  const discovery = await fetchFromServer(address.port, "/api/codex-provider-migration/preview");
+  assert.equal(discovery.status, 200);
+  const discoveryData = JSON.parse(discovery.body);
+  assert.deepEqual(discoveryData.providers, []);
+  assert.deepEqual(discoveryData.candidateProviders, ["right_code"]);
+  assert.equal(discoveryData.selectionRequired, true);
+  assert.equal(discoveryData.canApply, false);
+
+  const preview = await fetchFromServer(
+    address.port,
+    "/api/codex-provider-migration/preview?providers=right_code"
+  );
   assert.equal(preview.status, 200);
   const previewData = JSON.parse(preview.body);
-  assert.deepEqual(previewData.providers, ["newapi", "right_code"]);
-  assert.equal(previewData.threadMatches, 2);
+  assert.deepEqual(previewData.providers, ["right_code"]);
+  assert.equal(previewData.threadMatches, 1);
+  assert.equal(previewData.targetProvider, "newapi");
+  assert.equal(previewData.codexConfig.status, "read_only");
+  assert.equal(previewData.codexConfig.modified, false);
+  assert.equal(previewData.canApply, true);
+  assert.match(previewData.planId, /^[a-f0-9]{64}$/);
   assert.equal(typeof previewData.mutation_token, "string");
   assert.equal(await readSessionMetaProvider(activeFile), "newapi");
 
   const missingToken = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {
-    confirmedCodexAppClosed: true
+    confirmedCodexAppClosed: true,
+    planId: previewData.planId
   });
   assert.equal(missingToken.status, 403);
 
   const tokenHeaders = { "X-Session-Viewer-Token": previewData.mutation_token };
 
   const crossOrigin = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {
-    confirmedCodexAppClosed: true
+    confirmedCodexAppClosed: true,
+    planId: previewData.planId
   }, { ...tokenHeaders, Origin: "http://evil.example" });
   assert.equal(crossOrigin.status, 403);
 
@@ -467,13 +616,16 @@ test("Codex provider 迁移 HTTP 接口支持预览、确认执行和回滚", as
   assert.equal(blocked.status, 400);
 
   const applied = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {
-    confirmedCodexAppClosed: true
+    confirmedCodexAppClosed: true,
+    planId: previewData.planId,
+    providers: previewData.providers
   }, tokenHeaders);
   assert.equal(applied.status, 200);
   const appliedData = JSON.parse(applied.body);
   assert.ok(appliedData.backupDir);
-  assert.equal((await providerCounts(dbPath)).custom, 3);
-  assert.equal(await readSessionMetaProvider(activeFile), "custom");
+  assert.equal((await providerCounts(dbPath)).newapi, 2);
+  assert.equal((await providerCounts(dbPath)).custom, 1);
+  assert.equal(await readSessionMetaProvider(activeFile), "newapi");
 
   const rollback = await postJsonToServer(address.port, "/api/codex-provider-migration/rollback", {
     confirmedCodexAppClosed: true,

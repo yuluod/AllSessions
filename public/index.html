@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n-page-title="title">AI 会话查看器</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f766e' stroke-width='2'%3E%3Cpath d='M12 2 2 7l10 5 10-5-10-5ZM2 12l10 5 10-5M2 17l10 5 10-5'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -18,6 +19,11 @@
             <p class="toolbar-copy" data-i18n="description">筛选、切换并查看本机 AI 会话历史。</p>
           </div>
         </div>
+        <nav class="sidebar-tabs workspace-tabs" role="tablist" aria-label="工作区视图" data-i18n="workspaceViews" data-i18n-attr="aria-label">
+          <button class="sidebar-tab active" data-sidebar-tab="list" type="button" role="tab" aria-selected="true" data-i18n="sessionList">会话列表</button>
+          <button class="sidebar-tab" data-sidebar-tab="stats" type="button" role="tab" aria-selected="false" data-i18n="statsOverview">统计概览</button>
+          <button class="sidebar-tab" data-sidebar-tab="tools" type="button" role="tab" aria-selected="false" data-i18n="tools">工具</button>
+        </nav>
         <div class="toolbar-center">
           <div class="search-box">
             <input id="search-input" type="search" placeholder="搜索会话内容 / 路径 / 关键词..." data-i18n-placeholder="searchPlaceholder" />
@@ -36,68 +42,82 @@
             <span class="meta-label" data-i18n="metaSessionCount">Sessions</span>
           </div>
           <div class="meta-chip meta-chip-wide">
+            <span class="local-indicator" aria-hidden="true"></span>
             <span id="session-root" class="meta-value" data-i18n="loading">加载中...</span>
           </div>
           <button id="lang-toggle" class="ghost-button" type="button" title="Toggle language">中/EN</button>
         </div>
       </header>
 
-      <main class="app-layout">
-        <aside class="sidebar-left">
-          <div class="sidebar-tabs" role="tablist">
-            <button class="sidebar-tab active" data-sidebar-tab="list" type="button" role="tab" aria-selected="true" data-i18n="sessionList">会话列表</button>
-            <button class="sidebar-tab" data-sidebar-tab="stats" type="button" role="tab" aria-selected="false" data-i18n="statsOverview">统计概览</button>
-            <button class="sidebar-tab" data-sidebar-tab="tools" type="button" role="tab" aria-selected="false" data-i18n="tools">工具</button>
-          </div>
-
-          <div class="sidebar-filters">
-            <div class="sidebar-filter-actions">
-              <button id="refresh-btn" class="ghost-button" type="button" data-i18n="refresh">刷新</button>
-              <button id="reset-filters" class="ghost-button" type="button" data-i18n="clear">清空</button>
+      <main class="app-layout" data-view="list">
+        <aside class="sidebar-left" data-active-panel="list">
+          <details id="sidebar-filters" class="sidebar-filters">
+            <summary>
+              <span data-i18n="filterOptions">筛选条件</span>
+              <span class="summary-hint" data-i18n="filterOptionsHint">来源 · Provider · 日期</span>
+            </summary>
+            <div class="sidebar-filter-content">
+              <div class="sidebar-filter-actions">
+                <button id="refresh-btn" class="ghost-button" type="button" data-i18n="refresh">刷新</button>
+                <button id="reset-filters" class="ghost-button" type="button" data-i18n="clear">清空</button>
+              </div>
+              <div class="filter-bar">
+                <label class="field">
+                  <span data-i18n="sourceKind">来源</span>
+                  <select id="source-kind-filter">
+                    <option value="" data-i18n="all">全部</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Provider</span>
+                  <select id="provider-filter">
+                    <option value="" data-i18n="all">全部</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span data-i18n="date">日期</span>
+                  <select id="date-filter">
+                    <option value="" data-i18n="all">全部</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span data-i18n="cwd">工作目录</span>
+                  <select id="cwd-filter">
+                    <option value="" data-i18n="all">全部</option>
+                  </select>
+                </label>
+              </div>
             </div>
-            <div class="filter-bar">
-              <label class="field">
-                <span data-i18n="sourceKind">来源</span>
-                <select id="source-kind-filter">
-                  <option value="" data-i18n="all">全部</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Provider</span>
-                <select id="provider-filter">
-                  <option value="" data-i18n="all">全部</option>
-                </select>
-              </label>
-              <label class="field">
-                <span data-i18n="date">日期</span>
-                <select id="date-filter">
-                  <option value="" data-i18n="all">全部</option>
-                </select>
-              </label>
-              <label class="field">
-                <span data-i18n="cwd">工作目录</span>
-                <select id="cwd-filter">
-                  <option value="" data-i18n="all">全部</option>
-                </select>
-              </label>
-            </div>
-          </div>
+          </details>
 
           <div class="sidebar-body" data-sidebar-panel="list">
-            <section class="project-nav" aria-labelledby="project-nav-title">
-              <div class="project-nav-header">
-                <h2 id="project-nav-title" data-i18n="projects">项目</h2>
-              </div>
+            <details class="project-nav" open>
+              <summary id="project-nav-title">
+                <span data-i18n="projects">项目</span>
+                <span class="summary-hint" data-i18n="recentProjects">最近使用</span>
+              </summary>
               <div id="project-list" class="project-list"></div>
-            </section>
-            <label class="archive-toggle-label">
-              <input id="show-archived-toggle" type="checkbox" />
-              <span data-i18n="showArchived">显示已归档会话</span>
-            </label>
-            <label class="archive-toggle-label">
-              <input id="show-codex-archived-toggle" type="checkbox" />
-              <span data-i18n="showCodexArchived">显示 Codex 归档会话</span>
-            </label>
+            </details>
+            <details class="visibility-panel">
+              <summary>
+                <span data-i18n="visibility">可见性</span>
+                <span class="summary-hint" data-i18n="visibilityHint">归档与隐藏会话</span>
+              </summary>
+              <div class="visibility-options">
+                <label class="archive-toggle-label">
+                  <input id="show-archived-toggle" type="checkbox" />
+                  <span data-i18n="showArchived">显示已归档会话</span>
+                </label>
+                <label class="archive-toggle-label">
+                  <input id="show-codex-archived-toggle" type="checkbox" />
+                  <span data-i18n="showCodexArchived">显示 Codex 归档会话</span>
+                </label>
+                <label class="archive-toggle-label">
+                  <input id="show-hidden-toggle" type="checkbox" />
+                  <span data-i18n="showHidden">显示隐藏会话</span>
+                </label>
+              </div>
+            </details>
             <div class="session-list-shell">
               <div id="active-filter-bar" class="active-filter-bar" aria-live="polite"></div>
               <div class="session-list-header">
@@ -108,14 +128,10 @@
             </div>
           </div>
 
-          <div class="sidebar-body hidden" data-sidebar-panel="stats">
-            <div class="stats-sidebar-summary" id="stats-sidebar-summary"></div>
-          </div>
-
           <div class="sidebar-body hidden" data-sidebar-panel="tools">
             <div class="tool-sidebar-copy">
-              <strong data-i18n="codexProviderMigration">Codex Provider 迁移</strong>
-              <span data-i18n="codexProviderMigrationShort">把第三方 provider 历史统一到 custom。</span>
+              <strong data-i18n="codexProviderMigration">Codex Provider 可见性修复</strong>
+              <span data-i18n="codexProviderMigrationShort">默认关闭；显式启用后恢复当前 Provider 的历史可见性。</span>
             </div>
           </div>
         </aside>
@@ -130,6 +146,7 @@
             <div id="detail-view" class="detail-view hidden">
               <div class="detail-topbar">
                 <div class="detail-heading">
+                  <button id="mobile-back-btn" class="mobile-back-button" type="button" data-i18n="backToSessions">← 返回会话</button>
                   <h2 id="detail-title">-</h2>
                   <div id="detail-tags" class="detail-tags"></div>
                 </div>
@@ -192,15 +209,27 @@
           </div>
 
           <div class="tools-dashboard hidden" id="tools-dashboard">
-            <section class="tool-card" aria-labelledby="codex-migration-title">
+            <section class="tool-card readonly-tool-card tool-card-compact" aria-labelledby="codex-archive-viewer-title">
               <div class="tool-card-header">
                 <div>
-                  <span class="eyebrow" data-i18n="localTool">LOCAL TOOL</span>
-                  <h2 id="codex-migration-title" data-i18n="codexProviderMigration">Codex Provider 迁移</h2>
-                  <p data-i18n="codexProviderMigrationDesc">解决第三方 provider 切换后 Codex App 旧会话不可见的问题。</p>
+                  <span class="tool-mode-badge" data-mode="readonly" data-i18n="readonlyTool">只读</span>
+                  <h2 id="codex-archive-viewer-title" data-i18n="codexArchiveViewer">Codex 归档查看</h2>
+                  <p data-i18n="codexArchiveViewerDesc">只读显示 Codex 自身归档的会话，不移动文件，也不恢复归档状态。</p>
                 </div>
-                <button id="codex-migration-preview-btn" class="ghost-button" type="button" data-i18n="previewMigration">预览迁移</button>
+                <button id="open-codex-archive-btn" class="ghost-button" type="button" data-i18n="viewCodexArchived">查看归档会话</button>
               </div>
+            </section>
+            <section id="codex-migration-card" class="tool-card" aria-labelledby="codex-migration-title" data-enabled="false">
+              <div class="tool-card-header">
+                <div>
+                  <span class="tool-mode-badge" data-mode="maintenance" data-i18n="localTool">显式维护模式</span>
+                  <h2 id="codex-migration-title" data-i18n="codexProviderMigration">Codex Provider 可见性修复</h2>
+                  <p data-i18n="codexProviderMigrationDesc">把明确选择的旧历史重新绑定到当前 Provider。切换 Provider 后可能需要再次执行；不修改 config.toml 或任何第三方工具。</p>
+                </div>
+                <button id="codex-migration-preview-btn" class="ghost-button" type="button" data-i18n="previewMigration">生成修复计划</button>
+              </div>
+
+              <p class="maintenance-boundary" data-i18n="maintenanceBoundary">普通启动不会注册任何写入接口。仅使用 --enable-codex-maintenance 启动时，以下操作才可用。</p>
 
               <div class="tool-status" id="codex-migration-status" role="status" aria-live="polite" data-i18n="migrationNotPreviewed">尚未预览</div>
 
@@ -219,8 +248,20 @@
                 </div>
               </div>
 
+              <div class="migration-diagnostics" id="codex-migration-diagnostics" data-kind="neutral">
+                <div>
+                  <span data-i18n="migrationCurrentProvider">当前 Provider</span>
+                  <strong id="codex-migration-current-provider">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="migrationTargetProvider">可见性修复目标</span>
+                  <strong id="codex-migration-target-provider">-</strong>
+                </div>
+                <ul id="codex-migration-diagnostic-list"></ul>
+              </div>
+
               <div class="migration-provider-section">
-                <h3 data-i18n="migrationProviders">将迁移的 Providers</h3>
+                <h3 data-i18n="migrationProviders">选择要恢复的历史 Providers</h3>
                 <div id="codex-migration-provider-list" class="migration-provider-list"></div>
               </div>
 
@@ -234,13 +275,13 @@
                   <input id="codex-migration-confirm" type="checkbox" />
                   <span data-i18n="migrationConfirmClosed">我已退出 Codex App</span>
                 </label>
-                <button id="codex-migration-apply-btn" class="danger-button" type="button" disabled data-i18n="applyMigration">执行迁移</button>
+                <button id="codex-migration-apply-btn" class="danger-button" type="button" disabled data-i18n="applyMigration">恢复到当前 Provider</button>
               </div>
 
               <div class="migration-backup-row">
                 <label class="field">
                   <span data-i18n="rollbackBackupDir">备份目录</span>
-                  <input id="codex-migration-rollback-dir" type="text" placeholder="/Users/.../.cc-switch/backups/..." data-i18n-placeholder="rollbackBackupPlaceholder" />
+                  <input id="codex-migration-rollback-dir" type="text" placeholder="/Users/.../.codex/backups/..." data-i18n-placeholder="rollbackBackupPlaceholder" />
                 </label>
                 <button id="codex-migration-rollback-btn" class="ghost-button" type="button" data-i18n="rollbackMigration">回滚</button>
               </div>
@@ -250,7 +291,7 @@
 
         <aside class="props-panel" id="props-panel">
           <div class="props-header">
-            <span class="eyebrow" id="props-eyebrow">PROPERTIES</span>
+            <h2 id="props-eyebrow" data-i18n="sessionInspector">会话信息</h2>
           </div>
           <div id="props-content" class="props-content">
             <div class="props-empty" data-i18n="selectSession">选择一个会话</div>

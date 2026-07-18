@@ -2,9 +2,12 @@ import { t, setLang, getLang, updateStaticI18n } from "./i18n.js";
 import { fetchJson as requestJson, setMutationToken } from "./api-client.js";
 
 const PAGE_LIMIT = 50;
+const PROJECT_PREVIEW_LIMIT = 4;
+const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 
 const state = {
+  capabilities: null,
   facets: null,
   stats: null,
   sessions: [],
@@ -15,11 +18,14 @@ const state = {
   searchQuery: "",
   showArchived: false,
   showCodexArchived: false,
+  showHidden: false,
   showAllProjects: false,
   codexMigrationPreview: null,
+  codexMigrationSelectedProviders: new Set(),
   currentDetail: null,
   detailQuery: "",
   showTools: true,
+  activeView: "list",
   filters: {
     provider: "",
     source_kind: "",
@@ -55,7 +61,51 @@ function isCodexArchivedSession(session) {
   return session?.archived === true && session.archive_source === "codex";
 }
 
+function scrollToWorkspaceSection(element) {
+  if (!element) return;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  element.scrollIntoView({
+    behavior: reducedMotion ? "auto" : "smooth",
+    block: "start"
+  });
+}
+
+function isHiddenSession(session) {
+  return session?.hidden === true;
+}
+
+function hiddenReasonLabel(session) {
+  if (!isHiddenSession(session)) {
+    return "";
+  }
+  if (session.hidden_reason === "subagent") {
+    return t("hiddenSubagent");
+  }
+  return session.hidden_reason || t("hiddenSession");
+}
+
+function visibilityLabel(session) {
+  if (isCodexArchivedSession(session)) {
+    return t("codexArchived");
+  }
+  return hiddenReasonLabel(session) || t("visibleSession");
+}
+
+function isExcludedByVisibilityToggles(session) {
+  if (isCodexArchivedSession(session) && !state.showCodexArchived) {
+    return true;
+  }
+  if (isHiddenSession(session) && !state.showHidden) {
+    return true;
+  }
+  return false;
+}
+
 const elements = {
+  appLayout: document.querySelector(".app-layout"),
+  sidebarLeft: document.querySelector(".sidebar-left"),
+  sidebarFilters: document.querySelector("#sidebar-filters"),
+  projectNav: document.querySelector(".project-nav"),
   sessionRoot: document.querySelector("#session-root"),
   sessionCount: document.querySelector("#session-count"),
   sourceKindFilter: document.querySelector("#source-kind-filter"),
@@ -68,6 +118,7 @@ const elements = {
   langToggle: document.querySelector("#lang-toggle"),
   showArchivedToggle: document.querySelector("#show-archived-toggle"),
   showCodexArchivedToggle: document.querySelector("#show-codex-archived-toggle"),
+  showHiddenToggle: document.querySelector("#show-hidden-toggle"),
   projectList: document.querySelector("#project-list"),
   activeFilterBar: document.querySelector("#active-filter-bar"),
   sessionList: document.querySelector("#session-list"),
@@ -90,6 +141,7 @@ const elements = {
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
   toolsDashboard: document.querySelector("#tools-dashboard"),
+  codexMigrationCard: document.querySelector("#codex-migration-card"),
   codexMigrationPreviewBtn: document.querySelector("#codex-migration-preview-btn"),
   codexMigrationApplyBtn: document.querySelector("#codex-migration-apply-btn"),
   codexMigrationRollbackBtn: document.querySelector("#codex-migration-rollback-btn"),
@@ -98,11 +150,17 @@ const elements = {
   codexMigrationThreadCount: document.querySelector("#codex-migration-thread-count"),
   codexMigrationJsonlCount: document.querySelector("#codex-migration-jsonl-count"),
   codexMigrationReplacementCount: document.querySelector("#codex-migration-replacement-count"),
+  codexMigrationDiagnostics: document.querySelector("#codex-migration-diagnostics"),
+  codexMigrationCurrentProvider: document.querySelector("#codex-migration-current-provider"),
+  codexMigrationTargetProvider: document.querySelector("#codex-migration-target-provider"),
+  codexMigrationDiagnosticList: document.querySelector("#codex-migration-diagnostic-list"),
   codexMigrationProviderList: document.querySelector("#codex-migration-provider-list"),
   codexMigrationRollbackDir: document.querySelector("#codex-migration-rollback-dir"),
   codexMigrationBackupNotice: document.querySelector("#codex-migration-backup-notice"),
   codexMigrationBackupLabel: document.querySelector("#codex-migration-backup-label"),
   codexMigrationBackupPath: document.querySelector("#codex-migration-backup-path"),
+  openCodexArchiveBtn: document.querySelector("#open-codex-archive-btn"),
+  mobileBackBtn: document.querySelector("#mobile-back-btn"),
   sessionItemTemplate: document.querySelector("#session-item-template"),
   conversationItemTemplate: document.querySelector("#conversation-item-template"),
   rawEventTemplate: document.querySelector("#raw-event-template")
@@ -117,6 +175,7 @@ function syncUrl() {
   if (state.filters.cwd) params.set("cwd", state.filters.cwd);
   if (state.searchQuery) params.set("q", state.searchQuery);
   if (state.showCodexArchived) params.set("show_codex_archived", "1");
+  if (state.showHidden) params.set("show_hidden", "1");
   if (state.selectedSessionKey) params.set("session", state.selectedSessionKey);
   const search = params.toString();
   history.replaceState(null, "", search ? `?${search}` : location.pathname);
@@ -131,6 +190,8 @@ function restoreFromUrl() {
   state.searchQuery = params.get("q") || "";
   state.showCodexArchived = params.get("show_codex_archived") === "1" ||
     params.get("show_codex_archived") === "true";
+  state.showHidden = params.get("show_hidden") === "1" ||
+    params.get("show_hidden") === "true";
   state.selectedSessionKey = params.get("session") || null;
 }
 
@@ -261,7 +322,7 @@ function renderProjectNav() {
   });
   elements.projectList.append(allButton);
 
-  const visibleProjects = state.showAllProjects ? projects : projects.slice(0, 8);
+  const visibleProjects = state.showAllProjects ? projects : projects.slice(0, PROJECT_PREVIEW_LIMIT);
   visibleProjects.forEach((project) => {
     const button = document.createElement("button");
     button.className = "project-item";
@@ -291,13 +352,13 @@ function renderProjectNav() {
     elements.projectList.append(button);
   });
 
-  if (projects.length > 8) {
+  if (projects.length > PROJECT_PREVIEW_LIMIT) {
     const moreButton = document.createElement("button");
     moreButton.className = "project-item project-more";
     moreButton.type = "button";
     moreButton.textContent = state.showAllProjects
       ? t("showFewerProjects")
-      : t("showMoreProjects", { n: projects.length - 8 });
+      : t("showMoreProjects", { n: projects.length - PROJECT_PREVIEW_LIMIT });
     moreButton.addEventListener("click", () => {
       state.showAllProjects = !state.showAllProjects;
       renderProjectNav();
@@ -322,9 +383,23 @@ function syncSessionRoot() {
   const roots = state.facets?.session_roots;
   if (!roots || !roots.length) {
     elements.sessionRoot.textContent = t("loading");
+    elements.sessionRoot.removeAttribute("title");
     return;
   }
-  elements.sessionRoot.textContent = roots.join(", ");
+  elements.sessionRoot.textContent = t("localSourcesCount", { n: roots.length });
+  elements.sessionRoot.title = roots.join("\n");
+}
+
+function updateSessionCount() {
+  const visibleCount = visibleSessions().length;
+  const statsTotal = Number(state.stats?.total);
+  if (visibleCount === 0) {
+    elements.sessionCount.textContent = "0";
+    return;
+  }
+  elements.sessionCount.textContent = Number.isFinite(statsTotal)
+    ? String(statsTotal)
+    : `${visibleCount}${state.hasMore ? "+" : ""}`;
 }
 
 function syncFilterControls() {
@@ -336,6 +411,9 @@ function syncFilterControls() {
   if (elements.showArchivedToggle) elements.showArchivedToggle.checked = state.showArchived;
   if (elements.showCodexArchivedToggle) {
     elements.showCodexArchivedToggle.checked = state.showCodexArchived;
+  }
+  if (elements.showHiddenToggle) {
+    elements.showHiddenToggle.checked = state.showHidden;
   }
   renderProjectNav();
 }
@@ -364,6 +442,7 @@ function rerenderLocalizedContent() {
   } else {
     resetCodexMigrationMetrics();
   }
+  configureCodexMaintenanceUi();
 }
 
 function buildSessionQuery() {
@@ -375,6 +454,9 @@ function buildSessionQuery() {
   });
   if (state.showCodexArchived) {
     params.set("show_codex_archived", "true");
+  }
+  if (state.showHidden) {
+    params.set("show_hidden", "true");
   }
   return params.toString();
 }
@@ -416,6 +498,8 @@ async function clearFilterChip(type) {
     return;
   } else if (type === "showCodexArchived") {
     state.showCodexArchived = false;
+  } else if (type === "showHidden") {
+    state.showHidden = false;
   }
 
   syncFilterControls();
@@ -451,6 +535,9 @@ function activeFilterEntries() {
   }
   if (state.showCodexArchived) {
     entries.push({ type: "showCodexArchived", label: t("showCodexArchived"), value: t("filterEnabled") });
+  }
+  if (state.showHidden) {
+    entries.push({ type: "showHidden", label: t("showHidden"), value: t("filterEnabled") });
   }
   return entries;
 }
@@ -552,6 +639,13 @@ function appendSessionItems(sessions) {
     toolsEl.classList.toggle("hidden", !session.tool_count);
     button.querySelector(".session-source").textContent = session.source || session.originator || t("unknownSource");
     button.querySelector(".session-source-kind").textContent = displaySourceLabel(session);
+    const hiddenReason = hiddenReasonLabel(session);
+    if (hiddenReason) {
+      const hiddenBadge = document.createElement("span");
+      hiddenBadge.className = "session-hidden-reason";
+      hiddenBadge.textContent = hiddenReason;
+      button.querySelector(".session-tertiary").append(hiddenBadge);
+    }
     if (session._key === state.selectedSessionKey) {
       button.classList.add("active");
     }
@@ -640,7 +734,7 @@ function renderSessionList() {
   });
 
   renderLoadMoreButton();
-  elements.sessionCount.textContent = String(visible.length);
+  updateSessionCount();
 }
 
 // ── 导出功能 ──────────────────────────────────────────────────────────────────
@@ -725,6 +819,7 @@ function renderDetailTags(summary) {
     { text: formatTimestamp(summary.timestamp), icon: "calendar" },
     { text: summary.model_provider || "unknown", cls: "tag-provider" },
     { text: displaySourceLabel(summary), cls: "tag-source" },
+    { text: hiddenReasonLabel(summary), cls: "tag-hidden" },
     { text: summary.source || summary.originator || "", cls: "" },
     { text: t("eventsCount", { n: summary.event_count }), icon: "hash" }
   ];
@@ -747,6 +842,7 @@ function renderPropsPanel(summary, messages = []) {
   const basic = [
     { label: "Provider", value: summary.model_provider || "unknown" },
     { label: t("source"), value: displaySourceLabel(summary) || "-" },
+    { label: t("visibility"), value: visibilityLabel(summary) },
     { label: t("messages"), value: String(summary.message_count || 0) },
     { label: t("toolCalls"), value: String(summary.tool_count || 0) }
   ];
@@ -986,21 +1082,74 @@ function setCodexMigrationStatus(message, kind = "") {
   elements.codexMigrationStatus.dataset.kind = kind;
 }
 
+function isCodexMaintenanceEnabled() {
+  return state.capabilities?.codex_maintenance?.enabled === true;
+}
+
+function selectedCodexMigrationProviders() {
+  return Array.from(state.codexMigrationSelectedProviders).sort();
+}
+
+function sameProviderSelection(left, right) {
+  const first = Array.isArray(left) ? [...left].sort() : [];
+  const second = Array.isArray(right) ? [...right].sort() : [];
+  return first.length === second.length && first.every((provider, index) => provider === second[index]);
+}
+
+function configureCodexMaintenanceUi() {
+  const enabled = isCodexMaintenanceEnabled();
+  if (elements.codexMigrationCard) {
+    elements.codexMigrationCard.dataset.enabled = enabled ? "true" : "false";
+  }
+  [
+    elements.codexMigrationPreviewBtn,
+    elements.codexMigrationRollbackBtn,
+    elements.codexMigrationConfirm,
+    elements.codexMigrationRollbackDir
+  ].forEach((control) => {
+    if (control) control.disabled = !enabled;
+  });
+  if (!enabled) {
+    if (elements.codexMigrationApplyBtn) elements.codexMigrationApplyBtn.disabled = true;
+    if (elements.codexMigrationProviderList) {
+      elements.codexMigrationProviderList.textContent = t("maintenanceDisabledHint");
+    }
+    setCodexMigrationStatus(t("maintenanceDisabled"), "warning");
+  } else if (!state.codexMigrationPreview) {
+    setCodexMigrationStatus(t("migrationNotPreviewed"));
+  }
+}
+
 function updateCodexMigrationApplyState() {
-  const providers = state.codexMigrationPreview?.providers || [];
+  const preview = state.codexMigrationPreview;
   const confirmed = elements.codexMigrationConfirm?.checked === true;
+  const selectedProviders = selectedCodexMigrationProviders();
+  const selectionMatchesPlan = sameProviderSelection(selectedProviders, preview?.providers);
   if (elements.codexMigrationApplyBtn) {
-    elements.codexMigrationApplyBtn.disabled = !confirmed || providers.length === 0;
+    elements.codexMigrationApplyBtn.disabled = !isCodexMaintenanceEnabled() ||
+      !confirmed ||
+      selectedProviders.length === 0 ||
+      !selectionMatchesPlan ||
+      !preview?.canApply ||
+      !preview?.hasChanges ||
+      !preview?.planId;
   }
 }
 
 function setCodexMigrationBusy(isBusy) {
+  const maintenanceDisabled = !isCodexMaintenanceEnabled();
   [
     elements.codexMigrationPreviewBtn,
     elements.codexMigrationRollbackBtn
   ].forEach((button) => {
-    if (button) button.disabled = isBusy;
+    if (button) button.disabled = isBusy || maintenanceDisabled;
   });
+  if (elements.codexMigrationConfirm) {
+    elements.codexMigrationConfirm.disabled = isBusy || maintenanceDisabled;
+  }
+  if (elements.codexMigrationRollbackDir) {
+    elements.codexMigrationRollbackDir.disabled = isBusy || maintenanceDisabled;
+  }
   if (elements.codexMigrationApplyBtn) {
     elements.codexMigrationApplyBtn.disabled = true;
   }
@@ -1013,6 +1162,11 @@ function resetCodexMigrationMetrics() {
   if (elements.codexMigrationThreadCount) elements.codexMigrationThreadCount.textContent = "-";
   if (elements.codexMigrationJsonlCount) elements.codexMigrationJsonlCount.textContent = "-";
   if (elements.codexMigrationReplacementCount) elements.codexMigrationReplacementCount.textContent = "-";
+  if (elements.codexMigrationCurrentProvider) elements.codexMigrationCurrentProvider.textContent = "-";
+  if (elements.codexMigrationTargetProvider) elements.codexMigrationTargetProvider.textContent = "-";
+  if (elements.codexMigrationDiagnosticList) elements.codexMigrationDiagnosticList.innerHTML = "";
+  if (elements.codexMigrationDiagnostics) elements.codexMigrationDiagnostics.dataset.kind = "neutral";
+  if (elements.codexMigrationBackupNotice) elements.codexMigrationBackupNotice.classList.add("hidden");
   if (elements.codexMigrationProviderList) {
     elements.codexMigrationProviderList.textContent = t("migrationNoPreview");
   }
@@ -1020,6 +1174,48 @@ function resetCodexMigrationMetrics() {
 
 function formatCount(value) {
   return new Intl.NumberFormat(getLang() === "zh" ? "zh-CN" : "en").format(Number(value || 0));
+}
+
+function renderCodexMigrationDiagnostics(summary) {
+  if (elements.codexMigrationCurrentProvider) {
+    elements.codexMigrationCurrentProvider.textContent = summary.codexConfig?.activeProvider || "-";
+  }
+  if (elements.codexMigrationTargetProvider) {
+    elements.codexMigrationTargetProvider.textContent = summary.targetProvider || "-";
+  }
+  if (!elements.codexMigrationDiagnosticList || !elements.codexMigrationDiagnostics) return;
+
+  const list = elements.codexMigrationDiagnosticList;
+  list.innerHTML = "";
+  const blockers = summary.blockers || [];
+  const warnings = summary.warnings || [];
+  if (blockers.length) {
+    const selectionOnly = blockers.every((item) => item.code === "source_provider_selection_required");
+    elements.codexMigrationDiagnostics.dataset.kind = selectionOnly ? "warning" : "error";
+    blockers.forEach((item) => {
+      const row = document.createElement("li");
+      row.textContent = selectionOnly
+        ? t("migrationSelectProviders")
+        : t("migrationBlocker", { message: item.message });
+      list.append(row);
+    });
+    return;
+  }
+  elements.codexMigrationDiagnostics.dataset.kind = warnings.length ? "warning" : "ok";
+  if (!warnings.length) {
+    const row = document.createElement("li");
+    row.textContent = t("migrationReady");
+    list.append(row);
+    return;
+  }
+  warnings.forEach((item) => {
+    const row = document.createElement("li");
+    const message = item.code === "current_provider_only"
+      ? t("migrationCurrentProviderOnly", { target: summary.targetProvider || "-" })
+      : item.message;
+    row.textContent = t("migrationWarning", { message });
+    list.append(row);
+  });
 }
 
 function renderCodexMigrationPreview(summary) {
@@ -1042,22 +1238,51 @@ function renderCodexMigrationPreview(summary) {
   if (elements.codexMigrationReplacementCount) {
     elements.codexMigrationReplacementCount.textContent = formatCount(summary.jsonlSessionMetaReplacements);
   }
+  renderCodexMigrationDiagnostics(summary);
 
   if (elements.codexMigrationProviderList) {
     elements.codexMigrationProviderList.innerHTML = "";
-    const counts = new Map((summary.providerCounts || []).map((row) => [row.provider, row.count]));
-    const providers = summary.providers || [];
-    if (!providers.length) {
+    const mappings = summary.candidateMappings || summary.mappings || [];
+    const candidateProviders = new Set(mappings.map((mapping) => mapping.source));
+    for (const provider of selectedCodexMigrationProviders()) {
+      if (!candidateProviders.has(provider)) {
+        state.codexMigrationSelectedProviders.delete(provider);
+      }
+    }
+    if (!mappings.length) {
       elements.codexMigrationProviderList.textContent = t("migrationNoProviders");
     } else {
-      providers.forEach((provider) => {
-        const item = document.createElement("div");
+      mappings.forEach((mapping) => {
+        const item = document.createElement("label");
         item.className = "migration-provider-item";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = state.codexMigrationSelectedProviders.has(mapping.source);
+        checkbox.disabled = !isCodexMaintenanceEnabled();
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            state.codexMigrationSelectedProviders.add(mapping.source);
+          } else {
+            state.codexMigrationSelectedProviders.delete(mapping.source);
+          }
+          if (elements.codexMigrationConfirm) {
+            elements.codexMigrationConfirm.checked = false;
+          }
+          const count = state.codexMigrationSelectedProviders.size;
+          setCodexMigrationStatus(
+            count > 0 ? t("migrationSelectionChanged") : t("migrationSelectProviders"),
+            "warning"
+          );
+          updateCodexMigrationApplyState();
+        });
         const name = document.createElement("span");
-        name.textContent = provider;
+        name.textContent = `${mapping.source} → ${mapping.target}`;
         const count = document.createElement("strong");
-        count.textContent = formatCount(counts.get(provider));
-        item.append(name, count);
+        count.textContent = t("migrationMappingCounts", {
+          threads: formatCount(mapping.threads),
+          jsonl: formatCount(mapping.jsonl)
+        });
+        item.append(checkbox, name, count);
         elements.codexMigrationProviderList.append(item);
       });
     }
@@ -1078,7 +1303,9 @@ function renderCodexMigrationPreview(summary) {
       notice.dataset.done = "true";
     } else if (summary.backupRoot) {
       if (label) label.textContent = t("backupWillSaveTo");
-      if (pathEl) pathEl.textContent = summary.backupRoot + "/codex-history-provider-migration-v1/";
+      if (pathEl) {
+        pathEl.textContent = `${summary.backupRoot}/${summary.migration || "codex-history-provider-rebucket-v2"}/`;
+      }
       notice.classList.remove("hidden");
       notice.dataset.done = "false";
     } else {
@@ -1090,17 +1317,31 @@ function renderCodexMigrationPreview(summary) {
 }
 
 async function loadCodexMigrationPreview() {
+  if (!isCodexMaintenanceEnabled()) {
+    configureCodexMaintenanceUi();
+    return;
+  }
   setCodexMigrationBusy(true);
   setCodexMigrationStatus(t("migrationPreviewing"));
   try {
-    const summary = await fetchJson("/api/codex-provider-migration/preview");
+    const providers = selectedCodexMigrationProviders();
+    const params = new URLSearchParams();
+    if (providers.length > 0) params.set("providers", providers.join(","));
+    const query = params.toString();
+    const summary = await fetchJson(`/api/codex-provider-migration/preview${query ? `?${query}` : ""}`);
     renderCodexMigrationPreview(summary);
-    setCodexMigrationStatus(
-      summary.providers?.length
-        ? t("migrationPreviewReady", { n: summary.providers.length })
-        : t("migrationNoProviders"),
-      "ok"
-    );
+    if (summary.selectionRequired) {
+      setCodexMigrationStatus(t("migrationSelectProviders"), "warning");
+    } else if (!summary.canApply) {
+      setCodexMigrationStatus(t("migrationPreviewBlocked", { n: summary.blockers?.length || 0 }), "error");
+    } else if (!summary.hasChanges) {
+      setCodexMigrationStatus(t("migrationNoChanges"), "ok");
+    } else {
+      setCodexMigrationStatus(t("migrationPreviewReady", {
+        n: summary.providers?.length || 0,
+        target: summary.targetProvider || "-"
+      }), "ok");
+    }
   } catch (error) {
     console.error(error);
     setCodexMigrationStatus(`${t("migrationPreviewFailed")}: ${error.message}`, "error");
@@ -1110,6 +1351,10 @@ async function loadCodexMigrationPreview() {
 }
 
 async function applyCodexMigration() {
+  if (!isCodexMaintenanceEnabled()) {
+    configureCodexMaintenanceUi();
+    return;
+  }
   if (elements.codexMigrationConfirm?.checked !== true) {
     setCodexMigrationStatus(t("migrationNeedConfirm"), "error");
     updateCodexMigrationApplyState();
@@ -1119,13 +1364,23 @@ async function applyCodexMigration() {
   setCodexMigrationBusy(true);
   setCodexMigrationStatus(t("migrationApplying"));
   try {
+    const preview = state.codexMigrationPreview;
+    if (!preview?.planId) {
+      setCodexMigrationStatus(t("migrationNoPreview"), "error");
+      return;
+    }
     const summary = await fetchJson("/api/codex-provider-migration/apply", {
       method: "POST",
       mutation: true,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmedCodexAppClosed: true })
+      body: JSON.stringify({
+        confirmedCodexAppClosed: true,
+        planId: preview.planId,
+        providers: preview.providers
+      })
     });
     renderCodexMigrationPreview(summary);
+    state.codexMigrationPreview = null;
     if (elements.codexMigrationConfirm) {
       elements.codexMigrationConfirm.checked = false;
     }
@@ -1139,6 +1394,7 @@ async function applyCodexMigration() {
     await Promise.all([loadSessions(), loadStats()]);
   } catch (error) {
     console.error(error);
+    renderCodexMigrationPreview(null);
     setCodexMigrationStatus(`${t("migrationApplyFailed")}: ${error.message}`, "error");
   } finally {
     setCodexMigrationBusy(false);
@@ -1146,6 +1402,10 @@ async function applyCodexMigration() {
 }
 
 async function rollbackCodexMigration() {
+  if (!isCodexMaintenanceEnabled()) {
+    configureCodexMaintenanceUi();
+    return;
+  }
   const backupDir = elements.codexMigrationRollbackDir?.value.trim();
   if (!backupDir) {
     setCodexMigrationStatus(t("migrationNeedBackupDir"), "error");
@@ -1212,6 +1472,9 @@ async function loadSessionDetail(id) {
     renderConversation(detail.conversation_messages);
     renderRawEvents(detail.raw_events);
     updateTabs();
+    if (state._initialized && window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {
+      scrollToWorkspaceSection(document.querySelector("#detail-panel"));
+    }
   } catch (error) {
     console.error(error);
     showError(`${t("loadDetailFailed")}: ${error.message}`);
@@ -1315,7 +1578,7 @@ function renderStats(stats) {
       { label: t("statsTotalSessions"), value: String(total) },
       { label: t("statsActiveDays"), value: String(activeDays) },
       { label: t("statsAvgDaily"), value: String(avg) },
-      { label: t("statsEvents"), value: "—" }
+      { label: t("statsEvents"), value: formatCount(stats.total_events) }
     ];
     cards.forEach(({ label, value }, idx) => {
       const card = document.createElement("div");
@@ -1435,7 +1698,7 @@ function renderStats(stats) {
   if (grid) {
     grid.innerHTML = "";
     const sections = [
-      { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(0, 14) },
+      { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(-14) },
       { title: t("statsCommonSourceKind"), items: stats.by_source_kind || [] },
       { title: t("statsCommonProvider"), items: stats.by_provider || [] },
       { title: t("statsCommonCwd"), items: (stats.by_cwd || []).slice(0, 8), isPath: true }
@@ -1468,6 +1731,7 @@ async function loadStats() {
     const stats = await fetchJson(url);
     state.stats = stats;
     renderStats(stats);
+    updateSessionCount();
   } catch { /* 统计加载失败不阻断主流程。 */ }
 }
 
@@ -1478,11 +1742,53 @@ async function loadFacets() {
   syncFilterControls();
 }
 
+async function loadCapabilities() {
+  try {
+    state.capabilities = await fetchJson("/api/capabilities");
+  } catch (error) {
+    console.error(error);
+    state.capabilities = { codex_maintenance: { enabled: false } };
+  }
+}
+
+async function activateWorkspaceView(panel) {
+  state.activeView = panel;
+  document.body.dataset.view = panel;
+  if (elements.appLayout) elements.appLayout.dataset.view = panel;
+  if (elements.sidebarLeft) elements.sidebarLeft.dataset.activePanel = panel;
+
+  document.querySelectorAll(".sidebar-tab").forEach((tab) => {
+    const active = tab.dataset.sidebarTab === panel;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll(".sidebar-body").forEach((body) => {
+    body.classList.toggle("hidden", body.dataset.sidebarPanel !== panel);
+  });
+
+  const detailPanel = document.querySelector("#detail-panel");
+  const propsPanel = document.querySelector("#props-panel");
+  const statsDashboard = document.querySelector("#stats-dashboard");
+  const toolsDashboard = document.querySelector("#tools-dashboard");
+  const isList = panel === "list";
+  const isStats = panel === "stats";
+  const isTools = panel === "tools";
+  detailPanel?.classList.toggle("hidden", !isList);
+  propsPanel?.classList.toggle("hidden", !isList);
+  statsDashboard?.classList.toggle("hidden", !isStats);
+  toolsDashboard?.classList.toggle("hidden", !isTools);
+
+  if (isTools && isCodexMaintenanceEnabled() && !state.codexMigrationPreview) {
+    await loadCodexMigrationPreview();
+  }
+}
+
 async function initialize() {
   restoreFromUrl();
 
-  await loadFacets();
+  await Promise.all([loadFacets(), loadCapabilities()]);
   resetCodexMigrationMetrics();
+  configureCodexMaintenanceUi();
 
   await loadStats();
 
@@ -1513,6 +1819,7 @@ async function initialize() {
     state.searchQuery = "";
     state.showArchived = false;
     state.showCodexArchived = false;
+    state.showHidden = false;
     syncFilterControls();
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
@@ -1550,45 +1857,40 @@ async function initialize() {
     });
   }
 
+  if (elements.showHiddenToggle) {
+    elements.showHiddenToggle.addEventListener("change", async () => {
+      state.showHidden = elements.showHiddenToggle.checked;
+      syncUrl();
+      await Promise.all([loadSessions(), loadStats()]);
+    });
+  }
+
+  elements.openCodexArchiveBtn?.addEventListener("click", async () => {
+    state.showCodexArchived = true;
+    if (elements.showCodexArchivedToggle) elements.showCodexArchivedToggle.checked = true;
+    syncUrl();
+    await activateWorkspaceView("list");
+    await Promise.all([loadSessions(), loadStats()]);
+    elements.sidebarLeft?.scrollIntoView({ block: "start" });
+  });
+
+  elements.mobileBackBtn?.addEventListener("click", () => scrollToWorkspaceSection(elements.sidebarLeft));
+
+  if (window.matchMedia(MOBILE_LAYOUT_QUERY).matches && elements.projectNav) {
+    elements.projectNav.open = false;
+  }
+
   elements.codexMigrationPreviewBtn?.addEventListener("click", loadCodexMigrationPreview);
   elements.codexMigrationConfirm?.addEventListener("change", updateCodexMigrationApplyState);
   elements.codexMigrationApplyBtn?.addEventListener("click", applyCodexMigration);
   elements.codexMigrationRollbackBtn?.addEventListener("click", rollbackCodexMigration);
 
   document.querySelectorAll(".sidebar-tab").forEach((tab) => {
-    tab.addEventListener("click", async () => {
-      const panel = tab.dataset.sidebarTab;
-      document.querySelectorAll(".sidebar-tab").forEach((t) => {
-        t.classList.toggle("active", t === tab);
-        t.setAttribute("aria-selected", t === tab ? "true" : "false");
+    tab.addEventListener("click", () => {
+      activateWorkspaceView(tab.dataset.sidebarTab).catch((error) => {
+        console.error(error);
+        showError(error.message);
       });
-      document.querySelectorAll(".sidebar-body").forEach((p) => {
-        p.classList.toggle("hidden", p.dataset.sidebarPanel !== panel);
-      });
-
-      const detailPanel = document.querySelector("#detail-panel");
-      const propsPanel = document.querySelector("#props-panel");
-      const statsDashboard = document.querySelector("#stats-dashboard");
-      const toolsDashboard = document.querySelector("#tools-dashboard");
-      if (panel === "stats") {
-        if (detailPanel) detailPanel.classList.add("hidden");
-        if (propsPanel) propsPanel.classList.add("hidden");
-        if (statsDashboard) statsDashboard.classList.remove("hidden");
-        if (toolsDashboard) toolsDashboard.classList.add("hidden");
-      } else if (panel === "tools") {
-        if (detailPanel) detailPanel.classList.add("hidden");
-        if (propsPanel) propsPanel.classList.add("hidden");
-        if (statsDashboard) statsDashboard.classList.add("hidden");
-        if (toolsDashboard) toolsDashboard.classList.remove("hidden");
-        if (!state.codexMigrationPreview) {
-          await loadCodexMigrationPreview();
-        }
-      } else {
-        if (detailPanel) detailPanel.classList.remove("hidden");
-        if (propsPanel) propsPanel.classList.remove("hidden");
-        if (statsDashboard) statsDashboard.classList.add("hidden");
-        if (toolsDashboard) toolsDashboard.classList.add("hidden");
-      }
     });
   });
 
@@ -1597,8 +1899,9 @@ async function initialize() {
     filterToggle.addEventListener("click", () => {
       const tab = document.querySelector('.sidebar-tab[data-sidebar-tab="list"]');
       if (tab && !tab.classList.contains("active")) tab.click();
-      document.querySelector(".sidebar-filters")?.scrollIntoView({ block: "nearest" });
-      elements.sourceKindFilter?.focus();
+      if (elements.sidebarFilters) elements.sidebarFilters.open = true;
+      elements.sidebarFilters?.scrollIntoView({ block: "nearest" });
+      requestAnimationFrame(() => elements.sourceKindFilter?.focus());
     });
   }
 
@@ -1618,10 +1921,25 @@ async function initialize() {
   elements.searchInput?.addEventListener("input", (event) => {
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(async () => {
+      const switchedView = state.activeView !== "list";
+      if (switchedView) {
+        await activateWorkspaceView("list");
+      }
       state.searchQuery = event.target.value.trim();
       syncUrl();
       await loadSessions();
+      if (switchedView && window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {
+        scrollToWorkspaceSection(elements.sidebarLeft);
+      }
     }, 300);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      elements.searchInput?.focus();
+      elements.searchInput?.select();
+    }
   });
 
   elements.tabButtons.forEach((button) => {
@@ -1661,6 +1979,7 @@ async function initialize() {
 
   updateStaticI18n();
   document.documentElement.lang = getLang() === "zh" ? "zh-CN" : "en";
+  configureCodexMaintenanceUi();
 
   if (elements.langToggle) {
     elements.langToggle.addEventListener("click", () => {
@@ -1693,7 +2012,7 @@ async function initialize() {
       const summary = JSON.parse(e.data);
       const key = summary._key;
       if (!key) return;
-      if (isCodexArchivedSession(summary) && !state.showCodexArchived) return;
+      if (isExcludedByVisibilityToggles(summary)) return;
       if (!state.sessions.find((s) => s._key === key)) {
         state.sessions.push(summary);
         state.sessions.sort((a, b) => {
@@ -1702,7 +2021,7 @@ async function initialize() {
           return tb - ta;
         });
         renderSessionList();
-        elements.sessionCount.textContent = String(visibleSessions().length);
+        updateSessionCount();
         loadFacets().catch((error) => console.error(error));
 
         const ariaLive = document.querySelector("#aria-live");
@@ -1719,7 +2038,7 @@ async function initialize() {
       const summary = JSON.parse(e.data);
       const key = summary._key;
       if (!key) return;
-      if (isCodexArchivedSession(summary) && !state.showCodexArchived) {
+      if (isExcludedByVisibilityToggles(summary)) {
         state.sessions = state.sessions.filter((s) => s._key !== key);
         if (state.selectedSessionKey === key) {
           state.selectedSessionKey = null;

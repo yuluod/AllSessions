@@ -67,30 +67,63 @@ function projectNameFromCwd(cwd) {
   return path.basename(cwd) || cwd;
 }
 
-export function enrichSummaryFromConversation(summary, messages) {
-  const roleCounts = {};
-  for (const message of messages) {
-    const role = normalizeRole(message.role);
-    roleCounts[role] = (roleCounts[role] || 0) + 1;
+function isSyntheticUserContext(text) {
+  const value = String(text || "").trimStart();
+  return /^<(?:recommended_plugins|permissions instructions|app-context|collaboration_mode|environment_context|skills_instructions|apps_instructions|plugins_instructions)(?:>|\s)/i.test(value) ||
+    /^#\s*AGENTS\.md instructions\b/i.test(value) ||
+    /^#\s*Files mentioned by the user:\s*/i.test(value);
+}
+
+export function createConversationSummaryAccumulator() {
+  return {
+    message_count: 0,
+    role_counts: {},
+    first_user_text: "",
+    first_assistant_text: "",
+    first_message_text: ""
+  };
+}
+
+export function addConversationMessageToSummary(accumulator, message) {
+  const role = normalizeRole(message.role);
+  accumulator.message_count += 1;
+  accumulator.role_counts[role] = (accumulator.role_counts[role] || 0) + 1;
+  if (!accumulator.first_message_text) {
+    accumulator.first_message_text = compactText(message.text, 160);
   }
+  if (role === "user" && !accumulator.first_user_text) {
+    if (!isSyntheticUserContext(message.text)) {
+      accumulator.first_user_text = compactText(message.text, 90);
+    }
+  }
+  if (role === "assistant" && !accumulator.first_assistant_text) {
+    accumulator.first_assistant_text = compactText(message.text, 160);
+  }
+  return accumulator;
+}
 
-  const firstUser = messages.find((message) => message.role === "user");
-  const firstAssistant = messages.find((message) => message.role === "assistant");
-  const firstMessage = messages[0];
-
+export function enrichSummaryFromConversationAggregate(summary, accumulator) {
   summary.title =
-    compactText(firstUser?.text, 90) ||
+    accumulator.first_user_text ||
     projectNameFromCwd(summary.cwd) ||
     summary.id;
-  summary.preview_text = compactText(firstAssistant?.text || firstMessage?.text || "", 160);
-  summary.message_count = messages.length;
-  summary.role_counts = roleCounts;
-  summary.tool_count = roleCounts.tool || 0;
+  summary.preview_text = accumulator.first_assistant_text || accumulator.first_message_text || "";
+  summary.message_count = accumulator.message_count;
+  summary.role_counts = { ...accumulator.role_counts };
+  summary.tool_count = accumulator.role_counts.tool || 0;
 
   return summary;
 }
 
-export function finalizeSessionSummary(summary, messages) {
+export function enrichSummaryFromConversation(summary, messages) {
+  const accumulator = createConversationSummaryAccumulator();
+  for (const message of messages) {
+    addConversationMessageToSummary(accumulator, message);
+  }
+  return enrichSummaryFromConversationAggregate(summary, accumulator);
+}
+
+function normalizeSessionSummary(summary) {
   summary.id = typeof summary.id === "string" && summary.id ? summary.id : "unknown";
   summary.source_kind = typeof summary.source_kind === "string" ? summary.source_kind : "";
   summary.display_source = typeof summary.display_source === "string" ? summary.display_source : summary.source_kind;
@@ -105,7 +138,18 @@ export function finalizeSessionSummary(summary, messages) {
   summary.last_timestamp =
     typeof summary.last_timestamp === "string" && summary.last_timestamp ? summary.last_timestamp : summary.timestamp;
 
+  return summary;
+}
+
+export function finalizeSessionSummary(summary, messages) {
+  normalizeSessionSummary(summary);
+
   return enrichSummaryFromConversation(summary, messages);
+}
+
+export function finalizeSessionSummaryFromAggregate(summary, accumulator) {
+  normalizeSessionSummary(summary);
+  return enrichSummaryFromConversationAggregate(summary, accumulator);
 }
 
 export function pushConversationMessage(

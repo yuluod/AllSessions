@@ -1,4 +1,9 @@
-import { parseCodexArchivedFile, parseCodexFile } from "./codex.js";
+import {
+  parseCodexArchivedFile,
+  parseCodexArchivedFileSummary,
+  parseCodexFile,
+  parseCodexFileSummary
+} from "./codex.js";
 import { parseClaudeCodeFile } from "./claude-code.js";
 import { parseGeminiSessions } from "./gemini.js";
 
@@ -7,6 +12,11 @@ const PARSERS = {
   codex_archived: parseCodexArchivedFile,
   claude_code: parseClaudeCodeFile,
   gemini: null
+};
+
+const SUMMARY_PARSERS = {
+  codex: parseCodexFileSummary,
+  codex_archived: parseCodexArchivedFileSummary
 };
 
 export function getParser(sourceKind) {
@@ -25,6 +35,12 @@ export async function parseFile(filePath, sourceKind) {
     throw new Error(`Unknown source kind: ${sourceKind}`);
   }
   return parser(filePath);
+}
+
+export async function parseFileSummary(filePath, sourceKind) {
+  const summaryParser = SUMMARY_PARSERS[sourceKind];
+  if (summaryParser) return summaryParser(filePath);
+  return parseFile(filePath, sourceKind);
 }
 
 export { parseGeminiSessions };

@@ -1,5 +1,6 @@
-const MAX_INDEX_TEXT_CHARS = 500_000;
+const MAX_INDEX_TEXT_CHARS = 200_000;
 const SNIPPET_RADIUS = 72;
+const WORD_CHAR_CLASS = "a-z0-9_.:-";
 
 export function tokenizeSearchText(text) {
   const normalized = String(text || "").toLowerCase();
@@ -28,120 +29,119 @@ function searchableSummaryText(summary) {
   ].filter(Boolean).join("\n");
 }
 
-function searchableMessageText(messages) {
-  return messages
-    .map((message) => [
-      message.role,
-      message.tool_name,
-      message.tool_kind,
-      message.text
-    ].filter(Boolean).join(" "))
-    .join("\n");
+function searchableMessageText(messages, maxLength) {
+  const parts = [];
+  let remaining = maxLength;
+
+  const append = (value) => {
+    if (remaining <= 0 || !value) return;
+    const text = String(value);
+    const chunk = text.length > remaining ? text.slice(0, remaining) : text;
+    parts.push(chunk);
+    remaining -= chunk.length;
+  };
+
+  for (const message of messages) {
+    if (remaining <= 0) break;
+    append([message.role, message.tool_name, message.tool_kind].filter(Boolean).join(" "));
+    append(" ");
+    append(message.text);
+    append("\n");
+  }
+
+  return parts.join("");
 }
 
-function createSnippet(document, query) {
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function tokenPattern(token) {
+  if (/^\p{Script=Han}$/u.test(token)) {
+    return new RegExp(escapeRegExp(token), "u");
+  }
+  return new RegExp(`(?:^|[^${WORD_CHAR_CLASS}])${escapeRegExp(token)}[${WORD_CHAR_CLASS}]*`, "iu");
+}
+
+function firstMatch(documentText, value, { token = false } = {}) {
+  const pattern = token
+    ? tokenPattern(value)
+    : new RegExp(escapeRegExp(value), "iu");
+  const match = pattern.exec(documentText);
+  if (!match) return null;
+
+  let index = match.index;
+  if (token && !/^\p{Script=Han}$/u.test(value)) {
+    const tokenOffset = match[0].toLowerCase().indexOf(String(value).toLowerCase());
+    index += Math.max(0, tokenOffset);
+  }
+  return { index, length: String(value).length };
+}
+
+function createSnippet(documentText, query) {
   const queryText = String(query || "").trim();
-  const queryLower = queryText.toLowerCase();
-  const fields = document.snippetFields;
-  const exact = fields.find((field) => field.toLowerCase().includes(queryLower));
-  if (exact && queryLower) {
-    const lower = exact.toLowerCase();
-    const index = lower.indexOf(queryLower);
+  const exactMatch = queryText ? firstMatch(documentText, queryText) : null;
+  if (exactMatch) {
+    const { index, length } = exactMatch;
     const start = Math.max(0, index - SNIPPET_RADIUS);
-    const end = Math.min(exact.length, index + queryText.length + SNIPPET_RADIUS);
+    const end = Math.min(documentText.length, index + length + SNIPPET_RADIUS);
     const prefix = start > 0 ? "..." : "";
-    const suffix = end < exact.length ? "..." : "";
-    return compactText(prefix + exact.slice(start, end) + suffix, 180);
+    const suffix = end < documentText.length ? "..." : "";
+    return compactText(prefix + documentText.slice(start, end) + suffix, 180);
   }
 
   const tokens = tokenizeSearchText(queryText);
   const token = tokens.find(Boolean);
   if (!token) return "";
-  const tokenMatch = fields.find((field) => tokenizeSearchText(field).includes(token));
-  return tokenMatch ? compactText(tokenMatch, 180) : "";
+  const tokenMatch = firstMatch(documentText, token, { token: true });
+  if (!tokenMatch) return "";
+  const start = Math.max(0, tokenMatch.index - SNIPPET_RADIUS);
+  const end = Math.min(documentText.length, tokenMatch.index + tokenMatch.length + SNIPPET_RADIUS);
+  return compactText(
+    `${start > 0 ? "..." : ""}${documentText.slice(start, end)}${end < documentText.length ? "..." : ""}`,
+    180
+  );
 }
 
 export class SessionSearchIndex {
   constructor() {
-    this.index = new Map();
     this.documents = new Map();
   }
 
   clear() {
-    this.index.clear();
     this.documents.clear();
   }
 
   add(key, summary, messages) {
     const summaryText = searchableSummaryText(summary);
-    const messageText = searchableMessageText(messages);
-    const text = [summaryText, messageText].filter(Boolean).join("\n").slice(0, MAX_INDEX_TEXT_CHARS);
-    const tokens = new Set(tokenizeSearchText(text));
-
-    this.documents.set(key, {
-      text,
-      tokens,
-      snippetFields: [
-        summary.title,
-        summary.preview_text,
-        summary.cwd,
-        summary.file_path,
-        summary.model_provider,
-        summary.source_kind,
-        ...messages.map((message) => message.text)
-      ].filter(Boolean)
-    });
-
-    for (const token of tokens) {
-      if (!this.index.has(token)) {
-        this.index.set(token, new Set());
-      }
-      this.index.get(token).add(key);
-    }
+    const summaryPrefix = summaryText ? `${summaryText}\n` : "";
+    const messageText = searchableMessageText(
+      messages,
+      Math.max(0, MAX_INDEX_TEXT_CHARS - summaryPrefix.length)
+    );
+    const text = `${summaryPrefix}${messageText}`.slice(0, MAX_INDEX_TEXT_CHARS);
+    this.documents.set(key, { text });
   }
 
   delete(key) {
-    const document = this.documents.get(key);
-    if (!document) return;
-    for (const token of document.tokens) {
-      const keys = this.index.get(token);
-      if (!keys) continue;
-      keys.delete(key);
-      if (keys.size === 0) {
-        this.index.delete(token);
-      }
-    }
     this.documents.delete(key);
   }
 
   search(query) {
-    const tokens = tokenizeSearchText(query);
+    const tokens = Array.from(new Set(tokenizeSearchText(query)));
     if (tokens.length === 0) return [];
+    const patterns = tokens.map(tokenPattern);
+    const results = [];
 
-    const resultSets = tokens.map((token) => {
-      const matched = new Set();
-      const exact = this.index.get(token);
-      if (exact) {
-        for (const key of exact) matched.add(key);
+    for (const [key, document] of this.documents) {
+      if (patterns.every((pattern) => pattern.test(document.text))) {
+        results.push({
+          key,
+          snippet: createSnippet(document.text, query)
+        });
       }
-      if (!/^\p{Script=Han}$/u.test(token)) {
-        for (const [indexWord, keys] of this.index) {
-          if (indexWord !== token && indexWord.startsWith(token)) {
-            for (const key of keys) matched.add(key);
-          }
-        }
-      }
-      return matched;
-    });
-
-    let intersection = resultSets[0];
-    for (let i = 1; i < resultSets.length; i++) {
-      intersection = new Set([...intersection].filter((key) => resultSets[i].has(key)));
     }
 
-    return [...intersection].map((key) => ({
-      key,
-      snippet: createSnippet(this.documents.get(key), query)
-    }));
+    return results;
   }
 }

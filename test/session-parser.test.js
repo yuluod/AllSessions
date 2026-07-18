@@ -4,7 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { parseCodexContent as parseSessionContent } from "../server/parsers/codex.js";
+import {
+  parseCodexContent as parseSessionContent,
+  parseCodexFileSummary
+} from "../server/parsers/codex.js";
 import { parseGeminiSessions } from "../server/parsers/index.js";
 import { parseCodexArchivedFile } from "../server/parsers/codex.js";
 import { parseClaudeCodeFile } from "../server/parsers/claude-code.js";
@@ -62,6 +65,124 @@ test("能从标准会话中提取摘要和对话消息", () => {
   assert.match(detail.conversation_messages[1].text, /查看会话/);
 });
 
+test("Codex 启动摘要逐行解析并限制保留的搜索正文", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const filePath = path.join(rootDir, "large-session.jsonl");
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "large-session",
+        timestamp: "2026-04-21T10:00:00.000Z",
+        cwd: "/tmp/large",
+        source: "cli",
+        model_provider: "custom"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "大型会话问题" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:02.000Z",
+      type: "event_msg",
+      payload: { type: "tool_result", call_id: "large-tool", output: "x".repeat(300_000) }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:03.000Z",
+      type: "event_msg",
+      payload: { type: "agent_message", message: "大型会话回答" }
+    })
+  ].join("\n");
+  await fs.writeFile(filePath, content, "utf8");
+
+  const detail = await parseCodexFileSummary(filePath, { maxConversationTextChars: 1024 });
+
+  assert.equal(detail.summary.event_count, 4);
+  assert.equal(detail.summary.message_count, 3);
+  assert.deepEqual(detail.summary.role_counts, { user: 1, tool: 1, assistant: 1 });
+  assert.equal(detail.summary.tool_count, 1);
+  assert.equal(detail.summary.title, "大型会话问题");
+  assert.equal(detail.summary.preview_text, "大型会话回答");
+  assert.equal(detail.raw_events.length, 0);
+  assert.ok(detail.conversation_messages.reduce((sum, message) => sum + message.text.length, 0) <= 1024);
+});
+
+test("会话标题跳过应用注入的上下文消息", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "context-title", cwd: "/tmp/context", model_provider: "custom" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "<recommended_plugins>injected context</recommended_plugins>" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:02.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "真正需要解决的会话问题" }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/context-title.jsonl");
+
+  assert.equal(detail.summary.title, "真正需要解决的会话问题");
+  assert.equal(detail.summary.message_count, 2);
+});
+
+test("会话标题跳过应用附加的文件上下文", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "file-context-title", cwd: "/tmp/file-context", model_provider: "custom" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "# Files mentioned by the user:\n\n## error.log\n\nSQLite failure" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:02.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "请分析这个数据库错误" }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/file-context-title.jsonl");
+
+  assert.equal(detail.summary.title, "请分析这个数据库错误");
+  assert.equal(detail.summary.message_count, 2);
+});
+
+test("只有应用注入上下文时会话标题回退到项目名", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "only-context", cwd: "/tmp/project-name", model_provider: "custom" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "<recommended_plugins>injected context</recommended_plugins>" }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/only-context.jsonl");
+
+  assert.equal(detail.summary.title, "project-name");
+});
+
 test("Codex 归档会话会保留 Codex 字段并打归档标记", async (t) => {
   const rootDir = await createTempSessionDir();
   t.after(async () => {
@@ -94,6 +215,44 @@ test("Codex 归档会话会保留 Codex 字段并打归档标记", async (t) => 
   assert.equal(detail.summary.archived, true);
   assert.equal(detail.summary.archive_source, "codex");
   assert.equal(detail.summary.display_source, "Codex Archived");
+});
+
+test("Codex subagent source 对象会标记为隐藏会话", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "subagent-1",
+        timestamp: "2026-04-21T10:00:00.000Z",
+        cwd: "/tmp/subagent",
+        source: {
+          subagent: {
+            thread_spawn: "parent-thread"
+          }
+        },
+        model_provider: "custom"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "隐藏会话问题" }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/subagent.jsonl");
+
+  assert.equal(detail.summary.id, "subagent-1");
+  assert.equal(detail.summary.source, "subagent");
+  assert.deepEqual(detail.summary.source_detail, {
+    subagent: {
+      thread_spawn: "parent-thread"
+    }
+  });
+  assert.equal(detail.summary.hidden, true);
+  assert.equal(detail.summary.hidden_reason, "subagent");
+  assert.equal(detail.summary.title, "隐藏会话问题");
 });
 
 test("Claude Code 摘要会从用户历史派生标题和统计", async (t) => {

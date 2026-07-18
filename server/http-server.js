@@ -1,12 +1,9 @@
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { URL } from "node:url";
-
-import { rollbackMigration, runMigration } from "../scripts/migrate-codex-provider-to-custom.mjs";
 
 const CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -20,6 +17,14 @@ const SESSION_ID_RE = /^[a-zA-Z0-9_:.-]{1,128}$/;
 const MUTATION_TOKEN_HEADER = "x-session-viewer-token";
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/g;
+let codexMigrationModulePromise = null;
+
+function loadCodexMigrationModule() {
+  if (!codexMigrationModulePromise) {
+    codexMigrationModulePromise = import("../scripts/migrate-codex-provider-to-custom.mjs");
+  }
+  return codexMigrationModulePromise;
+}
 
 function sanitizeFilterValue(value) {
   if (!value) return "";
@@ -29,12 +34,14 @@ function sanitizeFilterValue(value) {
 
 function readSessionFilters(url) {
   const showCodexArchived = url.searchParams.get("show_codex_archived");
+  const showHidden = url.searchParams.get("show_hidden");
   return {
     provider: sanitizeFilterValue(url.searchParams.get("provider")),
     source_kind: sanitizeFilterValue(url.searchParams.get("source_kind")),
     date: sanitizeFilterValue(url.searchParams.get("date")),
     cwd: sanitizeFilterValue(url.searchParams.get("cwd")),
-    show_codex_archived: showCodexArchived === "true" || showCodexArchived === "1"
+    show_codex_archived: showCodexArchived === "true" || showCodexArchived === "1",
+    show_hidden: showHidden === "true" || showHidden === "1"
   };
 }
 
@@ -75,6 +82,12 @@ function badRequest(message) {
 function forbidden(message) {
   const error = new Error(message);
   error.statusCode = 403;
+  return error;
+}
+
+function conflict(message) {
+  const error = new Error(message);
+  error.statusCode = 409;
   return error;
 }
 
@@ -191,9 +204,17 @@ async function sendStaticFile(publicDir, pathname, request, response) {
   }
 }
 
-export function createHttpServer({ store, publicDir, sessionRoots, codexMigrationOptions = {} }) {
+export function createHttpServer({
+  store,
+  publicDir,
+  sessionRoots,
+  codexMaintenanceEnabled = false,
+  codexMigrationOptions = {}
+}) {
   const sseClients = new Set();
-  const mutationToken = codexMigrationOptions.mutationToken || crypto.randomBytes(24).toString("base64url");
+  const mutationToken = codexMaintenanceEnabled
+    ? codexMigrationOptions.mutationToken || crypto.randomBytes(24).toString("base64url")
+    : "";
 
   const SSE_PING_INTERVAL = 30_000;
   let ssePingTimer = null;
@@ -234,8 +255,27 @@ export function createHttpServer({ store, publicDir, sessionRoots, codexMigratio
     const url = new URL(request.url, "http://127.0.0.1");
 
     try {
+      if (url.pathname === "/api/capabilities") {
+        if (request.method !== "GET") {
+          sendText(response, 405, "Only GET is supported");
+          return;
+        }
+        sendJson(response, 200, {
+          codex_maintenance: {
+            enabled: codexMaintenanceEnabled
+          }
+        });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/codex-provider-migration/") && !codexMaintenanceEnabled) {
+        sendJson(response, 404, { error: "Codex maintenance mode is disabled" });
+        return;
+      }
+
       if (url.pathname.startsWith("/api/") && request.method !== "GET") {
-        const isMigrationPost = url.pathname.startsWith("/api/codex-provider-migration/") &&
+        const isMigrationPost = codexMaintenanceEnabled &&
+          url.pathname.startsWith("/api/codex-provider-migration/") &&
           request.method === "POST";
         if (!isMigrationPost) {
           sendText(response, 405, "Only GET is supported");
@@ -249,12 +289,12 @@ export function createHttpServer({ store, publicDir, sessionRoots, codexMigratio
           return;
         }
         const providers = readMigrationProviders(url.searchParams.get("providers"));
+        const { runMigration } = await loadCodexMigrationModule();
         const summary = await runMigration({
           ...codexMigrationOptions,
           providers,
           apply: false
         });
-        summary.backupRoot = codexMigrationOptions.backupRoot || path.join(os.homedir(), ".cc-switch", "backups");
         summary.mutation_token = mutationToken;
         sendJson(response, 200, summary);
         return;
@@ -270,11 +310,26 @@ export function createHttpServer({ store, publicDir, sessionRoots, codexMigratio
         if (body.confirmedCodexAppClosed !== true) {
           throw badRequest("Codex App closed confirmation is required");
         }
-        const summary = await runMigration({
-          ...codexMigrationOptions,
-          providers: readMigrationProviders(body.providers),
-          apply: true
-        });
+        if (typeof body.planId !== "string" || !/^[a-f0-9]{64}$/i.test(body.planId)) {
+          throw badRequest("A valid migration plan id is required");
+        }
+        let summary;
+        try {
+          const { runMigration } = await loadCodexMigrationModule();
+          summary = await runMigration({
+            ...codexMigrationOptions,
+            providers: readMigrationProviders(body.providers),
+            planId: body.planId,
+            confirmedCodexClosed: true,
+            apply: true
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/plan changed|still running|Migration is blocked/i.test(message)) {
+            throw conflict(message);
+          }
+          throw error;
+        }
         await store.refresh();
         sendJson(response, 200, summary);
         return;
@@ -293,10 +348,21 @@ export function createHttpServer({ store, publicDir, sessionRoots, codexMigratio
         if (!body.backupDir || typeof body.backupDir !== "string") {
           throw badRequest("backupDir is required");
         }
-        const result = await rollbackMigration({
-          ...codexMigrationOptions,
-          backupDir: body.backupDir
-        });
+        let result;
+        try {
+          const { rollbackMigration } = await loadCodexMigrationModule();
+          result = await rollbackMigration({
+            ...codexMigrationOptions,
+            backupDir: body.backupDir,
+            confirmedCodexClosed: true
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/still running|Backup targets|Backup directory|Unsupported or invalid/i.test(message)) {
+            throw conflict(message);
+          }
+          throw error;
+        }
         await store.refresh();
         sendJson(response, 200, result);
         return;
@@ -385,7 +451,7 @@ export function createHttpServer({ store, publicDir, sessionRoots, codexMigratio
       const message = error instanceof Error ? error.message : String(error);
       const statusCode = error && typeof error === "object" && Number.isInteger(error.statusCode)
         ? error.statusCode
-        : /^(Invalid provider name|Refusing to migrate preserved provider):/.test(message)
+        : /^(Invalid provider name|Refusing to migrate (?:preserved|protected) provider):/.test(message)
           ? 400
           : 500;
       if (statusCode >= 500) {

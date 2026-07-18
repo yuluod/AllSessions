@@ -55,6 +55,7 @@ Browse, filter, search, and inspect local AI sessions in a compact browser UI wi
 - Browse local session list from multiple sources (Codex, Claude Code, Gemini CLI)
 - Filter by source kind, provider, date, and working directory
 - Search session content, project paths, provider names, source names, and derived titles
+- Hide Codex subagent sessions by default, with an explicit "Show hidden sessions" toggle
 - View individual session details
 - Switch between "Conversation" and "Raw Events" views
 - Chinese-English language switching
@@ -103,6 +104,44 @@ Example:
 PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 ```
 
+## Codex Provider Visibility Repair
+
+Normal `pnpm start` runs in read-only mode and does not register any provider-repair endpoints. To use the page workflow, explicitly start maintenance mode:
+
+```bash
+pnpm start:maintenance
+```
+
+Open the "Tools" tab, select the historical providers to restore, and build the exact plan. The tool reads the active provider from Codex `config.toml` but never modifies `config.toml` or reads/writes third-party tool data. Official and built-in providers remain unchanged.
+
+For CLI use:
+
+```bash
+pnpm codex:provider-repair -- --dry-run
+pnpm codex:provider-repair -- --dry-run \
+  --providers right_code,cubence_codex
+pnpm codex:provider-repair -- --apply \
+  --providers right_code,cubence_codex \
+  --plan-id <preview-plan-id> \
+  --confirm-codex-closed
+```
+
+The first dry-run only discovers candidates; it never auto-selects providers. Quit Codex App before apply. The tool backs up affected Codex state databases and JSONL files under `~/.codex/backups/codex-history-provider-rebucket-v2/`, and records original assignments in `provider-manifest.json`. Failures trigger automatic rollback. Manual rollback also requires Codex App to be closed:
+
+```bash
+pnpm codex:provider-repair -- \
+  --rollback /path/to/backup-dir \
+  --confirm-codex-closed
+```
+
+This restores visibility for the currently active provider only. It does not alter future provider switching and is not a permanent unification; after switching providers, another repair may be required.
+
+Do not confuse the three visibility paths:
+
+- "Show Codex archived sessions" is a read-only view of `~/.codex/archived_sessions`.
+- "Show hidden sessions" reveals Codex subagent sessions in this viewer.
+- "Codex Provider Visibility Repair" rewrites selected provider metadata so Codex App can see that history under the active provider again.
+
 ## Notes
 
 - Local-only: no authentication or remote access control
@@ -111,7 +150,7 @@ PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 - Legacy sessions with incompatible formats fall back to raw event view
 - Encrypted fields are shown as-is without decryption
 - Scans all sessions on startup and caches summaries; details are read on demand
-- Provider migration endpoints require the local page's mutation token and reject cross-origin mutation requests
+- Normal startup does not register provider-repair endpoints; maintenance mode still requires the local page's mutation token and rejects cross-origin mutation requests
 
 ## Roadmap
 
@@ -136,6 +175,14 @@ pnpm format
 
 # Build frontend (outputs to dist/)
 pnpm build
+```
+
+If local pnpm version switching fails on registry signature verification, run the same checks directly:
+
+```bash
+./node_modules/.bin/eslint server public test scripts
+node --test
+./node_modules/.bin/vite build
 ```
 
 ## License

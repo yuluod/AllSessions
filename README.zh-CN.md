@@ -55,6 +55,7 @@
 - 浏览多个来源的本地会话列表（Codex、Claude Code、Gemini CLI）
 - 按来源类型、provider、日期、工作目录筛选
 - 搜索会话正文、项目路径、provider、来源名称和派生标题
+- 默认隐藏 Codex subagent 会话，可通过「显示隐藏会话」临时查看
 - 查看单个会话详情
 - 在「对话视图」和「原始事件流」之间切换
 - 中英文语言切换
@@ -107,29 +108,53 @@ http://127.0.0.1:3210
 PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 ```
 
-## Codex Provider 历史迁移
+## Codex Provider 可见性修复
 
-页面方式：启动查看器后打开左侧「工具」页签，使用「Codex Provider 迁移」面板先预览。确认 Codex App 已退出后，再勾选确认并执行迁移。页面会显示备份目录，也可以用该目录回滚。
-
-如果 Codex App 因第三方供应商切换而看不到旧会话，可以先预览 provider 迁移：
+普通 `pnpm start` 是只读模式，不注册任何 Provider 修复接口。需要从页面执行时，必须显式启动维护模式：
 
 ```bash
-pnpm codex:provider-migration -- --dry-run
+pnpm start:maintenance
 ```
 
-该工具参考 cc-switch v3.16 的方式，将第三方 Codex provider 历史统一到稳定的 `custom` 桶。默认只预览，不会写入 `~/.codex`。
+然后打开左侧「工具」页签。工具只读 `config.toml` 来确定当前激活的第三方 provider，列出候选历史 provider，并要求用户明确勾选来源后生成精确计划；不会修改 `config.toml`，也不会读取或写入任何第三方工具的数据。确认 Codex App 已退出后才能执行；如果任一会话文件或数据库在预览后变化，必须重新生成计划。
 
-确认结果后，先退出 Codex App，再执行：
+注意：左侧「显示 Codex 归档会话」只是只读查看 `~/.codex/archived_sessions`；「显示隐藏会话」用于查看 Codex subagent 会话；「Codex Provider 可见性修复」只改写 Codex 自身的历史索引和会话元数据。
+
+如果 Codex App 因 provider 切换而看不到旧会话，可以先运行只读诊断：
 
 ```bash
-pnpm codex:provider-migration -- --apply
+pnpm codex:provider-repair -- --dry-run
 ```
 
-执行前会备份 `state_5.sqlite` 和将被改写的 JSONL 文件到 `~/.cc-switch/backups/codex-history-provider-migration-v1/`。如需恢复，可使用输出的备份目录：
+诊断会列出候选来源，但不会自动选择。官方及内建 provider（如 `openai`、`ollama`）始终保持不变。如果当前 provider 未定义、属于内建 provider 或配置不完整，工具会阻止执行。默认诊断不会写入任何文件。
+
+明确选择来源并生成计划：
 
 ```bash
-pnpm codex:provider-migration -- --rollback /path/to/backup-dir
+pnpm codex:provider-repair -- --dry-run \
+  --providers right_code,cubence_codex
 ```
+
+输出会包含 `Plan id`。确认结果后，退出 Codex App，再使用完全相同的来源和该指纹执行：
+
+```bash
+pnpm codex:provider-repair -- --apply \
+  --providers right_code,cubence_codex \
+  --plan-id <preview-plan-id> \
+  --confirm-codex-closed
+```
+
+执行前会通过 SQLite 在线备份保存所有受影响的 `state_5.sqlite`，同时备份将被改写的 JSONL，并写入 `provider-manifest.json` 记录原始 provider 归属。备份位于 `~/.codex/backups/codex-history-provider-rebucket-v2/`；任一步失败会自动恢复全部已写入数据。工具同时支持 Codex 的 `sqlite_home` 和 `CODEX_SQLITE_HOME`。
+
+如需手动恢复，确保 Codex App 已退出，再使用输出的备份目录：
+
+```bash
+pnpm codex:provider-repair -- \
+  --rollback /path/to/backup-dir \
+  --confirm-codex-closed
+```
+
+这是针对“当前激活 provider”的可见性修复，不会改变其他工具今后的切换行为，也不承诺永久统一；切到另一个 provider 后如再次不可见，需要重新诊断并执行。
 
 ## 已知边界
 
@@ -139,7 +164,7 @@ pnpm codex:provider-migration -- --rollback /path/to/backup-dir
 - 对历史格式差异较大的旧会话，只保证原始事件流可见
 - 对加密字段只展示占位或原样结构，不尝试解密
 - 启动时会全量扫描会话并缓存摘要；详情页按需读取单文件
-- Provider 迁移接口需要本地页面 token，并拒绝跨来源写入请求
+- 默认启动不注册 Provider 修复接口；维护模式仍需要本地页面 token，并拒绝跨来源写入请求
 
 ## 路线图
 
@@ -165,6 +190,14 @@ pnpm format
 
 # 前端构建（输出到 dist/）
 pnpm build
+```
+
+如果本地 `pnpm` 版本切换触发 registry 签名校验失败，可直接运行项目内二进制完成同等验证：
+
+```bash
+./node_modules/.bin/eslint server public test scripts
+node --test
+./node_modules/.bin/vite build
 ```
 
 ## 许可证

@@ -19,6 +19,53 @@ test("首页具备工作台式布局骨架", async () => {
   assert.match(html, /class="props-panel"/);
 });
 
+test("全局导航位于顶部并将次要筛选渐进折叠", async () => {
+  const html = await readProjectFile("public/index.html");
+
+  assert.match(html, /<header class="toolbar">[\s\S]*class="sidebar-tabs workspace-tabs"/);
+  assert.match(html, /<details id="sidebar-filters" class="sidebar-filters">/);
+  assert.match(html, /<details class="project-nav" open>/);
+  assert.match(html, /<details class="visibility-panel">/);
+});
+
+test("属性型 i18n 不会覆盖带子节点的控件内容", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/i18n.js");
+
+  assert.match(html, /class="sidebar-tabs workspace-tabs"[\s\S]*data-i18n-attr="aria-label"[\s\S]*data-sidebar-tab="list"/);
+  assert.match(source, /if \(el\.dataset\.i18nAttr\) return;/);
+  assert.match(source, /el\.setAttribute\(attr, t\(key\)\)/);
+});
+
+test("统计与工具视图使用全宽工作区且手机端提供返回入口", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /id="mobile-back-btn"/);
+  assert.match(css, /\.app-layout\[data-view="stats"\]\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /\.app-layout\[data-view="tools"\]\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.mobile-back-button\s*\{[\s\S]*display: inline-flex/);
+  assert.match(css, /\.sidebar-left,\s*\.detail-shell\s*\{\s*scroll-margin-top: 158px/);
+  assert.match(source, /const MOBILE_LAYOUT_QUERY = "\(max-width: 760px\)"/);
+  assert.match(source, /scrollToWorkspaceSection\(document\.querySelector\("#detail-panel"\)\)/);
+});
+
+test("统计页展示真实事件总数并使用最近日期", async () => {
+  const source = await readProjectFile("public/app.js");
+  const store = await readProjectFile("server/session-store.js");
+
+  assert.match(source, /value: formatCount\(stats\.total_events\)/);
+  assert.match(source, /\(stats\.by_date \|\| \[\]\)\.slice\(-14\)/);
+  assert.match(store, /total_events: totalEvents/);
+});
+
+test("页面使用内联 favicon 避免无意义的网络请求", async () => {
+  const html = await readProjectFile("public/index.html");
+
+  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
+});
+
 test("会话列表项具备三段式信息层级", async () => {
   const html = await readProjectFile("public/index.html");
 
@@ -80,6 +127,17 @@ test("顶部筛选按钮聚焦筛选区而不是切换到统计页", async () =>
   assert.match(source, /document\.querySelector\('\.sidebar-tab\[data-sidebar-tab="list"\]'\)/);
   assert.match(source, /elements\.sourceKindFilter\?\.focus\(\)/);
   assert.doesNotMatch(source, /document\.querySelector\('\.sidebar-tab\[data-sidebar-tab="stats"\]'\)/);
+});
+
+test("全局搜索支持快捷键并从其他视图返回会话列表", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+
+  assert.match(html, /<kbd class="search-kbd">⌘ K<\/kbd>/);
+  assert.match(source, /\(event\.metaKey \|\| event\.ctrlKey\) && event\.key\.toLowerCase\(\) === "k"/);
+  assert.match(source, /const switchedView = state\.activeView !== "list"/);
+  assert.match(source, /await activateWorkspaceView\("list"\)/);
+  assert.match(source, /elements\.searchInput\?\.focus\(\)/);
 });
 
 test("样式包含紧凑工具栏和详情元信息条", async () => {
@@ -157,22 +215,55 @@ test("Codex 归档会话开关会进入 URL 并触发重新加载", async () => 
   assert.match(source, /elements\.showCodexArchivedToggle\.addEventListener\("change", async \(\) => \{[\s\S]*loadSessions\(\), loadStats\(\)/);
 });
 
-test("页面提供 Codex Provider 迁移工具入口", async () => {
+test("隐藏会话开关会进入 URL 并触发重新加载", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const dict = await readProjectFile("public/i18n.js");
+
+  assert.match(html, /id="show-hidden-toggle"/);
+  assert.match(html, /data-i18n="showHidden"/);
+  assert.match(dict, /showHidden: "显示隐藏会话"/);
+  assert.match(dict, /hiddenSubagent: "Subagent"/);
+  assert.match(source, /showHidden: false/);
+  assert.match(source, /params\.set\("show_hidden", "1"\)/);
+  assert.match(source, /function hiddenReasonLabel\(session\)/);
+  assert.match(source, /function visibilityLabel\(session\)/);
+  assert.match(source, /value: visibilityLabel\(summary\)/);
+  assert.match(source, /session-hidden-reason/);
+  assert.match(source, /elements\.showHiddenToggle\.addEventListener\("change", async \(\) => \{[\s\S]*loadSessions\(\), loadStats\(\)/);
+});
+
+test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复入口", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
   const server = await readProjectFile("server/http-server.js");
+  const serverIndex = await readProjectFile("server/index.js");
   const apiClient = await readProjectFile("public/api-client.js");
 
   assert.match(html, /data-sidebar-tab="tools"/);
   assert.match(html, /id="codex-migration-preview-btn"/);
   assert.match(html, /id="codex-migration-apply-btn"/);
   assert.match(html, /id="codex-migration-rollback-btn"/);
+  assert.match(html, /id="codex-migration-diagnostics"/);
+  assert.match(html, /id="codex-migration-card"[\s\S]*data-enabled="false"/);
+  assert.match(html, /data-i18n="maintenanceBoundary"/);
+  assert.match(html, /id="codex-archive-viewer-title"/);
+  assert.match(html, /data-i18n="codexArchiveViewerDesc"/);
   assert.match(source, /\/api\/codex-provider-migration\/preview/);
+  assert.match(source, /\/api\/capabilities/);
+  assert.match(source, /summary\.candidateMappings \|\| summary\.mappings/);
+  assert.match(source, /checkbox\.type = "checkbox"/);
+  assert.match(source, /selectedCodexMigrationProviders\(\)/);
   assert.match(source, /setMutationToken\(summary\.mutation_token\)/);
   assert.match(source, /mutation: true/);
   assert.match(apiClient, /X-Session-Viewer-Token/);
   assert.match(source, /confirmedCodexAppClosed: true/);
+  assert.match(source, /planId: preview\.planId/);
   assert.match(server, /\/api\/codex-provider-migration\/apply/);
+  assert.match(server, /codexMaintenanceEnabled = false/);
+  assert.match(server, /Codex maintenance mode is disabled/);
   assert.match(server, /assertMutationToken\(request, mutationToken\)/);
   assert.match(server, /runMigration\(\{[\s\S]*apply: true/);
+  assert.match(serverIndex, /--enable-codex-maintenance/);
+  assert.match(serverIndex, /codexMaintenanceEnabled/);
 });

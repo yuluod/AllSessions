@@ -89,6 +89,10 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
     source_kinds: ["codex"]
   });
 
+  const stats = store.getStats();
+  assert.equal(stats.total, 2);
+  assert.equal(stats.total_events, 4);
+
   const detail = await store.getSessionDetail("s-1");
   assert.equal(detail.summary.id, "s-1");
 });
@@ -107,7 +111,7 @@ test("_watchDir 创建失败时不会污染 watchedDirs", async (t) => {
   assert.equal(store._watchedDirs.has(missingDir), false);
 });
 
-test("stopWatching 会清空 watchedDirs", async (t) => {
+test("watch 每个来源根目录只创建一个递归 watcher", async (t) => {
   const rootDir = await createTempSessionDir();
   t.after(async () => {
     await fs.rm(rootDir, { recursive: true, force: true });
@@ -117,14 +121,66 @@ test("stopWatching 会清空 watchedDirs", async (t) => {
   await fs.mkdir(nestedDir, { recursive: true });
 
   const store = new SessionStore({ sources: [{ kind: "codex", rootDir, filePattern: "**/*.jsonl" }] });
+  t.after(() => store.stopWatching());
   await store.watch();
 
   assert.ok(store._watchedDirs.has(rootDir));
-  assert.ok(store._watchedDirs.has(nestedDir));
+  assert.equal(store._watchedDirs.has(nestedDir), false);
+  assert.equal(store._watchers.length, 1);
 
   store.stopWatching();
 
   assert.equal(store._watchedDirs.size, 0);
+});
+
+test("initialize 和 watch 只访问来源声明的精确目录", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const sessionsDir = path.join(rootDir, "sessions");
+  const unrelatedSessionsDir = path.join(rootDir, "plugins", "cache", "sessions");
+  await fs.mkdir(sessionsDir, { recursive: true });
+  await fs.mkdir(unrelatedSessionsDir, { recursive: true });
+
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  await fs.writeFile(
+    path.join(sessionsDir, "valid.json"),
+    JSON.stringify({
+      sessionId: "valid-session",
+      cwd: "/tmp/valid",
+      startedAt: 1713670800000,
+      entrypoint: "claude"
+    }),
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(unrelatedSessionsDir, "unrelated.json"),
+    JSON.stringify({
+      sessionId: "unrelated-session",
+      cwd: "/tmp/unrelated",
+      startedAt: 1713670800000,
+      entrypoint: "claude"
+    }),
+    "utf8"
+  );
+
+  const source = {
+    kind: "claude_code",
+    rootDir,
+    filePattern: "sessions/*.json",
+    discoveryRoots: [sessionsDir],
+    watchRoots: [sessionsDir]
+  };
+  const store = new SessionStore({ sources: [source] });
+  t.after(() => store.stopWatching());
+  await store.initialize();
+  await store.watch();
+
+  assert.deepEqual(store.listSessions().sessions.map((session) => session.id), ["valid-session"]);
+  assert.deepEqual([...store._watchedDirs], [sessionsDir]);
+
+  store.stopWatching();
 });
 
 test("多来源同 raw id 不串", async (t) => {
@@ -338,6 +394,80 @@ test("Codex 归档会话默认隐藏，开启 show_codex_archived 后可见", as
   const detail = await store.getSessionDetail("codex_archived:archived-codex");
   assert.equal(detail.summary.archived, true);
   assert.equal(detail.summary.archive_source, "codex");
+});
+
+test("hidden subagent 会话默认隐藏，开启 show_hidden 后可见", async (t) => {
+  const rootDir = await createTempSessionDir();
+  await fs.mkdir(rootDir, { recursive: true });
+
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const visibleSession = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "visible-codex",
+        timestamp: "2026-04-21T10:00:00.000Z",
+        cwd: "/tmp/visible",
+        source: "cli",
+        model_provider: "openai"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "普通搜索词" }
+    })
+  ].join("\n");
+
+  const hiddenSession = [
+    JSON.stringify({
+      timestamp: "2026-04-20T10:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "hidden-subagent",
+        timestamp: "2026-04-20T10:00:00.000Z",
+        cwd: "/tmp/hidden",
+        source: {
+          subagent: {
+            thread_spawn: "parent"
+          }
+        },
+        model_provider: "custom"
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-20T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "隐藏搜索词" }
+    })
+  ].join("\n");
+
+  await fs.writeFile(path.join(rootDir, "visible.jsonl"), visibleSession, "utf8");
+  await fs.writeFile(path.join(rootDir, "hidden.jsonl"), hiddenSession, "utf8");
+
+  const store = new SessionStore({ sources: [{ kind: "codex", rootDir, filePattern: "**/*.jsonl" }] });
+  await store.initialize();
+
+  assert.equal(store.listSessions().sessions.length, 1);
+  assert.equal(store.search("隐藏搜索词").length, 0);
+  assert.equal(store.getStats().total, 1);
+
+  const visible = store.listSessions({ show_hidden: true }).sessions;
+  assert.equal(visible.length, 2);
+  assert.equal(visible.some((session) => session._key === "codex:hidden-subagent"), true);
+  assert.equal(store.search("隐藏搜索词", { show_hidden: true }).length, 1);
+  assert.equal(store.getStats({ show_hidden: true }).total, 2);
+
+  const facets = store.getFacets();
+  assert.deepEqual(facets.hidden_reasons, ["subagent"]);
+
+  const detail = await store.getSessionDetail("codex:hidden-subagent");
+  assert.equal(detail.summary.hidden, true);
+  assert.equal(detail.summary.hidden_reason, "subagent");
 });
 
 test("坏 Claude Code 元数据不会阻断其他会话初始化", async (t) => {

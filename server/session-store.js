@@ -2,10 +2,17 @@ import fs from "node:fs/promises";
 import fss from "node:fs";
 import path from "node:path";
 
-import { compareSummariesDesc, parseFile, parseGeminiSessions, sortTimestampValue } from "./parsers/index.js";
+import {
+  compareSummariesDesc,
+  parseFile,
+  parseFileSummary,
+  parseGeminiSessions,
+  sortTimestampValue
+} from "./parsers/index.js";
 import { SessionSearchIndex } from "./session-index.js";
 
 const DEBOUNCE_MS = 500;
+const INITIAL_PARSE_BATCH_SIZE = 4;
 
 function sessionKey(sourceKind, id) {
   return `${sourceKind}:${id}`;
@@ -66,6 +73,13 @@ async function collectFiles(rootDir, source, depth = 0) {
   return files.flat();
 }
 
+function sourceRoots(source, property) {
+  const configured = Array.isArray(source[property]) && source[property].length > 0
+    ? source[property]
+    : [source.rootDir];
+  return Array.from(new Set(configured.filter(Boolean).map((rootDir) => path.resolve(rootDir))));
+}
+
 function dateKeyFromTimestamp(timestamp) {
   if (typeof timestamp !== "string" || timestamp.length < 10) {
     return "";
@@ -85,8 +99,15 @@ function matchesFilter(summary, filters) {
     filters.show_codex_archived === true ||
     filters.show_codex_archived === "true" ||
     filters.show_codex_archived === "1";
+  const showHidden =
+    filters.show_hidden === true ||
+    filters.show_hidden === "true" ||
+    filters.show_hidden === "1";
 
   if (summary.archived === true && summary.archive_source === "codex" && !showCodexArchived) {
+    return false;
+  }
+  if (summary.hidden === true && !showHidden) {
     return false;
   }
   if (filters.provider && summary.model_provider !== filters.provider) {
@@ -108,7 +129,7 @@ const LRU_MAX = 50;
 
 async function parseFileSafely(filePath, sourceKind) {
   try {
-    return await parseFile(filePath, sourceKind);
+    return await parseFileSummary(filePath, sourceKind);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`Cannot parse session file (${filePath}): ${message}`);
@@ -146,16 +167,22 @@ export class SessionStore {
           this._addSessionDetail(detail);
         }
       } else {
-        const files = await collectFiles(source.rootDir, source);
-        const parsed = await Promise.all(
-          files.map(async (filePath) => {
-            return parseFileSafely(filePath, source.kind);
-          })
+        const discoveredFiles = await Promise.all(
+          sourceRoots(source, "discoveryRoots").map((rootDir) => collectFiles(rootDir, source))
         );
+        const files = Array.from(new Set(discoveredFiles.flat()));
+        for (let start = 0; start < files.length; start += INITIAL_PARSE_BATCH_SIZE) {
+          const batch = files.slice(start, start + INITIAL_PARSE_BATCH_SIZE);
+          const parsed = await Promise.all(
+            batch.map(async (filePath) => {
+              return parseFileSafely(filePath, source.kind);
+            })
+          );
 
-        for (const detail of parsed) {
-          if (detail) {
-            this._addSessionDetail(detail);
+          for (const detail of parsed) {
+            if (detail) {
+              this._addSessionDetail(detail);
+            }
           }
         }
       }
@@ -273,6 +300,7 @@ export class SessionStore {
     const sourceKinds = new Set();
     const dates = new Set();
     const cwds = new Set();
+    const hiddenReasons = new Set();
     const projectsByCwd = new Map();
 
     this.summaries.forEach((summary) => {
@@ -311,6 +339,9 @@ export class SessionStore {
           project.source_kinds.add(summary.source_kind);
         }
       }
+      if (summary.hidden === true && summary.hidden_reason) {
+        hiddenReasons.add(summary.hidden_reason);
+      }
     });
 
     const projects = Array.from(projectsByCwd.values())
@@ -332,12 +363,14 @@ export class SessionStore {
       source_kinds: Array.from(sourceKinds).sort(),
       dates: Array.from(dates).sort().reverse(),
       cwds: Array.from(cwds).sort(),
+      hidden_reasons: Array.from(hiddenReasons).sort(),
       projects
     };
   }
 
   getStats(filters = {}) {
     const data = this.summaries.filter((summary) => matchesFilter(summary, filters));
+    const totalEvents = data.reduce((sum, summary) => sum + summary.event_count, 0);
 
     const byDate = new Map();
     const bySourceKind = new Map();
@@ -367,6 +400,7 @@ export class SessionStore {
 
     return {
       total: data.length,
+      total_events: totalEvents,
       active_days: byDate.size,
       avg_daily: byDate.size > 0 ? (data.length / byDate.size).toFixed(1) : "0",
       by_date: Array.from(byDate.entries())
@@ -427,61 +461,40 @@ export class SessionStore {
     this._onChangeCallbacks.forEach((cb) => cb(event));
   }
 
-  _watchDir(dir, source, depth = 0) {
+  _watchDir(dir, source) {
     if (this._watchedDirs.has(dir)) return;
     try {
-      const watcher = fss.watch(dir, (eventType, filename) => {
+      const watcher = fss.watch(dir, { recursive: true }, (eventType, filename) => {
         if (!filename) return;
-        const fullPath = path.join(dir, filename);
+        const fullPath = path.resolve(dir, String(filename));
+        if (!isWithinRoot(fullPath, dir)) return;
         const isTargetFile = getMatchFn(source)(fullPath);
         if (isTargetFile) {
           clearTimeout(this._debounceTimer);
           this._pendingChanges.add(fullPath);
           this._debounceTimer = setTimeout(() => this._processPendingChanges(), DEBOUNCE_MS);
-          return;
         }
-        try {
-          const stat = fss.lstatSync(fullPath);
-          if (stat.isSymbolicLink()) return;
-          if (stat.isDirectory()) {
-            this._watchRecursive(fullPath, source, depth + 1);
-          }
-        } catch { /* ignore */ }
       });
       watcher.on("error", (err) => {
+        this._watchedDirs.delete(dir);
         console.error(`File watcher error (${dir}):`, err.message);
       });
       this._watchedDirs.add(dir);
       this._watchers.push(watcher);
     } catch (err) {
-      console.error(`Cannot watch directory (${dir}):`, err.message);
-    }
-  }
-
-  async _watchRecursive(rootDir, source, depth = 0) {
-    if (depth > MAX_COLLECT_DEPTH) {
-      console.warn(`watch: max depth ${MAX_COLLECT_DEPTH} reached at ${rootDir}, skipping deeper entries`);
-      return;
-    }
-    this._watchDir(rootDir, source, depth);
-    let entries = [];
-    try {
-      entries = await fs.readdir(rootDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        await this._watchRecursive(path.join(rootDir, entry.name), source, depth + 1);
+      if (!err || typeof err !== "object" || err.code !== "ENOENT") {
+        console.error(`Cannot watch directory (${dir}):`, err.message);
       }
     }
   }
 
   async watch() {
     for (const source of this.sources) {
-      await this._watchRecursive(source.rootDir, source);
+      for (const rootDir of sourceRoots(source, "watchRoots")) {
+        this._watchDir(rootDir, source);
+      }
     }
-    console.log("File system watcher enabled");
+    console.log(`File system watcher enabled (${this._watchers.length} roots)`);
   }
 
   stopWatching() {
@@ -508,7 +521,7 @@ export class SessionStore {
           continue;
         }
 
-        const detail = await parseFile(filePath, source.kind);
+        const detail = await parseFileSummary(filePath, source.kind);
         const summary = detail.summary;
         summary._key = sessionKey(summary.source_kind, summary.id);
         const existingKey = key || summary._key;

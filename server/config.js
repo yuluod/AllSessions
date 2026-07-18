@@ -26,6 +26,8 @@ const codexDir = resolveDir("CODEX_SESSIONS_DIR", path.join(os.homedir(), ".code
 const codexArchivedDir = resolveDir("CODEX_ARCHIVED_SESSIONS_DIR", path.join(os.homedir(), ".codex", "archived_sessions"));
 const claudeDir = resolveDir("CLAUDE_SESSIONS_DIR", path.join(os.homedir(), ".claude"));
 const geminiDir = resolveDir("GEMINI_SESSIONS_DIR", path.join(os.homedir(), ".gemini"));
+const claudeSessionsDir = claudeDir ? path.join(claudeDir, "sessions") : null;
+const geminiTmpDir = geminiDir ? path.join(geminiDir, "tmp") : null;
 
 export const SOURCES = [
   {
@@ -46,6 +48,8 @@ export const SOURCES = [
     kind: "claude_code",
     displayName: "Claude Code",
     rootDir: claudeDir,
+    discoveryRoots: [claudeSessionsDir],
+    watchRoots: [claudeSessionsDir],
     filePattern: "sessions/*.json",
     matchFn: (filePath) => {
       const filename = path.basename(filePath);
@@ -57,6 +61,7 @@ export const SOURCES = [
     kind: "gemini",
     displayName: "Gemini CLI",
     rootDir: geminiDir,
+    watchRoots: [geminiTmpDir],
     filePattern: "tmp/*/logs.json",
     matchFn: (filePath) => {
       if (!geminiDir) return false;

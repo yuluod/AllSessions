@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   assertReleaseVersion,
+  debianControlFile,
   installerFileName,
   packageArchitecture,
   parseCliArguments,
@@ -51,6 +52,8 @@ test("发布参数和安装包命名保持可预测", () => {
     installerFileName({ platform: "linux", arch: "x64", version: "1.2.3" }),
     "AllSessions-1.2.3-linux-x64.deb"
   );
+  assert.match(debianControlFile({ arch: "x64", version: "1.2.3" }), /Architecture: amd64\n/);
+  assert.equal(debianControlFile({ arch: "x64", version: "1.2.3" }).endsWith("\n"), true);
 });
 
 test("发布标签必须与 package.json 版本一致", () => {

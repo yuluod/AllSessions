@@ -44,6 +44,12 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
+      - name: 使用最新发布工具
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git fetch origin main:refs/remotes/origin/main --depth=1
+          git checkout origin/main -- scripts/build-release.mjs
+
       - name: 安装 Node.js
         uses: actions/setup-node@v4
         with:

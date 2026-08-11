@@ -210,6 +210,19 @@ function macInfoPlist(version) {
 `;
 }
 
+export function debianControlFile({ arch, version }) {
+  return [
+    "Package: allsessions",
+    `Version: ${version}`,
+    "Section: utils",
+    "Priority: optional",
+    `Architecture: ${packageArchitecture("linux", arch)}`,
+    "Maintainer: AllSessions <maintainers@allsessions.local>",
+    "Description: Local AI session viewer",
+    " AllSessions reads local Codex, Claude Code, and Gemini CLI session histories."
+  ].join("\n") + "\n";
+}
+
 async function createLaunchers(payloadDir, platform) {
   if (platform === "win32") {
     await writeFile(path.join(payloadDir, "AllSessions.cmd"), windowsLauncher(), "utf8");
@@ -376,22 +389,13 @@ async function createLinuxInstaller({ payloadDir, workDir, outputDir, arch, vers
       "Exec=/opt/AllSessions/allsessions",
       "Terminal=false",
       "Categories=Development;Utility;"
-    ].join("\n"),
+    ].join("\n") + "\n",
     "utf8"
   );
   await mkdir(controlDirectory, { recursive: true });
   await writeFile(
     path.join(controlDirectory, "control"),
-    [
-      "Package: allsessions",
-      `Version: ${version}`,
-      "Section: utils",
-      "Priority: optional",
-      `Architecture: ${packageArchitecture("linux", arch)}`,
-      "Maintainer: AllSessions <maintainers@allsessions.local>",
-      "Description: Local AI session viewer",
-      " AllSessions reads local Codex, Claude Code, and Gemini CLI session histories."
-    ].join("\n"),
+    debianControlFile({ arch, version }),
     "utf8"
   );
   await runCommand("dpkg-deb", ["--root-owner-group", "--build", debRoot, artifactPath], workDir);

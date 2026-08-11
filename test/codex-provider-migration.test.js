@@ -10,7 +10,7 @@ import { rollbackMigration, runMigration } from "../scripts/migrate-codex-provid
 
 const execFileAsync = promisify(execFile);
 const closedCodex = async () => [];
-const DEFAULT_SOURCE_PROVIDERS = ["cubence_codex", "jsonl_only", "right_code"];
+const DEFAULT_SOURCE_PROVIDERS = ["jsonl_only", "legacy_provider_a", "legacy_provider_b"];
 
 async function createTempDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "codex-provider-migration-"));
@@ -39,7 +39,7 @@ function providerConfig(provider, { defineProvider = true } = {}) {
 
 async function createFixture(
   rootDir,
-  { externalSqliteHome = false, configProvider = "newapi", defineProvider = true } = {}
+  { externalSqliteHome = false, configProvider = "current_provider", defineProvider = true } = {}
 ) {
   const codexHome = path.join(rootDir, "codex");
   const backupRoot = path.join(rootDir, "backups");
@@ -65,9 +65,9 @@ async function createFixture(
       model_provider text not null,
       archived integer not null default 0
     );
-    insert into threads values ('active-third', 'newapi', 0);
-    insert into threads values ('archived-third', 'right_code', 1);
-    insert into threads values ('other-third', 'cubence_codex', 0);
+    insert into threads values ('active-third', 'current_provider', 0);
+    insert into threads values ('archived-third', 'legacy_provider_a', 1);
+    insert into threads values ('other-third', 'legacy_provider_b', 0);
     insert into threads values ('official', 'openai', 0);
     insert into threads values ('existing-custom', 'custom', 0);
     insert into threads values ('local-built-in', 'ollama', 0);
@@ -81,15 +81,15 @@ async function createFixture(
   await fs.writeFile(
     activeFile,
     [
-      JSON.stringify({ type: "session_meta", payload: { id: "active-third", model_provider: "newapi" } }),
-      JSON.stringify({ type: "event_msg", payload: { message: "newapi should stay in message text" } }),
+      JSON.stringify({ type: "session_meta", payload: { id: "active-third", model_provider: "current_provider" } }),
+      JSON.stringify({ type: "event_msg", payload: { message: "current_provider should stay in message text" } }),
       "{bad json"
     ].join("\n"),
     "utf8"
   );
   await fs.writeFile(
     archivedFile,
-    JSON.stringify({ type: "session_meta", payload: { id: "archived-third", model_provider: "right_code" } }),
+    JSON.stringify({ type: "session_meta", payload: { id: "archived-third", model_provider: "legacy_provider_a" } }),
     "utf8"
   );
   await fs.writeFile(
@@ -158,7 +158,12 @@ test("诊断只列候选，显式选择后才生成当前 provider 修复计划"
       planId: discovery.planId,
       confirmedCodexClosed: true
     }),
-    /Migration is blocked/
+    (error) => {
+      assert.equal(error.code, "migration_blocked");
+      assert.equal(error.statusCode, 409);
+      assert.match(error.message, /Migration is blocked/);
+      return true;
+    }
   );
 
   const summary = await runMigration({
@@ -168,7 +173,7 @@ test("诊断只列候选，显式选择后才生成当前 provider 修复计划"
 
   assert.equal(summary.dryRun, true);
   assert.equal(summary.codexOnly, true);
-  assert.equal(summary.targetProvider, "newapi");
+  assert.equal(summary.targetProvider, "current_provider");
   assert.deepEqual(summary.providers, DEFAULT_SOURCE_PROVIDERS);
   assert.deepEqual(summary.candidateProviders, DEFAULT_SOURCE_PROVIDERS);
   assert.equal(summary.selectionRequired, false);
@@ -180,7 +185,7 @@ test("诊断只列候选，显式选择后才生成当前 provider 修复计划"
   assert.equal(summary.canApply, true);
   assert.match(summary.planId, /^[a-f0-9]{64}$/);
   assert.equal(await fs.readFile(fixture.configPath, "utf8"), originalConfig);
-  assert.equal((await providerCounts(fixture.dbPath)).newapi, 1);
+  assert.equal((await providerCounts(fixture.dbPath)).current_provider, 1);
   await assert.rejects(
     fs.access(path.join(fixture.backupRoot, "codex-history-provider-rebucket-v2")),
     /ENOENT/
@@ -211,13 +216,13 @@ test("apply 只改 Codex SQLite 与 JSONL，并可完整 rollback", async (t) =>
 
   assert.equal(summary.verification.ok, true);
   assert.equal(await fs.readFile(fixture.configPath, "utf8"), originalConfig);
-  assert.equal((await providerCounts(fixture.dbPath)).newapi, 3);
+  assert.equal((await providerCounts(fixture.dbPath)).current_provider, 3);
   assert.equal((await providerCounts(fixture.dbPath)).custom, 1);
   assert.equal((await providerCounts(fixture.dbPath)).openai, 1);
   assert.equal((await providerCounts(fixture.dbPath)).ollama, 1);
-  assert.equal(await readSessionMetaProvider(fixture.activeFile), "newapi");
-  assert.equal(await readSessionMetaProvider(fixture.archivedFile), "newapi");
-  assert.equal(await readSessionMetaProvider(fixture.jsonlOnlyFile), "newapi");
+  assert.equal(await readSessionMetaProvider(fixture.activeFile), "current_provider");
+  assert.equal(await readSessionMetaProvider(fixture.archivedFile), "current_provider");
+  assert.equal(await readSessionMetaProvider(fixture.jsonlOnlyFile), "current_provider");
   assert.equal(await readSessionMetaProvider(fixture.customFile), "custom");
   assert.equal(await readSessionMetaProvider(fixture.openaiFile), "openai");
   assert.equal((await fs.readFile(fixture.archivedFile, "utf8")).split("\n")[1], largeUnchangedEvent);
@@ -232,15 +237,15 @@ test("apply 只改 Codex SQLite 与 JSONL，并可完整 rollback", async (t) =>
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
   assert.equal((await fs.stat(manifestPath)).mode & 0o777, 0o600);
   assert.deepEqual(manifest.sourceProviders, DEFAULT_SOURCE_PROVIDERS);
-  assert.equal(manifest.targetProvider, "newapi");
+  assert.equal(manifest.targetProvider, "current_provider");
   assert.equal(
     manifest.stateDatabases[0].threads.some((thread) =>
-      thread.id === "archived-third" && thread.provider === "right_code"),
+      thread.id === "archived-third" && thread.provider === "legacy_provider_a"),
     true
   );
   assert.equal(
     manifest.jsonlFiles.some((file) =>
-      file.sessions.some((session) => session.sessionId === "archived-third" && session.provider === "right_code")),
+      file.sessions.some((session) => session.sessionId === "archived-third" && session.provider === "legacy_provider_a")),
     true
   );
 
@@ -250,7 +255,7 @@ test("apply 只改 Codex SQLite 与 JSONL，并可完整 rollback", async (t) =>
     { json: true }
   );
   assert.equal(archivedRows[0].archived, 1);
-  assert.match(await fs.readFile(fixture.activeFile, "utf8"), /newapi should stay in message text/);
+  assert.match(await fs.readFile(fixture.activeFile, "utf8"), /current_provider should stay in message text/);
   assert.match(await fs.readFile(fixture.activeFile, "utf8"), /\{bad json/);
 
   await rollbackMigration({
@@ -259,14 +264,96 @@ test("apply 只改 Codex SQLite 与 JSONL，并可完整 rollback", async (t) =>
     confirmedCodexClosed: true
   });
   const restored = await providerCounts(fixture.dbPath);
-  assert.equal(restored.newapi, 1);
-  assert.equal(restored.right_code, 1);
-  assert.equal(restored.cubence_codex, 1);
+  assert.equal(restored.current_provider, 1);
+  assert.equal(restored.legacy_provider_a, 1);
+  assert.equal(restored.legacy_provider_b, 1);
   assert.equal(restored.custom, 1);
-  assert.equal(await readSessionMetaProvider(fixture.archivedFile), "right_code");
+  assert.equal(await readSessionMetaProvider(fixture.archivedFile), "legacy_provider_a");
   assert.equal(await fs.readFile(fixture.archivedFile, "utf8"), originalArchived);
   assert.equal(await readSessionMetaProvider(fixture.customFile), "custom");
   assert.equal(await fs.readFile(fixture.configPath, "utf8"), originalConfig);
+});
+
+test("rollback 只恢复 provider 字段并保留修复后的新增数据", async (t) => {
+  const rootDir = await createTempDir();
+  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+  const fixture = await createFixture(rootDir);
+  const options = migrationOptions(fixture);
+  const preview = await runMigration({ ...options, providers: DEFAULT_SOURCE_PROVIDERS });
+  const applied = await runMigration({
+    ...options,
+    apply: true,
+    planId: preview.planId,
+    providers: preview.providers,
+    confirmedCodexClosed: true
+  });
+
+  await runSqlite(fixture.dbPath, `
+    update threads set archived = 0 where id = 'archived-third';
+    insert into threads values ('created-after-repair', 'current_provider', 0);
+  `);
+  const laterEvent = JSON.stringify({
+    type: "event_msg",
+    payload: { type: "user_message", message: "created after provider repair" }
+  });
+  await fs.appendFile(fixture.archivedFile, `\n${laterEvent}`, "utf8");
+
+  await rollbackMigration({
+    ...options,
+    backupDir: applied.backupDir,
+    confirmedCodexClosed: true
+  });
+
+  const rows = await runSqlite(
+    fixture.dbPath,
+    "select id, model_provider, archived from threads order by id;",
+    { json: true }
+  );
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  assert.equal(byId.get("archived-third").model_provider, "legacy_provider_a");
+  assert.equal(byId.get("archived-third").archived, 0);
+  assert.equal(byId.get("created-after-repair").model_provider, "current_provider");
+  assert.match(await fs.readFile(fixture.archivedFile, "utf8"), /created after provider repair/);
+  assert.equal(await readSessionMetaProvider(fixture.archivedFile), "legacy_provider_a");
+});
+
+test("rollback 兼容 v2 备份并按旧语义完整恢复", async (t) => {
+  const rootDir = await createTempDir();
+  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+  const fixture = await createFixture(rootDir);
+  const options = migrationOptions(fixture);
+  const originalArchived = await fs.readFile(fixture.archivedFile, "utf8");
+  const preview = await runMigration({ ...options, providers: DEFAULT_SOURCE_PROVIDERS });
+  const applied = await runMigration({
+    ...options,
+    apply: true,
+    planId: preview.planId,
+    providers: preview.providers,
+    confirmedCodexClosed: true
+  });
+  const metadataPath = path.join(applied.backupDir, "metadata.json");
+  const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+  metadata.version = 2;
+  for (const asset of metadata.assets) delete asset.assignments;
+  await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+
+  await runSqlite(fixture.dbPath, "update threads set archived = 0 where id = 'archived-third';");
+  await fs.appendFile(fixture.archivedFile, "\ncreated after repair", "utf8");
+
+  await rollbackMigration({
+    ...options,
+    backupDir: applied.backupDir,
+    confirmedCodexClosed: true
+  });
+
+  const archivedRows = await runSqlite(
+    fixture.dbPath,
+    "select archived from threads where id = 'archived-third';",
+    { json: true }
+  );
+  assert.equal(archivedRows[0].archived, 1);
+  assert.equal(await fs.readFile(fixture.archivedFile, "utf8"), originalArchived);
+  assert.equal(await readSessionMetaProvider(fixture.archivedFile), "legacy_provider_a");
 });
 
 test("apply 拒绝过期计划且不创建备份", async (t) => {
@@ -287,7 +374,7 @@ test("apply 拒绝过期计划且不创建备份", async (t) => {
     }),
     /Migration plan changed/
   );
-  assert.equal((await providerCounts(fixture.dbPath)).newapi, 1);
+  assert.equal((await providerCounts(fixture.dbPath)).current_provider, 1);
 });
 
 test("Codex App 运行时拒绝写入", async (t) => {
@@ -315,7 +402,7 @@ test("当前 provider 为内建 provider 时阻止迁移", async (t) => {
   t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
   const fixture = await createFixture(rootDir, { configProvider: "openai" });
 
-  const preview = await runMigration({ ...migrationOptions(fixture), providers: ["newapi"] });
+  const preview = await runMigration({ ...migrationOptions(fixture), providers: ["current_provider"] });
 
   assert.equal(preview.canApply, false);
   assert.ok(preview.blockers.some((item) => item.code === "active_provider_builtin"));
@@ -326,11 +413,11 @@ test("当前 provider 为 custom 时允许作为迁移目标", async (t) => {
   t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
   const fixture = await createFixture(rootDir, { configProvider: "custom" });
 
-  const preview = await runMigration({ ...migrationOptions(fixture), providers: ["newapi"] });
+  const preview = await runMigration({ ...migrationOptions(fixture), providers: ["current_provider"] });
 
   assert.equal(preview.canApply, true);
   assert.equal(preview.targetProvider, "custom");
-  assert.deepEqual(preview.providers, ["newapi"]);
+  assert.deepEqual(preview.providers, ["current_provider"]);
   assert.equal(preview.providers.includes("custom"), false);
 });
 
@@ -365,9 +452,9 @@ test("迁移中途失败会自动恢复 SQLite 与 JSONL", async (t) => {
     }),
     /injected migration failure/
   );
-  assert.equal((await providerCounts(fixture.dbPath)).newapi, 1);
-  assert.equal((await providerCounts(fixture.dbPath)).right_code, 1);
-  assert.equal(await readSessionMetaProvider(fixture.archivedFile), "right_code");
+  assert.equal((await providerCounts(fixture.dbPath)).current_provider, 1);
+  assert.equal((await providerCounts(fixture.dbPath)).legacy_provider_a, 1);
+  assert.equal(await readSessionMetaProvider(fixture.archivedFile), "legacy_provider_a");
 });
 
 test("迁移支持 config.toml 的 sqlite_home", async (t) => {
@@ -385,7 +472,7 @@ test("迁移支持 config.toml 的 sqlite_home", async (t) => {
     providers: preview.providers,
     confirmedCodexClosed: true
   });
-  assert.equal((await providerCounts(fixture.dbPath)).newapi, 3);
+  assert.equal((await providerCounts(fixture.dbPath)).current_provider, 3);
 });
 
 test("rollback 拒绝越界写入目标", async (t) => {
@@ -417,6 +504,74 @@ test("rollback 拒绝越界写入目标", async (t) => {
   await assert.rejects(fs.access(path.join(rootDir, "outside.sqlite")), /ENOENT/);
 });
 
+test("rollback 在写入目标前拒绝损坏的 JSONL 备份", async (t) => {
+  const rootDir = await createTempDir();
+  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+  const fixture = await createFixture(rootDir);
+  const options = migrationOptions(fixture);
+  const preview = await runMigration({ ...options, providers: ["legacy_provider_a"] });
+  const applied = await runMigration({
+    ...options,
+    providers: ["legacy_provider_a"],
+    planId: preview.planId,
+    apply: true,
+    confirmedCodexClosed: true
+  });
+  const metadata = JSON.parse(
+    await fs.readFile(path.join(applied.backupDir, "metadata.json"), "utf8")
+  );
+  const jsonlAsset = metadata.assets.find((asset) => asset.kind === "jsonl");
+  await fs.writeFile(path.join(applied.backupDir, jsonlAsset.backup), "corrupted\n", "utf8");
+  const targetBeforeRollback = await fs.readFile(jsonlAsset.target, "utf8");
+
+  await assert.rejects(
+    rollbackMigration({
+      ...options,
+      backupDir: applied.backupDir,
+      confirmedCodexClosed: true
+    }),
+    /backup verification failed/i
+  );
+  assert.equal(await fs.readFile(jsonlAsset.target, "utf8"), targetBeforeRollback);
+});
+
+test("rollback 拒绝非字符串 provider 备份元数据", async (t) => {
+  const rootDir = await createTempDir();
+  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+  const fixture = await createFixture(rootDir);
+  const options = migrationOptions(fixture);
+  const preview = await runMigration({ ...options, providers: ["legacy_provider_a"] });
+  const applied = await runMigration({
+    ...options,
+    providers: preview.providers,
+    planId: preview.planId,
+    apply: true,
+    confirmedCodexClosed: true
+  });
+  const metadataPath = path.join(applied.backupDir, "metadata.json");
+  const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+
+  await fs.writeFile(metadataPath, JSON.stringify({ ...metadata, targetProvider: 123 }), "utf8");
+  await assert.rejects(
+    rollbackMigration({
+      ...options,
+      backupDir: applied.backupDir,
+      confirmedCodexClosed: true
+    }),
+    /Invalid provider mapping/
+  );
+
+  await fs.writeFile(metadataPath, JSON.stringify({ ...metadata, providers: [123] }), "utf8");
+  await assert.rejects(
+    rollbackMigration({
+      ...options,
+      backupDir: applied.backupDir,
+      confirmedCodexClosed: true
+    }),
+    /Invalid provider mapping/
+  );
+});
+
 test("显式来源不存在时阻止生成可执行计划", async (t) => {
   const rootDir = await createTempDir();
   t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
@@ -446,7 +601,7 @@ test("显式来源拒绝内建 provider 与当前目标 provider", async (t) => 
     /Refusing to migrate protected provider/
   );
   await assert.rejects(
-    runMigration({ ...migrationOptions(fixture), providers: ["newapi"] }),
+    runMigration({ ...migrationOptions(fixture), providers: ["current_provider"] }),
     /Refusing to migrate protected provider/
   );
 });

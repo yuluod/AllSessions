@@ -1,8 +1,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { HOST, PORT, SOURCES } from "./config.js";
+import { HOST, INDEX_CACHE_FILE, PORT, SOURCES } from "./config.js";
 import { createHttpServer } from "./http-server.js";
+import { assertLocalOnlyHost, assertValidPort, listenForHttpRequests } from "./server-binding.js";
 import { SessionStore } from "./session-store.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -15,25 +16,33 @@ async function main() {
     throw new Error(`Unknown argument: ${unknownArgs.join(", ")}`);
   }
   const codexMaintenanceEnabled = args.includes("--enable-codex-maintenance");
+  assertLocalOnlyHost(HOST);
+  assertValidPort(PORT);
 
-  const store = new SessionStore({ sources: SOURCES });
-  await store.initialize();
-  await store.watch();
+  const store = new SessionStore({ sources: SOURCES, indexCacheFile: INDEX_CACHE_FILE });
+  let server;
+  try {
+    await store.initialize();
+    await store.watch();
 
-  const server = createHttpServer({
-    store,
-    publicDir,
-    sessionRoots: SOURCES.map((s) => s.rootDir),
-    codexMaintenanceEnabled
-  });
+    server = createHttpServer({
+      store,
+      publicDir,
+      sessionRoots: SOURCES.map((s) => s.rootDir),
+      codexMaintenanceEnabled
+    });
+    server.once("close", () => store.stopWatching());
+    await listenForHttpRequests(server, { host: HOST, port: PORT });
+  } catch (error) {
+    store.stopWatching();
+    throw error;
+  }
 
-  server.listen(PORT, HOST, () => {
-    console.log(`Session viewer started: http://${HOST}:${PORT}`);
-    const roots = SOURCES.map((s) => s.displayName + ": " + s.rootDir).join(", ");
-    console.log(`Session roots: ${roots || "none"}`);
-    console.log(`Cached sessions: ${store.summaries.length}`);
-    console.log(`Codex maintenance: ${codexMaintenanceEnabled ? "enabled" : "disabled (read-only mode)"}`);
-  });
+  console.log(`Session viewer started: http://${HOST}:${PORT}`);
+  const roots = SOURCES.map((s) => s.displayName + ": " + s.rootDir).join(", ");
+  console.log(`Session roots: ${roots || "none"}`);
+  console.log(`Cached sessions: ${store.summaries.length}`);
+  console.log(`Codex maintenance: ${codexMaintenanceEnabled ? "enabled" : "disabled (read-only mode)"}`);
 }
 
 main().catch((error) => {

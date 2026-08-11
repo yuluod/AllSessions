@@ -24,11 +24,24 @@ const BUILTIN_PROVIDERS = new Set([
 const PROTECTED_SOURCE_PROVIDERS = new Set([...BUILTIN_PROVIDERS, "custom"]);
 const PROVIDER_RE = /^[a-zA-Z0-9_.:-]{1,128}$/;
 
+export class CodexProviderRepairError extends Error {
+  constructor(code, message, statusCode = 500) {
+    super(message);
+    this.name = "CodexProviderRepairError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+function repairError(code, message, statusCode = 500) {
+  return new CodexProviderRepairError(code, message, statusCode);
+}
+
 function usage() {
   return `Usage:
-  node scripts/migrate-codex-provider-to-custom.mjs [--dry-run]
-  node scripts/migrate-codex-provider-to-custom.mjs --apply --plan-id <sha256> --confirm-codex-closed
-  node scripts/migrate-codex-provider-to-custom.mjs --rollback <backup-dir> --confirm-codex-closed
+  node scripts/codex-provider-repair.mjs [--dry-run]
+  node scripts/codex-provider-repair.mjs --apply --plan-id <sha256> --confirm-codex-closed
+  node scripts/codex-provider-repair.mjs --rollback <backup-dir> --confirm-codex-closed
 
 Options:
   --dry-run              Preview a Codex-only history rebucket plan. This is the default.
@@ -38,7 +51,7 @@ Options:
   --codex-home <path>    Codex home directory. Default: ~/.codex
   --backup-root <path>   Backup root. Default: ~/.codex/backups
   --providers <list>     Required comma-separated source provider ids for a repair plan.
-  --rollback <dir>       Restore state databases and JSONL from a v2 backup.
+  --rollback <dir>       Restore a v2 snapshot or provider fields from a v3 backup.
 `;
 }
 
@@ -64,7 +77,7 @@ function isProtectedSourceProvider(provider) {
 
 function assertSafeProvider(provider) {
   if (!provider || !PROVIDER_RE.test(provider)) {
-    throw new Error(`Invalid provider name: ${provider}`);
+    throw repairError("invalid_provider", `Invalid provider name: ${provider}`, 400);
   }
   return provider;
 }
@@ -72,7 +85,7 @@ function assertSafeProvider(provider) {
 function assertSourceProvider(provider, targetProvider = null) {
   assertSafeProvider(provider);
   if (isProtectedSourceProvider(provider) || provider === targetProvider) {
-    throw new Error(`Refusing to migrate protected provider: ${provider}`);
+    throw repairError("protected_provider", `Refusing to migrate protected provider: ${provider}`, 400);
   }
   return provider;
 }
@@ -86,7 +99,9 @@ function parseProviders(value) {
 
 function requireArgValue(argv, index, arg) {
   const value = argv[index + 1];
-  if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
+  if (!value || value.startsWith("--")) {
+    throw repairError("missing_argument", `${arg} requires a value`, 400);
+  }
   return value;
 }
 
@@ -128,7 +143,7 @@ function parseArgs(argv) {
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else {
-      throw new Error(`Unknown argument: ${arg}`);
+      throw repairError("unknown_argument", `Unknown argument: ${arg}`, 400);
     }
   }
   return options;
@@ -205,12 +220,12 @@ async function assertFileHash(filePath, expectedHash) {
     actualHash = await hashFile(filePath);
   } catch (error) {
     if (error && typeof error === "object" && error.code === "ENOENT") {
-      throw new Error(`File changed during migration: ${filePath}`);
+      throw repairError("artifact_changed", `File changed during migration: ${filePath}`, 409);
     }
     throw error;
   }
   if (actualHash !== expectedHash) {
-    throw new Error(`File changed during migration: ${filePath}`);
+    throw repairError("artifact_changed", `File changed during migration: ${filePath}`, 409);
   }
 }
 
@@ -348,9 +363,11 @@ async function scanJsonlFile(filePath) {
   input.on("data", (chunk) => hash.update(chunk));
   const lines = readline.createInterface({ input, crlfDelay: Infinity });
   const assignments = [];
+  let lineNumber = 0;
   for await (const line of lines) {
+    lineNumber += 1;
     const assignment = sessionMetaAssignmentFromLine(line);
-    if (assignment) assignments.push(assignment);
+    if (assignment) assignments.push({ ...assignment, lineNumber });
   }
   return {
     filePath,
@@ -602,7 +619,11 @@ async function updateStateDatabases(plan) {
     if (!statePlan.threadMatches) continue;
     const current = await readStateDatabasePlan(plan.sqliteBin, statePlan.dbPath);
     if (!current || current.invalid || current.hash !== statePlan.hash) {
-      throw new Error(`State database changed during migration: ${statePlan.dbPath}`);
+      throw repairError(
+        "artifact_changed",
+        `State database changed during migration: ${statePlan.dbPath}`,
+        409
+      );
     }
     await runSqlite(
       plan.sqliteBin,
@@ -617,7 +638,7 @@ commit;`
 function assertPathInside(rootPath, targetPath, label) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(targetPath));
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`${label} is outside the allowed directory: ${targetPath}`);
+    throw repairError("path_outside_allowed_root", `${label} is outside the allowed directory: ${targetPath}`, 400);
   }
 }
 
@@ -655,7 +676,8 @@ async function createBackup(plan) {
       target: change.filePath,
       backup: relativeBackup,
       hash: change.originalHash,
-      mode: change.mode
+      mode: change.mode,
+      assignments: change.originalAssignments
     });
   }
 
@@ -688,7 +710,7 @@ async function createBackup(plan) {
 
   const metadata = {
     migration: MIGRATION_NAME,
-    version: 2,
+    version: 3,
     status: "prepared",
     createdAt: new Date().toISOString(),
     codexHome: plan.codexHome,
@@ -719,16 +741,201 @@ async function updateBackupStatus(backupDir, metadata, status, extra = {}) {
   return nextMetadata;
 }
 
+async function verifyBackupAssets({ backupDir, metadata, sqliteBin }) {
+  for (const asset of metadata.assets) {
+    const backupPath = path.join(backupDir, asset.backup);
+    if (asset.kind === "state_db") {
+      const snapshot = await readStateDatabasePlan(sqliteBin, backupPath);
+      if (!snapshot || snapshot.invalid || snapshot.hash !== asset.hash) {
+        throw repairError(
+          "backup_verification_failed",
+          `State database backup verification failed: ${backupPath}`,
+          409
+        );
+      }
+      continue;
+    }
+
+    let backupHash;
+    try {
+      backupHash = await hashFile(backupPath);
+    } catch (error) {
+      if (error && typeof error === "object" && error.code === "ENOENT") {
+        throw repairError(
+          "backup_verification_failed",
+          `JSONL backup verification failed: ${backupPath}`,
+          409
+        );
+      }
+      throw error;
+    }
+    if (backupHash !== asset.hash) {
+      throw repairError(
+        "backup_verification_failed",
+        `JSONL backup verification failed: ${backupPath}`,
+        409
+      );
+    }
+  }
+}
+
+function originalProviderRows(statePlan, providers) {
+  const providerSet = new Set(providers);
+  return statePlan.rows.filter((row) => providerSet.has(String(row.model_provider || "")));
+}
+
+async function restoreSqliteProviderFields(sqliteBin, targetPath, backupPath, providers) {
+  const [original, current] = await Promise.all([
+    readStateDatabasePlan(sqliteBin, backupPath),
+    readStateDatabasePlan(sqliteBin, targetPath)
+  ]);
+  if (!original || original.invalid || !current || current.invalid) {
+    throw repairError("restore_verification_failed", `Cannot read state database for rollback: ${targetPath}`, 409);
+  }
+
+  const rows = originalProviderRows(original, providers);
+  const currentIds = new Set(current.rows.map((row) => String(row.id)));
+  if (rows.some((row) => !currentIds.has(String(row.id)))) {
+    throw repairError("rollback_target_changed", `State database threads changed after repair: ${targetPath}`, 409);
+  }
+  if (rows.length === 0) return;
+
+  const providerList = providers.map(sqlLiteral).join(", ");
+  await runSqlite(
+    sqliteBin,
+    targetPath,
+    `attach database ${sqlLiteral(backupPath)} as migration_backup;
+begin immediate;
+update threads
+set model_provider = (
+  select original.model_provider
+  from migration_backup.threads as original
+  where original.id = threads.id
+)
+where exists (
+  select 1
+  from migration_backup.threads as original
+  where original.id = threads.id
+    and original.model_provider in (${providerList})
+);
+commit;
+detach database migration_backup;`
+  );
+
+  const restored = await readStateDatabasePlan(sqliteBin, targetPath);
+  const restoredById = new Map(restored.rows.map((row) => [String(row.id), String(row.model_provider || "")]));
+  if (rows.some((row) => restoredById.get(String(row.id)) !== String(row.model_provider || ""))) {
+    throw repairError("restore_verification_failed", `Provider rollback verification failed: ${targetPath}`);
+  }
+}
+
+async function transformJsonlFileAtomic(filePath, mode, transform, validate) {
+  await atomicReplace(filePath, mode || 0o600, async (tempPath) => {
+    const input = fss.createReadStream(filePath, { encoding: "utf8" });
+    const handle = await fs.open(tempPath, "wx", mode || 0o600);
+    let pending = "";
+    let lineNumber = 0;
+    try {
+      for await (const chunk of input) {
+        pending += chunk;
+        let cursor = 0;
+        let newlineIndex;
+        while ((newlineIndex = pending.indexOf("\n", cursor)) >= 0) {
+          lineNumber += 1;
+          const segment = pending.slice(cursor, newlineIndex + 1);
+          await handle.writeFile(transform(segment, lineNumber));
+          cursor = newlineIndex + 1;
+        }
+        pending = pending.slice(cursor);
+      }
+      if (pending) {
+        lineNumber += 1;
+        await handle.writeFile(transform(pending, lineNumber));
+      }
+      validate?.();
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  });
+}
+
+function restoreJsonlSegment(segment, assignment, targetProvider, filePath) {
+  const newline = segment.endsWith("\r\n") ? "\r\n" : segment.endsWith("\n") ? "\n" : "";
+  const line = newline ? segment.slice(0, -newline.length) : segment;
+  let record;
+  try {
+    record = JSON.parse(line);
+  } catch {
+    throw repairError("rollback_target_changed", `Session metadata changed after repair: ${filePath}`, 409);
+  }
+  const payload = record?.type === "session_meta" && record.payload && typeof record.payload === "object"
+    ? record.payload
+    : null;
+  if (!payload ||
+    (assignment.sessionId && payload.id !== assignment.sessionId) ||
+    (payload.model_provider !== targetProvider && payload.model_provider !== assignment.provider)) {
+    throw repairError("rollback_target_changed", `Session metadata changed after repair: ${filePath}`, 409);
+  }
+  if (payload.model_provider === assignment.provider) return segment;
+  payload.model_provider = assignment.provider;
+  return `${JSON.stringify(record)}${newline}`;
+}
+
+async function restoreJsonlProviderFields(asset, targetProvider) {
+  const assignments = new Map(asset.assignments.map((assignment) => [assignment.lineNumber, assignment]));
+  const seen = new Set();
+  await transformJsonlFileAtomic(
+    asset.target,
+    asset.mode,
+    (segment, lineNumber) => {
+      const assignment = assignments.get(lineNumber);
+      if (!assignment) return segment;
+      seen.add(lineNumber);
+      return restoreJsonlSegment(segment, assignment, targetProvider, asset.target);
+    },
+    () => {
+      if (seen.size !== assignments.size) {
+        throw repairError("rollback_target_changed", `Session metadata changed after repair: ${asset.target}`, 409);
+      }
+    }
+  );
+}
+
 async function restoreAssets({ backupDir, metadata, sqliteBin }) {
+  await verifyBackupAssets({ backupDir, metadata, sqliteBin });
+  let restoredSqlite = 0;
+  let restoredJsonl = 0;
+  for (const asset of metadata.assets.filter((item) => item.kind === "state_db")) {
+    await restoreSqliteProviderFields(
+      sqliteBin,
+      asset.target,
+      path.join(backupDir, asset.backup),
+      metadata.providers
+    );
+    restoredSqlite++;
+  }
+  for (const asset of metadata.assets.filter((item) => item.kind === "jsonl")) {
+    await restoreJsonlProviderFields(asset, metadata.targetProvider);
+    restoredJsonl++;
+  }
+  return { restoredSqlite, restoredJsonl };
+}
+
+async function restoreLegacyAssets({ backupDir, metadata, sqliteBin }) {
+  await verifyBackupAssets({ backupDir, metadata, sqliteBin });
   let restoredSqlite = 0;
   let restoredJsonl = 0;
   for (const asset of metadata.assets.filter((item) => item.kind === "state_db")) {
     await restoreSqliteDatabase(sqliteBin, asset.target, path.join(backupDir, asset.backup));
     const restored = await readStateDatabasePlan(sqliteBin, asset.target);
     if (!restored || restored.invalid || restored.hash !== asset.hash) {
-      throw new Error(`Restored state database verification failed: ${asset.target}`);
+      throw repairError(
+        "restore_verification_failed",
+        `Restored state database verification failed: ${asset.target}`
+      );
     }
-    restoredSqlite++;
+    restoredSqlite += 1;
   }
   for (const asset of metadata.assets.filter((item) => item.kind === "jsonl")) {
     await atomicCopyFile(
@@ -737,7 +944,7 @@ async function restoreAssets({ backupDir, metadata, sqliteBin }) {
       asset.mode || 0o600
     );
     await assertFileHash(asset.target, asset.hash);
-    restoredJsonl++;
+    restoredJsonl += 1;
   }
   return { restoredSqlite, restoredJsonl };
 }
@@ -771,41 +978,25 @@ function rewriteJsonlSegment(segment, providerSet, targetProvider) {
 
 async function rewriteJsonlFileAtomic(change, providers, targetProvider) {
   const providerSet = new Set(providers);
-  await atomicReplace(change.filePath, change.mode || 0o600, async (tempPath) => {
-    const input = fss.createReadStream(change.filePath, { encoding: "utf8" });
-    const handle = await fs.open(tempPath, "wx", change.mode || 0o600);
-    let pending = "";
-    let replacements = 0;
-    try {
-      for await (const chunk of input) {
-        pending += chunk;
-        let cursor = 0;
-        let newlineIndex;
-        while ((newlineIndex = pending.indexOf("\n", cursor)) >= 0) {
-          const rewritten = rewriteJsonlSegment(
-            pending.slice(cursor, newlineIndex + 1),
-            providerSet,
-            targetProvider
-          );
-          await handle.writeFile(rewritten.content);
-          replacements += rewritten.replacements;
-          cursor = newlineIndex + 1;
-        }
-        pending = pending.slice(cursor);
-      }
-      if (pending) {
-        const rewritten = rewriteJsonlSegment(pending, providerSet, targetProvider);
-        await handle.writeFile(rewritten.content);
-        replacements += rewritten.replacements;
-      }
+  let replacements = 0;
+  await transformJsonlFileAtomic(
+    change.filePath,
+    change.mode,
+    (segment) => {
+      const rewritten = rewriteJsonlSegment(segment, providerSet, targetProvider);
+      replacements += rewritten.replacements;
+      return rewritten.content;
+    },
+    () => {
       if (replacements !== change.replacements) {
-        throw new Error(`JSONL replacement count changed during migration: ${change.filePath}`);
+        throw repairError(
+          "artifact_changed",
+          `JSONL replacement count changed during migration: ${change.filePath}`,
+          409
+        );
       }
-      await handle.sync();
-    } finally {
-      await handle.close();
     }
-  });
+  );
 }
 
 async function applyJsonlChanges(plan) {
@@ -821,7 +1012,7 @@ async function assertPlanArtifactsUnchanged(plan) {
   for (const statePlan of plan.statePlans) {
     const current = await readStateDatabasePlan(plan.sqliteBin, statePlan.dbPath);
     if (!current || current.invalid || current.hash !== statePlan.hash) {
-      throw new Error(`State database changed after preview: ${statePlan.dbPath}`);
+      throw repairError("plan_changed", `State database changed after preview: ${statePlan.dbPath}`, 409);
     }
   }
   for (const change of plan.jsonlChanges) {
@@ -862,12 +1053,12 @@ export async function detectRunningCodexApp() {
 
 async function assertCodexClosed(options) {
   if (options.confirmedCodexClosed !== true) {
-    throw new Error("Codex App closed confirmation is required");
+    throw repairError("codex_closed_confirmation_required", "Codex App closed confirmation is required", 400);
   }
   const processChecker = options.processChecker || detectRunningCodexApp;
   const runningApps = await processChecker();
   if (runningApps.length > 0) {
-    throw new Error(`Codex App is still running: ${runningApps.join(", ")}`);
+    throw repairError("codex_app_running", `Codex App is still running: ${runningApps.join(", ")}`, 409);
   }
 }
 
@@ -878,13 +1069,21 @@ export async function runMigration(options = {}) {
 
   await assertCodexClosed(options);
   if (!options.planId || !/^[a-f0-9]{64}$/i.test(options.planId)) {
-    throw new Error("A valid migration plan id is required");
+    throw repairError("invalid_plan_id", "A valid migration plan id is required", 400);
   }
   if (options.planId !== plan.summary.planId) {
-    throw new Error("Migration plan changed; preview again after Codex App is closed");
+    throw repairError(
+      "plan_changed",
+      "Migration plan changed; preview again after Codex App is closed",
+      409
+    );
   }
   if (!plan.summary.canApply) {
-    throw new Error(`Migration is blocked: ${plan.summary.blockers.map((item) => item.message).join("; ")}`);
+    throw repairError(
+      "migration_blocked",
+      `Migration is blocked: ${plan.summary.blockers.map((item) => item.message).join("; ")}`,
+      409
+    );
   }
   if (!plan.summary.hasChanges) {
     return {
@@ -904,7 +1103,7 @@ export async function runMigration(options = {}) {
     faultInjector("after_jsonl_files");
     const verification = await verifyMigration(plan);
     if (!verification.ok) {
-      throw new Error("Migration verification failed");
+      throw repairError("migration_verification_failed", "Migration verification failed");
     }
     await updateBackupStatus(backupDir, metadata, "completed", { completedAt: new Date().toISOString() });
     return { ...plan.summary, dryRun: false, backupDir, verification };
@@ -916,7 +1115,8 @@ export async function runMigration(options = {}) {
         error: error instanceof Error ? error.message : String(error)
       });
     } catch (rollbackError) {
-      throw new Error(
+      throw repairError(
+        "automatic_rollback_failed",
         `${error instanceof Error ? error.message : String(error)}; automatic rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`
       );
     }
@@ -925,21 +1125,36 @@ export async function runMigration(options = {}) {
 }
 
 async function readValidatedBackup(options) {
-  if (!options.backupDir) throw new Error("rollback requires backupDir");
+  if (!options.backupDir) throw repairError("backup_required", "rollback requires backupDir", 400);
   const backupDir = path.resolve(options.backupDir);
   const codexHome = path.resolve(options.codexHome || path.join(os.homedir(), ".codex"));
   const backupRoot = path.resolve(options.backupRoot || path.join(codexHome, "backups"));
   assertPathInside(path.join(backupRoot, MIGRATION_NAME), backupDir, "Backup directory");
   const metadata = JSON.parse(await fs.readFile(path.join(backupDir, "metadata.json"), "utf8"));
-  if (metadata.migration !== MIGRATION_NAME || metadata.version !== 2 || !Array.isArray(metadata.assets)) {
-    throw new Error("Unsupported or invalid migration backup");
+  if (metadata.migration !== MIGRATION_NAME ||
+    ![2, 3].includes(metadata.version) ||
+    !Array.isArray(metadata.assets)) {
+    throw repairError("invalid_backup", "Unsupported or invalid migration backup", 409);
   }
+  if (typeof metadata.targetProvider !== "string" ||
+    !PROVIDER_RE.test(metadata.targetProvider) ||
+    !Array.isArray(metadata.providers) ||
+    metadata.providers.length === 0 ||
+    metadata.providers.some((provider) =>
+      typeof provider !== "string" ||
+      !PROVIDER_RE.test(provider) ||
+      isProtectedSourceProvider(provider) ||
+      provider === metadata.targetProvider
+    )) {
+    throw repairError("invalid_backup", "Invalid provider mapping in migration backup", 409);
+  }
+  const sourceProviders = new Set(metadata.providers);
   if (path.resolve(metadata.codexHome) !== codexHome) {
-    throw new Error("Backup target does not match the configured Codex home");
+    throw repairError("backup_target_mismatch", "Backup target does not match the configured Codex home", 409);
   }
   if (metadata.manifest) {
     if (typeof metadata.manifest.backup !== "string" || path.isAbsolute(metadata.manifest.backup)) {
-      throw new Error("Invalid provider manifest path");
+      throw repairError("invalid_backup", "Invalid provider manifest path", 409);
     }
     const manifestFile = path.join(backupDir, metadata.manifest.backup);
     assertPathInside(backupDir, manifestFile, "Provider manifest");
@@ -953,23 +1168,41 @@ async function readValidatedBackup(options) {
   );
   for (const asset of metadata.assets) {
     if (!asset || typeof asset.target !== "string" || typeof asset.backup !== "string") {
-      throw new Error("Invalid migration backup asset");
+      throw repairError("invalid_backup", "Invalid migration backup asset", 409);
     }
-    if (path.isAbsolute(asset.backup)) throw new Error("Invalid absolute backup asset path");
+    if (path.isAbsolute(asset.backup)) {
+      throw repairError("invalid_backup", "Invalid absolute backup asset path", 409);
+    }
     assertPathInside(backupDir, path.join(backupDir, asset.backup), "Backup asset");
     if (asset.kind === "state_db") {
       if (!allowedStateDatabases.has(path.resolve(asset.target))) {
-        throw new Error("Invalid Codex state database backup target");
+        throw repairError("invalid_backup", "Invalid Codex state database backup target", 409);
       }
     } else if (asset.kind === "jsonl") {
       const target = path.resolve(asset.target);
       const inSessions = target.startsWith(`${path.join(codexHome, "sessions")}${path.sep}`);
       const inArchived = target.startsWith(`${path.join(codexHome, "archived_sessions")}${path.sep}`);
       if ((!inSessions && !inArchived) || !target.endsWith(".jsonl")) {
-        throw new Error("Invalid Codex JSONL backup target");
+        throw repairError("invalid_backup", "Invalid Codex JSONL backup target", 409);
+      }
+      if (metadata.version === 3 && (!Array.isArray(asset.assignments) || asset.assignments.length === 0)) {
+        throw repairError("invalid_backup", "Missing JSONL provider assignments in migration backup", 409);
+      }
+      if (metadata.version === 2) continue;
+      const lineNumbers = new Set();
+      for (const assignment of asset.assignments) {
+        if (!assignment ||
+          !Number.isInteger(assignment.lineNumber) ||
+          assignment.lineNumber < 1 ||
+          !sourceProviders.has(assignment.provider) ||
+          (assignment.sessionId !== null && typeof assignment.sessionId !== "string") ||
+          lineNumbers.has(assignment.lineNumber)) {
+          throw repairError("invalid_backup", "Invalid JSONL provider assignment in migration backup", 409);
+        }
+        lineNumbers.add(assignment.lineNumber);
       }
     } else {
-      throw new Error("Unsupported migration backup asset");
+      throw repairError("invalid_backup", "Unsupported migration backup asset", 409);
     }
   }
   return { backupDir, codexHome, metadata };
@@ -978,7 +1211,8 @@ async function readValidatedBackup(options) {
 export async function rollbackMigration(options = {}) {
   await assertCodexClosed(options);
   const backup = await readValidatedBackup(options);
-  const result = await restoreAssets({
+  const restore = backup.metadata.version === 2 ? restoreLegacyAssets : restoreAssets;
+  const result = await restore({
     backupDir: backup.backupDir,
     metadata: backup.metadata,
     sqliteBin: options.sqliteBin || "sqlite3"
@@ -1004,8 +1238,8 @@ function formatSummary(summary) {
   ].filter(Boolean).join("\n");
 }
 
-async function main() {
-  const options = parseArgs(process.argv.slice(2));
+export async function runCli(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
   if (options.help) {
     console.log(usage());
     return;
@@ -1025,7 +1259,7 @@ async function main() {
 
 const currentFile = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
-  main().catch((error) => {
+  runCli().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });

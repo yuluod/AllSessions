@@ -1,102 +1,81 @@
 <div align="center">
 
-# AI Session Viewer
+# AllSessions
 
-<p>A lightweight, local-only web viewer for browsing AI session history, designed to grow beyond a single source over time.</p>
+<p>A lightweight, local-only viewer for browsing AI coding assistant session history.</p>
 
 <p>
   <a href="./README.zh-CN.md">中文文档</a>
   ·
-  <a href="#quick-start">Quick Start</a>
-  ·
   <a href="#features">Features</a>
   ·
-  <a href="#development">Development</a>
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#configuration">Configuration</a>
 </p>
 
 <p>
   <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white" />
-  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-10%2B-F69220?logo=pnpm&logoColor=white" />
+  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-11.10.0-F69220?logo=pnpm&logoColor=white" />
   <img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" />
   <img alt="i18n" src="https://img.shields.io/badge/i18n-ZH%20%7C%20EN-7B61FF" />
 </p>
 
 </div>
 
-Browse, filter, search, and inspect local AI sessions in a compact browser UI with real-time file watching.
+AllSessions aggregates supported local AI session sources into one browser interface for browsing, filtering, full-text search, statistics, and detail inspection. Normal viewer mode reads source data without modifying it and only listens on a loopback address.
 
-> **Positioning**
-> A local AI session viewer with a current Codex-first implementation.
->
-> **Current status**
-> Codex, Codex Archived, Claude Code, and Gemini CLI are supported today. Additional sources may be added in future releases.
->
-> **Direction**
-> Evolve toward a unified local viewer for multiple AI coding assistant histories.
-
-## Current Scope
-
-- Current implementation: Codex, Codex Archived, Claude Code, and Gemini CLI session parsing and viewing
-- Unified multi-source aggregation in a single interface
-- Planned direction: support for additional session sources
-
-## Source Support
-
-| Source | Status | Notes |
-|--------|--------|-------|
-| Codex | Supported | Reads local session files from `~/.codex/sessions` or `CODEX_SESSIONS_DIR` |
-| Codex Archived | Supported | Reads from `~/.codex/archived_sessions` or `CODEX_ARCHIVED_SESSIONS_DIR` |
-| Claude Code | Supported | Reads session metadata from `~/.claude` or `CLAUDE_SESSIONS_DIR`; only user inputs are available locally |
-| Gemini CLI | Supported | Reads from `~/.gemini/tmp/*/logs.json` or `GEMINI_SESSIONS_DIR` |
-| Other AI tools | Planned | Future expansion area, no compatibility promise yet |
+> AllSessions is an independent community project. It is not affiliated with, endorsed by, or sponsored by OpenAI, Anthropic, or Google. Product and company names are used only to identify compatible local session sources.
 
 ## Features
 
-- Browse local session list from multiple sources (Codex, Claude Code, Gemini CLI)
-- Filter by source kind, provider, date, and working directory
-- Search session content, project paths, provider names, source names, and derived titles
-- Hide Codex subagent sessions by default, with an explicit "Show hidden sessions" toggle
-- View individual session details
-- Switch between "Conversation" and "Raw Events" views
-- Chinese-English language switching
-- Real-time file system watch with auto-refresh
+- Browse Codex, Codex Archived, Claude Code, and Gemini CLI sessions together
+- Filter by source, provider, date, project, and working directory
+- Search session-derived text and load large result sets incrementally
+- Inspect normalized conversations and raw events
+- Hide Codex subagent and injected system context by default
+- Watch local session files and refresh the interface automatically
+- Switch between Chinese and English
+- Bound memory use for large Codex sessions with visible truncation markers
 
-## Use Cases
+## Supported sources
 
-- Review recent local AI sessions without opening raw JSONL files
-- Search previous conversations, tool calls, and event streams
-- Inspect session metadata such as provider, working directory, and timestamps
-- Keep a lightweight local viewer running while new Codex sessions are written to disk
+| Source | Local path | Current support |
+|--------|------------|-----------------|
+| Codex | `~/.codex/sessions` | Session metadata, messages, tool calls, raw events, and search |
+| Codex Archived | `~/.codex/archived_sessions` | Read-only archived-session browsing |
+| Claude Code | `~/.claude` | The current parser extracts user input history from supported local metadata |
+| Gemini CLI | `~/.gemini/tmp/*/logs.json` | Local session aggregation and detail inspection |
 
-## Requirements
+Custom source directories can be configured with environment variables.
+
+## Quick start
+
+Requirements:
 
 - Node.js 20 or later
-- At least one supported session source directory present:
-  - Codex: `~/.codex/sessions`
-  - Claude Code: `~/.claude`
-  - Gemini CLI: `~/.gemini`
-
-## Quick Start
+- pnpm 11.10.0 or later
+- At least one supported local session directory
 
 ```bash
 pnpm install
 pnpm start
 ```
 
-The viewer starts at `http://127.0.0.1:3210` by default.
+Open `http://127.0.0.1:3210`. AllSessions scans the supported local session directories that are present. It has no remote authentication and rejects wildcard, LAN, and public bind addresses.
 
-Then open the URL in your browser and the app will scan the current Codex session directory automatically.
-
-## Environment Variables
+## Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | `3210` |
-| `HOST` | Bind address | `127.0.0.1` |
-| `CODEX_SESSIONS_DIR` | Codex session root directory | `~/.codex/sessions` |
-| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex archived session directory | `~/.codex/archived_sessions` |
-| `CLAUDE_SESSIONS_DIR` | Claude Code session root directory | `~/.claude` |
-| `GEMINI_SESSIONS_DIR` | Gemini CLI root directory | `~/.gemini` |
+| `HOST` | Bind address; loopback addresses only | `127.0.0.1` |
+| `CODEX_SESSIONS_DIR` | Codex session root | `~/.codex/sessions` |
+| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex archived-session root | `~/.codex/archived_sessions` |
+| `CLAUDE_SESSIONS_DIR` | Claude Code root | `~/.claude` |
+| `GEMINI_SESSIONS_DIR` | Gemini CLI root | `~/.gemini` |
+| `SESSION_VIEWER_CACHE_DIR` | Private incremental index cache directory | `AllSessions` under the user cache directory |
+| `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable the persistent index cache | unset |
 
 Example:
 
@@ -104,87 +83,45 @@ Example:
 PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 ```
 
-## Codex Provider Visibility Repair
+## Privacy and security
 
-Normal `pnpm start` runs in read-only mode and does not register any provider-repair endpoints. To use the page workflow, explicitly start maintenance mode:
+Local AI history may contain prompts, tool output, source snippets, working directories, provider identifiers, and other sensitive information.
 
-```bash
-pnpm start:maintenance
-```
+- Review exported files before sharing them.
+- Treat the incremental index cache and provider-repair backups as sensitive local data.
+- Never attach real sessions, databases, caches, backups, credentials, or unredacted paths to public issues.
+- Do not bypass the loopback-only restriction to expose the server to a network.
 
-Open the "Tools" tab, select the historical providers to restore, and build the exact plan. The tool reads the active provider from Codex `config.toml` but never modifies `config.toml` or reads/writes third-party tool data. Official and built-in providers remain unchanged.
+See [SECURITY.md](./SECURITY.md) for private vulnerability reporting guidance and the security boundary.
 
-For CLI use:
+## Optional Codex provider repair
 
-```bash
-pnpm codex:provider-repair -- --dry-run
-pnpm codex:provider-repair -- --dry-run \
-  --providers right_code,cubence_codex
-pnpm codex:provider-repair -- --apply \
-  --providers right_code,cubence_codex \
-  --plan-id <preview-plan-id> \
-  --confirm-codex-closed
-```
-
-The first dry-run only discovers candidates; it never auto-selects providers. Quit Codex App before apply. The tool backs up affected Codex state databases and JSONL files under `~/.codex/backups/codex-history-provider-rebucket-v2/`, and records original assignments in `provider-manifest.json`. Failures trigger automatic rollback. Manual rollback also requires Codex App to be closed:
+AllSessions includes a maintenance tool, disabled by default, for Codex histories that became invisible after switching third-party providers. Start normally, then enable maintenance mode from the **Tools** page.
 
 ```bash
-pnpm codex:provider-repair -- \
-  --rollback /path/to/backup-dir \
-  --confirm-codex-closed
+pnpm start
 ```
 
-This restores visibility for the currently active provider only. It does not alter future provider switching and is not a permanent unification; after switching providers, another repair may be required.
+The workflow requires an exact preview, explicit provider selection, confirmation that Codex App is closed, verified backups, and rollback support. It modifies selected Codex provider metadata only; it does not modify `config.toml` or third-party tool data.
 
-Do not confuse the three visibility paths:
+The server remains read-only while the switch is off. Enabling it still requires an exact plan and confirmation that Codex App has exited. See [Codex Provider Visibility Repair](./docs/codex-provider-repair.md) before using maintenance mode or the CLI.
 
-- "Show Codex archived sessions" is a read-only view of `~/.codex/archived_sessions`.
-- "Show hidden sessions" reveals Codex subagent sessions in this viewer.
-- "Codex Provider Visibility Repair" rewrites selected provider metadata so Codex App can see that history under the active provider again.
+## Known limitations
 
-## Notes
-
-- Local-only: no authentication or remote access control
-- Read-only access to the session directory
-- Supports Codex, Claude Code, and Gemini CLI session files simultaneously
-- Legacy sessions with incompatible formats fall back to raw event view
-- Encrypted fields are shown as-is without decryption
-- Scans all sessions on startup and caches summaries; details are read on demand
-- Normal startup does not register provider-repair endpoints; maintenance mode still requires the local page's mutation token and rejects cross-origin mutation requests
-
-## Roadmap
-
-- Keep the current multi-source viewer stable and lightweight
-- Add optional support for additional AI tool session formats
-- Improve Claude Code conversation reconstruction from local history
+- Local session formats can change between upstream tool versions; unsupported historical records may fall back to raw-event display.
+- Claude Code support is limited to the fields available in the supported local metadata format.
+- Large Codex details use a marked head/tail safety window, and the search index stores bounded text per session.
+- Injected developer and environment context is excluded from default conversation and search views, but remains present in raw local data and full exports.
 
 ## Development
 
 ```bash
-# Run tests
+pnpm install
 pnpm test
-
-# Lint
 pnpm lint
-
-# Lint and auto-fix
-pnpm lint:fix
-
-# Format code
-pnpm format
-
-# Build frontend (outputs to dist/)
 pnpm build
-```
-
-If local pnpm version switching fails on registry signature verification, run the same checks directly:
-
-```bash
-./node_modules/.bin/eslint server public test scripts
-node --test
-./node_modules/.bin/vite build
 ```
 
 ## License
 
-Apache-2.0
+[Apache-2.0](./LICENSE)

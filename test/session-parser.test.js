@@ -6,6 +6,7 @@ import path from "node:path";
 
 import {
   parseCodexContent as parseSessionContent,
+  parseCodexFile,
   parseCodexFileSummary
 } from "../server/parsers/codex.js";
 import { parseGeminiSessions } from "../server/parsers/index.js";
@@ -27,7 +28,7 @@ test("能从标准会话中提取摘要和对话消息", () => {
         cwd: "/tmp/project-a",
         source: "cli",
         originator: "codex_cli_rs",
-        model_provider: "newapi"
+        model_provider: "current_provider"
       }
     }),
     JSON.stringify({
@@ -52,7 +53,7 @@ test("能从标准会话中提取摘要和对话消息", () => {
   const detail = parseSessionContent(content, "/tmp/session-1.jsonl");
 
   assert.equal(detail.summary.id, "session-1");
-  assert.equal(detail.summary.model_provider, "newapi");
+  assert.equal(detail.summary.model_provider, "current_provider");
   assert.equal(detail.summary.cwd, "/tmp/project-a");
   assert.equal(detail.summary.event_count, 3);
   assert.equal(detail.summary.title, "你好");
@@ -63,6 +64,89 @@ test("能从标准会话中提取摘要和对话消息", () => {
   assert.equal(detail.conversation_messages.length, 2);
   assert.equal(detail.conversation_messages[0].role, "user");
   assert.match(detail.conversation_messages[1].text, /查看会话/);
+});
+
+test("Codex 同一消息的 event_msg 与 response_item 记录只展示一次", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "重复的用户问题" }]
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.010Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "重复的用户问题" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:02.000Z",
+      type: "event_msg",
+      payload: { type: "agent_message", message: "重复的助手回答" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:02.010Z",
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "重复的助手回答" }]
+      }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/duplicate-messages.jsonl");
+
+  assert.deepEqual(
+    detail.conversation_messages.map((message) => [message.role, message.text]),
+    [
+      ["user", "重复的用户问题"],
+      ["assistant", "重复的助手回答"]
+    ]
+  );
+  assert.equal(detail.summary.message_count, 2);
+  assert.deepEqual(detail.summary.role_counts, { user: 1, assistant: 1 });
+});
+
+test("用户确实连续发送相同内容时仍保留两条消息", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "再试一次" }]
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.010Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "再试一次" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:01:01.000Z",
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "再试一次" }]
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:01:01.010Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "再试一次" }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/repeated-user-message.jsonl");
+
+  assert.equal(detail.conversation_messages.length, 2);
+  assert.equal(detail.summary.message_count, 2);
 });
 
 test("Codex 启动摘要逐行解析并限制保留的搜索正文", async (t) => {
@@ -114,6 +198,52 @@ test("Codex 启动摘要逐行解析并限制保留的搜索正文", async (t) =
   assert.ok(detail.conversation_messages.reduce((sum, message) => sum + message.text.length, 0) <= 1024);
 });
 
+test("Codex 大会话详情使用首尾窗口并截断超长正文", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const filePath = path.join(rootDir, "bounded-detail.jsonl");
+  const records = [
+    {
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "bounded-detail", cwd: "/tmp/bounded", model_provider: "custom" }
+    }
+  ];
+  for (let index = 0; index < 12; index += 1) {
+    records.push({
+      timestamp: `2026-04-21T10:00:${String(index + 1).padStart(2, "0")}.000Z`,
+      type: "event_msg",
+      payload: { type: "user_message", message: `消息-${index}-${"x".repeat(80)}` }
+    });
+  }
+  await fs.writeFile(filePath, records.map((record) => JSON.stringify(record)).join("\n"), "utf8");
+
+  const detail = await parseCodexFile(filePath, {
+    maxConversationMessages: 4,
+    maxRawEvents: 6,
+    maxMessageTextChars: 20,
+    maxRawEventLineChars: 100
+  });
+
+  assert.equal(detail.summary.message_count, 12);
+  assert.equal(detail.summary.detail_truncated, true);
+  assert.equal(detail.truncation.messages.omitted, 8);
+  assert.equal(detail.truncation.raw_events.omitted, 7);
+  assert.equal(detail.conversation_messages.length, 5);
+  assert.equal(detail.conversation_messages[2].is_truncation_marker, true);
+  assert.ok(
+    detail.conversation_messages
+      .filter((message) => !message.is_truncation_marker)
+      .every((message) => message.text.length <= 20)
+  );
+  assert.equal(detail.raw_events.length, 7);
+  assert.equal(detail.raw_events[3].type, "viewer_truncation");
+  assert.equal(detail.raw_events.at(-1).payload.truncated, true);
+});
+
 test("会话标题跳过应用注入的上下文消息", () => {
   const content = [
     JSON.stringify({
@@ -136,7 +266,40 @@ test("会话标题跳过应用注入的上下文消息", () => {
   const detail = parseSessionContent(content, "/tmp/context-title.jsonl");
 
   assert.equal(detail.summary.title, "真正需要解决的会话问题");
-  assert.equal(detail.summary.message_count, 2);
+  assert.equal(detail.summary.message_count, 1);
+  assert.equal(detail.summary.context_count, 1);
+  assert.equal(detail.conversation_messages[0].synthetic_context, true);
+});
+
+test("Codex developer 指令标记为系统上下文", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "developer-context", cwd: "/tmp/context", model_provider: "custom" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "developer",
+        content: [{ type: "input_text", text: "You are the primary agent." }]
+      }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:02.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "真正的用户问题" }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/developer-context.jsonl");
+
+  assert.equal(detail.conversation_messages[0].synthetic_context, true);
+  assert.equal(detail.summary.context_count, 1);
+  assert.equal(detail.summary.message_count, 1);
+  assert.equal(detail.summary.title, "真正的用户问题");
 });
 
 test("会话标题跳过应用附加的文件上下文", () => {
@@ -161,7 +324,30 @@ test("会话标题跳过应用附加的文件上下文", () => {
   const detail = parseSessionContent(content, "/tmp/file-context-title.jsonl");
 
   assert.equal(detail.summary.title, "请分析这个数据库错误");
-  assert.equal(detail.summary.message_count, 2);
+  assert.equal(detail.summary.message_count, 1);
+  assert.equal(detail.summary.context_count, 1);
+});
+
+test("Markdown 标题标记不会进入会话标题", () => {
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "markdown-title", cwd: "/tmp/markdown", model_provider: "custom" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: {
+        type: "user_message",
+        message: "## Code review guidelines:\n# Review Guidelines\n\nYou are acting as a reviewer."
+      }
+    })
+  ].join("\n");
+
+  const detail = parseSessionContent(content, "/tmp/markdown-title.jsonl");
+
+  assert.equal(detail.summary.title, "Code review guidelines:");
 });
 
 test("只有应用注入上下文时会话标题回退到项目名", () => {
@@ -181,6 +367,8 @@ test("只有应用注入上下文时会话标题回退到项目名", () => {
   const detail = parseSessionContent(content, "/tmp/only-context.jsonl");
 
   assert.equal(detail.summary.title, "project-name");
+  assert.equal(detail.summary.message_count, 0);
+  assert.equal(detail.summary.context_count, 1);
 });
 
 test("Codex 归档会话会保留 Codex 字段并打归档标记", async (t) => {
@@ -200,7 +388,7 @@ test("Codex 归档会话会保留 Codex 字段并打归档标记", async (t) => 
         timestamp: "2026-04-21T10:00:00.000Z",
         cwd: "/tmp/archived",
         source: "cli",
-        model_provider: "newapi"
+        model_provider: "current_provider"
       }
     }),
     "utf8"
@@ -209,7 +397,7 @@ test("Codex 归档会话会保留 Codex 字段并打归档标记", async (t) => 
   const detail = await parseCodexArchivedFile(filePath);
 
   assert.equal(detail.summary.id, "archived-1");
-  assert.equal(detail.summary.model_provider, "newapi");
+  assert.equal(detail.summary.model_provider, "current_provider");
   assert.equal(detail.summary.source, "cli");
   assert.equal(detail.summary.source_kind, "codex_archived");
   assert.equal(detail.summary.archived, true);

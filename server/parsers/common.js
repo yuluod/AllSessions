@@ -60,6 +60,24 @@ function compactText(text, maxLength) {
   return normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd() + "...";
 }
 
+function titleTextFromMarkdown(text, maxLength) {
+  const lines = String(text || "").split(/\r?\n/);
+  const firstReadableLine = lines.find((line) => {
+    const value = line.trim();
+    return value && !/^(```|~~~|---)$/.test(value);
+  }) || "";
+  const plainText = firstReadableLine
+    .replace(/^\s{0,3}#{1,6}\s+/, "")
+    .replace(/^\s*>\s?/, "")
+    .replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/\s+#{1,6}\s*$/, "");
+  return compactText(plainText, maxLength);
+}
+
 function projectNameFromCwd(cwd) {
   if (!cwd || typeof cwd !== "string") {
     return "";
@@ -67,7 +85,7 @@ function projectNameFromCwd(cwd) {
   return path.basename(cwd) || cwd;
 }
 
-function isSyntheticUserContext(text) {
+export function isSyntheticContext(text) {
   const value = String(text || "").trimStart();
   return /^<(?:recommended_plugins|permissions instructions|app-context|collaboration_mode|environment_context|skills_instructions|apps_instructions|plugins_instructions)(?:>|\s)/i.test(value) ||
     /^#\s*AGENTS\.md instructions\b/i.test(value) ||
@@ -77,6 +95,7 @@ function isSyntheticUserContext(text) {
 export function createConversationSummaryAccumulator() {
   return {
     message_count: 0,
+    context_count: 0,
     role_counts: {},
     first_user_text: "",
     first_assistant_text: "",
@@ -86,15 +105,20 @@ export function createConversationSummaryAccumulator() {
 
 export function addConversationMessageToSummary(accumulator, message) {
   const role = normalizeRole(message.role);
+  const syntheticContext = message.synthetic_context === true ||
+    role === "developer" ||
+    (role === "user" && isSyntheticContext(message.text));
+  if (syntheticContext) {
+    accumulator.context_count += 1;
+    return accumulator;
+  }
   accumulator.message_count += 1;
   accumulator.role_counts[role] = (accumulator.role_counts[role] || 0) + 1;
   if (!accumulator.first_message_text) {
     accumulator.first_message_text = compactText(message.text, 160);
   }
   if (role === "user" && !accumulator.first_user_text) {
-    if (!isSyntheticUserContext(message.text)) {
-      accumulator.first_user_text = compactText(message.text, 90);
-    }
+    accumulator.first_user_text = titleTextFromMarkdown(message.text, 90);
   }
   if (role === "assistant" && !accumulator.first_assistant_text) {
     accumulator.first_assistant_text = compactText(message.text, 160);
@@ -109,6 +133,7 @@ export function enrichSummaryFromConversationAggregate(summary, accumulator) {
     summary.id;
   summary.preview_text = accumulator.first_assistant_text || accumulator.first_message_text || "";
   summary.message_count = accumulator.message_count;
+  summary.context_count = accumulator.context_count;
   summary.role_counts = { ...accumulator.role_counts };
   summary.tool_count = accumulator.role_counts.tool || 0;
 
@@ -167,6 +192,10 @@ export function pushConversationMessage(
     source_type: sourceType,
     source_subtype: sourceSubtype || null
   };
+  if (message.role === "developer" ||
+    (message.role === "user" && isSyntheticContext(trimmed))) {
+    message.synthetic_context = true;
+  }
   if (toolName) {
     message.tool_name = toolName;
   }

@@ -2,8 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 
-const rootDir = "/Users/yuluo/xcode/AllSessions";
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 async function readProjectFile(relativePath) {
   return fs.readFile(path.join(rootDir, relativePath), "utf8");
@@ -60,14 +61,16 @@ test("统计页展示真实事件总数并使用最近日期", async () => {
   assert.match(store, /total_events: totalEvents/);
 });
 
-test("页面使用内联 favicon 避免无意义的网络请求", async () => {
+test("页面复用项目图标作为 favicon 与工具栏标识", async () => {
   const html = await readProjectFile("public/index.html");
 
-  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
+  assert.match(html, /<link rel="icon" type="image\/png" href="\/assets\/allsessions-icon-v2\.png"/);
+  assert.match(html, /<img class="toolbar-logo" src="\/assets\/allsessions-icon-v2\.png"/);
 });
 
 test("会话列表项具备三段式信息层级", async () => {
   const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
 
   assert.match(html, /class="session-primary"/);
   assert.match(html, /class="session-secondary"/);
@@ -76,6 +79,9 @@ test("会话列表项具备三段式信息层级", async () => {
   assert.match(html, /class="session-preview"/);
   assert.match(html, /class="session-cwd session-cwd-main"/);
   assert.match(html, /class="session-cwd-path"/);
+  assert.match(html, /class="session-row"[\s\S]*class="session-item"/);
+  assert.match(source, /row\.append\(archiveBtn\)/);
+  assert.doesNotMatch(source, /button\.append\(archiveBtn\)/);
 });
 
 test("页面提供项目导航入口并复用 cwd 筛选", async () => {
@@ -100,10 +106,12 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
 
   assert.match(html, /id="detail-search-input"/);
   assert.match(html, /id="show-tools-toggle"/);
+  assert.match(html, /id="show-context-toggle"/);
   assert.match(html, /id="message-nav-inline-list"/);
   assert.match(source, /function filteredConversationMessages\(messages\)/);
   assert.match(source, /function createMessageNavSection\(messages\)/);
   assert.match(source, /state\.showTools \|\| message\.role !== "tool"/);
+  assert.match(source, /state\.showContext \|\| message\.synthetic_context !== true/);
   assert.match(css, /\.conversation-toolbar\b/);
   assert.match(css, /\.message-nav-list\b/);
 });
@@ -119,6 +127,16 @@ test("会话列表支持筛选状态 chips 和日期分组", async () => {
   assert.match(css, /\.active-filter-bar\b/);
   assert.match(css, /\.filter-chip\b/);
   assert.match(css, /\.session-group-header\b/);
+});
+
+test("本地归档不会被初始自动选中，空页仍可继续加载", async () => {
+  const source = await readProjectFile("public/app.js");
+
+  assert.doesNotMatch(source, /visibleSessions\(\)\[0\]\s*\|\|\s*state\.sessions\[0\]/);
+  assert.match(
+    source,
+    /if \(!visible\.length\) \{[\s\S]*renderLoadMoreButton\(\);[\s\S]*updateSessionCount\(\);[\s\S]*return;/
+  );
 });
 
 test("顶部筛选按钮聚焦筛选区而不是切换到统计页", async () => {
@@ -140,6 +158,15 @@ test("全局搜索支持快捷键并从其他视图返回会话列表", async ()
   assert.match(source, /elements\.searchInput\?\.focus\(\)/);
 });
 
+test("搜索结果支持使用服务端 cursor 继续加载", async () => {
+  const source = await readProjectFile("public/app.js");
+
+  assert.match(source, /function buildSearchUrl\(\{ cursor \} = \{\}\)/);
+  assert.match(source, /if \(cursor\) params\.set\("cursor", cursor\)/);
+  assert.match(source, /state\.hasMore = data\.has_more/);
+  assert.match(source, /state\.searchQuery\s*\? buildSearchUrl\(\{ cursor: state\.nextCursor \}\)/);
+});
+
 test("样式包含紧凑工具栏和详情元信息条", async () => {
   const css = await readProjectFile("public/styles.css");
 
@@ -154,13 +181,6 @@ test("启动流程会等待 watcher 初始化完成", async () => {
   const source = await readProjectFile("server/index.js");
 
   assert.match(source, /await store\.watch\(\);/);
-});
-
-test("session-added 事件会重渲染列表而不是仅追加单项", async () => {
-  const source = await readProjectFile("public/app.js");
-
-  assert.match(source, /eventSource\.addEventListener\("session-added"[\s\S]*renderSessionList\(\)/);
-  assert.doesNotMatch(source, /eventSource\.addEventListener\("session-added"[\s\S]*appendSessionItems\(\[summary\]\)/);
 });
 
 test("语言切换会重渲染动态内容而不是只更新静态文案", async () => {
@@ -235,10 +255,7 @@ test("隐藏会话开关会进入 URL 并触发重新加载", async () => {
 
 test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复入口", async () => {
   const html = await readProjectFile("public/index.html");
-  const source = await readProjectFile("public/app.js");
-  const server = await readProjectFile("server/http-server.js");
-  const serverIndex = await readProjectFile("server/index.js");
-  const apiClient = await readProjectFile("public/api-client.js");
+  const app = await readProjectFile("public/app.js");
 
   assert.match(html, /data-sidebar-tab="tools"/);
   assert.match(html, /id="codex-migration-preview-btn"/);
@@ -246,24 +263,13 @@ test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复�
   assert.match(html, /id="codex-migration-rollback-btn"/);
   assert.match(html, /id="codex-migration-diagnostics"/);
   assert.match(html, /id="codex-migration-card"[\s\S]*data-enabled="false"/);
+  assert.match(html, /id="codex-maintenance-toggle"[\s\S]*role="switch"/);
   assert.match(html, /data-i18n="maintenanceBoundary"/);
   assert.match(html, /id="codex-archive-viewer-title"/);
   assert.match(html, /data-i18n="codexArchiveViewerDesc"/);
-  assert.match(source, /\/api\/codex-provider-migration\/preview/);
-  assert.match(source, /\/api\/capabilities/);
-  assert.match(source, /summary\.candidateMappings \|\| summary\.mappings/);
-  assert.match(source, /checkbox\.type = "checkbox"/);
-  assert.match(source, /selectedCodexMigrationProviders\(\)/);
-  assert.match(source, /setMutationToken\(summary\.mutation_token\)/);
-  assert.match(source, /mutation: true/);
-  assert.match(apiClient, /X-Session-Viewer-Token/);
-  assert.match(source, /confirmedCodexAppClosed: true/);
-  assert.match(source, /planId: preview\.planId/);
-  assert.match(server, /\/api\/codex-provider-migration\/apply/);
-  assert.match(server, /codexMaintenanceEnabled = false/);
-  assert.match(server, /Codex maintenance mode is disabled/);
-  assert.match(server, /assertMutationToken\(request, mutationToken\)/);
-  assert.match(server, /runMigration\(\{[\s\S]*apply: true/);
-  assert.match(serverIndex, /--enable-codex-maintenance/);
-  assert.match(serverIndex, /codexMaintenanceEnabled/);
+  assert.match(app, /\/api\/codex-maintenance/);
+  assert.match(app, /setMutationToken\(state\.capabilities/);
+  assert.match(app, /codexMigrationPreviewRequestGate\.cancel\(\)/);
+  assert.match(app, /signal: request\.signal/);
+  assert.doesNotMatch(app, /if \(isTools && isCodexMaintenanceEnabled\(\)/);
 });

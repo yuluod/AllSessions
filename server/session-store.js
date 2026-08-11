@@ -9,10 +9,15 @@ import {
   parseGeminiSessions,
   sortTimestampValue
 } from "./parsers/index.js";
+import { ByteLruCache } from "./byte-lru-cache.js";
 import { SessionSearchIndex } from "./session-index.js";
+import { SessionIndexCache } from "./session-index-cache.js";
+import { dateKeyFromTimestamp, matchesSessionFilters } from "./session-query.js";
 
 const DEBOUNCE_MS = 500;
 const INITIAL_PARSE_BATCH_SIZE = 4;
+const MAX_CHANGE_RETRIES = 3;
+const CHANGE_RETRY_DELAY_MS = 750;
 
 function sessionKey(sourceKind, id) {
   return `${sourceKind}:${id}`;
@@ -80,13 +85,6 @@ function sourceRoots(source, property) {
   return Array.from(new Set(configured.filter(Boolean).map((rootDir) => path.resolve(rootDir))));
 }
 
-function dateKeyFromTimestamp(timestamp) {
-  if (typeof timestamp !== "string" || timestamp.length < 10) {
-    return "";
-  }
-  return timestamp.slice(0, 10);
-}
-
 function projectNameFromCwd(cwd) {
   if (!cwd || typeof cwd !== "string") {
     return "";
@@ -94,38 +92,8 @@ function projectNameFromCwd(cwd) {
   return path.basename(cwd) || cwd;
 }
 
-function matchesFilter(summary, filters) {
-  const showCodexArchived =
-    filters.show_codex_archived === true ||
-    filters.show_codex_archived === "true" ||
-    filters.show_codex_archived === "1";
-  const showHidden =
-    filters.show_hidden === true ||
-    filters.show_hidden === "true" ||
-    filters.show_hidden === "1";
-
-  if (summary.archived === true && summary.archive_source === "codex" && !showCodexArchived) {
-    return false;
-  }
-  if (summary.hidden === true && !showHidden) {
-    return false;
-  }
-  if (filters.provider && summary.model_provider !== filters.provider) {
-    return false;
-  }
-  if (filters.source_kind && summary.source_kind !== filters.source_kind) {
-    return false;
-  }
-  if (filters.date && dateKeyFromTimestamp(summary.timestamp || summary.last_timestamp) !== filters.date) {
-    return false;
-  }
-  if (filters.cwd && summary.cwd !== filters.cwd) {
-    return false;
-  }
-  return true;
-}
-
-const LRU_MAX = 50;
+const DEFAULT_DETAIL_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+const DETAIL_CACHE_SIZE_MULTIPLIER = 2;
 
 async function parseFileSafely(filePath, sourceKind) {
   try {
@@ -138,19 +106,29 @@ async function parseFileSafely(filePath, sourceKind) {
 }
 
 export class SessionStore {
-  constructor({ sources }) {
+  constructor({
+    sources,
+    detailCacheMaxBytes = DEFAULT_DETAIL_CACHE_MAX_BYTES,
+    indexCacheFile = null
+  }) {
     this.sources = sources;
     this.summaries = [];
     this.summaryByKey = new Map();
     this.summaryById = new Map();
     this._filePathToKey = new Map();
-    this._detailCache = new Map();
+    this._detailCache = new ByteLruCache(detailCacheMaxBytes);
     this._watchers = [];
     this._watchedDirs = new Set();
     this._debounceTimer = null;
     this._pendingChanges = new Set();
+    this._changeRetryCounts = new Map();
     this._onChangeCallbacks = [];
     this._searchIndex = new SessionSearchIndex();
+    this._indexCache = new SessionIndexCache(indexCacheFile);
+    this._mutationQueue = Promise.resolve();
+    this._parseFileSummary = parseFileSummary;
+    this._parseGeminiSessions = parseGeminiSessions;
+    this.cacheStats = { hits: 0, misses: 0 };
   }
 
   async initialize() {
@@ -159,10 +137,13 @@ export class SessionStore {
     this.summaryById.clear();
     this._filePathToKey.clear();
     this._searchIndex.clear();
+    this.cacheStats = { hits: 0, misses: 0 };
+    await this._indexCache.load();
+    const discoveredCacheFiles = new Set();
 
     for (const source of this.sources) {
       if (source.kind === "gemini") {
-        const sessions = await parseGeminiSessions(source.rootDir);
+        const sessions = await this._parseGeminiSessions(source.rootDir);
         for (const detail of sessions) {
           this._addSessionDetail(detail);
         }
@@ -175,24 +156,57 @@ export class SessionStore {
           const batch = files.slice(start, start + INITIAL_PARSE_BATCH_SIZE);
           const parsed = await Promise.all(
             batch.map(async (filePath) => {
-              return parseFileSafely(filePath, source.kind);
+              let stat;
+              try {
+                stat = await fs.stat(filePath);
+              } catch (error) {
+                if (error && typeof error === "object" && error.code === "ENOENT") return null;
+                throw error;
+              }
+              discoveredCacheFiles.add(filePath);
+              const cached = this._indexCache.get(filePath, source.kind, stat);
+              if (cached) {
+                this.cacheStats.hits += 1;
+                return { cached, filePath, stat };
+              }
+              this.cacheStats.misses += 1;
+              const detail = await parseFileSafely(filePath, source.kind);
+              return detail ? { detail, filePath, stat } : null;
             })
           );
 
-          for (const detail of parsed) {
-            if (detail) {
-              this._addSessionDetail(detail);
+          for (const result of parsed) {
+            if (!result) continue;
+            if (result.cached) {
+              const summary = { ...result.cached.summary, file_path: result.filePath };
+              this._addCachedSession(summary, result.cached.index_text);
+              continue;
             }
+            const summary = this._addSessionDetail(result.detail);
+            this._indexCache.set(
+              result.filePath,
+              source.kind,
+              result.stat,
+              summary,
+              this._searchIndex.getText(summary._key)
+            );
           }
         }
       }
     }
 
     this.summaries.sort(compareSummariesDesc);
+    this._indexCache.retain(discoveredCacheFiles);
+    try {
+      await this._indexCache.save();
+    } catch (error) {
+      console.warn("Cannot write session index cache:", error.message);
+    } finally {
+      this._indexCache.release();
+    }
   }
 
-  _addSessionDetail(detail) {
-    const summary = detail.summary;
+  _registerSummary(summary) {
     const key = sessionKey(summary.source_kind, summary.id);
     summary._key = key;
     this.summaries.push(summary);
@@ -202,11 +216,23 @@ export class SessionStore {
     }
     this.summaryById.get(summary.id).add(key);
     this._filePathToKey.set(summary.file_path, key);
+    return summary;
+  }
+
+  _addSessionDetail(detail) {
+    const summary = this._registerSummary(detail.summary);
     this._indexSession(summary, detail.conversation_messages);
     return summary;
   }
 
+  _addCachedSession(summary, indexText) {
+    const registered = this._registerSummary(summary);
+    this._searchIndex.addText(registered._key, indexText);
+    return registered;
+  }
+
   async _reloadGeminiSource(source) {
+    const details = await this._parseGeminiSessions(source.rootDir);
     const previousKeys = new Set(
       this.summaries
         .filter((summary) => summary.source_kind === "gemini" && isWithinRoot(summary.file_path, source.rootDir))
@@ -217,7 +243,6 @@ export class SessionStore {
       this._removeSession(key);
     }
 
-    const details = await parseGeminiSessions(source.rootDir);
     const nextKeys = new Set();
     const nextSummaries = [];
     for (const detail of details) {
@@ -270,7 +295,7 @@ export class SessionStore {
     const summaries = [];
     for (const result of this._searchIndex.search(query)) {
       const summary = this.summaryByKey.get(result.key);
-      if (summary && matchesFilter(summary, filters)) {
+      if (summary && matchesSessionFilters(summary, filters)) {
         summaries.push(result.snippet ? { ...summary, search_snippet: result.snippet } : summary);
       }
     }
@@ -279,7 +304,7 @@ export class SessionStore {
   }
 
   listSessions(filters = {}, { limit, cursor } = {}) {
-    let filtered = this.summaries.filter((summary) => matchesFilter(summary, filters));
+    let filtered = this.summaries.filter((summary) => matchesSessionFilters(summary, filters));
 
     if (cursor) {
       const cursorIndex = filtered.findIndex((s) => s._key === cursor);
@@ -369,7 +394,7 @@ export class SessionStore {
   }
 
   getStats(filters = {}) {
-    const data = this.summaries.filter((summary) => matchesFilter(summary, filters));
+    const data = this.summaries.filter((summary) => matchesSessionFilters(summary, filters));
     const totalEvents = data.reduce((sum, summary) => sum + summary.event_count, 0);
 
     const byDate = new Map();
@@ -424,12 +449,8 @@ export class SessionStore {
       return null;
     }
 
-    if (this._detailCache.has(summary._key)) {
-      const cached = this._detailCache.get(summary._key);
-      this._detailCache.delete(summary._key);
-      this._detailCache.set(summary._key, cached);
-      return cached;
-    }
+    const cached = this._detailCache.get(summary._key);
+    if (cached) return cached;
 
     let detail;
     if (summary.source_kind === "gemini") {
@@ -444,21 +465,30 @@ export class SessionStore {
       detail.summary._key = summary._key;
     }
 
-    if (this._detailCache.size >= LRU_MAX) {
-      const oldest = this._detailCache.keys().next().value;
-      this._detailCache.delete(oldest);
-    }
-    this._detailCache.set(summary._key, detail);
+    const stat = await fs.stat(summary.file_path).catch(() => null);
+    const estimatedBytes = stat
+      ? Math.max(1, stat.size * DETAIL_CACHE_SIZE_MULTIPLIER)
+      : DEFAULT_DETAIL_CACHE_MAX_BYTES + 1;
+    this._detailCache.set(summary._key, detail, estimatedBytes);
 
     return detail;
   }
 
   onChange(callback) {
     this._onChangeCallbacks.push(callback);
+    return () => {
+      this._onChangeCallbacks = this._onChangeCallbacks.filter((item) => item !== callback);
+    };
   }
 
   _notifyChange(event) {
-    this._onChangeCallbacks.forEach((cb) => cb(event));
+    for (const callback of this._onChangeCallbacks) {
+      try {
+        callback(event);
+      } catch (error) {
+        console.error("Session change listener failed:", error.message);
+      }
+    }
   }
 
   _watchDir(dir, source) {
@@ -470,9 +500,8 @@ export class SessionStore {
         if (!isWithinRoot(fullPath, dir)) return;
         const isTargetFile = getMatchFn(source)(fullPath);
         if (isTargetFile) {
-          clearTimeout(this._debounceTimer);
           this._pendingChanges.add(fullPath);
-          this._debounceTimer = setTimeout(() => this._processPendingChanges(), DEBOUNCE_MS);
+          this._schedulePendingChanges();
         }
       });
       watcher.on("error", (err) => {
@@ -506,6 +535,26 @@ export class SessionStore {
     this._watchedDirs.clear();
   }
 
+  _schedulePendingChanges(delay = DEBOUNCE_MS) {
+    clearTimeout(this._debounceTimer);
+    this._debounceTimer = setTimeout(() => {
+      this._debounceTimer = null;
+      this.flushPendingChanges().catch((error) => {
+        console.error("Cannot process pending session changes:", error.message);
+      });
+    }, delay);
+  }
+
+  _enqueueMutation(operation) {
+    const run = this._mutationQueue.then(operation, operation);
+    this._mutationQueue = run.catch(() => {});
+    return run;
+  }
+
+  flushPendingChanges() {
+    return this._enqueueMutation(() => this._processPendingChanges());
+  }
+
   async _processPendingChanges() {
     const files = Array.from(this._pendingChanges);
     this._pendingChanges.clear();
@@ -518,10 +567,11 @@ export class SessionStore {
       try {
         if (source.kind === "gemini") {
           await this._reloadGeminiSource(source);
+          this._changeRetryCounts.delete(filePath);
           continue;
         }
 
-        const detail = await parseFileSummary(filePath, source.kind);
+        const detail = await this._parseFileSummary(filePath, source.kind);
         const summary = detail.summary;
         summary._key = sessionKey(summary.source_kind, summary.id);
         const existingKey = key || summary._key;
@@ -554,6 +604,7 @@ export class SessionStore {
         }
         this.summaryById.get(summary.id).add(summary._key);
         this._filePathToKey.set(summary.file_path, summary._key);
+        this._changeRetryCounts.delete(filePath);
       } catch (err) {
         if (err && typeof err === "object" && err.code === "ENOENT") {
           const matchKey = key || this._filePathToKey.get(filePath);
@@ -561,13 +612,30 @@ export class SessionStore {
             this._removeSession(matchKey);
             this._notifyChange({ type: "session-deleted", id: matchKey });
           }
+          this._changeRetryCounts.delete(filePath);
+          continue;
+        }
+
+        const attempt = (this._changeRetryCounts.get(filePath) || 0) + 1;
+        this._changeRetryCounts.set(filePath, attempt);
+        console.error(
+          `Cannot update session file (${filePath}), attempt ${attempt}/${MAX_CHANGE_RETRIES}:`,
+          err instanceof Error ? err.message : String(err)
+        );
+        if (attempt < MAX_CHANGE_RETRIES) {
+          this._pendingChanges.add(filePath);
+          this._schedulePendingChanges(CHANGE_RETRY_DELAY_MS * attempt);
+        } else {
+          this._changeRetryCounts.delete(filePath);
         }
       }
     }
   }
 
   async refresh() {
-    this._detailCache.clear();
-    await this.initialize();
+    return this._enqueueMutation(async () => {
+      this._detailCache.clear();
+      await this.initialize();
+    });
   }
 }

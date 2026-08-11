@@ -229,7 +229,7 @@ async function setupServerWithCodexMigration(t) {
 
   await fs.writeFile(
     path.join(codexHome, "config.toml"),
-    "model_provider = \"newapi\"\n\n[model_providers.newapi]\nname = \"HTTP fixture\"\nbase_url = \"https://example.test/v1\"\n",
+    "model_provider = \"current_provider\"\n\n[model_providers.current_provider]\nname = \"HTTP fixture\"\nbase_url = \"https://example.test/v1\"\n",
     "utf8"
   );
 
@@ -240,8 +240,8 @@ async function setupServerWithCodexMigration(t) {
       model_provider text not null,
       archived integer not null default 0
     );
-    insert into threads (id, model_provider, archived) values ('active-third', 'newapi', 0);
-    insert into threads (id, model_provider, archived) values ('archived-third', 'right_code', 1);
+    insert into threads (id, model_provider, archived) values ('active-third', 'current_provider', 0);
+    insert into threads (id, model_provider, archived) values ('archived-third', 'legacy_provider_a', 1);
     insert into threads (id, model_provider, archived) values ('official', 'openai', 0);
     insert into threads (id, model_provider, archived) values ('existing-custom', 'custom', 0);
   `);
@@ -253,7 +253,7 @@ async function setupServerWithCodexMigration(t) {
     JSON.stringify({
       timestamp: "2026-06-01T10:00:00.000Z",
       type: "session_meta",
-      payload: { id: "active-third", model_provider: "newapi", cwd: "/tmp/http-migration" }
+      payload: { id: "active-third", model_provider: "current_provider", cwd: "/tmp/http-migration" }
     }),
     "utf8"
   );
@@ -262,7 +262,7 @@ async function setupServerWithCodexMigration(t) {
     JSON.stringify({
       timestamp: "2026-06-01T09:00:00.000Z",
       type: "session_meta",
-      payload: { id: "archived-third", model_provider: "right_code", cwd: "/tmp/http-archived" }
+      payload: { id: "archived-third", model_provider: "legacy_provider_a", cwd: "/tmp/http-archived" }
     }),
     "utf8"
   );
@@ -296,9 +296,9 @@ async function setupServerWithCodexMigration(t) {
   return { address, dbPath, activeFile };
 }
 
-function fetchFromServer(port, path) {
+function fetchFromServer(port, path, headers = {}) {
   return new Promise((resolve, reject) => {
-    http.get(`http://127.0.0.1:${port}${path}`, (res) => {
+    http.get(`http://127.0.0.1:${port}${path}`, { headers }, (res) => {
       const chunks = [];
       res.on("data", (chunk) => chunks.push(chunk));
       res.on("end", () => {
@@ -365,18 +365,59 @@ test("GET /api/sessions 返回会话列表", async (t) => {
   assert.equal(typeof data.has_more, "boolean");
 });
 
-test("默认服务保持只读并且不注册 Codex 维护接口", async (t) => {
+test("默认服务保持只读并可通过受保护开关启停 Codex 维护模式", async (t) => {
   const { address } = await setupServer(t);
 
   const capabilities = await fetchFromServer(address.port, "/api/capabilities");
   assert.equal(capabilities.status, 200);
-  assert.equal(JSON.parse(capabilities.body).codex_maintenance.enabled, false);
+  const capabilityData = JSON.parse(capabilities.body).codex_maintenance;
+  assert.equal(capabilityData.enabled, false);
+  assert.equal(typeof capabilityData.mutation_token, "string");
 
   const preview = await fetchFromServer(address.port, "/api/codex-provider-migration/preview");
   assert.equal(preview.status, 404);
 
   const apply = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {});
   assert.equal(apply.status, 404);
+
+  const missingToken = await postJsonToServer(address.port, "/api/codex-maintenance", { enabled: true });
+  assert.equal(missingToken.status, 403);
+
+  const tokenHeaders = { "X-Session-Viewer-Token": capabilityData.mutation_token };
+  const crossOrigin = await postJsonToServer(
+    address.port,
+    "/api/codex-maintenance",
+    { enabled: true },
+    { ...tokenHeaders, Origin: "http://evil.example" }
+  );
+  assert.equal(crossOrigin.status, 403);
+
+  const enabled = await postJsonToServer(
+    address.port,
+    "/api/codex-maintenance",
+    { enabled: true },
+    tokenHeaders
+  );
+  assert.equal(enabled.status, 200);
+  assert.equal(JSON.parse(enabled.body).enabled, true);
+
+  const enabledCapabilities = await fetchFromServer(address.port, "/api/capabilities");
+  assert.equal(JSON.parse(enabledCapabilities.body).codex_maintenance.enabled, true);
+
+  const disabled = await postJsonToServer(
+    address.port,
+    "/api/codex-maintenance",
+    { enabled: false },
+    tokenHeaders
+  );
+  assert.equal(disabled.status, 200);
+  assert.equal(JSON.parse(disabled.body).enabled, false);
+});
+
+test("HTTP 服务拒绝非 loopback Host", async (t) => {
+  const { address } = await setupServer(t);
+  const response = await fetchFromServer(address.port, "/api/capabilities", { Host: "attacker.example" });
+  assert.equal(response.status, 403);
 });
 
 test("GET /api/facets 返回过滤选项", async (t) => {
@@ -509,6 +550,47 @@ test("GET /api/search 返回来源并支持筛选", async (t) => {
   assert.equal(JSON.parse(filteredOut.body).sessions.length, 0);
 });
 
+test("GET /api/search 使用 cursor 返回后续匹配结果", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const publicDir = path.join(rootDir, "public");
+  await fs.mkdir(publicDir);
+  const sessions = ["first", "second", "third"].map((id) => ({
+    id,
+    _key: `codex:${id}`,
+    source_kind: "codex"
+  }));
+  const store = {
+    onChange() {
+      return () => {};
+    },
+    search() {
+      return sessions;
+    }
+  };
+  const server = createHttpServer({ store, publicDir, sessionRoots: [] });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  t.after(async () => {
+    server.close();
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstPage = await fetchFromServer(address.port, "/api/search?q=match&limit=2");
+  const firstData = JSON.parse(firstPage.body);
+  assert.deepEqual(firstData.sessions.map((session) => session.id), ["first", "second"]);
+  assert.equal(firstData.has_more, true);
+  assert.equal(firstData.next_cursor, "codex:second");
+
+  const secondPage = await fetchFromServer(
+    address.port,
+    `/api/search?q=match&limit=2&cursor=${encodeURIComponent(firstData.next_cursor)}`
+  );
+  const secondData = JSON.parse(secondPage.body);
+  assert.deepEqual(secondData.sessions.map((session) => session.id), ["third"]);
+  assert.equal(secondData.has_more, false);
+  assert.equal(secondData.next_cursor, null);
+});
+
 test("Codex 归档会话默认隐藏，show_codex_archived 后通过 HTTP 可见", async (t) => {
   const { address } = await setupServerWithCodexArchive(t);
 
@@ -578,25 +660,25 @@ test("Codex provider 迁移 HTTP 接口支持预览、确认执行和回滚", as
   assert.equal(discovery.status, 200);
   const discoveryData = JSON.parse(discovery.body);
   assert.deepEqual(discoveryData.providers, []);
-  assert.deepEqual(discoveryData.candidateProviders, ["right_code"]);
+  assert.deepEqual(discoveryData.candidateProviders, ["legacy_provider_a"]);
   assert.equal(discoveryData.selectionRequired, true);
   assert.equal(discoveryData.canApply, false);
 
   const preview = await fetchFromServer(
     address.port,
-    "/api/codex-provider-migration/preview?providers=right_code"
+    "/api/codex-provider-migration/preview?providers=legacy_provider_a"
   );
   assert.equal(preview.status, 200);
   const previewData = JSON.parse(preview.body);
-  assert.deepEqual(previewData.providers, ["right_code"]);
+  assert.deepEqual(previewData.providers, ["legacy_provider_a"]);
   assert.equal(previewData.threadMatches, 1);
-  assert.equal(previewData.targetProvider, "newapi");
+  assert.equal(previewData.targetProvider, "current_provider");
   assert.equal(previewData.codexConfig.status, "read_only");
   assert.equal(previewData.codexConfig.modified, false);
   assert.equal(previewData.canApply, true);
   assert.match(previewData.planId, /^[a-f0-9]{64}$/);
   assert.equal(typeof previewData.mutation_token, "string");
-  assert.equal(await readSessionMetaProvider(activeFile), "newapi");
+  assert.equal(await readSessionMetaProvider(activeFile), "current_provider");
 
   const missingToken = await postJsonToServer(address.port, "/api/codex-provider-migration/apply", {
     confirmedCodexAppClosed: true,
@@ -623,17 +705,17 @@ test("Codex provider 迁移 HTTP 接口支持预览、确认执行和回滚", as
   assert.equal(applied.status, 200);
   const appliedData = JSON.parse(applied.body);
   assert.ok(appliedData.backupDir);
-  assert.equal((await providerCounts(dbPath)).newapi, 2);
+  assert.equal((await providerCounts(dbPath)).current_provider, 2);
   assert.equal((await providerCounts(dbPath)).custom, 1);
-  assert.equal(await readSessionMetaProvider(activeFile), "newapi");
+  assert.equal(await readSessionMetaProvider(activeFile), "current_provider");
 
   const rollback = await postJsonToServer(address.port, "/api/codex-provider-migration/rollback", {
     confirmedCodexAppClosed: true,
     backupDir: appliedData.backupDir
   }, tokenHeaders);
   assert.equal(rollback.status, 200);
-  assert.equal((await providerCounts(dbPath)).newapi, 1);
-  assert.equal(await readSessionMetaProvider(activeFile), "newapi");
+  assert.equal((await providerCounts(dbPath)).current_provider, 1);
+  assert.equal(await readSessionMetaProvider(activeFile), "current_provider");
 });
 
 test("GET /api/sessions/:_key 用组合 key 返回详情", async (t) => {
@@ -662,4 +744,30 @@ test("ETag 缓存：第二次请求返回 304", async (t) => {
     req.on("error", reject);
   });
   assert.equal(res2.status, 304);
+});
+
+test("关闭服务时会先结束 SSE 长连接", async (t) => {
+  const { address, server } = await setupServer(t);
+  let eventResponse;
+  const request = http.get(`http://127.0.0.1:${address.port}/api/events`);
+  t.after(() => request.destroy());
+
+  await new Promise((resolve, reject) => {
+    request.on("response", (response) => {
+      eventResponse = response;
+      response.once("data", resolve);
+    });
+    request.on("error", reject);
+  });
+
+  const closed = new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+  const outcome = await Promise.race([
+    closed.then(() => "closed"),
+    new Promise((resolve) => setTimeout(() => resolve("timeout"), 200))
+  ]);
+
+  if (outcome === "timeout") eventResponse.destroy();
+  assert.equal(outcome, "closed");
 });

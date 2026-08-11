@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { SessionSearchIndex } from "../server/session-index.js";
+import { MAX_INDEX_TEXT_CHARS, SessionSearchIndex } from "../server/session-index.js";
 
 test("搜索索引不重复保存 token 集合并保持原有匹配语义", () => {
   const index = new SessionSearchIndex();
@@ -33,4 +33,30 @@ test("搜索索引不重复保存 token 集合并保持原有匹配语义", () =
 
   index.delete("codex:first");
   assert.deepEqual(index.search("prov"), []);
+});
+
+test("搜索索引限制单会话正文并支持恢复持久化文本", () => {
+  const index = new SessionSearchIndex();
+  index.addText("codex:large", "x".repeat(MAX_INDEX_TEXT_CHARS + 100));
+
+  assert.equal(index.getText("codex:large").length, MAX_INDEX_TEXT_CHARS);
+
+  const restored = new SessionSearchIndex();
+  restored.addText("codex:large", index.getText("codex:large"));
+  assert.equal(restored.getText("codex:large"), index.getText("codex:large"));
+});
+
+test("搜索索引排除应用注入的系统上下文", () => {
+  const index = new SessionSearchIndex();
+  index.add(
+    "codex:context",
+    { id: "context", _key: "codex:context", title: "真实问题" },
+    [
+      { role: "user", text: "private-injected-token", synthetic_context: true },
+      { role: "user", text: "真实可搜索内容" }
+    ]
+  );
+
+  assert.deepEqual(index.search("private-injected-token"), []);
+  assert.deepEqual(index.search("真实可搜索").map((result) => result.key), ["codex:context"]);
 });

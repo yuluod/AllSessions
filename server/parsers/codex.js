@@ -1,5 +1,4 @@
 import fss from "node:fs";
-import fs from "node:fs/promises";
 import readline from "node:readline";
 
 import {
@@ -17,6 +16,68 @@ import {
 export { compareSummariesDesc };
 
 const DEFAULT_SUMMARY_TEXT_CHARS = 200_000;
+const DEFAULT_DETAIL_MAX_MESSAGES = 800;
+const DEFAULT_DETAIL_MAX_RAW_EVENTS = 1_200;
+const DEFAULT_DETAIL_MAX_MESSAGE_TEXT_CHARS = 20_000;
+const DEFAULT_DETAIL_MAX_RAW_EVENT_LINE_CHARS = 10_000;
+
+class HeadTailCollector {
+  constructor(limit) {
+    this.limit = Math.max(2, Math.floor(limit));
+    this.headLimit = Math.ceil(this.limit / 2);
+    this.tailLimit = this.limit - this.headLimit;
+    this.head = [];
+    this.tail = [];
+    this.tailStart = 0;
+    this.total = 0;
+  }
+
+  add(value) {
+    this.total += 1;
+    if (this.head.length < this.headLimit) {
+      this.head.push(value);
+      return;
+    }
+    if (this.tail.length < this.tailLimit) {
+      this.tail.push(value);
+      return;
+    }
+    if (this.tailLimit > 0) {
+      this.tail[this.tailStart] = value;
+      this.tailStart = (this.tailStart + 1) % this.tailLimit;
+    }
+  }
+
+  orderedTail() {
+    if (this.tail.length < this.tailLimit || this.tailStart === 0) {
+      return [...this.tail];
+    }
+    return [...this.tail.slice(this.tailStart), ...this.tail.slice(0, this.tailStart)];
+  }
+
+  result(markerFactory) {
+    const tail = this.orderedTail();
+    const omitted = Math.max(0, this.total - this.head.length - tail.length);
+    const values = omitted > 0
+      ? [...this.head, markerFactory(omitted), ...tail]
+      : [...this.head, ...tail];
+    return { values, omitted, total: this.total };
+  }
+}
+
+function detailLimit(value, fallback) {
+  return Number.isFinite(value) ? Math.max(2, Math.floor(value)) : fallback;
+}
+
+function truncateConversationMessage(message, maxTextChars) {
+  if (message.text.length <= maxTextChars) return message;
+  return {
+    ...message,
+    text: message.text.slice(0, maxTextChars),
+    text_truncated: true,
+    original_text_chars: message.text.length
+  };
+}
 
 function readSourceMetadata(metaRecord) {
   const source = metaRecord?.source;
@@ -158,6 +219,41 @@ function conversationMessageFromRecord(record, timestamp, toolCallNamesById) {
   return null;
 }
 
+function normalizeConversationMessage(messageData) {
+  const normalized = [];
+  pushConversationMessage(normalized, messageData);
+  return normalized[0] || null;
+}
+
+function isDuplicateMessageRecord(previous, current) {
+  if (!previous || !current || previous.role !== current.role || previous.text !== current.text) {
+    return false;
+  }
+
+  const sourceTypes = new Set([previous.source_type, current.source_type]);
+  if (!sourceTypes.has("event_msg") || !sourceTypes.has("response_item")) {
+    return false;
+  }
+
+  const eventMessage = previous.source_type === "event_msg" ? previous : current;
+  const responseMessage = previous.source_type === "response_item" ? previous : current;
+  if (responseMessage.source_subtype !== "message") {
+    return false;
+  }
+
+  return (current.role === "user" && eventMessage.source_subtype === "user_message") ||
+    (current.role === "assistant" && eventMessage.source_subtype === "agent_message");
+}
+
+function appendConversationMessage(target, messageData) {
+  const message = normalizeConversationMessage(messageData);
+  if (!message || isDuplicateMessageRecord(target.at(-1), message)) {
+    return null;
+  }
+  target.push(message);
+  return message;
+}
+
 function createCodexSummary({ filePath, metaRecord, firstTimestamp, lastTimestamp, eventCount }) {
   const sessionId =
     (metaRecord && typeof metaRecord.id === "string" && metaRecord.id) || fallbackSessionId(filePath);
@@ -248,7 +344,7 @@ export function parseCodexContent(content, filePath) {
       toolCallNamesById
     );
     if (conversationMessage) {
-      pushConversationMessage(conversationMessages, conversationMessage);
+      appendConversationMessage(conversationMessages, conversationMessage);
     }
   });
 
@@ -268,9 +364,135 @@ export function parseCodexContent(content, filePath) {
   };
 }
 
-export async function parseCodexFile(filePath) {
-  const content = await fs.readFile(filePath, "utf8");
-  return parseCodexContent(content, filePath);
+export async function parseCodexFile(filePath, options = {}) {
+  const maxConversationMessages = detailLimit(
+    options.maxConversationMessages,
+    DEFAULT_DETAIL_MAX_MESSAGES
+  );
+  const maxRawEvents = detailLimit(options.maxRawEvents, DEFAULT_DETAIL_MAX_RAW_EVENTS);
+  const maxMessageTextChars = detailLimit(
+    options.maxMessageTextChars,
+    DEFAULT_DETAIL_MAX_MESSAGE_TEXT_CHARS
+  );
+  const maxRawEventLineChars = detailLimit(
+    options.maxRawEventLineChars,
+    DEFAULT_DETAIL_MAX_RAW_EVENT_LINE_CHARS
+  );
+  const messageCollector = new HeadTailCollector(maxConversationMessages);
+  const rawEventCollector = new HeadTailCollector(maxRawEvents);
+  const accumulator = createConversationSummaryAccumulator();
+  const toolCallNamesById = new Map();
+  const input = fss.createReadStream(filePath, { encoding: "utf8" });
+  const lines = readline.createInterface({ input, crlfDelay: Infinity });
+
+  let metaRecord = null;
+  let firstTimestamp = null;
+  let lastTimestamp = null;
+  let previousMessage = null;
+  let lineNumber = 0;
+  let eventCount = 0;
+  let truncatedMessageCount = 0;
+  let truncatedRawEventCount = 0;
+
+  for await (const line of lines) {
+    lineNumber += 1;
+    if (!line.trim()) continue;
+    eventCount += 1;
+
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch (error) {
+      rawEventCollector.add({
+        line_number: lineNumber,
+        timestamp: null,
+        type: "parse_error",
+        payload: {
+          message: "JSON parse error",
+          raw_line: line.slice(0, maxRawEventLineChars),
+          raw_line_truncated: line.length > maxRawEventLineChars,
+          error: error instanceof Error ? error.message : String(error)
+        }
+      });
+      continue;
+    }
+
+    const rawEvent = createRawEventFromRecord(record, lineNumber);
+    if (line.length > maxRawEventLineChars) {
+      rawEvent.payload = {
+        truncated: true,
+        original_characters: line.length,
+        record_type: rawEvent.type
+      };
+      truncatedRawEventCount += 1;
+    }
+    rawEventCollector.add(rawEvent);
+
+    if (rawEvent.timestamp && !firstTimestamp) firstTimestamp = rawEvent.timestamp;
+    if (rawEvent.timestamp) lastTimestamp = rawEvent.timestamp;
+    if (!metaRecord && record.type === "session_meta" && record.payload && typeof record.payload === "object") {
+      metaRecord = record.payload;
+    }
+
+    const messageData = conversationMessageFromRecord(record, rawEvent.timestamp, toolCallNamesById);
+    const message = messageData ? normalizeConversationMessage(messageData) : null;
+    if (!message || isDuplicateMessageRecord(previousMessage, message)) continue;
+    previousMessage = message;
+
+    const boundedMessage = truncateConversationMessage(message, maxMessageTextChars);
+    if (boundedMessage.text_truncated) truncatedMessageCount += 1;
+    addConversationMessageToSummary(accumulator, boundedMessage);
+    messageCollector.add(boundedMessage);
+  }
+
+  const messages = messageCollector.result((omitted) => ({
+    role: "system",
+    text: "",
+    timestamp: null,
+    source_type: "viewer",
+    source_subtype: "truncation",
+    is_truncation_marker: true,
+    omitted_count: omitted
+  }));
+  const rawEvents = rawEventCollector.result((omitted) => ({
+    line_number: null,
+    timestamp: null,
+    type: "viewer_truncation",
+    payload: { omitted_events: omitted }
+  }));
+  const summary = createCodexSummary({
+    filePath,
+    metaRecord,
+    firstTimestamp,
+    lastTimestamp,
+    eventCount
+  });
+  finalizeSessionSummaryFromAggregate(summary, accumulator);
+
+  const detailTruncated = messages.omitted > 0 ||
+    rawEvents.omitted > 0 ||
+    truncatedMessageCount > 0 ||
+    truncatedRawEventCount > 0;
+  if (detailTruncated) summary.detail_truncated = true;
+
+  return {
+    summary,
+    raw_events: rawEvents.values,
+    conversation_messages: messages.values,
+    truncation: {
+      truncated: detailTruncated,
+      messages: {
+        total: messages.total,
+        omitted: messages.omitted,
+        text_truncated: truncatedMessageCount
+      },
+      raw_events: {
+        total: rawEvents.total,
+        omitted: rawEvents.omitted,
+        payloads_truncated: truncatedRawEventCount
+      }
+    }
+  };
 }
 
 export async function parseCodexArchivedFile(filePath) {
@@ -288,19 +510,25 @@ function collectSummaryMessage({
   messageData,
   accumulator,
   conversationMessages,
-  remainingTextChars
+  remainingTextChars,
+  previousMessage
 }) {
-  const normalized = [];
-  pushConversationMessage(normalized, messageData);
-  const message = normalized[0];
-  if (!message) return remainingTextChars;
+  const message = normalizeConversationMessage(messageData);
+  if (!message || isDuplicateMessageRecord(previousMessage, message)) {
+    return { remainingTextChars, previousMessage };
+  }
 
   addConversationMessageToSummary(accumulator, message);
-  if (remainingTextChars <= 0) return 0;
+  if (remainingTextChars <= 0) {
+    return { remainingTextChars: 0, previousMessage: message };
+  }
 
   const text = detachedTextPrefix(message.text, remainingTextChars);
   if (text) conversationMessages.push({ ...message, text });
-  return Math.max(0, remainingTextChars - text.length);
+  return {
+    remainingTextChars: Math.max(0, remainingTextChars - text.length),
+    previousMessage: message
+  };
 }
 
 async function parseCodexSummaryFile(
@@ -321,6 +549,7 @@ async function parseCodexSummaryFile(
   let metaRecord = null;
   let firstTimestamp = null;
   let lastTimestamp = null;
+  let previousMessage = null;
 
   for await (const line of lines) {
     if (!line.trim()) continue;
@@ -342,12 +571,15 @@ async function parseCodexSummaryFile(
 
     const messageData = conversationMessageFromRecord(record, timestamp, toolCallNamesById);
     if (messageData) {
-      remainingTextChars = collectSummaryMessage({
+      const collected = collectSummaryMessage({
         messageData,
         accumulator,
         conversationMessages,
-        remainingTextChars
+        remainingTextChars,
+        previousMessage
       });
+      remainingTextChars = collected.remainingTextChars;
+      previousMessage = collected.previousMessage;
     }
   }
 

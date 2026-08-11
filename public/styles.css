@@ -118,10 +118,11 @@ kbd {
 }
 
 .toolbar-logo {
+  display: block;
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
-  color: var(--accent);
+  object-fit: contain;
 }
 
 .toolbar-heading {
@@ -759,8 +760,11 @@ body[data-view="tools"] #filter-toggle {
   font-weight: 700;
 }
 
-.session-item {
+.session-row {
   position: relative;
+}
+
+.session-item {
   display: grid;
   gap: 5px;
   width: 100%;
@@ -913,8 +917,8 @@ body[data-view="tools"] #filter-toggle {
   transition: opacity 140ms var(--ease-out), color 140ms var(--ease-out), border-color 140ms var(--ease-out);
 }
 
-.session-item:hover .session-archive-btn,
-.session-item:focus-within .session-archive-btn {
+.session-row:hover .session-archive-btn,
+.session-row:focus-within .session-archive-btn {
   opacity: 1;
 }
 
@@ -1665,6 +1669,62 @@ body[data-view="tools"] #filter-toggle {
 
 .tool-card-header > div {
   min-width: 0;
+}
+
+.maintenance-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.maintenance-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.maintenance-toggle input {
+  position: relative;
+  appearance: none;
+  width: 2.35rem;
+  height: 1.25rem;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.maintenance-toggle input::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 0.82rem;
+  height: 0.82rem;
+  border-radius: 50%;
+  background: var(--muted);
+  content: "";
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.maintenance-toggle input:checked {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.maintenance-toggle input:checked::after {
+  background: var(--warning);
+  transform: translateX(1.05rem);
+}
+
+.maintenance-toggle input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .tool-mode-badge {

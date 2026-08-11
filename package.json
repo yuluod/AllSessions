@@ -1,11 +1,20 @@
 {
-  "name": "codex-session-viewer",
+  "name": "allsessions",
   "version": "1.0.0",
-  "description": "A lightweight, local-only web viewer for browsing AI session history, currently focused on Codex sessions.",
+  "description": "A lightweight, local-only web viewer for browsing Codex, Claude Code, and Gemini CLI session history.",
   "type": "module",
   "license": "Apache-2.0",
-  "packageManager": "pnpm@10.0.0",
-  "keywords": ["ai", "codex", "session", "viewer", "local", "cli", "claude"],
+  "author": "yuluo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuluod/AllSessions.git"
+  },
+  "homepage": "https://github.com/yuluod/AllSessions#readme",
+  "bugs": {
+    "url": "https://github.com/yuluod/AllSessions/issues"
+  },
+  "packageManager": "pnpm@11.10.0",
+  "keywords": ["ai", "codex", "session", "viewer", "local", "cli", "claude", "gemini"],
   "scripts": {
     "start": "node server/index.js",
     "start:maintenance": "node server/index.js --enable-codex-maintenance",
@@ -15,8 +24,8 @@
     "lint:fix": "eslint server public test scripts --fix",
     "format": "prettier --write .",
     "build": "vite build",
-    "codex:provider-repair": "node scripts/migrate-codex-provider-to-custom.mjs",
-    "codex:provider-migration": "node scripts/migrate-codex-provider-to-custom.mjs"
+    "codex:provider-repair": "node scripts/codex-provider-repair.mjs",
+    "codex:provider-migration": "node scripts/codex-provider-repair.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
@@ -27,6 +36,6 @@
   },
   "engines": {
     "node": ">=20",
-    "pnpm": ">=10"
+    "pnpm": ">=11.10.0"
   }
 }

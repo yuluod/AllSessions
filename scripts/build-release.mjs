@@ -429,7 +429,8 @@ async function main() {
     return;
   }
   const version = options.version || await readProjectVersion(projectRoot);
-  const tagName = process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : "";
+  const tagName = process.env.RELEASE_TAG
+    || (process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : "");
   assertReleaseVersion(version, tagName);
 
   const staging = await prepareReleasePayload({

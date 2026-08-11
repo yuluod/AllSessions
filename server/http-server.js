@@ -5,6 +5,14 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { URL } from "node:url";
 
+import {
+  applyCodexProviderRepair,
+  previewCodexProviderRepair,
+  rollbackCodexProviderRepair
+} from "./codex-provider-repair.js";
+import { isLoopbackHost } from "./server-binding.js";
+import { readPageLimit, readSessionFilters, sanitizeQueryValue } from "./session-query.js";
+
 const CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -15,35 +23,6 @@ const CONTENT_TYPES = {
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_:.-]{1,128}$/;
 const MUTATION_TOKEN_HEADER = "x-session-viewer-token";
-// eslint-disable-next-line no-control-regex
-const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/g;
-let codexMigrationModulePromise = null;
-
-function loadCodexMigrationModule() {
-  if (!codexMigrationModulePromise) {
-    codexMigrationModulePromise = import("../scripts/migrate-codex-provider-to-custom.mjs");
-  }
-  return codexMigrationModulePromise;
-}
-
-function sanitizeFilterValue(value) {
-  if (!value) return "";
-  const cleaned = String(value).replace(CONTROL_CHAR_RE, "");
-  return cleaned.length > 256 ? cleaned.slice(0, 256) : cleaned;
-}
-
-function readSessionFilters(url) {
-  const showCodexArchived = url.searchParams.get("show_codex_archived");
-  const showHidden = url.searchParams.get("show_hidden");
-  return {
-    provider: sanitizeFilterValue(url.searchParams.get("provider")),
-    source_kind: sanitizeFilterValue(url.searchParams.get("source_kind")),
-    date: sanitizeFilterValue(url.searchParams.get("date")),
-    cwd: sanitizeFilterValue(url.searchParams.get("cwd")),
-    show_codex_archived: showCodexArchived === "true" || showCodexArchived === "1",
-    show_hidden: showHidden === "true" || showHidden === "1"
-  };
-}
 
 function validateSessionId(raw) {
   try {
@@ -85,12 +64,6 @@ function forbidden(message) {
   return error;
 }
 
-function conflict(message) {
-  const error = new Error(message);
-  error.statusCode = 409;
-  return error;
-}
-
 function requestOriginFromHeader(value) {
   if (!value || typeof value !== "string") return "";
   try {
@@ -119,6 +92,16 @@ function assertMutationToken(request, expectedToken) {
   if (!expectedToken || request.headers[MUTATION_TOKEN_HEADER] !== expectedToken) {
     throw forbidden("Mutation token is required");
   }
+}
+
+function assertLoopbackRequestHost(request) {
+  const host = request.headers.host;
+  try {
+    if (host && isLoopbackHost(new URL(`http://${host}`).hostname)) return;
+  } catch {
+    // 统一按不可信 Host 处理。
+  }
+  throw forbidden("Request Host must be a loopback address");
 }
 
 async function readJsonBody(request, { maxBytes = 64 * 1024 } = {}) {
@@ -212,12 +195,20 @@ export function createHttpServer({
   codexMigrationOptions = {}
 }) {
   const sseClients = new Set();
-  const mutationToken = codexMaintenanceEnabled
-    ? codexMigrationOptions.mutationToken || crypto.randomBytes(24).toString("base64url")
-    : "";
+  const mutationToken = codexMigrationOptions.mutationToken || crypto.randomBytes(24).toString("base64url");
+  let maintenanceEnabled = codexMaintenanceEnabled;
 
   const SSE_PING_INTERVAL = 30_000;
   let ssePingTimer = null;
+  let resourcesClosed = false;
+
+  function removeSseClient(client) {
+    sseClients.delete(client);
+    if (sseClients.size === 0 && ssePingTimer) {
+      clearInterval(ssePingTimer);
+      ssePingTimer = null;
+    }
+  }
 
   function startSsePing() {
     if (ssePingTimer) return;
@@ -226,26 +217,22 @@ export function createHttpServer({
         try {
           client.write(":ping\n\n");
         } catch {
-          sseClients.delete(client);
+          removeSseClient(client);
         }
-      }
-      if (sseClients.size === 0) {
-        clearInterval(ssePingTimer);
-        ssePingTimer = null;
       }
     }, SSE_PING_INTERVAL);
   }
 
-  store.onChange((event) => {
+  const unsubscribeStore = store.onChange((event) => {
     if (event.type === "session-added" || event.type === "session-updated" || event.type === "session-deleted") {
       const data = `event: ${event.type}\ndata: ${JSON.stringify(event.type === "session-deleted" ? { id: event.id } : event.summary)}\n\n`;
       for (const client of sseClients) {
-        try { client.write(data); } catch { sseClients.delete(client); }
+        try { client.write(data); } catch { removeSseClient(client); }
       }
     }
   });
 
-  return http.createServer(async (request, response) => {
+  const server = http.createServer(async (request, response) => {
     const startMs = Date.now();
     if (!request.url) {
       sendText(response, 400, "Bad request");
@@ -255,6 +242,7 @@ export function createHttpServer({
     const url = new URL(request.url, "http://127.0.0.1");
 
     try {
+      assertLoopbackRequestHost(request);
       if (url.pathname === "/api/capabilities") {
         if (request.method !== "GET") {
           sendText(response, 405, "Only GET is supported");
@@ -262,19 +250,35 @@ export function createHttpServer({
         }
         sendJson(response, 200, {
           codex_maintenance: {
-            enabled: codexMaintenanceEnabled
+            enabled: maintenanceEnabled,
+            mutation_token: mutationToken
           }
         });
         return;
       }
 
-      if (url.pathname.startsWith("/api/codex-provider-migration/") && !codexMaintenanceEnabled) {
+      if (url.pathname === "/api/codex-maintenance") {
+        if (request.method !== "POST") {
+          sendText(response, 405, "Only POST is supported");
+          return;
+        }
+        assertMutationToken(request, mutationToken);
+        const body = await readJsonBody(request);
+        if (typeof body.enabled !== "boolean") {
+          throw badRequest("enabled must be a boolean");
+        }
+        maintenanceEnabled = body.enabled;
+        sendJson(response, 200, { enabled: maintenanceEnabled });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/codex-provider-migration/") && !maintenanceEnabled) {
         sendJson(response, 404, { error: "Codex maintenance mode is disabled" });
         return;
       }
 
       if (url.pathname.startsWith("/api/") && request.method !== "GET") {
-        const isMigrationPost = codexMaintenanceEnabled &&
+        const isMigrationPost = maintenanceEnabled &&
           url.pathname.startsWith("/api/codex-provider-migration/") &&
           request.method === "POST";
         if (!isMigrationPost) {
@@ -289,11 +293,9 @@ export function createHttpServer({
           return;
         }
         const providers = readMigrationProviders(url.searchParams.get("providers"));
-        const { runMigration } = await loadCodexMigrationModule();
-        const summary = await runMigration({
+        const summary = await previewCodexProviderRepair({
           ...codexMigrationOptions,
-          providers,
-          apply: false
+          providers
         });
         summary.mutation_token = mutationToken;
         sendJson(response, 200, summary);
@@ -313,23 +315,12 @@ export function createHttpServer({
         if (typeof body.planId !== "string" || !/^[a-f0-9]{64}$/i.test(body.planId)) {
           throw badRequest("A valid migration plan id is required");
         }
-        let summary;
-        try {
-          const { runMigration } = await loadCodexMigrationModule();
-          summary = await runMigration({
-            ...codexMigrationOptions,
-            providers: readMigrationProviders(body.providers),
-            planId: body.planId,
-            confirmedCodexClosed: true,
-            apply: true
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (/plan changed|still running|Migration is blocked/i.test(message)) {
-            throw conflict(message);
-          }
-          throw error;
-        }
+        const summary = await applyCodexProviderRepair({
+          ...codexMigrationOptions,
+          providers: readMigrationProviders(body.providers),
+          planId: body.planId,
+          confirmedCodexClosed: true
+        });
         await store.refresh();
         sendJson(response, 200, summary);
         return;
@@ -348,35 +339,20 @@ export function createHttpServer({
         if (!body.backupDir || typeof body.backupDir !== "string") {
           throw badRequest("backupDir is required");
         }
-        let result;
-        try {
-          const { rollbackMigration } = await loadCodexMigrationModule();
-          result = await rollbackMigration({
-            ...codexMigrationOptions,
-            backupDir: body.backupDir,
-            confirmedCodexClosed: true
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (/still running|Backup targets|Backup directory|Unsupported or invalid/i.test(message)) {
-            throw conflict(message);
-          }
-          throw error;
-        }
+        const result = await rollbackCodexProviderRepair({
+          ...codexMigrationOptions,
+          backupDir: body.backupDir,
+          confirmedCodexClosed: true
+        });
         await store.refresh();
         sendJson(response, 200, result);
         return;
       }
 
       if (url.pathname === "/api/sessions") {
-        const filters = readSessionFilters(url);
-        const limitParam = url.searchParams.get("limit");
-        let limit;
-        if (limitParam !== null) {
-          const parsed = Number.parseInt(limitParam, 10);
-          limit = Number.isNaN(parsed) ? 50 : Math.min(parsed, 200);
-        }
-        const cursor = sanitizeFilterValue(url.searchParams.get("cursor")) || undefined;
+        const filters = readSessionFilters(url.searchParams);
+        const limit = readPageLimit(url.searchParams);
+        const cursor = sanitizeQueryValue(url.searchParams.get("cursor")) || undefined;
         const result = store.listSessions(filters, { limit, cursor });
         sendJson(response, 200, {
           session_roots: sessionRoots,
@@ -400,7 +376,7 @@ export function createHttpServer({
       }
 
       if (url.pathname === "/api/stats") {
-        const stats = store.getStats(readSessionFilters(url));
+        const stats = store.getStats(readSessionFilters(url.searchParams));
         sendJson(response, 200, stats);
         return;
       }
@@ -414,19 +390,33 @@ export function createHttpServer({
         response.write(`event: connected\ndata: {}\n\n`);
         sseClients.add(response);
         startSsePing();
-        request.on("close", () => sseClients.delete(response));
+        request.on("close", () => removeSseClient(response));
         return;
       }
 
       if (url.pathname === "/api/search") {
-        const q = sanitizeFilterValue(url.searchParams.get("q"));
+        const q = sanitizeQueryValue(url.searchParams.get("q"));
         if (!q) {
           sendJson(response, 400, { error: "Missing search query" });
           return;
         }
-        const filters = readSessionFilters(url);
-        const results = store.search(q, filters);
-        sendJson(response, 200, { session_roots: sessionRoots, query: q, sessions: results });
+        const filters = readSessionFilters(url.searchParams);
+        const limit = readPageLimit(url.searchParams);
+        const cursor = sanitizeQueryValue(url.searchParams.get("cursor")) || undefined;
+        let results = store.search(q, filters);
+        if (cursor) {
+          const cursorIndex = results.findIndex((session) => session._key === cursor);
+          if (cursorIndex >= 0) results = results.slice(cursorIndex + 1);
+        }
+        const hasMore = results.length > limit;
+        const sessions = hasMore ? results.slice(0, limit) : results;
+        sendJson(response, 200, {
+          session_roots: sessionRoots,
+          query: q,
+          sessions,
+          has_more: hasMore,
+          next_cursor: hasMore && sessions.length > 0 ? sessions.at(-1)._key : null
+        });
         return;
       }
 
@@ -451,9 +441,7 @@ export function createHttpServer({
       const message = error instanceof Error ? error.message : String(error);
       const statusCode = error && typeof error === "object" && Number.isInteger(error.statusCode)
         ? error.statusCode
-        : /^(Invalid provider name|Refusing to migrate (?:preserved|protected) provider):/.test(message)
-          ? 400
-          : 500;
+        : 500;
       if (statusCode >= 500) {
         console.error(`[ERROR] ${request.method} ${url.pathname}:`, error);
       } else {
@@ -469,4 +457,29 @@ export function createHttpServer({
       console.log(`${request.method} ${url.pathname} ${response.statusCode} ${duration}ms`);
     }
   });
+
+  function closeResources() {
+    if (resourcesClosed) return;
+    resourcesClosed = true;
+    unsubscribeStore();
+    if (ssePingTimer) clearInterval(ssePingTimer);
+    ssePingTimer = null;
+    for (const client of sseClients) {
+      try {
+        client.end();
+      } catch {
+        client.destroy();
+      }
+    }
+    sseClients.clear();
+  }
+
+  const closeServer = server.close.bind(server);
+  server.close = (callback) => {
+    closeResources();
+    return closeServer(callback);
+  };
+  server.on("close", closeResources);
+
+  return server;
 }

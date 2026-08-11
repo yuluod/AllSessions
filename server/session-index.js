@@ -1,4 +1,4 @@
-const MAX_INDEX_TEXT_CHARS = 200_000;
+export const MAX_INDEX_TEXT_CHARS = 64_000;
 const SNIPPET_RADIUS = 72;
 const WORD_CHAR_CLASS = "a-z0-9_.:-";
 
@@ -43,6 +43,7 @@ function searchableMessageText(messages, maxLength) {
 
   for (const message of messages) {
     if (remaining <= 0) break;
+    if (message.synthetic_context === true) continue;
     append([message.role, message.tool_name, message.tool_kind].filter(Boolean).join(" "));
     append(" ");
     append(message.text);
@@ -120,7 +121,15 @@ export class SessionSearchIndex {
       Math.max(0, MAX_INDEX_TEXT_CHARS - summaryPrefix.length)
     );
     const text = `${summaryPrefix}${messageText}`.slice(0, MAX_INDEX_TEXT_CHARS);
-    this.documents.set(key, { text });
+    this.addText(key, text);
+  }
+
+  addText(key, text) {
+    this.documents.set(key, { text: String(text || "").slice(0, MAX_INDEX_TEXT_CHARS) });
+  }
+
+  getText(key) {
+    return this.documents.get(key)?.text || "";
   }
 
   delete(key) {

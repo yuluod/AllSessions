@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { parseFileSummary } from "../server/parsers/index.js";
 import { SessionStore } from "../server/session-store.js";
 
 async function createTempSessionDir() {
@@ -31,7 +32,7 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
         cwd: "/tmp/a",
         source: "cli",
         originator: "desktop",
-        model_provider: "newapi"
+        model_provider: "current_provider"
       }
     }),
     JSON.stringify({
@@ -51,7 +52,7 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
         cwd: "/tmp/b",
         source: "cli",
         originator: "desktop",
-        model_provider: "right_code"
+        model_provider: "legacy_provider_a"
       }
     }),
     JSON.stringify({
@@ -71,12 +72,12 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
   assert.equal(allResult.sessions.length, 2);
   assert.equal(allResult.sessions[0].id, "s-1");
 
-  const filtered = store.listSessions({ provider: "right_code", date: "2026-04-20", cwd: "/tmp/b" });
+  const filtered = store.listSessions({ provider: "legacy_provider_a", date: "2026-04-20", cwd: "/tmp/b" });
   assert.equal(filtered.sessions.length, 1);
   assert.equal(filtered.sessions[0].id, "s-2");
 
   const facets = store.getFacets();
-  assert.deepEqual(facets.providers, ["newapi", "right_code"]);
+  assert.deepEqual(facets.providers, ["current_provider", "legacy_provider_a"]);
   assert.deepEqual(facets.dates, ["2026-04-21", "2026-04-20"]);
   assert.deepEqual(facets.cwds, ["/tmp/a", "/tmp/b"]);
   assert.equal(facets.projects.length, 2);
@@ -85,7 +86,7 @@ test("SessionStore 能扫描目录并支持筛选和 facets", async (t) => {
     path: "/tmp/a",
     count: 1,
     last_timestamp: "2026-04-21T09:00:01.000Z",
-    providers: ["newapi"],
+    providers: ["current_provider"],
     source_kinds: ["codex"]
   });
 
@@ -557,4 +558,133 @@ test("Gemini logs 变更会重建 Gemini 来源索引", async (t) => {
   assert.equal(store.search("第一次").length, 0);
   assert.equal(store.search("第二次").length, 1);
   assert.equal(events.some((event) => event.type === "session-updated"), true);
+});
+
+test("SessionStore 重启时复用未变化文件的私有索引缓存", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const filePath = path.join(rootDir, "cached.jsonl");
+  const cacheFile = path.join(rootDir, "cache", "session-index.json");
+  const source = { kind: "codex", rootDir, filePattern: "**/*.jsonl" };
+  const initialContent = [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "cached", cwd: "/tmp/cache", model_provider: "custom" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "缓存中的搜索文本" }
+    })
+  ].join("\n");
+  await fs.writeFile(filePath, initialContent, "utf8");
+
+  const first = new SessionStore({ sources: [source], indexCacheFile: cacheFile });
+  await first.initialize();
+  assert.deepEqual(first.cacheStats, { hits: 0, misses: 1 });
+  assert.equal(first._indexCache.entries.size, 0);
+
+  const second = new SessionStore({ sources: [source], indexCacheFile: cacheFile });
+  await second.initialize();
+  assert.deepEqual(second.cacheStats, { hits: 1, misses: 0 });
+  assert.equal(second._indexCache.entries.size, 0);
+  assert.equal(second.search("缓存中的搜索文本").length, 1);
+
+  await fs.appendFile(
+    filePath,
+    `\n${JSON.stringify({
+      timestamp: "2026-04-21T10:00:02.000Z",
+      type: "event_msg",
+      payload: { type: "agent_message", message: "文件变化后重新解析" }
+    })}`,
+    "utf8"
+  );
+  const third = new SessionStore({ sources: [source], indexCacheFile: cacheFile });
+  await third.initialize();
+  assert.deepEqual(third.cacheStats, { hits: 0, misses: 1 });
+  assert.equal(third.search("文件变化后重新解析").length, 1);
+
+  const cacheMode = (await fs.stat(cacheFile)).mode & 0o777;
+  assert.equal(cacheMode, 0o600);
+});
+
+test("文件变更处理通过单写者队列串行执行", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+  const filePath = path.join(rootDir, "serial.jsonl");
+  const content = (message) => [
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "serial", cwd: "/tmp/serial", model_provider: "custom" }
+    }),
+    JSON.stringify({
+      timestamp: "2026-04-21T10:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message }
+    })
+  ].join("\n");
+  await fs.writeFile(filePath, content("第一次"), "utf8");
+
+  const store = new SessionStore({
+    sources: [{ kind: "codex", rootDir, filePattern: "**/*.jsonl" }]
+  });
+  await store.initialize();
+  let active = 0;
+  let maxActive = 0;
+  store._parseFileSummary = async (...args) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    try {
+      return await parseFileSummary(...args);
+    } finally {
+      active -= 1;
+    }
+  };
+
+  await fs.writeFile(filePath, content("第二次"), "utf8");
+  store._pendingChanges.add(filePath);
+  const first = store.flushPendingChanges();
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  await fs.writeFile(filePath, content("第三次"), "utf8");
+  store._pendingChanges.add(filePath);
+  const second = store.flushPendingChanges();
+  await Promise.all([first, second]);
+
+  assert.equal(maxActive, 1);
+  assert.equal(store.search("第三次").length, 1);
+});
+
+test("Gemini 重载失败时保留上一版可用索引", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const queueDir = path.join(rootDir, "tmp", "queue-a");
+  await fs.mkdir(queueDir, { recursive: true });
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+  await fs.writeFile(path.join(queueDir, "logs.json"), JSON.stringify([{
+    sessionId: "gemini-stable",
+    messageId: 1,
+    timestamp: "2026-04-21T10:00:00.000Z",
+    type: "user",
+    message: "保留的内容"
+  }]), "utf8");
+
+  const source = { kind: "gemini", rootDir, filePattern: "tmp/*/logs.json" };
+  const store = new SessionStore({ sources: [source] });
+  await store.initialize();
+  store._parseGeminiSessions = async () => {
+    throw new Error("transient parse failure");
+  };
+
+  await assert.rejects(store._reloadGeminiSource(source), /transient parse failure/);
+  assert.equal(store.search("保留的内容").length, 1);
+  assert.equal(store.listSessions().sessions.length, 1);
 });

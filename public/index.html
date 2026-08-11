@@ -3,19 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-i18n-page-title="title">AI 会话查看器</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f766e' stroke-width='2'%3E%3Cpath d='M12 2 2 7l10 5 10-5-10-5ZM2 12l10 5 10-5M2 17l10 5 10-5'/%3E%3C/svg%3E" />
+    <title data-i18n-page-title="title">AllSessions</title>
+    <link rel="icon" type="image/png" href="/assets/allsessions-icon-v2.png" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="page-shell">
       <header class="toolbar">
         <div class="toolbar-brand">
-          <svg class="toolbar-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-          </svg>
+          <img class="toolbar-logo" src="/assets/allsessions-icon-v2.png" alt="" width="30" height="30" />
           <div class="toolbar-heading">
-            <h1 data-i18n="title">AI 会话查看器</h1>
+            <h1 data-i18n="title">AllSessions</h1>
             <p class="toolbar-copy" data-i18n="description">筛选、切换并查看本机 AI 会话历史。</p>
           </div>
         </div>
@@ -178,6 +176,10 @@
                       <input id="show-tools-toggle" type="checkbox" checked />
                       <span data-i18n="showToolMessages">显示工具调用</span>
                     </label>
+                    <label class="tool-toggle-label">
+                      <input id="show-context-toggle" type="checkbox" />
+                      <span data-i18n="showSystemContext">显示系统上下文</span>
+                    </label>
                   </div>
                   <details id="message-nav-inline" class="message-nav-inline">
                     <summary data-i18n="messageNav">消息导航</summary>
@@ -226,10 +228,16 @@
                   <h2 id="codex-migration-title" data-i18n="codexProviderMigration">Codex Provider 可见性修复</h2>
                   <p data-i18n="codexProviderMigrationDesc">把明确选择的旧历史重新绑定到当前 Provider。切换 Provider 后可能需要再次执行；不修改 config.toml 或任何第三方工具。</p>
                 </div>
-                <button id="codex-migration-preview-btn" class="ghost-button" type="button" data-i18n="previewMigration">生成修复计划</button>
+                <div class="maintenance-header-actions">
+                  <label class="maintenance-toggle">
+                    <span data-i18n="maintenanceToggle">维护模式</span>
+                    <input id="codex-maintenance-toggle" type="checkbox" role="switch" />
+                  </label>
+                  <button id="codex-migration-preview-btn" class="ghost-button" type="button" data-i18n="previewMigration">生成修复计划</button>
+                </div>
               </div>
 
-              <p class="maintenance-boundary" data-i18n="maintenanceBoundary">普通启动不会注册任何写入接口。仅使用 --enable-codex-maintenance 启动时，以下操作才可用。</p>
+              <p class="maintenance-boundary" data-i18n="maintenanceBoundary">维护模式默认关闭。开启后才允许生成修复计划、执行修复或回滚；关闭后立即恢复只读状态。</p>
 
               <div class="tool-status" id="codex-migration-status" role="status" aria-live="polite" data-i18n="migrationNotPreviewed">尚未预览</div>
 
@@ -281,7 +289,7 @@
               <div class="migration-backup-row">
                 <label class="field">
                   <span data-i18n="rollbackBackupDir">备份目录</span>
-                  <input id="codex-migration-rollback-dir" type="text" placeholder="/Users/.../.codex/backups/..." data-i18n-placeholder="rollbackBackupPlaceholder" />
+                  <input id="codex-migration-rollback-dir" type="text" placeholder="~/.codex/backups/..." data-i18n-placeholder="rollbackBackupPlaceholder" />
                 </label>
                 <button id="codex-migration-rollback-btn" class="ghost-button" type="button" data-i18n="rollbackMigration">回滚</button>
               </div>
@@ -301,25 +309,27 @@
     </div>
 
     <template id="session-item-template">
-      <button class="session-item" type="button">
-        <div class="session-primary">
-          <strong class="session-title"></strong>
-          <span class="session-time"></span>
-        </div>
-        <div class="session-secondary">
-          <span class="session-preview"></span>
-          <span class="session-cwd session-cwd-main"></span>
-          <span class="session-cwd-path"></span>
-        </div>
-        <div class="session-tertiary">
-          <strong class="session-provider"></strong>
-          <span class="session-events"></span>
-          <span class="session-messages"></span>
-          <span class="session-tools"></span>
-          <span class="session-source"></span>
-          <span class="session-source-kind"></span>
-        </div>
-      </button>
+      <div class="session-row">
+        <button class="session-item" type="button">
+          <div class="session-primary">
+            <strong class="session-title"></strong>
+            <span class="session-time"></span>
+          </div>
+          <div class="session-secondary">
+            <span class="session-preview"></span>
+            <span class="session-cwd session-cwd-main"></span>
+            <span class="session-cwd-path"></span>
+          </div>
+          <div class="session-tertiary">
+            <strong class="session-provider"></strong>
+            <span class="session-events"></span>
+            <span class="session-messages"></span>
+            <span class="session-tools"></span>
+            <span class="session-source"></span>
+            <span class="session-source-kind"></span>
+          </div>
+        </button>
+      </div>
     </template>
 
     <template id="conversation-item-template">

@@ -1,10 +1,16 @@
 import { t, setLang, getLang, updateStaticI18n } from "./i18n.js";
 import { fetchJson as requestJson, setMutationToken } from "./api-client.js";
+import { createLatestRequestGate, isAbortError } from "./async-coordinator.js";
+import { bindSessionEvents } from "./session-events.js";
 
 const PAGE_LIMIT = 50;
 const PROJECT_PREVIEW_LIMIT = 4;
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
+const sessionRequestGate = createLatestRequestGate();
+const detailRequestGate = createLatestRequestGate();
+const statsRequestGate = createLatestRequestGate();
+const codexMigrationPreviewRequestGate = createLatestRequestGate();
 
 const state = {
   capabilities: null,
@@ -25,6 +31,7 @@ const state = {
   currentDetail: null,
   detailQuery: "",
   showTools: true,
+  showContext: false,
   activeView: "list",
   filters: {
     provider: "",
@@ -91,16 +98,6 @@ function visibilityLabel(session) {
   return hiddenReasonLabel(session) || t("visibleSession");
 }
 
-function isExcludedByVisibilityToggles(session) {
-  if (isCodexArchivedSession(session) && !state.showCodexArchived) {
-    return true;
-  }
-  if (isHiddenSession(session) && !state.showHidden) {
-    return true;
-  }
-  return false;
-}
-
 const elements = {
   appLayout: document.querySelector(".app-layout"),
   sidebarLeft: document.querySelector(".sidebar-left"),
@@ -129,6 +126,7 @@ const elements = {
   propsContent: document.querySelector("#props-content"),
   detailSearchInput: document.querySelector("#detail-search-input"),
   showToolsToggle: document.querySelector("#show-tools-toggle"),
+  showContextToggle: document.querySelector("#show-context-toggle"),
   messageNavInlineList: document.querySelector("#message-nav-inline-list"),
   conversationList: document.querySelector("#conversation-list"),
   rawEvents: document.querySelector("#raw-events"),
@@ -142,6 +140,7 @@ const elements = {
   statsGrid: document.querySelector("#stats-grid"),
   toolsDashboard: document.querySelector("#tools-dashboard"),
   codexMigrationCard: document.querySelector("#codex-migration-card"),
+  codexMaintenanceToggle: document.querySelector("#codex-maintenance-toggle"),
   codexMigrationPreviewBtn: document.querySelector("#codex-migration-preview-btn"),
   codexMigrationApplyBtn: document.querySelector("#codex-migration-apply-btn"),
   codexMigrationRollbackBtn: document.querySelector("#codex-migration-rollback-btn"),
@@ -433,6 +432,8 @@ function rerenderLocalizedContent() {
     renderConversation(state.currentDetail.conversation_messages);
     renderRawEvents(state.currentDetail.raw_events);
     updateTabs();
+  } else {
+    setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
   }
   if (state.stats) {
     renderStats(state.stats);
@@ -469,9 +470,11 @@ function buildSessionsUrl({ cursor } = {}) {
   return url;
 }
 
-function buildSearchUrl() {
+function buildSearchUrl({ cursor } = {}) {
   const params = new URLSearchParams(buildSessionQuery());
   params.set("q", state.searchQuery);
+  params.set("limit", String(PAGE_LIMIT));
+  if (cursor) params.set("cursor", cursor);
   return `/api/search?${params.toString()}`;
 }
 
@@ -605,6 +608,7 @@ function appendSessionItems(sessions) {
     const archived = archivedIds.has(session._key);
 
     const fragment = elements.sessionItemTemplate.content.cloneNode(true);
+    const row = fragment.querySelector(".session-row");
     const button = fragment.querySelector(".session-item");
     button.dataset.sessionKey = session._key;
     button.setAttribute("role", "option");
@@ -654,6 +658,7 @@ function appendSessionItems(sessions) {
     }
 
     const archiveBtn = document.createElement("button");
+    archiveBtn.type = "button";
     archiveBtn.className = "session-archive-btn";
     archiveBtn.title = archived ? t("unarchive") : t("archive");
     archiveBtn.textContent = archived ? "↩" : "⊗";
@@ -662,7 +667,7 @@ function appendSessionItems(sessions) {
       toggleArchive(session._key);
       renderSessionList();
     });
-    button.append(archiveBtn);
+    row.append(archiveBtn);
 
     button.addEventListener("click", () => {
       selectSession(session._key, button);
@@ -673,6 +678,8 @@ function appendSessionItems(sessions) {
 
 function selectSession(key, buttonEl) {
   state.selectedSessionKey = key;
+  state.currentDetail = null;
+  detailRequestGate.cancel();
   elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
     el.classList.remove("active");
     el.setAttribute("aria-selected", "false");
@@ -681,6 +688,9 @@ function selectSession(key, buttonEl) {
     buttonEl.classList.add("active");
     buttonEl.setAttribute("aria-selected", "true");
   }
+  elements.detailView.classList.add("hidden");
+  elements.detailEmpty.classList.remove("hidden");
+  setDetailPlaceholder(t("loading"));
   syncUrl();
   loadSessionDetail(key);
 }
@@ -697,7 +707,11 @@ function renderLoadMoreButton() {
   btn.addEventListener("click", async () => {
     btn.textContent = t("loadingMore");
     btn.disabled = true;
-    await loadMoreSessions();
+    const loaded = await loadMoreSessions();
+    if (!loaded && btn.isConnected) {
+      btn.textContent = t("loadMore");
+      btn.disabled = false;
+    }
   });
   elements.sessionList.append(btn);
 }
@@ -713,7 +727,8 @@ function renderSessionList() {
     empty.className = "hero-copy";
     empty.textContent = t("noResults");
     elements.sessionList.append(empty);
-    elements.sessionCount.textContent = "0";
+    renderLoadMoreButton();
+    updateSessionCount();
     return;
   }
 
@@ -748,6 +763,18 @@ function downloadBlob(content, filename, type) {
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
+function displayMessageText(message) {
+  if (message.is_truncation_marker) {
+    return t("detailMessagesOmitted", { n: message.omitted_count || 0 });
+  }
+  if (message.text_truncated) {
+    return `${message.text}\n\n${t("detailMessageTextTruncated", {
+      n: message.text.length
+    })}`;
+  }
+  return message.text || "";
+}
+
 function exportSessionMarkdown(detail) {
   const { summary, conversation_messages: messages } = detail;
   const lines = [
@@ -762,7 +789,7 @@ function exportSessionMarkdown(detail) {
   messages.forEach((msg) => {
     lines.push(`## ${msg.role}`);
     lines.push(``);
-    lines.push(msg.text);
+    lines.push(displayMessageText(msg));
     lines.push(``);
   });
   const filename = `session-${summary.id.slice(0, 12)}.md`;
@@ -820,6 +847,7 @@ function renderDetailTags(summary) {
     { text: summary.model_provider || "unknown", cls: "tag-provider" },
     { text: displaySourceLabel(summary), cls: "tag-source" },
     { text: hiddenReasonLabel(summary), cls: "tag-hidden" },
+    { text: summary.detail_truncated ? t("partialDetail") : "", cls: "tag-hidden" },
     { text: summary.source || summary.originator || "", cls: "" },
     { text: t("eventsCount", { n: summary.event_count }), icon: "hash" }
   ];
@@ -844,6 +872,7 @@ function renderPropsPanel(summary, messages = []) {
     { label: t("source"), value: displaySourceLabel(summary) || "-" },
     { label: t("visibility"), value: visibilityLabel(summary) },
     { label: t("messages"), value: String(summary.message_count || 0) },
+    { label: t("systemContext"), value: String(summary.context_count || 0) },
     { label: t("toolCalls"), value: String(summary.tool_count || 0) }
   ];
   const tech = [
@@ -902,8 +931,9 @@ function filteredConversationMessages(messages) {
   return messages
     .map((message, index) => ({ ...message, _origIdx: index }))
     .filter((message) => state.showTools || message.role !== "tool")
+    .filter((message) => state.showContext || message.synthetic_context !== true)
     .filter((message) => !state.roleFilter || message.role === state.roleFilter)
-    .filter((message) => !query || String(message.text || "").toLowerCase().includes(query));
+    .filter((message) => !query || displayMessageText(message).toLowerCase().includes(query));
 }
 
 function scrollToMessage(index) {
@@ -937,7 +967,7 @@ function appendMessageNavItems(container, messages) {
 
     const text = document.createElement("span");
     text.className = "message-nav-text";
-    text.textContent = compactText(message.text, 72);
+    text.textContent = compactText(displayMessageText(message), 72);
 
     button.append(top, text);
     container.append(button);
@@ -990,12 +1020,16 @@ function renderConversation(messages) {
     fragment.querySelector(".message-idx").textContent = `#${message._origIdx + 1}`;
     fragment.querySelector(".message-role").textContent = message.role;
     const toolEl = fragment.querySelector(".message-tool");
-    if (message.tool_kind || message.tool_name) {
+    if (message.synthetic_context) {
+      toolEl.textContent = t("systemContext");
+      toolEl.classList.remove("hidden");
+    } else if (message.tool_kind || message.tool_name) {
       toolEl.textContent = [message.tool_kind, message.tool_name].filter(Boolean).join(" · ");
       toolEl.classList.remove("hidden");
     }
     fragment.querySelector(".message-time").textContent = formatTimestamp(message.timestamp);
-    fragment.querySelector(".message-text").textContent = message.text;
+    const messageText = displayMessageText(message);
+    fragment.querySelector(".message-text").textContent = messageText;
 
     const toggleBtn = fragment.querySelector(".message-toggle");
     toggleBtn.textContent = "▶";
@@ -1009,7 +1043,7 @@ function renderConversation(messages) {
     copyBtn.title = t("copyMessage");
     copyBtn.textContent = t("copy");
     copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(message.text).then(() => {
+      navigator.clipboard.writeText(messageText).then(() => {
         copyBtn.textContent = "✓";
         setTimeout(() => { copyBtn.textContent = t("copy"); }, 1500);
       }).catch(() => {
@@ -1076,6 +1110,15 @@ function showError(message) {
   }, 5000);
 }
 
+function setDetailPlaceholder(title, description = "") {
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+  const copy = document.createElement("p");
+  copy.textContent = description;
+  copy.classList.toggle("hidden", !description);
+  elements.detailEmpty.replaceChildren(heading, copy);
+}
+
 function setCodexMigrationStatus(message, kind = "") {
   if (!elements.codexMigrationStatus) return;
   elements.codexMigrationStatus.textContent = message;
@@ -1101,6 +1144,9 @@ function configureCodexMaintenanceUi() {
   if (elements.codexMigrationCard) {
     elements.codexMigrationCard.dataset.enabled = enabled ? "true" : "false";
   }
+  if (elements.codexMaintenanceToggle) {
+    elements.codexMaintenanceToggle.checked = enabled;
+  }
   [
     elements.codexMigrationPreviewBtn,
     elements.codexMigrationRollbackBtn,
@@ -1117,6 +1163,37 @@ function configureCodexMaintenanceUi() {
     setCodexMigrationStatus(t("maintenanceDisabled"), "warning");
   } else if (!state.codexMigrationPreview) {
     setCodexMigrationStatus(t("migrationNotPreviewed"));
+  }
+}
+
+async function toggleCodexMaintenance() {
+  if (!elements.codexMaintenanceToggle) return;
+  const enabled = elements.codexMaintenanceToggle.checked;
+  if (!enabled) {
+    codexMigrationPreviewRequestGate.cancel();
+  }
+  elements.codexMaintenanceToggle.disabled = true;
+  try {
+    const result = await fetchJson("/api/codex-maintenance", {
+      method: "POST",
+      mutation: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled })
+    });
+    state.capabilities.codex_maintenance.enabled = result.enabled === true;
+    state.codexMigrationPreview = null;
+    state.codexMigrationSelectedProviders.clear();
+    if (elements.codexMigrationConfirm) elements.codexMigrationConfirm.checked = false;
+    resetCodexMigrationMetrics();
+    configureCodexMaintenanceUi();
+  } catch (error) {
+    console.error(error);
+    elements.codexMaintenanceToggle.checked = !enabled;
+    setCodexMigrationBusy(false);
+    configureCodexMaintenanceUi();
+    setCodexMigrationStatus(`${t("maintenanceToggleFailed")}: ${error.message}`, "error");
+  } finally {
+    elements.codexMaintenanceToggle.disabled = false;
   }
 }
 
@@ -1321,6 +1398,7 @@ async function loadCodexMigrationPreview() {
     configureCodexMaintenanceUi();
     return;
   }
+  const request = codexMigrationPreviewRequestGate.begin();
   setCodexMigrationBusy(true);
   setCodexMigrationStatus(t("migrationPreviewing"));
   try {
@@ -1328,7 +1406,10 @@ async function loadCodexMigrationPreview() {
     const params = new URLSearchParams();
     if (providers.length > 0) params.set("providers", providers.join(","));
     const query = params.toString();
-    const summary = await fetchJson(`/api/codex-provider-migration/preview${query ? `?${query}` : ""}`);
+    const summary = await fetchJson(`/api/codex-provider-migration/preview${query ? `?${query}` : ""}`, {
+      signal: request.signal
+    });
+    if (!request.isCurrent() || !isCodexMaintenanceEnabled()) return;
     renderCodexMigrationPreview(summary);
     if (summary.selectionRequired) {
       setCodexMigrationStatus(t("migrationSelectProviders"), "warning");
@@ -1343,10 +1424,13 @@ async function loadCodexMigrationPreview() {
       }), "ok");
     }
   } catch (error) {
+    if (isAbortError(error) || !request.isCurrent()) return;
     console.error(error);
     setCodexMigrationStatus(`${t("migrationPreviewFailed")}: ${error.message}`, "error");
   } finally {
-    setCodexMigrationBusy(false);
+    if (request.isCurrent()) {
+      setCodexMigrationBusy(false);
+    }
   }
 }
 
@@ -1448,8 +1532,12 @@ async function rollbackCodexMigration() {
 }
 
 async function loadSessionDetail(id) {
+  const request = detailRequestGate.begin();
   try {
-    const detail = await fetchJson(`/api/sessions/${encodeURIComponent(id)}`);
+    const detail = await fetchJson(`/api/sessions/${encodeURIComponent(id)}`, {
+      signal: request.signal
+    });
+    if (!request.isCurrent() || state.selectedSessionKey !== id) return false;
     state.currentDetail = detail;
     state.roleFilter = "";
     state.detailQuery = "";
@@ -1458,6 +1546,9 @@ async function loadSessionDetail(id) {
     }
     if (elements.showToolsToggle) {
       elements.showToolsToggle.checked = state.showTools;
+    }
+    if (elements.showContextToggle) {
+      elements.showContextToggle.checked = state.showContext;
     }
     document.querySelectorAll("#role-filter .role-filter-btn").forEach((b) => {
       b.classList.toggle("active", b.dataset.role === "");
@@ -1475,22 +1566,35 @@ async function loadSessionDetail(id) {
     if (state._initialized && window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {
       scrollToWorkspaceSection(document.querySelector("#detail-panel"));
     }
+    return true;
   } catch (error) {
+    if (isAbortError(error) || !request.isCurrent()) return false;
     console.error(error);
     showError(`${t("loadDetailFailed")}: ${error.message}`);
+    if (state.selectedSessionKey === id) {
+      state.currentDetail = null;
+      elements.detailView.classList.add("hidden");
+      elements.detailEmpty.classList.remove("hidden");
+      setDetailPlaceholder(t("loadDetailFailed"), error.message);
+    }
+    return false;
   }
 }
 
 async function loadSessions() {
+  const request = sessionRequestGate.begin();
+  detailRequestGate.cancel();
   try {
     let data;
     if (state.searchQuery) {
-      data = await fetchJson(buildSearchUrl());
+      data = await fetchJson(buildSearchUrl(), { signal: request.signal });
+      if (!request.isCurrent()) return false;
       state.sessions = data.sessions;
-      state.hasMore = false;
-      state.nextCursor = null;
+      state.hasMore = data.has_more;
+      state.nextCursor = data.next_cursor;
     } else {
-      data = await fetchJson(buildSessionsUrl());
+      data = await fetchJson(buildSessionsUrl(), { signal: request.signal });
+      if (!request.isCurrent()) return false;
       state.sessions = data.sessions;
       state.hasMore = data.has_more;
       state.nextCursor = data.next_cursor;
@@ -1502,13 +1606,14 @@ async function loadSessions() {
 
     if (state.selectedSessionKey && !visibleSessions().find((session) => session._key === state.selectedSessionKey)) {
       state.selectedSessionKey = null;
+      state.currentDetail = null;
     }
 
     renderSessionList();
 
     if (!state._initialized && !state.selectedSessionKey && state.sessions[0]) {
-      const first = visibleSessions()[0] || state.sessions[0];
-      state.selectedSessionKey = first._key;
+      const first = visibleSessions()[0];
+      if (first) state.selectedSessionKey = first._key;
     }
 
     if (state.selectedSessionKey) {
@@ -1517,26 +1622,41 @@ async function loadSessions() {
       });
       await loadSessionDetail(state.selectedSessionKey);
     } else {
+      detailRequestGate.cancel();
       elements.detailView.classList.add("hidden");
       elements.detailEmpty.classList.remove("hidden");
+      setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
     }
-    if (state._initialized) syncUrl();
+    if (request.isCurrent() && state._initialized) syncUrl();
+    return request.isCurrent();
   } catch (error) {
+    if (isAbortError(error) || !request.isCurrent()) return false;
     console.error(error);
     showError(`${t("loadListFailed")}: ${error.message}`);
+    return false;
   }
 }
 
 async function loadMoreSessions() {
+  const request = sessionRequestGate.begin();
   try {
-    const data = await fetchJson(buildSessionsUrl({ cursor: state.nextCursor }));
+    const url = state.searchQuery
+      ? buildSearchUrl({ cursor: state.nextCursor })
+      : buildSessionsUrl({ cursor: state.nextCursor });
+    const data = await fetchJson(url, {
+      signal: request.signal
+    });
+    if (!request.isCurrent()) return false;
     state.sessions = state.sessions.concat(data.sessions);
     state.hasMore = data.has_more;
     state.nextCursor = data.next_cursor;
     renderSessionList();
+    return true;
   } catch (error) {
+    if (isAbortError(error) || !request.isCurrent()) return false;
     console.error(error);
     showError(`${t("loadMoreFailed")}: ${error.message}`);
+    return false;
   }
 }
 
@@ -1725,14 +1845,22 @@ function renderStats(stats) {
 }
 
 async function loadStats() {
+  const request = statsRequestGate.begin();
   try {
     const params = buildSessionQuery();
     const url = `/api/stats${params ? "?" + params : ""}`;
-    const stats = await fetchJson(url);
+    const stats = await fetchJson(url, { signal: request.signal });
+    if (!request.isCurrent()) return false;
     state.stats = stats;
     renderStats(stats);
     updateSessionCount();
-  } catch { /* 统计加载失败不阻断主流程。 */ }
+    return true;
+  } catch (error) {
+    if (isAbortError(error) || !request.isCurrent()) return false;
+    console.error(error);
+    showError(`${t("loadStatsFailed")}: ${error.message}`);
+    return false;
+  }
 }
 
 async function loadFacets() {
@@ -1745,6 +1873,7 @@ async function loadFacets() {
 async function loadCapabilities() {
   try {
     state.capabilities = await fetchJson("/api/capabilities");
+    setMutationToken(state.capabilities?.codex_maintenance?.mutation_token);
   } catch (error) {
     console.error(error);
     state.capabilities = { codex_maintenance: { enabled: false } };
@@ -1778,9 +1907,6 @@ async function activateWorkspaceView(panel) {
   statsDashboard?.classList.toggle("hidden", !isStats);
   toolsDashboard?.classList.toggle("hidden", !isTools);
 
-  if (isTools && isCodexMaintenanceEnabled() && !state.codexMigrationPreview) {
-    await loadCodexMigrationPreview();
-  }
 }
 
 async function initialize() {
@@ -1881,6 +2007,7 @@ async function initialize() {
   }
 
   elements.codexMigrationPreviewBtn?.addEventListener("click", loadCodexMigrationPreview);
+  elements.codexMaintenanceToggle?.addEventListener("change", toggleCodexMaintenance);
   elements.codexMigrationConfirm?.addEventListener("change", updateCodexMigrationApplyState);
   elements.codexMigrationApplyBtn?.addEventListener("click", applyCodexMigration);
   elements.codexMigrationRollbackBtn?.addEventListener("click", rollbackCodexMigration);
@@ -1965,7 +2092,10 @@ async function initialize() {
     const items = Array.from(elements.sessionList.querySelectorAll(".session-item"));
     if (!items.length) return;
     const focused = document.activeElement;
-    const idx = items.indexOf(focused);
+    const focusedItem = focused?.classList.contains("session-item")
+      ? focused
+      : focused?.closest(".session-row")?.querySelector(".session-item");
+    const idx = items.indexOf(focusedItem);
     let next;
     if (e.key === "ArrowDown") {
       next = idx < items.length - 1 ? idx + 1 : 0;
@@ -2003,82 +2133,33 @@ async function initialize() {
     }
   });
 
+  elements.showContextToggle?.addEventListener("change", () => {
+    state.showContext = elements.showContextToggle.checked;
+    if (state.currentDetail) {
+      renderConversation(state.currentDetail.conversation_messages || []);
+    }
+  });
+
   await loadSessions();
   state._initialized = true;
 
   const eventSource = new EventSource("/api/events");
-  eventSource.addEventListener("session-added", (e) => {
-    try {
-      const summary = JSON.parse(e.data);
-      const key = summary._key;
-      if (!key) return;
-      if (isExcludedByVisibilityToggles(summary)) return;
-      if (!state.sessions.find((s) => s._key === key)) {
-        state.sessions.push(summary);
-        state.sessions.sort((a, b) => {
-          const ta = Date.parse(a.timestamp || a.last_timestamp) || 0;
-          const tb = Date.parse(b.timestamp || b.last_timestamp) || 0;
-          return tb - ta;
-        });
-        renderSessionList();
-        updateSessionCount();
-        loadFacets().catch((error) => console.error(error));
-
-        const ariaLive = document.querySelector("#aria-live");
-        if (ariaLive) {
-          ariaLive.textContent = `${t("newSessionAdded")}: ${summary.cwd || summary.id}`;
-          setTimeout(() => { ariaLive.textContent = ""; }, 3000);
-        }
-      }
-    } catch { /* 忽略事件数据解析失败。 */ }
-  });
-
-  eventSource.addEventListener("session-updated", (e) => {
-    try {
-      const summary = JSON.parse(e.data);
-      const key = summary._key;
-      if (!key) return;
-      if (isExcludedByVisibilityToggles(summary)) {
-        state.sessions = state.sessions.filter((s) => s._key !== key);
-        if (state.selectedSessionKey === key) {
-          state.selectedSessionKey = null;
-          elements.detailView.classList.add("hidden");
-          elements.detailEmpty.classList.remove("hidden");
-        }
-        renderSessionList();
-        return;
-      }
-      const idx = state.sessions.findIndex((s) => s._key === key);
-      if (idx >= 0) {
-        state.sessions[idx] = summary;
-        state.sessions.sort((a, b) => {
-          const ta = Date.parse(a.timestamp || a.last_timestamp) || 0;
-          const tb = Date.parse(b.timestamp || b.last_timestamp) || 0;
-          return tb - ta;
-        });
-      }
-      if (state.selectedSessionKey === key) {
-        loadSessionDetail(key);
-      }
-      renderSessionList();
-      loadFacets().catch((error) => console.error(error));
-    } catch { /* 忽略事件数据解析失败。 */ }
-  });
-
-  eventSource.addEventListener("session-deleted", (e) => {
-    try {
-      const { id } = JSON.parse(e.data);
-      const key = id;
-      if (!key) return;
-      state.sessions = state.sessions.filter((s) => s._key !== key);
-      if (state.selectedSessionKey === key) {
-        state.selectedSessionKey = null;
-        elements.detailView.classList.add("hidden");
-        elements.detailEmpty.classList.remove("hidden");
-      }
-      renderSessionList();
-      loadFacets().catch((error) => console.error(error));
-    } catch { /* 忽略事件数据解析失败。 */ }
+  bindSessionEvents(eventSource, {
+    refresh: async () => {
+      await loadFacets();
+      await Promise.all([loadSessions(), loadStats()]);
+    },
+    onSessionAdded: (summary) => {
+      const ariaLive = document.querySelector("#aria-live");
+      if (!ariaLive) return;
+      ariaLive.textContent = `${t("newSessionAdded")}: ${summary.cwd || summary.id}`;
+      setTimeout(() => { ariaLive.textContent = ""; }, 3000);
+    },
+    onMalformed: (error) => console.warn("Invalid session event payload", error),
+    onError: (error) => {
+      console.error(error);
+      showError(`${t("refreshFailed")}: ${error.message}`);
+    }
   });
 
   // 角色过滤。

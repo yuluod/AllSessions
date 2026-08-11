@@ -29,6 +29,16 @@ const geminiDir = resolveDir("GEMINI_SESSIONS_DIR", path.join(os.homedir(), ".ge
 const claudeSessionsDir = claudeDir ? path.join(claudeDir, "sessions") : null;
 const geminiTmpDir = geminiDir ? path.join(geminiDir, "tmp") : null;
 
+function defaultCacheDir() {
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Caches", "AllSessions");
+  }
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+    return path.join(process.env.LOCALAPPDATA, "AllSessions", "Cache");
+  }
+  return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"), "allsessions");
+}
+
 export const SOURCES = [
   {
     kind: "codex",
@@ -72,4 +82,7 @@ export const SOURCES = [
 ].filter((s) => dirExists(s.rootDir));
 
 export const HOST = process.env.HOST || "127.0.0.1";
-export const PORT = Number.parseInt(process.env.PORT || "3210", 10);
+export const PORT = Number(process.env.PORT || "3210");
+export const INDEX_CACHE_FILE = process.env.SESSION_VIEWER_DISABLE_CACHE === "1"
+  ? null
+  : path.join(path.resolve(process.env.SESSION_VIEWER_CACHE_DIR || defaultCacheDir()), "session-index.json");

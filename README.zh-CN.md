@@ -78,7 +78,7 @@ GitHub Releases 会提供自包含安装包。安装包内置对应平台的 Nod
 
 启动器会自动打开本地查看器，仍然只读取当前用户的受支持会话目录。macOS 安装包暂未进行代码签名与公证，首次打开时可能需要在系统安全设置中手动允许。
 
-维护者只需推送名称为 `v<package-version>` 的标签，即可触发发布工作流。工作流会校验标签与 `package.json` 的版本一致，构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包，上传到 GitHub Release，并自动生成发布说明。例如版本为 `1.2.3` 时，必须使用 `v1.2.3` 标签发布。
+维护者只需推送名称为 `v<package-version>` 的标签，即可触发发布工作流。工作流会校验标签与 `package.json` 的版本一致，构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包，上传到 GitHub Release，并自动生成发布说明。例如版本为 `1.2.3` 时，必须使用 `v1.2.3` 标签发布。已有标签也可以在 Actions 页面手动填写标签名后重新构建。
 
 本机构建原生安装包时，先安装当前平台的打包工具（Windows 使用 Inno Setup、macOS 使用 `pkgbuild`、Debian/Ubuntu 使用 `dpkg-deb`），然后执行：
 

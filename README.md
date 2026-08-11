@@ -78,7 +78,7 @@ GitHub Releases provide self-contained installers. They bundle the matching Node
 
 The launcher opens the local viewer automatically and still reads only the supported session directories of the current user. The macOS package is not code-signed or notarized yet, so Gatekeeper may require an explicit local approval before it can be opened.
 
-For maintainers, pushing a tag named `v<package-version>` triggers the release workflow. The workflow verifies that the tag matches `package.json`, builds Windows x64, macOS ARM64, macOS x64, and Linux x64 installers, uploads them to a GitHub Release, and generates release notes automatically. For example, version `1.2.3` must be released with tag `v1.2.3`.
+For maintainers, pushing a tag named `v<package-version>` triggers the release workflow. The workflow verifies that the tag matches `package.json`, builds Windows x64, macOS ARM64, macOS x64, and Linux x64 installers, uploads them to a GitHub Release, and generates release notes automatically. For example, version `1.2.3` must be released with tag `v1.2.3`. An existing tag can also be rebuilt manually from the Actions page by entering that tag name.
 
 To create a native installer locally, install the platform packager first (Inno Setup on Windows, `pkgbuild` on macOS, or `dpkg-deb` on Debian/Ubuntu), then run:
 

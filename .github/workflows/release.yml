@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要构建并发布的已有版本标签，例如 v0.0.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -35,6 +41,8 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: 安装 Node.js
         uses: actions/setup-node@v4
@@ -50,6 +58,8 @@ jobs:
           "ISCC_PATH=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: 构建安装包
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: node scripts/build-release.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --output release
 
       - name: 上传安装包
@@ -72,11 +82,12 @@ jobs:
       - name: 创建或更新 Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           mapfile -d '' assets < <(find release-assets -type f -print0)
           test "${#assets[@]}" -gt 0
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --title "AllSessions $GITHUB_REF_NAME" --generate-notes
+            gh release create "$RELEASE_TAG" "${assets[@]}" --title "AllSessions $RELEASE_TAG" --generate-notes
           fi

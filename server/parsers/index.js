@@ -4,7 +4,7 @@ import {
   parseCodexFile,
   parseCodexFileSummary
 } from "./codex.js";
-import { parseClaudeCodeFile } from "./claude-code.js";
+import { parseClaudeCodeFile, parseClaudeCodeFileSummary } from "./claude-code.js";
 import { parseGeminiSessions } from "./gemini.js";
 
 const PARSERS = {
@@ -16,7 +16,8 @@ const PARSERS = {
 
 const SUMMARY_PARSERS = {
   codex: parseCodexFileSummary,
-  codex_archived: parseCodexArchivedFileSummary
+  codex_archived: parseCodexArchivedFileSummary,
+  claude_code: parseClaudeCodeFileSummary
 };
 
 export function getParser(sourceKind) {

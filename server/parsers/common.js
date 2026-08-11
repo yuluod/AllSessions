@@ -179,7 +179,23 @@ export function finalizeSessionSummaryFromAggregate(summary, accumulator) {
 
 export function pushConversationMessage(
   target,
-  { role, text, timestamp, sourceType, sourceSubtype, toolName, toolKind, toolCallId }
+  {
+    role,
+    text,
+    timestamp,
+    sourceType,
+    sourceSubtype,
+    toolName,
+    toolKind,
+    toolCallId,
+    uuid,
+    parentUuid,
+    sidechain,
+    syntheticContext,
+    isError,
+    model,
+    usage
+  }
 ) {
   const trimmed = typeof text === "string" ? text.trim() : "";
   if (!trimmed) {
@@ -192,7 +208,8 @@ export function pushConversationMessage(
     source_type: sourceType,
     source_subtype: sourceSubtype || null
   };
-  if (message.role === "developer" ||
+  if (syntheticContext === true ||
+    message.role === "developer" ||
     (message.role === "user" && isSyntheticContext(trimmed))) {
     message.synthetic_context = true;
   }
@@ -204,6 +221,24 @@ export function pushConversationMessage(
   }
   if (toolCallId) {
     message.tool_call_id = toolCallId;
+  }
+  if (uuid) {
+    message.uuid = uuid;
+  }
+  if (parentUuid) {
+    message.parent_uuid = parentUuid;
+  }
+  if (sidechain === true) {
+    message.sidechain = true;
+  }
+  if (isError === true) {
+    message.is_error = true;
+  }
+  if (model) {
+    message.model = model;
+  }
+  if (usage && typeof usage === "object") {
+    message.usage = usage;
   }
   target.push(message);
 }

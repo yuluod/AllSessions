@@ -27,6 +27,9 @@ const codexArchivedDir = resolveDir("CODEX_ARCHIVED_SESSIONS_DIR", path.join(os.
 const claudeDir = resolveDir("CLAUDE_SESSIONS_DIR", path.join(os.homedir(), ".claude"));
 const geminiDir = resolveDir("GEMINI_SESSIONS_DIR", path.join(os.homedir(), ".gemini"));
 const claudeSessionsDir = claudeDir ? path.join(claudeDir, "sessions") : null;
+const claudeProjectsDir = claudeDir ? path.join(claudeDir, "projects") : null;
+const claudeUsesProjectTranscripts = dirExists(claudeProjectsDir);
+const claudeDiscoveryDir = claudeUsesProjectTranscripts ? claudeProjectsDir : claudeSessionsDir;
 const geminiTmpDir = geminiDir ? path.join(geminiDir, "tmp") : null;
 
 function defaultCacheDir() {
@@ -58,14 +61,10 @@ export const SOURCES = [
     kind: "claude_code",
     displayName: "Claude Code",
     rootDir: claudeDir,
-    discoveryRoots: [claudeSessionsDir],
-    watchRoots: [claudeSessionsDir],
-    filePattern: "sessions/*.json",
-    matchFn: (filePath) => {
-      const filename = path.basename(filePath);
-      return filePath.endsWith(".json") &&
-        filePath.includes(path.sep + "sessions" + path.sep + filename);
-    }
+    discoveryRoots: [claudeDiscoveryDir],
+    watchRoots: [claudeDiscoveryDir],
+    filePattern: claudeUsesProjectTranscripts ? "projects/**/*.jsonl" : "sessions/*.json",
+    matchFn: (filePath) => filePath.endsWith(claudeUsesProjectTranscripts ? ".jsonl" : ".json")
   },
   {
     kind: "gemini",

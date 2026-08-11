@@ -5,23 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n-page-title="title">AllSessions</title>
     <link rel="icon" type="image/png" href="/assets/allsessions-icon-v2.png" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=20260811-toolbar-sources" />
   </head>
   <body>
     <div class="page-shell">
       <header class="toolbar">
-        <div class="toolbar-brand">
+        <a id="home-link" class="toolbar-brand" href="/" aria-label="返回首页" data-i18n="home" data-i18n-attr="aria-label">
           <img class="toolbar-logo" src="/assets/allsessions-icon-v2.png" alt="" width="30" height="30" />
           <div class="toolbar-heading">
             <h1 data-i18n="title">AllSessions</h1>
             <p class="toolbar-copy" data-i18n="description">筛选、切换并查看本机 AI 会话历史。</p>
           </div>
-        </div>
+        </a>
         <nav class="sidebar-tabs workspace-tabs" role="tablist" aria-label="工作区视图" data-i18n="workspaceViews" data-i18n-attr="aria-label">
           <button class="sidebar-tab active" data-sidebar-tab="list" type="button" role="tab" aria-selected="true" data-i18n="sessionList">会话列表</button>
           <button class="sidebar-tab" data-sidebar-tab="stats" type="button" role="tab" aria-selected="false" data-i18n="statsOverview">统计概览</button>
           <button class="sidebar-tab" data-sidebar-tab="tools" type="button" role="tab" aria-selected="false" data-i18n="tools">工具</button>
         </nav>
+        <div
+          id="source-kind-quick-filter"
+          class="source-kind-quick-filter toolbar-source-filter"
+          role="tablist"
+          aria-label="切换会话来源"
+          data-i18n="sourceQuickSwitch"
+          data-i18n-attr="aria-label"
+        ></div>
         <div class="toolbar-center">
           <div class="search-box">
             <input id="search-input" type="search" placeholder="搜索会话内容 / 路径 / 关键词..." data-i18n-placeholder="searchPlaceholder" />
@@ -89,7 +97,7 @@
           </details>
 
           <div class="sidebar-body" data-sidebar-panel="list">
-            <details class="project-nav" open>
+            <details class="project-nav">
               <summary id="project-nav-title">
                 <span data-i18n="projects">项目</span>
                 <span class="summary-hint" data-i18n="recentProjects">最近使用</span>
@@ -149,6 +157,7 @@
                   <div id="detail-tags" class="detail-tags"></div>
                 </div>
                 <div class="detail-topbar-right">
+                  <button id="session-inspector-toggle" class="ghost-button inspector-toggle" type="button" aria-controls="props-panel" aria-expanded="false" data-i18n="sessionInspector">会话信息</button>
                   <div class="tabs" role="tablist" aria-label="详情视图切换" data-i18n="tabsAriaLabel" data-i18n-attr="aria-label">
                     <button class="tab-button active" data-tab="conversation" type="button" role="tab" aria-selected="true" aria-controls="conversation-tab" data-i18n="tabConversation">对话视图</button>
                     <button class="tab-button" data-tab="raw" type="button" role="tab" aria-selected="false" aria-controls="raw-tab" data-i18n="tabRaw">原始事件流</button>
@@ -297,9 +306,10 @@
           </div>
         </section>
 
-        <aside class="props-panel" id="props-panel">
+        <aside class="props-panel" id="props-panel" aria-hidden="true">
           <div class="props-header">
             <h2 id="props-eyebrow" data-i18n="sessionInspector">会话信息</h2>
+            <button id="props-close-btn" class="ghost-button props-close-btn" type="button" data-i18n="closeSessionInspector">关闭</button>
           </div>
           <div id="props-content" class="props-content">
             <div class="props-empty" data-i18n="selectSession">选择一个会话</div>
@@ -312,6 +322,7 @@
       <div class="session-row">
         <button class="session-item" type="button">
           <div class="session-primary">
+            <span class="session-source-kind"></span>
             <strong class="session-title"></strong>
             <span class="session-time"></span>
           </div>
@@ -326,7 +337,6 @@
             <span class="session-messages"></span>
             <span class="session-tools"></span>
             <span class="session-source"></span>
-            <span class="session-source-kind"></span>
           </div>
         </button>
       </div>
@@ -341,7 +351,7 @@
           <span class="message-tool hidden"></span>
           <time class="message-time"></time>
         </header>
-        <pre class="message-text"></pre>
+        <div class="message-text markdown-body"></div>
       </article>
     </template>
 
@@ -359,6 +369,6 @@
     </template>
 
     <div id="aria-live" class="hidden" aria-live="polite" role="status"></div>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/app.js?v=20260811-source-tabs"></script>
   </body>
 </html>

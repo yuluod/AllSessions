@@ -11,7 +11,10 @@ import {
 } from "../server/parsers/codex.js";
 import { parseGeminiSessions } from "../server/parsers/index.js";
 import { parseCodexArchivedFile } from "../server/parsers/codex.js";
-import { parseClaudeCodeFile } from "../server/parsers/claude-code.js";
+import {
+  parseClaudeCodeFile,
+  parseClaudeCodeFileSummary
+} from "../server/parsers/claude-code.js";
 
 async function createTempSessionDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "codex-session-viewer-"));
@@ -479,6 +482,197 @@ test("Claude Code 摘要会从用户历史派生标题和统计", async (t) => {
   assert.equal(detail.summary.message_count, 1);
   assert.deepEqual(detail.summary.role_counts, { user: 1 });
   assert.equal(detail.summary.tool_count, 0);
+});
+
+test("Claude Code 项目转录解析完整对话、思考和工具调用", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+  const filePath = path.join(rootDir, "claude-full.jsonl");
+  const records = [
+    {
+      type: "user",
+      uuid: "user-1",
+      parentUuid: null,
+      sessionId: "claude-full",
+      timestamp: "2026-08-11T10:00:00.000Z",
+      cwd: "/tmp/claude-full",
+      gitBranch: "main",
+      version: "1.2.3",
+      entrypoint: "cli",
+      message: { role: "user", content: "检查完整转录" }
+    },
+    {
+      type: "assistant",
+      uuid: "assistant-1",
+      parentUuid: "user-1",
+      sessionId: "claude-full",
+      timestamp: "2026-08-11T10:00:01.000Z",
+      message: {
+        role: "assistant",
+        model: "claude-sonnet-test",
+        usage: { input_tokens: 12, output_tokens: 8 },
+        content: [
+          { type: "thinking", thinking: "内部分析" },
+          { type: "text", text: "开始检查" },
+          { type: "tool_use", id: "tool-1", name: "Read", input: { file_path: "README.md" } }
+        ]
+      }
+    },
+    {
+      type: "user",
+      uuid: "user-2",
+      parentUuid: "assistant-1",
+      sessionId: "claude-full",
+      timestamp: "2026-08-11T10:00:02.000Z",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "tool-1", content: "读取结果", is_error: true }]
+      }
+    },
+    {
+      type: "system",
+      subtype: "turn_duration",
+      sessionId: "claude-full",
+      timestamp: "2026-08-11T10:00:03.000Z",
+      durationMs: 100
+    }
+  ];
+  await fs.writeFile(filePath, records.map((record) => JSON.stringify(record)).join("\n"), "utf8");
+
+  const detail = await parseClaudeCodeFile(filePath);
+
+  assert.equal(detail.summary.id, "claude-full");
+  assert.equal(detail.summary.title, "检查完整转录");
+  assert.equal(detail.summary.model, "claude-sonnet-test");
+  assert.equal(detail.summary.git_branch, "main");
+  assert.equal(detail.summary.claude_code_version, "1.2.3");
+  assert.equal(detail.summary.message_count, 4);
+  assert.equal(detail.summary.context_count, 1);
+  assert.deepEqual(detail.summary.role_counts, { user: 1, assistant: 1, tool: 2 });
+  assert.equal(detail.summary.tool_count, 2);
+  assert.equal(detail.raw_events.length, 4);
+  assert.equal(detail.conversation_messages.length, 5);
+
+  const thinking = detail.conversation_messages.find((message) => message.source_subtype === "thinking");
+  assert.equal(thinking.synthetic_context, true);
+  assert.equal(thinking.parent_uuid, "user-1");
+  const toolCall = detail.conversation_messages.find((message) => message.tool_kind === "tool_call");
+  const toolResult = detail.conversation_messages.find((message) => message.tool_kind === "tool_result");
+  assert.equal(toolCall.tool_name, "Read");
+  assert.equal(toolCall.tool_call_id, "tool-1");
+  assert.equal(toolResult.tool_name, "Read");
+  assert.equal(toolResult.is_error, true);
+});
+
+test("Claude Code 摘要流式解析并限制索引正文", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+  const filePath = path.join(rootDir, "summary.jsonl");
+  const records = [
+    {
+      type: "user",
+      sessionId: "summary-session",
+      timestamp: "2026-08-11T10:00:00.000Z",
+      message: { role: "user", content: "摘要标题" }
+    },
+    {
+      type: "assistant",
+      sessionId: "summary-session",
+      timestamp: "2026-08-11T10:00:01.000Z",
+      message: { role: "assistant", content: [{ type: "text", text: "很长的回答内容" }] }
+    }
+  ];
+  await fs.writeFile(filePath, records.map((record) => JSON.stringify(record)).join("\n"), "utf8");
+
+  const detail = await parseClaudeCodeFileSummary(filePath, { maxConversationTextChars: 6 });
+
+  assert.equal(detail.summary.message_count, 2);
+  assert.equal(detail.raw_events.length, 0);
+  assert.equal(detail.conversation_messages.map((message) => message.text).join("").length, 6);
+});
+
+test("Claude Code 子代理转录默认标记为隐藏会话", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+  const filePath = path.join(rootDir, "sidechain.jsonl");
+  await fs.writeFile(filePath, JSON.stringify({
+    type: "assistant",
+    sessionId: "sidechain-session",
+    isSidechain: true,
+    uuid: "sidechain-1",
+    timestamp: "2026-08-11T10:00:00.000Z",
+    message: { role: "assistant", content: [{ type: "text", text: "子代理结果" }] }
+  }), "utf8");
+
+  const detail = await parseClaudeCodeFile(filePath);
+
+  assert.equal(detail.summary.hidden, true);
+  assert.equal(detail.summary.hidden_reason, "subagent");
+  assert.equal(detail.conversation_messages[0].sidechain, true);
+  assert.equal(detail.conversation_messages[0].synthetic_context, true);
+});
+
+test("Claude Code 独立子代理文件使用唯一会话键", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const subagentsDir = path.join(rootDir, "parent-session", "subagents");
+  await fs.mkdir(subagentsDir, { recursive: true });
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+  const filePath = path.join(subagentsDir, "agent-worker.jsonl");
+  await fs.writeFile(filePath, JSON.stringify({
+    type: "assistant",
+    sessionId: "parent-session",
+    agentId: "worker",
+    uuid: "agent-message",
+    timestamp: "2026-08-11T10:00:00.000Z",
+    message: { role: "assistant", content: [{ type: "text", text: "子代理文件结果" }] }
+  }), "utf8");
+
+  const detail = await parseClaudeCodeFile(filePath);
+
+  assert.equal(detail.summary.id, "parent-session:subagent:worker");
+  assert.equal(detail.summary.parent_session_id, "parent-session");
+  assert.equal(detail.summary.hidden, true);
+  assert.equal(detail.conversation_messages[0].sidechain, true);
+});
+
+test("Claude Code 大会话详情限制消息、原始事件和单条正文", async (t) => {
+  const rootDir = await createTempSessionDir();
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+  const filePath = path.join(rootDir, "large.jsonl");
+  const records = Array.from({ length: 8 }, (_, index) => ({
+    type: index % 2 === 0 ? "user" : "assistant",
+    sessionId: "large-session",
+    timestamp: `2026-08-11T10:00:0${index}.000Z`,
+    message: {
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: "x".repeat(80)
+    }
+  }));
+  await fs.writeFile(filePath, records.map((record) => JSON.stringify(record)).join("\n"), "utf8");
+
+  const detail = await parseClaudeCodeFile(filePath, {
+    maxConversationMessages: 4,
+    maxRawEvents: 4,
+    maxMessageTextChars: 20,
+    maxRawEventLineChars: 40
+  });
+
+  assert.equal(detail.summary.detail_truncated, true);
+  assert.equal(detail.truncation.messages.total, 8);
+  assert.equal(detail.truncation.messages.omitted, 4);
+  assert.equal(detail.truncation.messages.text_truncated, 8);
+  assert.equal(detail.truncation.raw_events.total, 8);
+  assert.equal(detail.truncation.raw_events.omitted, 4);
 });
 
 test("遇到坏行和缺少 session_meta 时仍能回退生成详情", () => {

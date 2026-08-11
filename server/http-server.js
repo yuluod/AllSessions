@@ -155,7 +155,7 @@ async function sendStaticFile(publicDir, pathname, request, response) {
 
   const etag = `"${Math.floor(stat.mtimeMs).toString(36)}-${stat.size.toString(36)}"`;
   if (request.headers["if-none-match"] === etag) {
-    response.writeHead(304, { ETag: etag });
+    response.writeHead(304, { ETag: etag, "Cache-Control": "no-cache" });
     response.end();
     return;
   }
@@ -174,14 +174,14 @@ async function sendStaticFile(publicDir, pathname, request, response) {
       "Content-Type": contentType,
       "Content-Encoding": "gzip",
       ETag: etag,
-      "Cache-Control": extension === ".html" ? "no-cache" : "public, max-age=300"
+      "Cache-Control": "no-cache"
     });
     response.end(compressed);
   } else {
     response.writeHead(200, {
       "Content-Type": contentType,
       ETag: etag,
-      "Cache-Control": extension === ".html" ? "no-cache" : "public, max-age=300"
+      "Cache-Control": "no-cache"
     });
     response.end(content);
   }

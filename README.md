@@ -33,10 +33,10 @@ AllSessions aggregates supported local AI session sources into one browser inter
 - Filter by source, provider, date, project, and working directory
 - Search session-derived text and load large result sets incrementally
 - Inspect normalized conversations and raw events
-- Hide Codex subagent and injected system context by default
+- Hide Codex subagent, Claude Code sidechain/thinking, and injected system context by default
 - Watch local session files and refresh the interface automatically
 - Switch between Chinese and English
-- Bound memory use for large Codex sessions with visible truncation markers
+- Bound memory use for large Codex and Claude Code sessions with visible truncation markers
 
 ## Supported sources
 
@@ -44,7 +44,7 @@ AllSessions aggregates supported local AI session sources into one browser inter
 |--------|------------|-----------------|
 | Codex | `~/.codex/sessions` | Session metadata, messages, tool calls, raw events, and search |
 | Codex Archived | `~/.codex/archived_sessions` | Read-only archived-session browsing |
-| Claude Code | `~/.claude` | The current parser extracts user input history from supported local metadata |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | User and assistant messages, thinking, tool calls and results, raw events, search, and live refresh; legacy metadata remains as a fallback |
 | Gemini CLI | `~/.gemini/tmp/*/logs.json` | Local session aggregation and detail inspection |
 
 Custom source directories can be configured with environment variables.
@@ -109,8 +109,8 @@ The server remains read-only while the switch is off. Enabling it still requires
 ## Known limitations
 
 - Local session formats can change between upstream tool versions; unsupported historical records may fall back to raw-event display.
-- Claude Code support is limited to the fields available in the supported local metadata format.
-- Large Codex details use a marked head/tail safety window, and the search index stores bounded text per session.
+- Claude Code project transcripts are not a stable public API; unknown records remain available as raw events, and legacy environments fall back to user-input history.
+- Large Codex and Claude Code details use a marked head/tail safety window, and the search index stores bounded text per session.
 - Injected developer and environment context is excluded from default conversation and search views, but remains present in raw local data and full exports.
 
 ## Development

@@ -734,6 +734,7 @@ test("ETag 缓存：第二次请求返回 304", async (t) => {
   assert.equal(res1.status, 200);
   const etag = res1.headers["etag"];
   assert.ok(etag);
+  assert.equal(res1.headers["cache-control"], "no-cache");
 
   const res2 = await new Promise((resolve, reject) => {
     const req = http.get(`http://127.0.0.1:${address.port}/styles.css`, { headers: { "If-None-Match": etag } }, (res) => {
@@ -744,6 +745,7 @@ test("ETag 缓存：第二次请求返回 304", async (t) => {
     req.on("error", reject);
   });
   assert.equal(res2.status, 304);
+  assert.equal(res2.headers["cache-control"], "no-cache");
 });
 
 test("关闭服务时会先结束 SSE 长连接", async (t) => {

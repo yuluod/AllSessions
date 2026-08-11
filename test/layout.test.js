@@ -25,7 +25,8 @@ test("全局导航位于顶部并将次要筛选渐进折叠", async () => {
 
   assert.match(html, /<header class="toolbar">[\s\S]*class="sidebar-tabs workspace-tabs"/);
   assert.match(html, /<details id="sidebar-filters" class="sidebar-filters">/);
-  assert.match(html, /<details class="project-nav" open>/);
+  assert.match(html, /<details class="project-nav">/);
+  assert.doesNotMatch(html, /<details class="project-nav" open>/);
   assert.match(html, /<details class="visibility-panel">/);
 });
 
@@ -63,14 +64,18 @@ test("统计页展示真实事件总数并使用最近日期", async () => {
 
 test("页面复用项目图标作为 favicon 与工具栏标识", async () => {
   const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
 
   assert.match(html, /<link rel="icon" type="image\/png" href="\/assets\/allsessions-icon-v2\.png"/);
-  assert.match(html, /<img class="toolbar-logo" src="\/assets\/allsessions-icon-v2\.png"/);
+  assert.match(html, /<a id="home-link" class="toolbar-brand" href="\/"[\s\S]*<img class="toolbar-logo" src="\/assets\/allsessions-icon-v2\.png"/);
+  assert.match(source, /async function returnHome\(\)/);
+  assert.match(source, /elements\.homeLink\?\.addEventListener\("click"/);
 });
 
 test("会话列表项具备三段式信息层级", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
 
   assert.match(html, /class="session-primary"/);
   assert.match(html, /class="session-secondary"/);
@@ -82,6 +87,9 @@ test("会话列表项具备三段式信息层级", async () => {
   assert.match(html, /class="session-row"[\s\S]*class="session-item"/);
   assert.match(source, /row\.append\(archiveBtn\)/);
   assert.doesNotMatch(source, /button\.append\(archiveBtn\)/);
+  assert.match(css, /\.session-list\s*\{[\s\S]*overflow-x: hidden/);
+  assert.match(css, /\.session-primary\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.session-title\s*\{[\s\S]*-webkit-line-clamp: 2/);
 });
 
 test("页面提供项目导航入口并复用 cwd 筛选", async () => {
@@ -116,6 +124,54 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   assert.match(css, /\.message-nav-list\b/);
 });
 
+test("会话正文安全渲染 Markdown，导航使用纯文本摘要", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const markdown = await readProjectFile("public/markdown.js");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /class="message-text markdown-body"/);
+  assert.match(source, /renderMarkdown\(fragment\.querySelector\("\.message-text"\), messageText\)/);
+  assert.match(source, /markdownToPlainText\(displayMessageText\(message\)\)/);
+  assert.doesNotMatch(markdown, /innerHTML/);
+  assert.match(css, /\.markdown-body pre\b/);
+  assert.match(css, /\.markdown-body table\b/);
+});
+
+test("列表和详情为不同 Agent 来源设置明确标识", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /class="session-primary">[\s\S]*class="session-source-kind"[\s\S]*class="session-title"/);
+  assert.match(source, /sourceKindEl\.dataset\.sourceKind = sourceKind/);
+  assert.match(source, /span\.dataset\.sourceKind = sourceKind/);
+  assert.match(source, /fillSelect\(elements\.sourceKindFilter,[\s\S]*sourceKindLabel\)/);
+  assert.match(css, /data-source-kind="claude_code"/);
+  assert.match(css, /data-source-kind="gemini"/);
+  assert.match(css, /data-source-kind="codex_archived"/);
+});
+
+test("详情页默认使用双栏阅读布局并按需打开会话信息", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /id="session-inspector-toggle"[\s\S]*aria-expanded="false"/);
+  assert.match(html, /id="props-panel" aria-hidden="true"/);
+  assert.match(source, /function setInspectorOpen\(open\)/);
+  assert.match(css, /\.app-layout\s*\{[\s\S]*grid-template-columns: var\(--sidebar-w\) minmax\(0, 1fr\)/);
+  assert.match(css, /\.props-panel\.is-open\s*\{\s*display: block/);
+});
+
+test("普通对话默认展开，仅收起工具、上下文和超长消息", async () => {
+  const source = await readProjectFile("public/app.js");
+
+  assert.match(source, /const shouldCollapse = message\.role === "tool"/);
+  assert.match(source, /markdownToPlainText\(messageText\)\.length > 1800/);
+  assert.match(source, /card\.classList\.toggle\("collapsed", shouldCollapse\)/);
+});
+
 test("会话列表支持筛选状态 chips 和日期分组", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
@@ -127,6 +183,25 @@ test("会话列表支持筛选状态 chips 和日期分组", async () => {
   assert.match(css, /\.active-filter-bar\b/);
   assert.match(css, /\.filter-chip\b/);
   assert.match(css, /\.session-group-header\b/);
+});
+
+test("会话列表提供一级来源快速切换并与高级筛选同步", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /id="source-kind-quick-filter"[\s\S]*role="tablist"/);
+  assert.match(html, /<header class="toolbar">[\s\S]*class="sidebar-tabs workspace-tabs"[\s\S]*id="source-kind-quick-filter"[\s\S]*class="toolbar-center"/);
+  assert.doesNotMatch(html, /<aside class="sidebar-left"[\s\S]{0,300}id="source-kind-quick-filter"/);
+  assert.doesNotMatch(html, /class="session-list-shell">[\s\S]{0,200}id="source-kind-quick-filter"/);
+  assert.match(source, /const QUICK_SOURCE_KINDS = \["", "codex", "claude_code", "gemini"\]/);
+  assert.match(source, /async function setSourceKindFilter\(sourceKind\)/);
+  assert.match(source, /elements\.sourceKindFilter\?\.addEventListener\("change",[\s\S]*setSourceKindFilter\(event\.target\.value\)/);
+  assert.match(source, /\.\.\.QUICK_SOURCE_KINDS\.filter\(Boolean\)/);
+  assert.match(css, /\.source-kind-quick-filter\s*\{[\s\S]*grid-template-columns: 0\.8fr 1fr 1\.35fr 1\.25fr/);
+  assert.match(css, /\.source-kind-quick-button\.active\b/);
+  assert.match(css, /\.toolbar-source-filter\s*\{[\s\S]*width: 100%/);
+  assert.match(css, /\.toolbar\s*\{[\s\S]*grid-template-columns: auto auto minmax\(300px, 340px\) minmax\(220px, 360px\) auto/);
 });
 
 test("本地归档不会被初始自动选中，空页仍可继续加载", async () => {

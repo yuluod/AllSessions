@@ -503,6 +503,57 @@ test("坏 Claude Code 元数据不会阻断其他会话初始化", async (t) => 
   assert.equal(sessions[0].id, "valid-claude");
 });
 
+test("Claude Code 项目转录支持发现、搜索和增量刷新", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const projectsDir = path.join(rootDir, "projects");
+  const projectDir = path.join(projectsDir, "tmp-project");
+  await fs.mkdir(projectDir, { recursive: true });
+  t.after(async () => {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  const transcriptPath = path.join(projectDir, "claude-live.jsonl");
+  const firstRecord = {
+    type: "user",
+    sessionId: "claude-live",
+    timestamp: "2026-08-11T10:00:00.000Z",
+    cwd: "/tmp/claude-live",
+    message: { role: "user", content: "第一次 Claude 提问" }
+  };
+  await fs.writeFile(transcriptPath, JSON.stringify(firstRecord), "utf8");
+
+  const source = {
+    kind: "claude_code",
+    rootDir,
+    discoveryRoots: [projectsDir],
+    watchRoots: [projectsDir],
+    filePattern: "projects/**/*.jsonl",
+    matchFn: (filePath) => filePath.endsWith(".jsonl")
+  };
+  const store = new SessionStore({ sources: [source] });
+  t.after(() => store.stopWatching());
+  await store.initialize();
+  await store.watch();
+
+  assert.equal(store.listSessions().sessions.length, 1);
+  assert.equal(store.search("第一次 Claude 提问").length, 1);
+  assert.deepEqual([...store._watchedDirs], [projectsDir]);
+
+  const assistantRecord = {
+    type: "assistant",
+    sessionId: "claude-live",
+    timestamp: "2026-08-11T10:00:01.000Z",
+    message: { role: "assistant", content: [{ type: "text", text: "实时刷新的助手回答" }] }
+  };
+  await fs.appendFile(transcriptPath, `\n${JSON.stringify(assistantRecord)}`, "utf8");
+  store._pendingChanges.add(transcriptPath);
+  await store._processPendingChanges();
+
+  assert.equal(store.search("实时刷新的助手回答").length, 1);
+  const detail = await store.getSessionDetail("claude_code:claude-live");
+  assert.deepEqual(detail.summary.role_counts, { user: 1, assistant: 1 });
+});
+
 test("Gemini logs 变更会重建 Gemini 来源索引", async (t) => {
   const rootDir = await createTempSessionDir();
   const queueDir = path.join(rootDir, "tmp", "queue-a");
@@ -609,7 +660,9 @@ test("SessionStore 重启时复用未变化文件的私有索引缓存", async (
   assert.equal(third.search("文件变化后重新解析").length, 1);
 
   const cacheMode = (await fs.stat(cacheFile)).mode & 0o777;
-  assert.equal(cacheMode, 0o600);
+  if (process.platform !== "win32") {
+    assert.equal(cacheMode, 0o600);
+  }
 });
 
 test("文件变更处理通过单写者队列串行执行", async (t) => {

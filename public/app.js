@@ -2,9 +2,11 @@ import { t, setLang, getLang, updateStaticI18n } from "./i18n.js";
 import { fetchJson as requestJson, setMutationToken } from "./api-client.js";
 import { createLatestRequestGate, isAbortError } from "./async-coordinator.js";
 import { bindSessionEvents } from "./session-events.js";
+import { markdownToPlainText, renderMarkdown } from "./markdown.js";
 
 const PAGE_LIMIT = 50;
 const PROJECT_PREVIEW_LIMIT = 4;
+const QUICK_SOURCE_KINDS = ["", "codex", "claude_code", "gemini"];
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const sessionRequestGate = createLatestRequestGate();
@@ -100,6 +102,7 @@ function visibilityLabel(session) {
 
 const elements = {
   appLayout: document.querySelector(".app-layout"),
+  homeLink: document.querySelector("#home-link"),
   sidebarLeft: document.querySelector(".sidebar-left"),
   sidebarFilters: document.querySelector("#sidebar-filters"),
   projectNav: document.querySelector(".project-nav"),
@@ -117,6 +120,7 @@ const elements = {
   showCodexArchivedToggle: document.querySelector("#show-codex-archived-toggle"),
   showHiddenToggle: document.querySelector("#show-hidden-toggle"),
   projectList: document.querySelector("#project-list"),
+  sourceKindQuickFilter: document.querySelector("#source-kind-quick-filter"),
   activeFilterBar: document.querySelector("#active-filter-bar"),
   sessionList: document.querySelector("#session-list"),
   detailEmpty: document.querySelector("#detail-empty"),
@@ -124,6 +128,8 @@ const elements = {
   detailTitle: document.querySelector("#detail-title"),
   detailTags: document.querySelector("#detail-tags"),
   propsContent: document.querySelector("#props-content"),
+  sessionInspectorToggle: document.querySelector("#session-inspector-toggle"),
+  propsCloseBtn: document.querySelector("#props-close-btn"),
   detailSearchInput: document.querySelector("#detail-search-input"),
   showToolsToggle: document.querySelector("#show-tools-toggle"),
   showContextToggle: document.querySelector("#show-context-toggle"),
@@ -272,6 +278,11 @@ function displaySourceLabel(summary) {
   return summary.display_source || summary.source_kind || "";
 }
 
+function sourceKindValue(summary) {
+  if (isCodexArchivedSession(summary)) return "codex_archived";
+  return summary?.source_kind || "unknown";
+}
+
 function createOption(value, label) {
   const option = document.createElement("option");
   option.value = value;
@@ -279,14 +290,57 @@ function createOption(value, label) {
   return option;
 }
 
-function fillSelect(select, values) {
+function sourceKindLabel(sourceKind) {
+  const labels = {
+    codex: "Codex",
+    claude_code: "Claude Code",
+    gemini: "Gemini CLI"
+  };
+  if (sourceKind === "codex_archived") return t("codexArchived");
+  return labels[sourceKind] || sourceKind;
+}
+
+function fillSelect(select, values, labelFor = (value) => value) {
   const currentValue = select.value;
   select.innerHTML = "";
   select.append(createOption("", t("all")));
   values.forEach((value) => {
-    select.append(createOption(value, value));
+    select.append(createOption(value, labelFor(value)));
   });
   select.value = values.includes(currentValue) ? currentValue : "";
+}
+
+async function setSourceKindFilter(sourceKind) {
+  if (state.filters.source_kind === sourceKind) return;
+  state.filters.source_kind = sourceKind;
+  syncFilterControls();
+  syncUrl();
+  await Promise.all([loadSessions(), loadStats()]);
+}
+
+function renderSourceKindQuickFilter() {
+  if (!elements.sourceKindQuickFilter) return;
+
+  elements.sourceKindQuickFilter.innerHTML = "";
+
+  QUICK_SOURCE_KINDS.forEach((sourceKind) => {
+    const button = document.createElement("button");
+    const active = state.filters.source_kind === sourceKind;
+    button.className = "source-kind-quick-button";
+    button.type = "button";
+    button.role = "tab";
+    button.textContent = sourceKind ? sourceKindLabel(sourceKind) : t("all");
+    button.dataset.sourceKind = sourceKind;
+    button.setAttribute("aria-selected", active ? "true" : "false");
+    button.classList.toggle("active", active);
+    button.addEventListener("click", () => {
+      setSourceKindFilter(sourceKind).catch((error) => {
+        console.error(error);
+        showError(`${t("loadListFailed")}: ${error.message}`);
+      });
+    });
+    elements.sourceKindQuickFilter.append(button);
+  });
 }
 
 async function setCwdFilter(cwd) {
@@ -371,10 +425,15 @@ function updateFacetFilters() {
     return;
   }
 
-  fillSelect(elements.sourceKindFilter, state.facets.source_kinds || []);
+  const sourceKinds = Array.from(new Set([
+    ...QUICK_SOURCE_KINDS.filter(Boolean),
+    ...(state.facets.source_kinds || [])
+  ]));
+  fillSelect(elements.sourceKindFilter, sourceKinds, sourceKindLabel);
   fillSelect(elements.providerFilter, state.facets.providers);
   fillSelect(elements.dateFilter, state.facets.dates);
   fillSelect(elements.cwdFilter, state.facets.cwds);
+  renderSourceKindQuickFilter();
   renderProjectNav();
 }
 
@@ -414,6 +473,7 @@ function syncFilterControls() {
   if (elements.showHiddenToggle) {
     elements.showHiddenToggle.checked = state.showHidden;
   }
+  renderSourceKindQuickFilter();
   renderProjectNav();
 }
 
@@ -610,6 +670,9 @@ function appendSessionItems(sessions) {
     const fragment = elements.sessionItemTemplate.content.cloneNode(true);
     const row = fragment.querySelector(".session-row");
     const button = fragment.querySelector(".session-item");
+    const sourceKind = sourceKindValue(session);
+    row.dataset.sourceKind = sourceKind;
+    button.dataset.sourceKind = sourceKind;
     button.dataset.sessionKey = session._key;
     button.setAttribute("role", "option");
     button.setAttribute("aria-selected", session._key === state.selectedSessionKey ? "true" : "false");
@@ -642,7 +705,9 @@ function appendSessionItems(sessions) {
     toolsEl.textContent = t("toolCount", { n: session.tool_count || 0 });
     toolsEl.classList.toggle("hidden", !session.tool_count);
     button.querySelector(".session-source").textContent = session.source || session.originator || t("unknownSource");
-    button.querySelector(".session-source-kind").textContent = displaySourceLabel(session);
+    const sourceKindEl = button.querySelector(".session-source-kind");
+    sourceKindEl.textContent = displaySourceLabel(session);
+    sourceKindEl.dataset.sourceKind = sourceKind;
     const hiddenReason = hiddenReasonLabel(session);
     if (hiddenReason) {
       const hiddenBadge = document.createElement("span");
@@ -845,17 +910,16 @@ function renderDetailTags(summary) {
   const tags = [
     { text: formatTimestamp(summary.timestamp), icon: "calendar" },
     { text: summary.model_provider || "unknown", cls: "tag-provider" },
-    { text: displaySourceLabel(summary), cls: "tag-source" },
+    { text: displaySourceLabel(summary), cls: "tag-source", sourceKind: sourceKindValue(summary) },
     { text: hiddenReasonLabel(summary), cls: "tag-hidden" },
-    { text: summary.detail_truncated ? t("partialDetail") : "", cls: "tag-hidden" },
-    { text: summary.source || summary.originator || "", cls: "" },
-    { text: t("eventsCount", { n: summary.event_count }), icon: "hash" }
+    { text: summary.detail_truncated ? t("partialDetail") : "", cls: "tag-hidden" }
   ];
 
-  tags.forEach(({ text, cls, icon }) => {
+  tags.forEach(({ text, cls, icon, sourceKind }) => {
     if (!text) return;
     const span = document.createElement("span");
     span.className = `detail-tag ${cls || ""}`.trim();
+    if (sourceKind) span.dataset.sourceKind = sourceKind;
     if (icon) {
       span.append(createTagIcon(icon), document.createTextNode(` ${text}`));
     } else {
@@ -926,6 +990,14 @@ function renderPropsPanel(summary, messages = []) {
   );
 }
 
+function setInspectorOpen(open) {
+  const panel = elements.propsContent?.closest(".props-panel");
+  const isOpen = Boolean(open && state.currentDetail);
+  panel?.classList.toggle("is-open", isOpen);
+  panel?.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  elements.sessionInspectorToggle?.setAttribute("aria-expanded", isOpen ? "true" : "false");
+}
+
 function filteredConversationMessages(messages) {
   const query = state.detailQuery.trim().toLowerCase();
   return messages
@@ -967,7 +1039,7 @@ function appendMessageNavItems(container, messages) {
 
     const text = document.createElement("span");
     text.className = "message-nav-text";
-    text.textContent = compactText(displayMessageText(message), 72);
+    text.textContent = compactText(markdownToPlainText(displayMessageText(message)), 72);
 
     button.append(top, text);
     container.append(button);
@@ -1016,7 +1088,6 @@ function renderConversation(messages) {
     const card = fragment.querySelector(".message-card");
     card.id = `message-${message._origIdx + 1}`;
     card.dataset.role = message.role;
-    card.classList.add("collapsed");
     fragment.querySelector(".message-idx").textContent = `#${message._origIdx + 1}`;
     fragment.querySelector(".message-role").textContent = message.role;
     const toolEl = fragment.querySelector(".message-tool");
@@ -1029,10 +1100,15 @@ function renderConversation(messages) {
     }
     fragment.querySelector(".message-time").textContent = formatTimestamp(message.timestamp);
     const messageText = displayMessageText(message);
-    fragment.querySelector(".message-text").textContent = messageText;
+    renderMarkdown(fragment.querySelector(".message-text"), messageText);
+
+    const shouldCollapse = message.role === "tool"
+      || message.synthetic_context === true
+      || markdownToPlainText(messageText).length > 1800;
+    card.classList.toggle("collapsed", shouldCollapse);
 
     const toggleBtn = fragment.querySelector(".message-toggle");
-    toggleBtn.textContent = "▶";
+    toggleBtn.textContent = shouldCollapse ? "▶" : "▼";
     toggleBtn.addEventListener("click", () => {
       card.classList.toggle("collapsed");
       toggleBtn.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
@@ -1880,6 +1956,28 @@ async function loadCapabilities() {
   }
 }
 
+async function returnHome() {
+  detailRequestGate.cancel();
+  state.filters = { provider: "", source_kind: "", date: "", cwd: "" };
+  state.searchQuery = "";
+  state.showArchived = false;
+  state.showCodexArchived = false;
+  state.showHidden = false;
+  state.selectedSessionKey = null;
+  state.currentDetail = null;
+  state.activeTab = "conversation";
+  state.detailQuery = "";
+  state.roleFilter = "";
+  setInspectorOpen(false);
+  if (elements.sidebarFilters) elements.sidebarFilters.open = false;
+  if (elements.projectNav) elements.projectNav.open = false;
+  syncFilterControls();
+  syncUrl();
+  await activateWorkspaceView("list");
+  await Promise.all([loadSessions(), loadStats()]);
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
 async function activateWorkspaceView(panel) {
   state.activeView = panel;
   document.body.dataset.view = panel;
@@ -1902,6 +2000,7 @@ async function activateWorkspaceView(panel) {
   const isList = panel === "list";
   const isStats = panel === "stats";
   const isTools = panel === "tools";
+  if (!isList) setInspectorOpen(false);
   detailPanel?.classList.toggle("hidden", !isList);
   propsPanel?.classList.toggle("hidden", !isList);
   statsDashboard?.classList.toggle("hidden", !isStats);
@@ -1916,12 +2015,19 @@ async function initialize() {
   resetCodexMigrationMetrics();
   configureCodexMaintenanceUi();
 
+  elements.homeLink?.addEventListener("click", (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    returnHome().catch((error) => {
+      console.error(error);
+      showError(`${t("loadListFailed")}: ${error.message}`);
+    });
+  });
+
   await loadStats();
 
   elements.sourceKindFilter?.addEventListener("change", async (event) => {
-    state.filters.source_kind = event.target.value;
-    syncUrl();
-    await Promise.all([loadSessions(), loadStats()]);
+    await setSourceKindFilter(event.target.value);
   });
 
   elements.providerFilter?.addEventListener("change", async (event) => {
@@ -2002,6 +2108,15 @@ async function initialize() {
 
   elements.mobileBackBtn?.addEventListener("click", () => scrollToWorkspaceSection(elements.sidebarLeft));
 
+  elements.sessionInspectorToggle?.addEventListener("click", () => {
+    const panel = elements.propsContent?.closest(".props-panel");
+    setInspectorOpen(!panel?.classList.contains("is-open"));
+  });
+  elements.propsCloseBtn?.addEventListener("click", () => {
+    setInspectorOpen(false);
+    elements.sessionInspectorToggle?.focus();
+  });
+
   if (window.matchMedia(MOBILE_LAYOUT_QUERY).matches && elements.projectNav) {
     elements.projectNav.open = false;
   }
@@ -2062,6 +2177,11 @@ async function initialize() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && elements.propsContent?.closest(".props-panel")?.classList.contains("is-open")) {
+      setInspectorOpen(false);
+      elements.sessionInspectorToggle?.focus();
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       elements.searchInput?.focus();

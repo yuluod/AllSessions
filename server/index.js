@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { HOST, INDEX_CACHE_FILE, PORT, SOURCES } from "./config.js";
+import { localViewerUrl, openBrowser } from "./browser-launcher.js";
 import { createHttpServer } from "./http-server.js";
 import { assertLocalOnlyHost, assertValidPort, listenForHttpRequests } from "./server-binding.js";
 import { SessionStore } from "./session-store.js";
@@ -38,11 +39,16 @@ async function main() {
     throw error;
   }
 
-  console.log(`Session viewer started: http://${HOST}:${PORT}`);
+  const viewerUrl = localViewerUrl(HOST, PORT);
+  console.log(`Session viewer started: ${viewerUrl}`);
   const roots = SOURCES.map((s) => s.displayName + ": " + s.rootDir).join(", ");
   console.log(`Session roots: ${roots || "none"}`);
   console.log(`Cached sessions: ${store.summaries.length}`);
   console.log(`Codex maintenance: ${codexMaintenanceEnabled ? "enabled" : "disabled (read-only mode)"}`);
+
+  if (process.env.ALLSESSIONS_OPEN_BROWSER === "1") {
+    openBrowser(viewerUrl);
+  }
 }
 
 main().catch((error) => {

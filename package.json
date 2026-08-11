@@ -24,6 +24,8 @@
     "lint:fix": "eslint server public test scripts --fix",
     "format": "prettier --write .",
     "build": "vite build",
+    "release:build": "node scripts/build-release.mjs",
+    "release:prepare": "node scripts/build-release.mjs --prepare-only",
     "codex:provider-repair": "node scripts/codex-provider-repair.mjs",
     "codex:provider-migration": "node scripts/codex-provider-repair.mjs"
   },

@@ -11,6 +11,8 @@
   ·
   <a href="#快速开始">快速开始</a>
   ·
+  <a href="#安装包与发布">安装包</a>
+  ·
   <a href="#配置">配置</a>
 </p>
 
@@ -63,6 +65,26 @@ pnpm start
 ```
 
 打开 `http://127.0.0.1:3210`。AllSessions 会扫描当前存在的受支持本地会话目录。服务没有远程认证，并会拒绝 `0.0.0.0`、局域网地址和公网地址。
+
+## 安装包与发布
+
+GitHub Releases 会提供自包含安装包。安装包内置对应平台的 Node.js 运行时，普通用户不需要安装 Node.js、pnpm，也不需要下载源码或构建项目。
+
+| 平台 | 发布文件 | 安装结果 |
+|------|----------|----------|
+| Windows x64 | `*-windows-x64-setup.exe` | 开始菜单入口与可选桌面快捷方式 |
+| macOS | `*-darwin-<arch>.pkg` | `/Applications` 中的 `AllSessions.app` |
+| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | `/opt/AllSessions` 下的程序与 `allsessions` 命令 |
+
+启动器会自动打开本地查看器，仍然只读取当前用户的受支持会话目录。macOS 安装包暂未进行代码签名与公证，首次打开时可能需要在系统安全设置中手动允许。
+
+维护者只需推送名称为 `v<package-version>` 的标签，即可触发发布工作流。工作流会校验标签与 `package.json` 的版本一致，构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包，上传到 GitHub Release，并自动生成发布说明。例如版本为 `1.2.3` 时，必须使用 `v1.2.3` 标签发布。
+
+本机构建原生安装包时，先安装当前平台的打包工具（Windows 使用 Inno Setup、macOS 使用 `pkgbuild`、Debian/Ubuntu 使用 `dpkg-deb`），然后执行：
+
+```bash
+pnpm release:build
+```
 
 ## 配置
 

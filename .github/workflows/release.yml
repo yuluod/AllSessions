@@ -1,0 +1,82 @@
+name: 发布安装包
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            platform: win32
+            arch: x64
+          - name: macOS ARM64
+            os: macos-14
+            platform: darwin
+            arch: arm64
+          - name: macOS x64
+            os: macos-13
+            platform: darwin
+            arch: x64
+          - name: Linux x64
+            os: ubuntu-22.04
+            platform: linux
+            arch: x64
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 安装 Inno Setup
+        if: matrix.platform == 'win32'
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $compiler = (Get-Command ISCC.exe).Source
+          "ISCC_PATH=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: 构建安装包
+        run: node scripts/build-release.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --output release
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.arch }}-installer
+          if-no-files-found: error
+          path: release/AllSessions-*
+
+  publish:
+    name: 发布 GitHub Release
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 下载安装包
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -d '' assets < <(find release-assets -type f -print0)
+          test "${#assets[@]}" -gt 0
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --title "AllSessions $GITHUB_REF_NAME" --generate-notes
+          fi

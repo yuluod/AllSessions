@@ -1052,11 +1052,14 @@ body[data-view="tools"] #filter-toggle {
 
 .detail-view {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 12px;
 }
 
 .detail-body {
   width: 100%;
+  min-width: 0;
   max-width: 980px;
   margin-inline: auto;
 }
@@ -1243,12 +1246,16 @@ body[data-view="tools"] #filter-toggle {
 .conversation-list,
 .raw-events {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 5px;
 }
 
 .message-card,
 .raw-event-card {
   --message-bg: var(--surface-subtle);
+  min-width: 0;
+  max-width: 100%;
   padding: 13px 15px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1357,6 +1364,8 @@ body[data-view="tools"] #filter-toggle {
 
 .message-text,
 .raw-event-payload {
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   overflow-x: auto;
   color: var(--text-secondary);
@@ -1434,6 +1443,7 @@ body[data-view="tools"] #filter-toggle {
 }
 
 .markdown-body pre {
+  max-width: 100%;
   padding: 10px 12px;
   overflow-x: auto;
   border: 1px solid #d7dee2;

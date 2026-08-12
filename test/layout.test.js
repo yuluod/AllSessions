@@ -138,6 +138,15 @@ test("会话正文安全渲染 Markdown，导航使用纯文本摘要", async ()
   assert.match(css, /\.markdown-body table\b/);
 });
 
+test("长工具命令不会撑宽会话详情", async () => {
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(css, /\.detail-view\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /\.conversation-list,[\s\S]*\.raw-events\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /\.message-card,[\s\S]*\.raw-event-card\s*\{[\s\S]*min-width: 0;[\s\S]*max-width: 100%/);
+  assert.match(css, /\.markdown-body pre\s*\{[\s\S]*max-width: 100%/);
+});
+
 test("列表和详情为不同 Agent 来源设置明确标识", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");

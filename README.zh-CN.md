@@ -73,12 +73,12 @@ GitHub Releases 会提供自包含安装包。安装包内置对应平台的 Nod
 | 平台 | 发布文件 | 安装结果 |
 |------|----------|----------|
 | Windows x64 | `*-windows-x64-setup.exe` | 原生启动器、系统托盘、开始菜单入口与可选桌面快捷方式 |
-| macOS | `*-darwin-<arch>.pkg` | `/Applications` 中的 `AllSessions.app` |
-| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | `/opt/AllSessions` 下的程序与 `allsessions` 命令 |
+| macOS | `*-mac-<arch>.pkg` | 原生菜单栏启动器及 `/Applications` 中的 `AllSessions.app` |
+| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | AppIndicator 托盘、`/opt/AllSessions` 下的程序与 `allsessions` 命令 |
 
-Windows 启动器会自动打开本地查看器，托盘菜单可以重新打开页面或退出后台服务。所有启动器仍然只读取当前用户的受支持会话目录。macOS 安装包暂未进行代码签名与公证，首次打开时可能需要在系统安全设置中手动允许。
+Windows、macOS 和 Linux 启动器都会自动打开本地查看器，并提供“打开 AllSessions、检查更新、退出”菜单。发现新版本后，可直接下载、校验并启动当前平台的安装程序。Linux 使用 AppIndicator；部分默认隐藏传统托盘的 GNOME 桌面需要启用 AppIndicator/KStatusNotifierItem 扩展才能显示图标。所有启动器仍然只读取当前用户的受支持会话目录。macOS 安装包暂未进行代码签名与公证，首次打开时可能需要在系统安全设置中手动允许。
 
-维护者只需推送名称为 `v<package-version>` 的标签，即可触发发布工作流。工作流会校验标签与 `package.json` 的版本一致，构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包，上传到 GitHub Release，并自动生成发布说明。例如版本为 `1.2.3` 时，必须使用 `v1.2.3` 标签发布。已有标签也可以在 Actions 页面手动填写标签名后重新构建。
+维护者发布前需要在 `CHANGELOG.md` 中添加与 `package.json` 对应的版本段，再推送名称为 `v<package-version>` 的标签。工作流会校验版本关系，提取对应版本的更新日志作为 GitHub Release 说明，并构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包。例如版本为 `1.2.3` 时，更新日志必须包含 `## [1.2.3]`，并使用标签 `v1.2.3`。已有标签也可以在 Actions 页面手动填写标签名后重新构建。
 
 本机构建原生安装包时，先安装当前平台的打包工具（Windows 使用 Inno Setup、macOS 使用 `pkgbuild`、Debian/Ubuntu 使用 `dpkg-deb`），然后执行：
 

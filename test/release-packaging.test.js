@@ -35,6 +35,7 @@ async function createApplicationFixture(t) {
   await writeFixtureFile(rootDir, "package.json", '{"name":"allsessions","version":"1.2.3"}');
   await writeFixtureFile(rootDir, "README.md");
   await writeFixtureFile(rootDir, "README.zh-CN.md");
+  await writeFixtureFile(rootDir, "CHANGELOG.md");
   await writeFixtureFile(rootDir, "LICENSE");
   return rootDir;
 }
@@ -54,7 +55,7 @@ test("发布参数和安装包命名保持可预测", () => {
   );
   assert.equal(
     installerFileName({ platform: "darwin", arch: "arm64", version: "1.2.3" }),
-    "AllSessions-1.2.3-darwin-arm64.pkg"
+    "AllSessions-1.2.3-mac-arm64.pkg"
   );
   assert.equal(
     installerFileName({ platform: "linux", arch: "x64", version: "1.2.3" }),
@@ -62,6 +63,7 @@ test("发布参数和安装包命名保持可预测", () => {
   );
   assert.match(debianControlFile({ arch: "x64", version: "1.2.3" }), /Architecture: amd64\n/);
   assert.equal(debianControlFile({ arch: "x64", version: "1.2.3" }).endsWith("\n"), true);
+  assert.match(debianControlFile({ arch: "x64", version: "1.2.3" }), /Depends: .*libayatana-appindicator3-1/);
 });
 
 test("发布标签必须与 package.json 版本一致", () => {
@@ -94,6 +96,41 @@ test("PNG Logo 会转换为 Windows ICO 容器", async () => {
   assert.deepEqual(icon.subarray(22), png);
 });
 
+test("Windows 托盘启动器提供 GitHub Release 更新检查", async () => {
+  const source = await readFile(
+    path.join(projectRoot, "packaging", "windows", "AllSessionsLauncher.cs"),
+    "utf8"
+  );
+
+  assert.match(source, /检查更新/);
+  assert.match(source, /repos\/yuluod\/AllSessions\/releases\/latest/);
+  assert.match(source, /ReadCurrentVersion\(\)/);
+  assert.match(source, /ThreadPool\.QueueUserWorkItem/);
+  assert.match(source, /DownloadFile\(downloadUri, partialPath\)/);
+  assert.match(source, /ValidateInstaller\(partialPath, asset\)/);
+  assert.match(source, /SHA256\.Create\(\)/);
+  assert.match(source, /ProcessStartInfo\(installerPath\)/);
+});
+
+test("macOS 和 Linux 启动器提供托盘更新安装", async () => {
+  const [macSource, linuxSource, buildSource, workflow] = await Promise.all([
+    readFile(path.join(projectRoot, "packaging", "macos", "AllSessionsLauncher.swift"), "utf8"),
+    readFile(path.join(projectRoot, "packaging", "linux", "AllSessionsLauncher.c"), "utf8"),
+    readFile(path.join(projectRoot, "scripts", "build-release.mjs"), "utf8"),
+    readFile(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8")
+  ]);
+
+  assert.match(macSource, /NSStatusBar\.system\.statusItem/);
+  assert.match(macSource, /检查更新/);
+  assert.match(macSource, /-mac-/);
+  assert.match(linuxSource, /app_indicator_new_with_path/);
+  assert.match(linuxSource, /检查更新/);
+  assert.match(linuxSource, /-linux-/);
+  assert.match(buildSource, /"swiftc"/);
+  assert.match(buildSource, /"gcc"/);
+  assert.match(workflow, /libayatana-appindicator3-dev/);
+});
+
 test("Windows 发布载荷包含独立运行时、命令行入口和应用图标", async (t) => {
   const rootDir = await createApplicationFixture(t);
   const outputDir = path.join(rootDir, "release");
@@ -112,6 +149,7 @@ test("Windows 发布载荷包含独立运行时、命令行入口和应用图标
   await access(path.join(staging.payloadDir, "runtime", "node.exe"));
   await access(path.join(staging.payloadDir, "server", "index.js"));
   await access(path.join(staging.payloadDir, "public", "index.html"));
+  await access(path.join(staging.payloadDir, "CHANGELOG.md"));
   await access(path.join(staging.payloadDir, "AllSessions.ico"));
   assert.match(await readFile(path.join(staging.payloadDir, "AllSessions.cmd"), "utf8"), /ALLSESSIONS_OPEN_BROWSER=1/);
 });
@@ -137,4 +175,5 @@ test("macOS 发布载荷会生成可安装的应用程序包", async (t) => {
     "utf8"
   );
   assert.match(plist, /com\.allsessions\.app/);
+  assert.match(plist, /<key>LSUIElement<\/key>\s*<true\/>/);
 });

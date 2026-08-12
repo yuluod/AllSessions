@@ -7,12 +7,26 @@ export function localViewerUrl(host, port) {
 
 export function browserLaunchCommand(url, platform = process.platform) {
   if (platform === "win32") {
-    return { command: "explorer.exe", args: [url] };
+    return { command: "rundll32.exe", args: ["url.dll,FileProtocolHandler", url] };
   }
   if (platform === "darwin") {
     return { command: "open", args: [url] };
   }
   return { command: "xdg-open", args: [url] };
+}
+
+export async function isAllSessionsViewer(url, { fetchImpl = fetch } = {}) {
+  try {
+    const response = await fetchImpl(`${url}/api/capabilities`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(3_000)
+    });
+    if (!response.ok) return false;
+    const payload = await response.json();
+    return Boolean(payload && typeof payload === "object" && payload.codex_maintenance);
+  } catch {
+    return false;
+  }
 }
 
 export function openBrowser(url, { platform = process.platform, execFileImpl = execFile } = {}) {

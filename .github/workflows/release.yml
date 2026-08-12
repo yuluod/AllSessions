@@ -40,7 +40,7 @@ jobs:
             arch: x64
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
@@ -51,9 +51,9 @@ jobs:
           git checkout origin/main -- CHANGELOG.md scripts/build-release.mjs packaging/windows/AllSessionsLauncher.cs packaging/macos/AllSessionsLauncher.swift packaging/linux/AllSessionsLauncher.c
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
 
       - name: 安装 Inno Setup
         if: matrix.platform == 'win32'
@@ -87,14 +87,14 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: 检出更新日志工具
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
 
       - name: 下载安装包
         uses: actions/download-artifact@v4

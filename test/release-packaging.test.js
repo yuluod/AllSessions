@@ -127,8 +127,13 @@ test("macOS 和 Linux 启动器提供托盘更新安装", async () => {
   assert.match(linuxSource, /检查更新/);
   assert.match(linuxSource, /-linux-/);
   assert.match(buildSource, /"swiftc"/);
+  assert.match(buildSource, /"-parse-as-library"/);
   assert.match(buildSource, /"gcc"/);
   assert.match(workflow, /libayatana-appindicator3-dev/);
+  assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v4/);
+  assert.equal((workflow.match(/actions\/checkout@v5/g) || []).length, 2);
+  assert.equal((workflow.match(/actions\/setup-node@v5/g) || []).length, 2);
+  assert.equal((workflow.match(/node-version: 24/g) || []).length, 2);
 });
 
 test("Windows 发布载荷包含独立运行时、命令行入口和应用图标", async (t) => {

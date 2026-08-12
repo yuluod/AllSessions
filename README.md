@@ -78,9 +78,11 @@ GitHub Releases provide self-contained installers. They bundle the matching Node
 | macOS | `*-mac-<arch>.dmg` | Tauri app window, menu-bar icon, and `AllSessions.app` |
 | Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | Tauri app window, system tray, and desktop entry |
 
-Windows, macOS, and Linux now share one Tauri 2 desktop shell. It opens the local viewer inside a native app window and provides tray actions for opening AllSessions, checking for updates, and exiting. Available updates can be downloaded, verified, and opened in the platform installer. The existing Node.js server and parsers are bundled as a sidecar, avoiding a second implementation of session logic. GNOME desktops that hide legacy tray icons may require the AppIndicator/KStatusNotifierItem extension. The macOS build is not code-signed or notarized yet, so Gatekeeper may require explicit local approval.
+Windows, macOS, and Linux now share one Tauri 2 desktop shell. It opens the local viewer inside a native app window and provides tray actions for opening AllSessions, checking for updates, and exiting. Tauri's official updater handles version checks, signature verification, downloads, installation, and restart. The existing Node.js server and parsers are bundled as a sidecar, avoiding a second implementation of session logic. GNOME desktops that hide legacy tray icons may require the AppIndicator/KStatusNotifierItem extension. The macOS build is not code-signed or notarized yet, so Gatekeeper may require explicit local approval.
 
 Before publishing, maintainers add a version section to `CHANGELOG.md` that matches `package.json`, then push a `v<package-version>` tag. The workflow validates the version, extracts that changelog section as the GitHub Release notes, and builds Windows x64, macOS ARM64, macOS x64, and Linux x64 installers. For example, version `1.2.3` requires a `## [1.2.3]` changelog section and tag `v1.2.3`. An existing tag can also be rebuilt manually from the Actions page by entering that tag name.
+
+Tauri Action signs updater bundles with the repository secret `TAURI_SIGNING_PRIVATE_KEY` and publishes the updater's `latest.json`. Keep a secure backup of the private key; losing it prevents installed versions from verifying future updates.
 
 To create a desktop installer locally, install Node.js 24, pnpm, Rust, and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for the current platform, then run:
 

@@ -44,9 +44,15 @@ test("桌面能力统一由 Tauri 提供", async () => {
   assert.match(cargo, /features = \["tray-icon", "image-png"\]/);
   assert.match(rustSource, /TrayIconBuilder/);
   assert.match(rustSource, /sidecar\("node"\)/);
+  assert.match(rustSource, /tauri_plugin_updater::Builder/);
   assert.match(updater, /检查或安装更新失败/);
-  assert.match(updater, /SHA-256 校验失败/);
+  assert.match(updater, /download_and_install/);
+  assert.match(config, /"createUpdaterArtifacts": true/);
+  assert.match(config, /releases\/latest\/download\/latest\.json/);
+  assert.match(cargo, /tauri-plugin-updater = "2\.10"/);
   assert.match(workflow, /libwebkit2gtk-4\.1-dev/);
-  assert.match(workflow, /pnpm tauri build/);
+  assert.match(workflow, /tauri-apps\/tauri-action@v0/);
+  assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY/);
+  assert.match(workflow, /updaterJsonPreferNsis: true/);
   assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v4/);
 });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,7 +11,9 @@ import {
   installerFileName,
   packageArchitecture,
   parseCliArguments,
-  prepareReleasePayload
+  pngToIcoBuffer,
+  prepareReleasePayload,
+  projectRoot
 } from "../scripts/build-release.mjs";
 
 async function writeFixtureFile(rootDir, relativePath, content = "fixture") {
@@ -25,6 +27,11 @@ async function createApplicationFixture(t) {
   t.after(() => rm(rootDir, { recursive: true, force: true }));
   await writeFixtureFile(rootDir, "server/index.js");
   await writeFixtureFile(rootDir, "public/index.html");
+  await mkdir(path.join(rootDir, "public", "assets"), { recursive: true });
+  await cp(
+    path.join(projectRoot, "public", "assets", "allsessions-icon-v2.png"),
+    path.join(rootDir, "public", "assets", "allsessions-icon-v2.png")
+  );
   await writeFixtureFile(rootDir, "package.json", '{"name":"allsessions","version":"1.2.3"}');
   await writeFixtureFile(rootDir, "README.md");
   await writeFixtureFile(rootDir, "README.zh-CN.md");
@@ -63,7 +70,7 @@ test("发布标签必须与 package.json 版本一致", () => {
   assert.throws(() => assertReleaseVersion("invalid"), /Invalid release version/);
 });
 
-test("Windows 安装器通过 wscript.exe 启动 VBS", () => {
+test("Windows 安装器使用自有原生启动器", () => {
   const script = innoScript({
     payloadDir: "C:\\payload",
     outputDir: "C:\\release",
@@ -71,12 +78,23 @@ test("Windows 安装器通过 wscript.exe 启动 VBS", () => {
     version: "1.2.3"
   });
 
-  assert.doesNotMatch(script, /Filename: "\{app\}\\AllSessions\.vbs"/);
-  assert.equal((script.match(/Filename: "\{sys\}\\wscript\.exe"/g) || []).length, 3);
-  assert.equal((script.match(/Parameters: """\{app\}\\AllSessions\.vbs"""/g) || []).length, 3);
+  assert.doesNotMatch(script, /wscript\.exe|AllSessions\.vbs/);
+  assert.equal((script.match(/Filename: "\{app\}\\AllSessions\.exe"/g) || []).length, 3);
+  assert.match(script, /SetupIconFile=\{#MySourceDir\}\\AllSessions\.ico/);
+  assert.match(script, /AppMutex=Local\\AllSessions\.Tray/);
 });
 
-test("Windows 发布载荷包含独立运行时和隐藏窗口启动器", async (t) => {
+test("PNG Logo 会转换为 Windows ICO 容器", async () => {
+  const png = await readFile(path.join(projectRoot, "public", "assets", "allsessions-icon-v2.png"));
+  const icon = pngToIcoBuffer(png);
+
+  assert.equal(icon.readUInt16LE(2), 1);
+  assert.equal(icon.readUInt16LE(4), 1);
+  assert.equal(icon.readUInt32LE(18), 22);
+  assert.deepEqual(icon.subarray(22), png);
+});
+
+test("Windows 发布载荷包含独立运行时、命令行入口和应用图标", async (t) => {
   const rootDir = await createApplicationFixture(t);
   const outputDir = path.join(rootDir, "release");
   const runtimeDir = path.join(rootDir, "node-runtime");
@@ -94,8 +112,8 @@ test("Windows 发布载荷包含独立运行时和隐藏窗口启动器", async 
   await access(path.join(staging.payloadDir, "runtime", "node.exe"));
   await access(path.join(staging.payloadDir, "server", "index.js"));
   await access(path.join(staging.payloadDir, "public", "index.html"));
+  await access(path.join(staging.payloadDir, "AllSessions.ico"));
   assert.match(await readFile(path.join(staging.payloadDir, "AllSessions.cmd"), "utf8"), /ALLSESSIONS_OPEN_BROWSER=1/);
-  assert.match(await readFile(path.join(staging.payloadDir, "AllSessions.vbs"), "utf8"), /WScript\.Shell/);
 });
 
 test("macOS 发布载荷会生成可安装的应用程序包", async (t) => {

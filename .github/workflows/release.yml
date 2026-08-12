@@ -48,7 +48,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           git fetch origin main:refs/remotes/origin/main --depth=1
-          git checkout origin/main -- scripts/build-release.mjs
+          git checkout origin/main -- scripts/build-release.mjs packaging/windows/AllSessionsLauncher.cs
 
       - name: 安装 Node.js
         uses: actions/setup-node@v4

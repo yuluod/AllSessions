@@ -28,6 +28,6 @@ test("发布工作流使用当前版本更新日志", async () => {
   const workflow = await readFile(path.join(rootDir, ".github", "workflows", "release.yml"), "utf8");
 
   assert.match(workflow, /extract-release-notes\.mjs "\$RELEASE_TAG" CHANGELOG\.md release-notes\.md/);
-  assert.match(workflow, /gh release create[\s\S]*--notes-file release-notes\.md/);
-  assert.match(workflow, /gh release edit[\s\S]*--notes-file release-notes\.md/);
+  assert.match(workflow, /id: release_notes/);
+  assert.match(workflow, /releaseBody: \$\{\{ steps\.release_notes\.outputs\.body \}\}/);
 });

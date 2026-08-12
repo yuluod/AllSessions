@@ -156,6 +156,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ServerProcess(Mutex::new(None)))
         .setup(|app| {
             create_tray(app)?;

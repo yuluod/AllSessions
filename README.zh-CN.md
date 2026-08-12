@@ -78,9 +78,11 @@ GitHub Releases 会提供自包含安装包。安装包内置对应平台的 Nod
 | macOS | `*-mac-<arch>.dmg` | Tauri 应用窗口、菜单栏图标及 `AllSessions.app` |
 | Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | Tauri 应用窗口、系统托盘和桌面入口 |
 
-Windows、macOS 和 Linux 现在共用同一个 Tauri 2 桌面壳，在原生应用窗口内打开本地查看器，并提供“打开 AllSessions、检查更新、退出”托盘菜单。发现新版本后，可直接下载、校验并启动当前平台的安装程序。现有 Node.js 服务和解析器作为 sidecar 内置，因此桌面端不会重复实现会话逻辑。部分默认隐藏传统托盘的 GNOME 桌面需要启用 AppIndicator/KStatusNotifierItem 扩展。macOS 安装包暂未代码签名或公证，首次打开时可能需要在系统安全设置中手动允许。
+Windows、macOS 和 Linux 现在共用同一个 Tauri 2 桌面壳，在原生应用窗口内打开本地查看器，并提供“打开 AllSessions、检查更新、退出”托盘菜单。更新由 Tauri 官方 updater 完成版本检查、签名校验、下载、安装和重启。现有 Node.js 服务和解析器作为 sidecar 内置，因此桌面端不会重复实现会话逻辑。部分默认隐藏传统托盘的 GNOME 桌面需要启用 AppIndicator/KStatusNotifierItem 扩展。macOS 安装包暂未代码签名或公证，首次打开时可能需要在系统安全设置中手动允许。
 
 维护者发布前需要在 `CHANGELOG.md` 中添加与 `package.json` 对应的版本段，再推送名称为 `v<package-version>` 的标签。工作流会校验版本关系，提取对应版本的更新日志作为 GitHub Release 说明，并构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包。例如版本为 `1.2.3` 时，更新日志必须包含 `## [1.2.3]`，并使用标签 `v1.2.3`。已有标签也可以在 Actions 页面手动填写标签名后重新构建。
+
+Tauri Action 使用仓库 Secret `TAURI_SIGNING_PRIVATE_KEY` 签名更新包，并自动发布 updater 使用的 `latest.json`。签名私钥必须安全备份；丢失后，已安装版本将无法验证后续更新。
 
 本机构建桌面安装包需要 Node.js 24、pnpm、Rust 和当前系统的 [Tauri 2 前置依赖](https://v2.tauri.app/start/prerequisites/)，然后执行：
 

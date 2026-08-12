@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "要构建并发布的已有版本标签，例如 v0.0.5"
+        description: "要构建并发布的已有版本标签，例如 v0.0.6"
         required: true
         type: string
 
@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  publish:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -80,64 +80,40 @@ jobs:
       - name: 安装项目依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 校验版本与更新日志
+      - name: 提取当前版本更新日志
+        id: release_notes
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-        run: node scripts/extract-release-notes.mjs "$RELEASE_TAG" CHANGELOG.md release-notes.md
+        run: |
+          node scripts/extract-release-notes.mjs "$RELEASE_TAG" CHANGELOG.md release-notes.md
+          {
+            echo 'body<<ALLSESSIONS_RELEASE_NOTES'
+            cat release-notes.md
+            echo 'ALLSESSIONS_RELEASE_NOTES'
+          } >> "$GITHUB_OUTPUT"
 
       - name: 准备 Node sidecar
         run: node scripts/prepare-tauri-sidecar.mjs --target ${{ matrix.target }}
 
-      - name: 构建 Tauri 安装包
-        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-
-      - name: 统一安装包名称
-        run: node scripts/collect-tauri-artifact.mjs --target ${{ matrix.target }} --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
-
-      - name: 上传安装包
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.platform }}-${{ matrix.arch }}-installer
-          if-no-files-found: error
-          path: release/AllSessions-*
-
-  publish:
-    name: 发布 GitHub Release
-    needs: build
-    runs-on: ubuntu-22.04
-    steps:
-      - name: 检出更新日志
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-
-      - name: 安装 Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - name: 下载安装包
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-
-      - name: 提取当前版本更新日志
+      - name: 构建并发布 Tauri 安装包
+        uses: tauri-apps/tauri-action@v0
         env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-        run: node scripts/extract-release-notes.mjs "$RELEASE_TAG" CHANGELOG.md release-notes.md
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          tagName: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          releaseName: AllSessions ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          releaseBody: ${{ steps.release_notes.outputs.body }}
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          updaterJsonPreferNsis: true
 
-      - name: 创建或更新 Release
+      # v0.0.6 的旧更新器依赖这些名称；保留它们可完成一次平滑迁移。
+      - name: 上传兼容安装包名称
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          mapfile -d '' assets < <(find release-assets -type f -print0)
-          test "${#assets[@]}" -gt 0
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$RELEASE_TAG" --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" --title "AllSessions $RELEASE_TAG" --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
-          fi
+          node scripts/collect-tauri-artifact.mjs --target ${{ matrix.target }} --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+          gh release upload "$RELEASE_TAG" release/AllSessions-* --clobber --repo "$GITHUB_REPOSITORY"

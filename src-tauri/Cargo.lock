@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "allsessions"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "reqwest 0.12.28",
  "semver",

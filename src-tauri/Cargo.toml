@@ -1,0 +1,26 @@
+[package]
+name = "allsessions"
+version = "0.0.5"
+description = "本地 AI 会话工作台"
+authors = ["yuluo"]
+license = "Apache-2.0"
+repository = "https://github.com/yuluod/AllSessions"
+edition = "2021"
+
+[lib]
+name = "allsessions_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
+url = "2"

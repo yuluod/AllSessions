@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./public/assets/allsessions-icon-v2.png" alt="AllSessions 图标" width="112" height="112" />
+
 # AllSessions
 
 <p>一个仅供本机使用的轻量 AI 编码助手会话查看器。</p>
@@ -17,7 +19,7 @@
 </p>
 
 <p>
-  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white" />
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white" />
   <img alt="pnpm" src="https://img.shields.io/badge/pnpm-11.10.0-F69220?logo=pnpm&logoColor=white" />
   <img alt="许可证" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" />
   <img alt="多语言" src="https://img.shields.io/badge/i18n-ZH%20%7C%20EN-7B61FF" />
@@ -72,19 +74,21 @@ GitHub Releases 会提供自包含安装包。安装包内置对应平台的 Nod
 
 | 平台 | 发布文件 | 安装结果 |
 |------|----------|----------|
-| Windows x64 | `*-windows-x64-setup.exe` | 原生启动器、系统托盘、开始菜单入口与可选桌面快捷方式 |
-| macOS | `*-mac-<arch>.pkg` | 原生菜单栏启动器及 `/Applications` 中的 `AllSessions.app` |
-| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | AppIndicator 托盘、`/opt/AllSessions` 下的程序与 `allsessions` 命令 |
+| Windows x64 | `*-windows-x64-setup.exe` | Tauri 应用窗口、系统托盘和开始菜单入口 |
+| macOS | `*-mac-<arch>.dmg` | Tauri 应用窗口、菜单栏图标及 `AllSessions.app` |
+| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | Tauri 应用窗口、系统托盘和桌面入口 |
 
-Windows、macOS 和 Linux 启动器都会自动打开本地查看器，并提供“打开 AllSessions、检查更新、退出”菜单。发现新版本后，可直接下载、校验并启动当前平台的安装程序。Linux 使用 AppIndicator；部分默认隐藏传统托盘的 GNOME 桌面需要启用 AppIndicator/KStatusNotifierItem 扩展才能显示图标。所有启动器仍然只读取当前用户的受支持会话目录。macOS 安装包暂未进行代码签名与公证，首次打开时可能需要在系统安全设置中手动允许。
+Windows、macOS 和 Linux 现在共用同一个 Tauri 2 桌面壳，在原生应用窗口内打开本地查看器，并提供“打开 AllSessions、检查更新、退出”托盘菜单。发现新版本后，可直接下载、校验并启动当前平台的安装程序。现有 Node.js 服务和解析器作为 sidecar 内置，因此桌面端不会重复实现会话逻辑。部分默认隐藏传统托盘的 GNOME 桌面需要启用 AppIndicator/KStatusNotifierItem 扩展。macOS 安装包暂未代码签名或公证，首次打开时可能需要在系统安全设置中手动允许。
 
 维护者发布前需要在 `CHANGELOG.md` 中添加与 `package.json` 对应的版本段，再推送名称为 `v<package-version>` 的标签。工作流会校验版本关系，提取对应版本的更新日志作为 GitHub Release 说明，并构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包。例如版本为 `1.2.3` 时，更新日志必须包含 `## [1.2.3]`，并使用标签 `v1.2.3`。已有标签也可以在 Actions 页面手动填写标签名后重新构建。
 
-本机构建原生安装包时，先安装当前平台的打包工具（Windows 使用 Inno Setup、macOS 使用 `pkgbuild`、Debian/Ubuntu 使用 `dpkg-deb`），然后执行：
+本机构建桌面安装包需要 Node.js 24、pnpm、Rust 和当前系统的 [Tauri 2 前置依赖](https://v2.tauri.app/start/prerequisites/)，然后执行：
 
 ```bash
 pnpm release:build
 ```
+
+开发桌面壳可执行 `pnpm desktop:dev`；仅开发网页服务仍可执行 `pnpm start`。
 
 ## 配置
 

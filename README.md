@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./public/assets/allsessions-icon-v2.png" alt="AllSessions logo" width="112" height="112" />
+
 # AllSessions
 
 <p>A lightweight, local-only viewer for browsing AI coding assistant session history.</p>
@@ -17,7 +19,7 @@
 </p>
 
 <p>
-  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white" />
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white" />
   <img alt="pnpm" src="https://img.shields.io/badge/pnpm-11.10.0-F69220?logo=pnpm&logoColor=white" />
   <img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" />
   <img alt="i18n" src="https://img.shields.io/badge/i18n-ZH%20%7C%20EN-7B61FF" />
@@ -72,19 +74,21 @@ GitHub Releases provide self-contained installers. They bundle the matching Node
 
 | Platform | Release asset | Installation result |
 |----------|---------------|---------------------|
-| Windows x64 | `*-windows-x64-setup.exe` | Native launcher, system tray, start-menu entry, and optional desktop shortcut |
-| macOS | `*-mac-<arch>.pkg` | Native menu-bar launcher and `AllSessions.app` in `/Applications` |
-| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | AppIndicator tray, application files in `/opt/AllSessions`, and an `allsessions` command |
+| Windows x64 | `*-windows-x64-setup.exe` | Tauri app window, system tray, and start-menu entry |
+| macOS | `*-mac-<arch>.dmg` | Tauri app window, menu-bar icon, and `AllSessions.app` |
+| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | Tauri app window, system tray, and desktop entry |
 
-The Windows, macOS, and Linux launchers open the local viewer automatically and provide actions for opening AllSessions, checking for updates, and stopping the background service. An available update can be downloaded, verified, and opened in the platform installer. Linux uses AppIndicator; GNOME desktops that hide legacy tray icons may require the AppIndicator/KStatusNotifierItem extension. All launchers still read only the supported session directories of the current user. The macOS package is not code-signed or notarized yet, so Gatekeeper may require an explicit local approval before it can be opened.
+Windows, macOS, and Linux now share one Tauri 2 desktop shell. It opens the local viewer inside a native app window and provides tray actions for opening AllSessions, checking for updates, and exiting. Available updates can be downloaded, verified, and opened in the platform installer. The existing Node.js server and parsers are bundled as a sidecar, avoiding a second implementation of session logic. GNOME desktops that hide legacy tray icons may require the AppIndicator/KStatusNotifierItem extension. The macOS build is not code-signed or notarized yet, so Gatekeeper may require explicit local approval.
 
 Before publishing, maintainers add a version section to `CHANGELOG.md` that matches `package.json`, then push a `v<package-version>` tag. The workflow validates the version, extracts that changelog section as the GitHub Release notes, and builds Windows x64, macOS ARM64, macOS x64, and Linux x64 installers. For example, version `1.2.3` requires a `## [1.2.3]` changelog section and tag `v1.2.3`. An existing tag can also be rebuilt manually from the Actions page by entering that tag name.
 
-To create a native installer locally, install the platform packager first (Inno Setup on Windows, `pkgbuild` on macOS, or `dpkg-deb` on Debian/Ubuntu), then run:
+To create a desktop installer locally, install Node.js 24, pnpm, Rust, and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for the current platform, then run:
 
 ```bash
 pnpm release:build
 ```
+
+Use `pnpm desktop:dev` while developing the desktop shell. `pnpm start` remains available for browser-only development.
 
 ## Configuration
 

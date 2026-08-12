@@ -134,6 +134,7 @@ test("macOS 和 Linux 启动器提供托盘更新安装", async () => {
   assert.equal((workflow.match(/actions\/checkout@v5/g) || []).length, 2);
   assert.equal((workflow.match(/actions\/setup-node@v5/g) || []).length, 2);
   assert.equal((workflow.match(/node-version: 24/g) || []).length, 2);
+  assert.equal((workflow.match(/package-manager-cache: false/g) || []).length, 2);
 });
 
 test("Windows 发布载荷包含独立运行时、命令行入口和应用图标", async (t) => {

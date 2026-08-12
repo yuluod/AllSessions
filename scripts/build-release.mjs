@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(scriptDir, "..");
 
-const applicationEntries = ["server", "public", "package.json", "README.md", "README.zh-CN.md", "LICENSE"];
+const applicationEntries = ["server", "public", "package.json", "README.md", "README.zh-CN.md", "CHANGELOG.md", "LICENSE"];
 const supportedPlatforms = new Set(["win32", "darwin", "linux"]);
 const supportedArchitectures = new Set(["x64", "arm64"]);
 
@@ -104,7 +104,8 @@ export function packageArchitecture(platform, arch) {
 }
 
 export function installerFileName({ platform, arch, version }) {
-  const suffix = `${platform === "win32" ? "windows" : platform}-${arch}`;
+  const platformName = platform === "win32" ? "windows" : platform === "darwin" ? "mac" : platform;
+  const suffix = `${platformName}-${arch}`;
   if (platform === "win32") return `AllSessions-${version}-${suffix}-setup.exe`;
   if (platform === "darwin") return `AllSessions-${version}-${suffix}.pkg`;
   if (platform === "linux") return `AllSessions-${version}-${suffix}.deb`;
@@ -220,6 +221,8 @@ function macInfoPlist(version) {
   <string>AllSessions</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>LSUIElement</key>
+  <true/>
   <key>CFBundleShortVersionString</key>
   <string>${version}</string>
   <key>CFBundleVersion</key>
@@ -236,6 +239,7 @@ export function debianControlFile({ arch, version }) {
     "Section: utils",
     "Priority: optional",
     `Architecture: ${packageArchitecture("linux", arch)}`,
+    "Depends: libayatana-appindicator3-1, libgtk-3-0, libcurl4, libjson-glib-1.0-0, xdg-utils",
     "Maintainer: AllSessions <maintainers@allsessions.local>",
     "Description: Local AI session viewer",
     " AllSessions reads local Codex, Claude Code, and Gemini CLI session histories."
@@ -363,6 +367,23 @@ function runCommand(command, args, cwd) {
   });
 }
 
+function runCommandOutput(command, args, cwd) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "inherit"] });
+    let output = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { output += chunk; });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolve(output);
+        return;
+      }
+      reject(new Error(`${command} exited with ${signal || `code ${code}`}`));
+    });
+  });
+}
+
 async function createWindowsInstaller({ payloadDir, workDir, outputDir, arch, version }) {
   const compilerPath = process.env.CSC_PATH
     || path.join(process.env.WINDIR || "C:\\Windows", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe");
@@ -376,6 +397,7 @@ async function createWindowsInstaller({ payloadDir, workDir, outputDir, arch, ve
       `/win32icon:${path.join(payloadDir, "AllSessions.ico")}`,
       "/reference:System.dll",
       "/reference:System.Drawing.dll",
+      "/reference:System.Web.Extensions.dll",
       "/reference:System.Windows.Forms.dll",
       path.join(projectRoot, "packaging", "windows", "AllSessionsLauncher.cs")
     ],
@@ -386,7 +408,21 @@ async function createWindowsInstaller({ payloadDir, workDir, outputDir, arch, ve
   await runCommand(process.env.ISCC_PATH || "ISCC.exe", [scriptPath], workDir);
 }
 
-async function createMacInstaller({ packageRoot, outputDir, arch, version }) {
+async function createMacInstaller({ packageRoot, workDir, outputDir, arch, version }) {
+  const executablePath = path.join(packageRoot, "AllSessions.app", "Contents", "MacOS", "AllSessions");
+  await runCommand(
+    "xcrun",
+    [
+      "swiftc",
+      "-O",
+      "-framework",
+      "AppKit",
+      path.join(projectRoot, "packaging", "macos", "AllSessionsLauncher.swift"),
+      "-o",
+      executablePath
+    ],
+    workDir
+  );
   const artifactPath = path.join(outputDir, installerFileName({ platform: "darwin", arch, version }));
   await runCommand(
     "pkgbuild",
@@ -412,6 +448,28 @@ async function createLinuxInstaller({ payloadDir, workDir, outputDir, arch, vers
   const desktopDirectory = path.join(debRoot, "usr", "share", "applications");
   const controlDirectory = path.join(debRoot, "DEBIAN");
   const artifactPath = path.join(outputDir, installerFileName({ platform: "linux", arch, version }));
+
+  const pkgConfigOutput = await runCommandOutput(
+    "pkg-config",
+    ["--cflags", "--libs", "ayatana-appindicator3-0.1", "gtk+-3.0", "libcurl", "json-glib-1.0"],
+    workDir
+  );
+  const compilerFlags = pkgConfigOutput.trim().split(/\s+/).filter(Boolean);
+  const launcherPath = path.join(payloadDir, "allsessions");
+  await runCommand(
+    "gcc",
+    [
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      path.join(projectRoot, "packaging", "linux", "AllSessionsLauncher.c"),
+      "-o",
+      launcherPath,
+      ...compilerFlags
+    ],
+    workDir
+  );
+  await chmod(launcherPath, 0o755);
 
   await rm(debRoot, { recursive: true, force: true });
   await mkdir(appDirectory, { recursive: true });

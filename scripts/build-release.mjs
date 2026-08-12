@@ -414,6 +414,7 @@ async function createMacInstaller({ packageRoot, workDir, outputDir, arch, versi
     "xcrun",
     [
       "swiftc",
+      "-parse-as-library",
       "-O",
       "-framework",
       "AppKit",

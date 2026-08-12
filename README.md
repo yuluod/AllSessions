@@ -55,7 +55,7 @@ Custom source directories can be configured with environment variables.
 
 Requirements:
 
-- Node.js 20 or later
+- Node.js 24 or later
 - pnpm 11.10.0 or later
 - At least one supported local session directory
 

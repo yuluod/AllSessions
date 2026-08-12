@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   assertReleaseVersion,
   debianControlFile,
+  innoScript,
   installerFileName,
   packageArchitecture,
   parseCliArguments,
@@ -60,6 +61,19 @@ test("发布标签必须与 package.json 版本一致", () => {
   assert.doesNotThrow(() => assertReleaseVersion("1.2.3", "v1.2.3"));
   assert.throws(() => assertReleaseVersion("1.2.3", "v1.2.4"), /does not match/);
   assert.throws(() => assertReleaseVersion("invalid"), /Invalid release version/);
+});
+
+test("Windows 安装器通过 wscript.exe 启动 VBS", () => {
+  const script = innoScript({
+    payloadDir: "C:\\payload",
+    outputDir: "C:\\release",
+    arch: "x64",
+    version: "1.2.3"
+  });
+
+  assert.doesNotMatch(script, /Filename: "\{app\}\\AllSessions\.vbs"/);
+  assert.equal((script.match(/Filename: "\{sys\}\\wscript\.exe"/g) || []).length, 3);
+  assert.equal((script.match(/Parameters: """\{app\}\\AllSessions\.vbs"""/g) || []).length, 3);
 });
 
 test("Windows 发布载荷包含独立运行时和隐藏窗口启动器", async (t) => {

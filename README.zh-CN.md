@@ -72,11 +72,11 @@ GitHub Releases 会提供自包含安装包。安装包内置对应平台的 Nod
 
 | 平台 | 发布文件 | 安装结果 |
 |------|----------|----------|
-| Windows x64 | `*-windows-x64-setup.exe` | 开始菜单入口与可选桌面快捷方式 |
+| Windows x64 | `*-windows-x64-setup.exe` | 原生启动器、系统托盘、开始菜单入口与可选桌面快捷方式 |
 | macOS | `*-darwin-<arch>.pkg` | `/Applications` 中的 `AllSessions.app` |
 | Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | `/opt/AllSessions` 下的程序与 `allsessions` 命令 |
 
-启动器会自动打开本地查看器，仍然只读取当前用户的受支持会话目录。macOS 安装包暂未进行代码签名与公证，首次打开时可能需要在系统安全设置中手动允许。
+Windows 启动器会自动打开本地查看器，托盘菜单可以重新打开页面或退出后台服务。所有启动器仍然只读取当前用户的受支持会话目录。macOS 安装包暂未进行代码签名与公证，首次打开时可能需要在系统安全设置中手动允许。
 
 维护者只需推送名称为 `v<package-version>` 的标签，即可触发发布工作流。工作流会校验标签与 `package.json` 的版本一致，构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包，上传到 GitHub Release，并自动生成发布说明。例如版本为 `1.2.3` 时，必须使用 `v1.2.3` 标签发布。已有标签也可以在 Actions 页面手动填写标签名后重新构建。
 

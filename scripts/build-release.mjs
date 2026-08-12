@@ -158,12 +158,31 @@ function windowsLauncher() {
   ].join("\r\n");
 }
 
-function windowsBackgroundLauncher() {
-  return [
-    "Set fileSystem = CreateObject(\"Scripting.FileSystemObject\")",
-    "appRoot = fileSystem.GetParentFolderName(WScript.ScriptFullName)",
-    "CreateObject(\"WScript.Shell\").Run Chr(34) & appRoot & \"\\AllSessions.cmd\" & Chr(34), 0, False"
-  ].join("\r\n");
+export function pngToIcoBuffer(png) {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (!Buffer.isBuffer(png) || png.length < 24 || !png.subarray(0, 8).equals(signature)) {
+    throw new Error("Windows icon source must be a valid PNG image");
+  }
+  const width = png.readUInt32BE(16);
+  const height = png.readUInt32BE(20);
+  if (width < 1 || width > 256 || height < 1 || height > 256) {
+    throw new Error("Windows icon dimensions must be between 1 and 256 pixels");
+  }
+
+  const icon = Buffer.alloc(22 + png.length);
+  icon.writeUInt16LE(0, 0);
+  icon.writeUInt16LE(1, 2);
+  icon.writeUInt16LE(1, 4);
+  icon[6] = width === 256 ? 0 : width;
+  icon[7] = height === 256 ? 0 : height;
+  icon[8] = 0;
+  icon[9] = 0;
+  icon.writeUInt16LE(1, 10);
+  icon.writeUInt16LE(32, 12);
+  icon.writeUInt32LE(png.length, 14);
+  icon.writeUInt32LE(22, 18);
+  png.copy(icon, 22);
+  return icon;
 }
 
 function unixLauncher() {
@@ -226,7 +245,8 @@ export function debianControlFile({ arch, version }) {
 async function createLaunchers(payloadDir, platform) {
   if (platform === "win32") {
     await writeFile(path.join(payloadDir, "AllSessions.cmd"), windowsLauncher(), "utf8");
-    await writeFile(path.join(payloadDir, "AllSessions.vbs"), windowsBackgroundLauncher(), "utf8");
+    const iconPng = await readFile(path.join(payloadDir, "public", "assets", "allsessions-icon-v2.png"));
+    await writeFile(path.join(payloadDir, "AllSessions.ico"), pngToIcoBuffer(iconPng));
     return;
   }
   const launcherPath = path.join(payloadDir, "allsessions");
@@ -308,6 +328,9 @@ OutputBaseFilename=AllSessions-${version}-windows-${arch}-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#MySourceDir}\\AllSessions.ico
+UninstallDisplayIcon={app}\\AllSessions.exe
+AppMutex=Local\\AllSessions.Tray
 ArchitecturesAllowed=${innoArchitecture}
 ArchitecturesInstallIn64BitMode=${innoArchitecture}
 
@@ -318,11 +341,11 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "{#MySourceDir}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\\AllSessions"; Filename: "{sys}\\wscript.exe"; Parameters: """{app}\\AllSessions.vbs"""; WorkingDir: "{app}"
-Name: "{autodesktop}\\AllSessions"; Filename: "{sys}\\wscript.exe"; Parameters: """{app}\\AllSessions.vbs"""; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\\AllSessions"; Filename: "{app}\\AllSessions.exe"; WorkingDir: "{app}"
+Name: "{autodesktop}\\AllSessions"; Filename: "{app}\\AllSessions.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{sys}\\wscript.exe"; Parameters: """{app}\\AllSessions.vbs"""; Description: "Launch AllSessions"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\\AllSessions.exe"; Description: "Launch AllSessions"; Flags: nowait postinstall skipifsilent
 `;
 }
 
@@ -341,6 +364,23 @@ function runCommand(command, args, cwd) {
 }
 
 async function createWindowsInstaller({ payloadDir, workDir, outputDir, arch, version }) {
+  const compilerPath = process.env.CSC_PATH
+    || path.join(process.env.WINDIR || "C:\\Windows", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe");
+  await requirePath(compilerPath, "C# compiler");
+  await runCommand(
+    compilerPath,
+    [
+      "/nologo",
+      "/target:winexe",
+      `/out:${path.join(payloadDir, "AllSessions.exe")}`,
+      `/win32icon:${path.join(payloadDir, "AllSessions.ico")}`,
+      "/reference:System.dll",
+      "/reference:System.Drawing.dll",
+      "/reference:System.Windows.Forms.dll",
+      path.join(projectRoot, "packaging", "windows", "AllSessionsLauncher.cs")
+    ],
+    workDir
+  );
   const scriptPath = path.join(workDir, "installer.iss");
   await writeFile(scriptPath, innoScript({ payloadDir, outputDir, arch, version }), "utf8");
   await runCommand(process.env.ISCC_PATH || "ISCC.exe", [scriptPath], workDir);

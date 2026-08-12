@@ -72,11 +72,11 @@ GitHub Releases provide self-contained installers. They bundle the matching Node
 
 | Platform | Release asset | Installation result |
 |----------|---------------|---------------------|
-| Windows x64 | `*-windows-x64-setup.exe` | Start-menu and optional desktop shortcut |
+| Windows x64 | `*-windows-x64-setup.exe` | Native launcher, system tray, start-menu entry, and optional desktop shortcut |
 | macOS | `*-darwin-<arch>.pkg` | `AllSessions.app` in `/Applications` |
 | Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | Application files in `/opt/AllSessions` and an `allsessions` command |
 
-The launcher opens the local viewer automatically and still reads only the supported session directories of the current user. The macOS package is not code-signed or notarized yet, so Gatekeeper may require an explicit local approval before it can be opened.
+The Windows launcher opens the local viewer automatically and provides tray actions for reopening the page and stopping its background service. All launchers still read only the supported session directories of the current user. The macOS package is not code-signed or notarized yet, so Gatekeeper may require an explicit local approval before it can be opened.
 
 For maintainers, pushing a tag named `v<package-version>` triggers the release workflow. The workflow verifies that the tag matches `package.json`, builds Windows x64, macOS ARM64, macOS x64, and Linux x64 installers, uploads them to a GitHub Release, and generates release notes automatically. For example, version `1.2.3` must be released with tag `v1.2.3`. An existing tag can also be rebuilt manually from the Actions page by entering that tag name.
 

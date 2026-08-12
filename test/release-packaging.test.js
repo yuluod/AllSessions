@@ -31,10 +31,11 @@ test("跨平台安装包名称保持稳定且 macOS 使用 mac", () => {
 });
 
 test("桌面能力统一由 Tauri 提供", async () => {
-  const [config, cargo, rustSource, updater, workflow] = await Promise.all([
+  const [config, cargo, rustSource, mainSource, updater, workflow] = await Promise.all([
     readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
     readFile(path.join(projectRoot, "src-tauri", "Cargo.toml"), "utf8"),
     readFile(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8"),
+    readFile(path.join(projectRoot, "src-tauri", "src", "main.rs"), "utf8"),
     readFile(path.join(projectRoot, "src-tauri", "src", "updater.rs"), "utf8"),
     readFile(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8")
   ]);
@@ -44,6 +45,7 @@ test("桌面能力统一由 Tauri 提供", async () => {
   assert.match(cargo, /features = \["tray-icon", "image-png"\]/);
   assert.match(rustSource, /TrayIconBuilder/);
   assert.match(rustSource, /sidecar\("node"\)/);
+  assert.match(mainSource, /windows_subsystem = "windows"/);
   assert.match(rustSource, /tauri_plugin_updater::Builder/);
   assert.match(updater, /检查或安装更新失败/);
   assert.match(updater, /download_and_install/);

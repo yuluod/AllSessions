@@ -110,6 +110,9 @@ out
 .nuxt
 dist
 release/
+/src-tauri/target/
+/src-tauri/binaries/
+/src-tauri/gen/schemas/
 
 # Gatsby files
 .cache/

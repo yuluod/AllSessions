@@ -288,7 +288,7 @@ export async function prepareReleasePayload({
   return { workDir, payloadDir, packageRoot };
 }
 
-function innoScript({ payloadDir, outputDir, arch, version }) {
+export function innoScript({ payloadDir, outputDir, arch, version }) {
   const innoArchitecture = arch === "x64" ? "x64compatible" : "arm64";
   return `#define MyAppName "AllSessions"
 #define MyAppVersion "${version}"
@@ -318,11 +318,11 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "{#MySourceDir}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\\AllSessions"; Filename: "{app}\\AllSessions.vbs"; WorkingDir: "{app}"
-Name: "{autodesktop}\\AllSessions"; Filename: "{app}\\AllSessions.vbs"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\\AllSessions"; Filename: "{sys}\\wscript.exe"; Parameters: """{app}\\AllSessions.vbs"""; WorkingDir: "{app}"
+Name: "{autodesktop}\\AllSessions"; Filename: "{sys}\\wscript.exe"; Parameters: """{app}\\AllSessions.vbs"""; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\\AllSessions.vbs"; Description: "Launch AllSessions"; Flags: nowait postinstall skipifsilent
+Filename: "{sys}\\wscript.exe"; Parameters: """{app}\\AllSessions.vbs"""; Description: "Launch AllSessions"; Flags: nowait postinstall skipifsilent
 `;
 }
 

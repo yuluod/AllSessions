@@ -4,162 +4,107 @@
 
 # AllSessions
 
-<p>一个仅供本机使用的轻量 AI 编码助手会话查看器。</p>
+<p>一个本地优先的 AI 编码助手会话桌面工作台。</p>
+
+<p><a href="./README.md">English</a> · <a href="#功能">功能</a> · <a href="#开发">开发</a></p>
 
 <p>
-  <a href="./README.md">English</a>
-  ·
-  <a href="#功能">功能</a>
-  ·
-  <a href="#快速开始">快速开始</a>
-  ·
-  <a href="#安装包与发布">安装包</a>
-  ·
-  <a href="#配置">配置</a>
-</p>
-
-<p>
-  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white" />
-  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-11.10.0-F69220?logo=pnpm&logoColor=white" />
+  <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" />
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white" />
   <img alt="许可证" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" />
   <img alt="多语言" src="https://img.shields.io/badge/i18n-ZH%20%7C%20EN-7B61FF" />
 </p>
 
 </div>
 
-AllSessions 将受支持的本地 AI 会话来源聚合到同一个浏览器界面，提供浏览、筛选、全文搜索、统计和详情查看。普通查看模式不会修改来源数据，并且只允许监听 loopback 地址。
+AllSessions 将 Codex、Claude Code 和 Gemini CLI 的本地会话聚合到一个 Tauri 桌面应用中。会话发现、解析、搜索、缓存、文件监听和维护操作均由 Rust 实现；前端 WebView 只负责展示，不启动 HTTP 服务，也不捆绑 Node.js 运行时。
 
-> AllSessions 是独立的社区项目，与 OpenAI、Anthropic、Google 不存在隶属、赞助或官方认可关系。文中产品及公司名称仅用于说明兼容的本地会话来源。
+> AllSessions 是独立的社区项目，与 OpenAI、Anthropic、Google 不存在隶属、赞助或官方认可关系。产品及公司名称仅用于说明兼容的本地会话来源。
 
 ## 功能
 
 - 统一浏览 Codex、Codex 归档、Claude Code 和 Gemini CLI 会话
-- 按来源、provider、日期、项目和工作目录筛选
-- 搜索会话派生文本，并可增量加载大量匹配结果
-- 查看归一化对话和原始事件
-- 默认隐藏 Codex subagent、Claude Code sidechain/Thinking 和注入的系统上下文
-- 监听本地会话文件并自动刷新界面
-- 支持中英文切换
-- 对 Codex 和 Claude Code 大会话限制内存占用，并明确标记截断内容
-- 从已注册的来源适配器动态生成来源筛选，而不是在前端维护固定列表
+- 按来源、Provider、日期、项目和工作目录筛选并搜索
+- 查看归一化对话、工具调用与原始事件
+- 监听来源文件并通过 Tauri 事件自动刷新
+- 默认隐藏 subagent、sidechain、Thinking 和注入的系统上下文
+- 使用流式摘要解析、64KB/会话搜索上限、首尾详情窗口和 64MB LRU 控制大历史内存
+- 使用 SQLite 增量索引缓存，并在首次升级时导入旧版 `session-index.json`
+- 提供默认关闭、带预览指纹和字段级回滚的 Codex Provider 维护工具
 
 ## 支持来源
 
-| 来源 | 本地路径 | 当前支持范围 |
-|------|----------|--------------|
-| Codex | `~/.codex/sessions` | 会话元数据、消息、工具调用、原始事件和搜索 |
+| 来源 | 默认本地路径 | 支持范围 |
+| --- | --- | --- |
+| Codex | `~/.codex/sessions` | 元数据、消息、工具调用、原始事件、搜索和实时刷新 |
 | Codex 归档 | `~/.codex/archived_sessions` | 只读浏览归档会话 |
-| Claude Code | `~/.claude/projects/**/*.jsonl` | 用户与助手消息、Thinking、工具调用与结果、原始事件、搜索和实时刷新；旧版元数据作为兼容回退 |
-| Gemini CLI | `~/.gemini/tmp/*/logs.json` | 本地会话聚合和详情查看 |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | 对话、Thinking、工具调用/结果、搜索和实时刷新；旧版 `sessions/*.json` 作为回退 |
+| Gemini CLI | `~/.gemini/tmp/*/logs.json` | 按 sessionId 聚合本地对话和详情 |
 
-可以通过环境变量指定自定义来源目录。
+## 安装包与运行
 
-## 快速开始
+从 GitHub Releases 下载当前平台安装包。普通用户不需要安装 Node.js、pnpm 或 Rust。
 
-运行要求：
+| 平台 | 发布文件 |
+| --- | --- |
+| Windows x64 | `*-windows-x64-setup.exe` |
+| macOS ARM64 / x64 | `*-mac-<arch>.dmg` |
+| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` |
 
-- Node.js 24 或更高版本
-- pnpm 11.10.0 或更高版本
-- 至少存在一个受支持的本地会话目录
-
-```bash
-pnpm install
-pnpm start
-```
-
-打开 `http://127.0.0.1:3210`。AllSessions 会扫描当前存在的受支持本地会话目录。服务没有远程认证，并会拒绝 `0.0.0.0`、局域网地址和公网地址。
-
-## 安装包与发布
-
-GitHub Releases 会提供自包含安装包。安装包内置对应平台的 Node.js 运行时，普通用户不需要安装 Node.js、pnpm，也不需要下载源码或构建项目。
-
-| 平台 | 发布文件 | 安装结果 |
-|------|----------|----------|
-| Windows x64 | `*-windows-x64-setup.exe` | Tauri 应用窗口、系统托盘和开始菜单入口 |
-| macOS | `*-mac-<arch>.dmg` | Tauri 应用窗口、菜单栏图标及 `AllSessions.app` |
-| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | Tauri 应用窗口、系统托盘和桌面入口 |
-
-Windows、macOS 和 Linux 现在共用同一个 Tauri 2 桌面壳，在原生应用窗口内打开本地查看器，并提供“打开 AllSessions、检查更新、退出”托盘菜单。更新由 Tauri 官方 updater 完成版本检查、签名校验、下载、安装和重启。现有 Node.js 服务和解析器作为 sidecar 内置，因此桌面端不会重复实现会话逻辑。部分默认隐藏传统托盘的 GNOME 桌面需要启用 AppIndicator/KStatusNotifierItem 扩展。macOS 安装包暂未代码签名或公证，首次打开时可能需要在系统安全设置中手动允许。
-
-维护者发布前需要在 `CHANGELOG.md` 中添加与 `package.json` 对应的版本段，再推送名称为 `v<package-version>` 的标签。工作流会校验版本关系，提取对应版本的更新日志作为 GitHub Release 说明，并构建 Windows x64、macOS ARM64、macOS x64 和 Linux x64 安装包。例如版本为 `1.2.3` 时，更新日志必须包含 `## [1.2.3]`，并使用标签 `v1.2.3`。已有标签也可以在 Actions 页面手动填写标签名后重新构建。
-
-Tauri Action 使用仓库 Secret `TAURI_SIGNING_PRIVATE_KEY` 签名更新包，并自动发布 updater 使用的 `latest.json`。签名私钥必须安全备份；丢失后，已安装版本将无法验证后续更新。
-
-本机构建桌面安装包需要 Node.js 24、pnpm、Rust 和当前系统的 [Tauri 2 前置依赖](https://v2.tauri.app/start/prerequisites/)，然后执行：
-
-```bash
-pnpm release:build
-```
-
-开发桌面壳可执行 `pnpm desktop:dev`；仅开发网页服务仍可执行 `pnpm start`。
+Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新流程。部分 GNOME 桌面需要 AppIndicator/KStatusNotifierItem 扩展。macOS 安装包暂未公证，首次打开时可能需要在系统安全设置中手动允许。
 
 ## 配置
 
+环境变量需在启动桌面应用前设置：
+
 | 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `PORT` | 服务端口号 | `3210` |
-| `HOST` | 监听地址，仅接受 loopback 地址 | `127.0.0.1` |
-| `CODEX_SESSIONS_DIR` | Codex 会话根目录 | `~/.codex/sessions` |
-| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex 归档会话目录 | `~/.codex/archived_sessions` |
+| --- | --- | --- |
+| `CODEX_HOME` | Codex 数据根目录 | `~/.codex` |
+| `CODEX_SESSIONS_DIR` | Codex 会话目录 | `$CODEX_HOME/sessions` |
+| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex 归档目录 | `$CODEX_HOME/archived_sessions` |
 | `CLAUDE_SESSIONS_DIR` | Claude Code 根目录 | `~/.claude` |
 | `GEMINI_SESSIONS_DIR` | Gemini CLI 根目录 | `~/.gemini` |
-| `SESSION_VIEWER_CACHE_DIR` | 私有增量索引缓存目录 | 系统用户缓存目录下的 `AllSessions` |
-| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久化索引缓存 | 未设置 |
-
-示例：
-
-```bash
-PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
-```
+| `SESSION_VIEWER_CACHE_DIR` | Rust SQLite 索引缓存目录 | 系统用户缓存目录下的 `AllSessions` |
+| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存 | 未设置 |
 
 ## 隐私与安全
 
-本地 AI 历史可能包含提示词、工具输出、源代码片段、工作目录、provider 标识及其他敏感信息。
+本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览不会修改来源数据；唯一写入来源数据的能力是工具页中需显式开启的 Codex Provider 维护模式。
 
-- 分享导出文件前应人工检查。
-- 增量索引缓存和 Provider 修复备份都应视为敏感本地数据。
-- 不要在公开 issue 中附加真实会话、数据库、缓存、备份、凭据或未经脱敏的路径。
-- 不要绕过 loopback 限制将服务暴露到网络。
+- 分享导出、日志、截图或 issue 前应人工脱敏。
+- 索引缓存与维护备份均应视为敏感本地数据。
+- 不要公开真实会话、数据库、缓存、备份、凭据或未经脱敏的路径。
+- 应用没有本地 HTTP 监听端口，前后端只通过 Tauri IPC 与事件通信。
 
-漏洞私下报告方式及安全边界见 [SECURITY.md](./SECURITY.md)。
+漏洞报告方式见 [SECURITY.md](./SECURITY.md)。第三方 Rust 依赖及许可证见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
-桌面安装包会捆绑 Node.js 和 Rust 依赖。对应版本与再分发声明记录在
-[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)，完整 Node.js 许可证集合随
-[`third-party/node/LICENSE`](./third-party/node/LICENSE) 分发。发布使用 `.nvmrc` 固定 Node.js 版本，保证可复现。
+## Codex Provider 维护
 
-## 可选的 Codex Provider 修复
+进入「工具」，打开维护模式开关后，可预览第三方 Provider 历史重新归属计划。执行与回滚都会检查 Codex App 已退出，计划在数据变化后失效，写入前创建备份，且回滚只恢复 `model_provider` 字段以保留之后新增的数据。该功能不会修改 `config.toml` 或其他 Agent 数据。
 
-AllSessions 包含一个默认关闭的维护工具，用于处理切换第三方 provider 后不可见的 Codex 历史。正常启动后，在「工具」页面打开维护模式开关即可使用。
-
-```bash
-pnpm start
-```
-
-维护流程要求精确预览、明确选择 provider、确认 Codex App 已退出、校验备份并支持回滚。它只修改选中的 Codex provider 元数据，不会修改 `config.toml` 或第三方工具数据。
-
-维护开关关闭时服务保持只读；开启后仍需生成精确计划并确认 Codex App 已退出。使用维护模式或 CLI 前，请先阅读 [Codex Provider 可见性修复](./docs/codex-provider-repair.zh-CN.md)。
-
-## 已知边界
-
-- 上游工具的本地会话格式可能随版本变化；不受支持的历史记录可能只显示原始事件。
-- Claude Code 的本地项目转录格式不是稳定公开 API；未知记录会保留在原始事件中，旧环境回退到用户输入历史。
-- Codex 和 Claude Code 大会话详情使用带标记的首尾安全窗口，搜索索引也会限制每个会话保存的文本长度。
-- Gemini 使用持久化文件分片缓存和增量刷新，但发生变化的 `logs.json` 仍需作为完整 JSON 数组重新解析。
-- 注入的 developer 和环境上下文默认不进入对话与搜索视图，但仍存在于本地原始数据和完整导出中。
+完整边界见 [Codex Provider 可见性修复](./docs/codex-provider-repair.zh-CN.md)。
 
 ## 开发
 
+构建要求：Node.js 24、pnpm 11.10、Rust stable 和当前平台的 [Tauri 2 前置依赖](https://v2.tauri.app/start/prerequisites/)。Node.js 仅用于前端构建和发布脚本，不进入安装包运行时。
+
 ```bash
 pnpm install
+pnpm desktop:dev
+```
+
+验证和构建：
+
+```bash
 pnpm test
 pnpm lint
 pnpm build
+cargo test --manifest-path src-tauri/Cargo.toml
 pnpm licenses:check
+pnpm release:build
 ```
 
-来源特有的发现、解析、详情加载、缓存和刷新行为统一收敛在 `server/source-adapters.js` 的适配器后。
-增加其他 Agent 来源前请阅读[来源适配器架构](./docs/source-adapters.md)。内置来源的实现边界统一归档在
-[`docs/sources`](./docs/sources)，其中包括 [Claude Code 来源说明](./docs/sources/claude-code.md)。
+来源实现集中在 [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs)，缓存、Tauri 边界和维护操作分别位于 `cache.rs`、`backend.rs` 与 `maintenance.rs`。增加来源前请阅读[来源架构](./docs/source-adapters.md)。
 
 ## 许可证
 

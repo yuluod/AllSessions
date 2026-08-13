@@ -1,166 +1,107 @@
 <div align="center">
 
-<img src="./public/assets/allsessions-icon-v2.png" alt="AllSessions logo" width="112" height="112" />
+<img src="./public/assets/allsessions-icon-v2.png" alt="AllSessions icon" width="112" height="112" />
 
 # AllSessions
 
-<p>A lightweight, local-only viewer for browsing AI coding assistant session history.</p>
+<p>A local-first desktop workspace for AI coding-agent sessions.</p>
+
+<p><a href="./README.zh-CN.md">简体中文</a> · <a href="#features">Features</a> · <a href="#development">Development</a></p>
 
 <p>
-  <a href="./README.zh-CN.md">中文文档</a>
-  ·
-  <a href="#features">Features</a>
-  ·
-  <a href="#quick-start">Quick Start</a>
-  ·
-  <a href="#installers-and-releases">Installers</a>
-  ·
-  <a href="#configuration">Configuration</a>
-</p>
-
-<p>
-  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white" />
-  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-11.10.0-F69220?logo=pnpm&logoColor=white" />
+  <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" />
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white" />
   <img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" />
-  <img alt="i18n" src="https://img.shields.io/badge/i18n-ZH%20%7C%20EN-7B61FF" />
 </p>
 
 </div>
 
-AllSessions aggregates supported local AI session sources into one browser interface for browsing, filtering, full-text search, statistics, and detail inspection. Normal viewer mode reads source data without modifying it and only listens on a loopback address.
+AllSessions combines local Codex, Claude Code, and Gemini CLI history in one Tauri desktop app. Rust owns session discovery, parsing, search, caching, file watching, and maintenance. The WebView is a presentation layer: no HTTP server is opened and no Node.js runtime is bundled.
 
-> AllSessions is an independent community project. It is not affiliated with, endorsed by, or sponsored by OpenAI, Anthropic, or Google. Product and company names are used only to identify compatible local session sources.
+> AllSessions is an independent community project. It is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic, or Google. Product names are used only to identify compatible local data sources.
 
 ## Features
 
-- Browse Codex, Codex Archived, Claude Code, and Gemini CLI sessions together
-- Filter by source, provider, date, project, and working directory
-- Search session-derived text and load large result sets incrementally
-- Inspect normalized conversations and raw events
-- Hide Codex subagent, Claude Code sidechain/thinking, and injected system context by default
-- Watch local session files and refresh the interface automatically
-- Switch between Chinese and English
-- Bound memory use for large Codex and Claude Code sessions with visible truncation markers
-- Discover source filters from registered source adapters instead of a fixed frontend list
+- Browse Codex, archived Codex, Claude Code, and Gemini CLI sessions together
+- Filter and search by source, provider, date, project, and working directory
+- Inspect normalized conversations, tool activity, and raw events
+- Refresh through native filesystem watching and Tauri events
+- Hide subagents, sidechains, thinking, and injected context by default
+- Bound large-history memory with streaming summaries, capped search text, head/tail detail windows, and a 64 MB LRU
+- Persist the incremental index in SQLite and import the previous `session-index.json` on upgrade
+- Repair Codex provider visibility through an opt-in, fingerprinted, field-level rollback workflow
 
 ## Supported sources
 
-| Source | Local path | Current support |
-|--------|------------|-----------------|
-| Codex | `~/.codex/sessions` | Session metadata, messages, tool calls, raw events, and search |
-| Codex Archived | `~/.codex/archived_sessions` | Read-only archived-session browsing |
-| Claude Code | `~/.claude/projects/**/*.jsonl` | User and assistant messages, thinking, tool calls and results, raw events, search, and live refresh; legacy metadata remains as a fallback |
-| Gemini CLI | `~/.gemini/tmp/*/logs.json` | Local session aggregation and detail inspection |
+| Source | Default path | Coverage |
+| --- | --- | --- |
+| Codex | `~/.codex/sessions` | Metadata, messages, tools, raw events, search, live refresh |
+| Codex Archived | `~/.codex/archived_sessions` | Read-only archived sessions |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | Messages, thinking, tools/results, search, live refresh; legacy `sessions/*.json` fallback |
+| Gemini CLI | `~/.gemini/tmp/*/logs.json` | Local session aggregation and details |
 
-Custom source directories can be configured with environment variables.
+## Install and run
 
-## Quick start
+Download the installer for your platform from GitHub Releases. End users do not need Node.js, pnpm, Rust, or a source checkout.
 
-Requirements:
+| Platform | Release file |
+| --- | --- |
+| Windows x64 | `*-windows-x64-setup.exe` |
+| macOS ARM64 / x64 | `*-mac-<arch>.dmg` |
+| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` |
 
-- Node.js 24 or later
-- pnpm 11.10.0 or later
-- At least one supported local session directory
-
-```bash
-pnpm install
-pnpm start
-```
-
-Open `http://127.0.0.1:3210`. AllSessions scans the supported local session directories that are present. It has no remote authentication and rejects wildcard, LAN, and public bind addresses.
-
-## Installers and releases
-
-GitHub Releases provide self-contained installers. They bundle the matching Node.js runtime, so end users do not need Node.js, pnpm, or a source checkout.
-
-| Platform | Release asset | Installation result |
-|----------|---------------|---------------------|
-| Windows x64 | `*-windows-x64-setup.exe` | Tauri app window, system tray, and start-menu entry |
-| macOS | `*-mac-<arch>.dmg` | Tauri app window, menu-bar icon, and `AllSessions.app` |
-| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` | Tauri app window, system tray, and desktop entry |
-
-Windows, macOS, and Linux now share one Tauri 2 desktop shell. It opens the local viewer inside a native app window and provides tray actions for opening AllSessions, checking for updates, and exiting. Tauri's official updater handles version checks, signature verification, downloads, installation, and restart. The existing Node.js server and parsers are bundled as a sidecar, avoiding a second implementation of session logic. GNOME desktops that hide legacy tray icons may require the AppIndicator/KStatusNotifierItem extension. The macOS build is not code-signed or notarized yet, so Gatekeeper may require explicit local approval.
-
-Before publishing, maintainers add a version section to `CHANGELOG.md` that matches `package.json`, then push a `v<package-version>` tag. The workflow validates the version, extracts that changelog section as the GitHub Release notes, and builds Windows x64, macOS ARM64, macOS x64, and Linux x64 installers. For example, version `1.2.3` requires a `## [1.2.3]` changelog section and tag `v1.2.3`. An existing tag can also be rebuilt manually from the Actions page by entering that tag name.
-
-Tauri Action signs updater bundles with the repository secret `TAURI_SIGNING_PRIVATE_KEY` and publishes the updater's `latest.json`. Keep a secure backup of the private key; losing it prevents installed versions from verifying future updates.
-
-To create a desktop installer locally, install Node.js 24, pnpm, Rust, and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for the current platform, then run:
-
-```bash
-pnpm release:build
-```
-
-Use `pnpm desktop:dev` while developing the desktop shell. `pnpm start` remains available for browser-only development.
+All platforms use the same Tauri 2 shell, tray actions, and signed updater. GNOME may require an AppIndicator/KStatusNotifierItem extension. macOS builds are not notarized yet, so Gatekeeper may require explicit local approval.
 
 ## Configuration
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3210` |
-| `HOST` | Bind address; loopback addresses only | `127.0.0.1` |
-| `CODEX_SESSIONS_DIR` | Codex session root | `~/.codex/sessions` |
-| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex archived-session root | `~/.codex/archived_sessions` |
+Set these before starting the desktop app:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CODEX_HOME` | Codex data root | `~/.codex` |
+| `CODEX_SESSIONS_DIR` | Codex sessions | `$CODEX_HOME/sessions` |
+| `CODEX_ARCHIVED_SESSIONS_DIR` | Archived Codex sessions | `$CODEX_HOME/archived_sessions` |
 | `CLAUDE_SESSIONS_DIR` | Claude Code root | `~/.claude` |
 | `GEMINI_SESSIONS_DIR` | Gemini CLI root | `~/.gemini` |
-| `SESSION_VIEWER_CACHE_DIR` | Private incremental index cache directory | `AllSessions` under the user cache directory |
-| `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable the persistent index cache | unset |
-
-Example:
-
-```bash
-PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
-```
+| `SESSION_VIEWER_CACHE_DIR` | Rust SQLite index directory | Platform cache directory under `AllSessions` |
+| `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset |
 
 ## Privacy and security
 
-Local AI history may contain prompts, tool output, source snippets, working directories, provider identifiers, and other sensitive information.
+Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing is read-only. The only source-data mutation is the explicitly enabled Codex provider maintenance tool.
 
-- Review exported files before sharing them.
-- Treat the incremental index cache and provider-repair backups as sensitive local data.
-- Never attach real sessions, databases, caches, backups, credentials, or unredacted paths to public issues.
-- Do not bypass the loopback-only restriction to expose the server to a network.
+- Review exports, logs, screenshots, and issues before sharing.
+- Treat index caches and maintenance backups as sensitive local data.
+- Never publish real sessions, databases, credentials, or unsanitized paths.
+- The app has no local listening port; UI/backend communication uses Tauri IPC and events only.
 
-See [SECURITY.md](./SECURITY.md) for private vulnerability reporting guidance and the security boundary.
+See [SECURITY.md](./SECURITY.md) for private vulnerability reporting and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for Rust dependency licenses.
 
-Desktop releases bundle Node.js and Rust dependencies. Their versions and redistribution notices are listed in
-[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md); the complete Node.js license set is shipped in
-[`third-party/node/LICENSE`](./third-party/node/LICENSE). Node.js is pinned by `.nvmrc` for reproducible releases.
+## Codex provider maintenance
 
-## Optional Codex provider repair
+Open **Tools** and enable maintenance mode to preview a third-party provider rebucket plan. Apply and rollback verify that Codex App is closed, reject stale plans, create backups before writes, and restore only `model_provider` fields so newer data remains intact. The tool does not modify `config.toml` or other agents' data.
 
-AllSessions includes a maintenance tool, disabled by default, for Codex histories that became invisible after switching third-party providers. Start normally, then enable maintenance mode from the **Tools** page.
-
-```bash
-pnpm start
-```
-
-The workflow requires an exact preview, explicit provider selection, confirmation that Codex App is closed, verified backups, and rollback support. It modifies selected Codex provider metadata only; it does not modify `config.toml` or third-party tool data.
-
-The server remains read-only while the switch is off. Enabling it still requires an exact plan and confirmation that Codex App has exited. See [Codex Provider Visibility Repair](./docs/codex-provider-repair.md) before using maintenance mode or the CLI.
-
-## Known limitations
-
-- Local session formats can change between upstream tool versions; unsupported historical records may fall back to raw-event display.
-- Claude Code project transcripts are not a stable public API; unknown records remain available as raw events, and legacy environments fall back to user-input history.
-- Large Codex and Claude Code details use a marked head/tail safety window, and the search index stores bounded text per session.
-- Gemini logs use a persistent file-fragment cache and incremental refresh, but each changed `logs.json` must still be parsed as a complete JSON array.
-- Injected developer and environment context is excluded from default conversation and search views, but remains present in raw local data and full exports.
+See [Codex provider visibility repair](./docs/codex-provider-repair.md) for the full safety boundary.
 
 ## Development
 
+Requirements: Node.js 24, pnpm 11.10, Rust stable, and the current platform's [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/). Node.js is only a frontend build/release tool and is not part of the packaged runtime.
+
 ```bash
 pnpm install
+pnpm desktop:dev
+```
+
+```bash
 pnpm test
 pnpm lint
 pnpm build
+cargo test --manifest-path src-tauri/Cargo.toml
 pnpm licenses:check
+pnpm release:build
 ```
 
-Source-specific discovery, parsing, detail loading, caching, and refresh behavior is isolated behind adapters in
-`server/source-adapters.js`. See [Source adapter architecture](./docs/source-adapters.md) before adding another Agent source.
-Implementation notes for each built-in source live under [`docs/sources`](./docs/sources), including
-[Claude Code](./docs/sources/claude-code.md).
+Source behavior lives in [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs); caching, the Tauri boundary, and maintenance live in `cache.rs`, `backend.rs`, and `maintenance.rs`. Read the [source architecture](./docs/source-adapters.md) before adding an agent.
 
 ## License
 

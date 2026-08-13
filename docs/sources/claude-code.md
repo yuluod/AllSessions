@@ -6,14 +6,7 @@
 
 AllSessions 已支持同时扫描和聚合 Codex、Codex Archived、Claude Code 与 Gemini CLI 本地会话。Claude Code 来源通过统一的 `source_kind`、摘要结构和组合会话键接入现有列表、筛选、搜索、统计和详情接口。
 
-当前实现涉及：
-
-- `server/config.js`：声明 Claude Code 来源目录和精确的发现、监听范围。
-- `server/source-adapters.js`：统一处理文件发现、摘要缓存、增量刷新和详情加载。
-- `server/parsers/claude-code.js`：解析本地 Claude Code 会话元数据并映射到统一详情结构。
-- `server/parsers/common.js`：提供跨来源共用的摘要与消息归一化工具。
-- `server/session-store.js`：以 `${source_kind}:${id}` 作为内部组合键，避免不同来源的原始 ID 冲突。
-- 前端来源筛选、详情页和统计视图：消费统一摘要字段，并从后端适配器元数据动态获得来源名称。
+当前实现集中在 `src-tauri/src/sessions.rs`：Rust 负责目录发现、流式摘要、详情首尾窗口、消息归一化和 `${source_kind}:${id}` 组合键；`cache.rs` 与 `watcher.rs` 分别负责持久缓存和变化刷新。前端只消费统一字段。
 
 ## 数据边界
 

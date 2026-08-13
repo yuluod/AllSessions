@@ -1,14 +1,7 @@
 # Third-Party Notices
 
-AllSessions 的桌面安装包包含以下第三方软件。此清单由
+AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 `pnpm licenses:generate` 根据锁定依赖生成；发布前由 CI 验证。
-
-## Node.js
-
-桌面安装包会捆绑 Node.js v24.17.0。Node.js 使用 MIT 许可证，并包含其自身依赖的
-第三方许可声明。完整许可证文本随安装包提供在 `third-party/node/LICENSE`。
-
-来源：https://github.com/nodejs/node
 
 ## Rust dependencies
 
@@ -18,6 +11,7 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | Package | Version | License |
 | --- | --- | --- |
 | adler2 | 2.0.1 | 0BSD OR MIT OR Apache-2.0 |
+| ahash | 0.8.12 | MIT OR Apache-2.0 |
 | aho-corasick | 1.1.5 | Unlicense OR MIT |
 | alloc-no-stdlib | 2.0.4 | BSD-3-Clause |
 | alloc-stdlib | 0.2.4 | BSD-3-Clause |
@@ -64,10 +58,8 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | cc | 1.4.2 | MIT OR Apache-2.0 |
 | cesu8 | 1.1.0 | Apache-2.0/MIT |
 | cfb | 0.7.3 | MIT |
-| cfg_aliases | 0.2.2 | MIT |
 | cfg-expr | 0.15.8 | MIT OR Apache-2.0 |
 | cfg-if | 1.0.4 | MIT OR Apache-2.0 |
-| chacha20 | 0.10.1 | MIT OR Apache-2.0 |
 | chrono | 0.4.45 | MIT OR Apache-2.0 |
 | combine | 4.6.7 | MIT |
 | concurrent-queue | 2.5.0 | Apache-2.0 OR MIT |
@@ -77,7 +69,6 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | core-graphics | 0.25.0 | MIT OR Apache-2.0 |
 | core-graphics-types | 0.2.0 | MIT OR Apache-2.0 |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 |
-| cpufeatures | 0.3.0 | MIT OR Apache-2.0 |
 | crc32fast | 1.5.0 | MIT OR Apache-2.0 |
 | crossbeam-channel | 0.5.16 | MIT OR Apache-2.0 |
 | crossbeam-utils | 0.8.22 | MIT OR Apache-2.0 |
@@ -114,7 +105,6 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | dyn-clone | 1.0.20 | MIT OR Apache-2.0 |
 | embed_plist | 1.2.2 | MIT OR Apache-2.0 |
 | embed-resource | 3.0.11 | MIT |
-| encoding_rs | 0.8.35 | (Apache-2.0 OR MIT) AND BSD-3-Clause |
 | endi | 1.1.1 | MIT |
 | enumflags2 | 0.7.12 | MIT OR Apache-2.0 |
 | enumflags2_derive | 0.7.12 | MIT OR Apache-2.0 |
@@ -123,6 +113,8 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | errno | 0.3.14 | MIT OR Apache-2.0 |
 | event-listener | 5.4.2 | Apache-2.0 OR MIT |
 | event-listener-strategy | 0.5.4 | Apache-2.0 OR MIT |
+| fallible-iterator | 0.3.0 | MIT/Apache-2.0 |
+| fallible-streaming-iterator | 0.1.9 | MIT/Apache-2.0 |
 | fastrand | 2.5.0 | Apache-2.0 OR MIT |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
 | field-offset | 0.3.6 | MIT OR Apache-2.0 |
@@ -135,6 +127,7 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | foreign-types-macros | 0.2.4 | MIT/Apache-2.0 |
 | foreign-types-shared | 0.3.1 | MIT/Apache-2.0 |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |
+| fsevent-sys | 4.1.0 | MIT |
 | futures-channel | 0.3.34 | MIT OR Apache-2.0 |
 | futures-core | 0.3.34 | MIT OR Apache-2.0 |
 | futures-executor | 0.3.34 | MIT OR Apache-2.0 |
@@ -166,7 +159,9 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | gtk-sys | 0.18.2 | MIT |
 | gtk3-macros | 0.18.2 | MIT |
 | hashbrown | 0.12.3 | MIT OR Apache-2.0 |
+| hashbrown | 0.14.5 | MIT OR Apache-2.0 |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 |
+| hashlink | 0.9.1 | MIT OR Apache-2.0 |
 | heck | 0.4.1 | MIT OR Apache-2.0 |
 | heck | 0.5.0 | MIT OR Apache-2.0 |
 | hermit-abi | 0.5.2 | MIT OR Apache-2.0 |
@@ -196,9 +191,9 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | indexmap | 1.9.3 | Apache-2.0 OR MIT |
 | indexmap | 2.14.0 | Apache-2.0 OR MIT |
 | infer | 0.19.0 | MIT |
+| inotify | 0.11.4 | ISC |
+| inotify-sys | 0.1.8 | ISC |
 | ipnet | 2.12.1 | MIT OR Apache-2.0 |
-| is-docker | 0.2.0 | MIT |
-| is-wsl | 0.4.0 | MIT |
 | itoa | 1.0.18 | MIT OR Apache-2.0 |
 | javascriptcore-rs | 1.1.2 | MIT |
 | javascriptcore-rs-sys | 1.1.1 | MIT |
@@ -217,17 +212,19 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | json-patch | 3.0.1 | MIT/Apache-2.0 |
 | jsonptr | 0.6.3 | MIT OR Apache-2.0 |
 | keyboard-types | 0.7.0 | MIT OR Apache-2.0 |
+| kqueue | 1.2.1 | MIT |
+| kqueue-sys | 1.1.2 | MIT |
 | libappindicator | 0.9.0 | Apache-2.0 OR MIT |
 | libappindicator-sys | 0.9.0 | Apache-2.0 OR MIT |
 | libc | 0.2.189 | MIT OR Apache-2.0 |
 | libdbus-sys | 0.2.7 | Apache-2.0/MIT |
 | libloading | 0.7.4 | ISC |
 | libredox | 0.1.19 | MIT |
+| libsqlite3-sys | 0.30.1 | MIT |
 | linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | litemap | 0.8.2 | Unicode-3.0 |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |
 | log | 0.4.33 | MIT OR Apache-2.0 |
-| lru-slab | 0.1.2 | MIT OR Apache-2.0 OR Zlib |
 | markup5ever | 0.38.0 | MIT OR Apache-2.0 |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | memoffset | 0.9.1 | MIT |
@@ -240,6 +237,8 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | ndk | 0.9.0 | MIT OR Apache-2.0 |
 | ndk-sys | 0.6.0+11769913 | MIT OR Apache-2.0 |
 | new_debug_unreachable | 1.0.6 | MIT |
+| notify | 8.2.0 | CC0-1.0 |
+| notify-types | 2.1.0 | MIT OR Apache-2.0 |
 | num_enum | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
 | num_enum_derive | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
 | num-conv | 0.2.2 | MIT OR Apache-2.0 |
@@ -263,11 +262,9 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | objc2-user-notifications | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-web-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 |
-| open | 5.4.1 | MIT |
 | openssl-probe | 0.2.1 | MIT OR Apache-2.0 |
 | option-ext | 0.2.0 | MPL-2.0 |
 | ordered-stream | 0.2.0 | MIT OR Apache-2.0 |
-| os_pipe | 1.2.3 | MIT |
 | osakit | 0.3.1 | MIT OR Apache-2.0 |
 | pango | 0.18.3 | MIT |
 | pango-sys | 0.18.0 | MIT |
@@ -300,15 +297,9 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
 | pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
 | quick-xml | 0.41.0 | MIT |
-| quinn | 0.11.11 | MIT OR Apache-2.0 |
-| quinn-proto | 0.11.16 | MIT OR Apache-2.0 |
-| quinn-udp | 0.5.15 | MIT OR Apache-2.0 |
 | quote | 1.0.47 | MIT OR Apache-2.0 |
 | r-efi | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later |
 | r-efi | 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later |
-| rand | 0.10.2 | MIT OR Apache-2.0 |
-| rand_core | 0.10.1 | MIT OR Apache-2.0 |
-| rand_pcg | 0.10.2 | MIT OR Apache-2.0 |
 | raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib |
 | redox_syscall | 0.5.18 | MIT |
 | redox_users | 0.5.2 | MIT |
@@ -317,10 +308,10 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | regex | 1.13.1 | MIT OR Apache-2.0 |
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 |
 | regex-syntax | 0.8.11 | MIT OR Apache-2.0 |
-| reqwest | 0.12.28 | MIT OR Apache-2.0 |
 | reqwest | 0.13.4 | MIT OR Apache-2.0 |
 | rfd | 0.16.0 | MIT |
 | ring | 0.17.14 | Apache-2.0 AND ISC |
+| rusqlite | 0.32.1 | MIT |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |
 | rustix | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
@@ -331,7 +322,6 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | rustls-platform-verifier-android | 0.1.1 | MIT OR Apache-2.0 |
 | rustls-webpki | 0.103.14 | ISC |
 | rustversion | 1.0.23 | MIT OR Apache-2.0 |
-| ryu | 1.0.23 | Apache-2.0 OR BSL-1.0 |
 | same-file | 1.0.6 | Unlicense/MIT |
 | schannel | 0.1.29 | MIT |
 | schemars | 0.8.22 | MIT |
@@ -351,7 +341,6 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | serde_repr | 0.1.21 | MIT OR Apache-2.0 |
 | serde_spanned | 0.6.9 | MIT OR Apache-2.0 |
 | serde_spanned | 1.1.1 | MIT OR Apache-2.0 |
-| serde_urlencoded | 0.7.1 | MIT/Apache-2.0 |
 | serde_with | 3.22.0 | MIT OR Apache-2.0 |
 | serde_with_macros | 3.22.0 | MIT OR Apache-2.0 |
 | serde-untagged | 0.1.9 | MIT OR Apache-2.0 |
@@ -359,10 +348,7 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | serialize-to-javascript-impl | 0.1.2 | MIT OR Apache-2.0 |
 | servo_arc | 0.4.3 | MIT OR Apache-2.0 |
 | sha2 | 0.10.9 | MIT OR Apache-2.0 |
-| shared_child | 1.1.1 | MIT |
 | shlex | 2.0.1 | MIT OR Apache-2.0 |
-| sigchld | 0.2.4 | MIT |
-| signal-hook | 0.3.18 | Apache-2.0/MIT |
 | signal-hook-registry | 1.4.8 | MIT OR Apache-2.0 |
 | simd_cesu8 | 1.2.0 | Apache-2.0 OR MIT |
 | simd-adler32 | 0.3.10 | MIT |
@@ -397,7 +383,6 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | tauri-plugin | 2.6.3 | Apache-2.0 OR MIT |
 | tauri-plugin-dialog | 2.7.2 | Apache-2.0 OR MIT |
 | tauri-plugin-fs | 2.5.1 | Apache-2.0 OR MIT |
-| tauri-plugin-shell | 2.3.5 | Apache-2.0 OR MIT |
 | tauri-plugin-single-instance | 2.4.3 | Apache-2.0 OR MIT |
 | tauri-plugin-updater | 2.10.1 | Apache-2.0 OR MIT |
 | tauri-runtime | 2.11.3 | Apache-2.0 OR MIT |
@@ -454,6 +439,7 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | urlpattern | 0.3.0 | MIT |
 | utf8_iter | 1.0.4 | Apache-2.0 OR MIT |
 | uuid | 1.24.0 | Apache-2.0 OR MIT |
+| vcpkg | 0.2.15 | MIT/Apache-2.0 |
 | version_check | 0.9.5 | MIT/Apache-2.0 |
 | version-compare | 0.2.1 | MIT |
 | vswhom | 0.1.0 | MIT |
@@ -470,11 +456,9 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | wasm-streams | 0.5.0 | MIT OR Apache-2.0 |
 | web_atoms | 0.2.6 | MIT OR Apache-2.0 |
 | web-sys | 0.3.104 | MIT OR Apache-2.0 |
-| web-time | 1.1.0 | MIT OR Apache-2.0 |
 | webkit2gtk | 2.0.2 | MIT |
 | webkit2gtk-sys | 2.0.2 | MIT |
 | webpki-root-certs | 1.0.9 | CDLA-Permissive-2.0 |
-| webpki-roots | 1.0.9 | CDLA-Permissive-2.0 |
 | webview2-com | 0.38.2 | MIT |
 | webview2-com-macros | 0.8.1 | MIT |
 | webview2-com-sys | 0.38.2 | MIT |
@@ -546,6 +530,8 @@ AllSessions 的桌面安装包包含以下第三方软件。此清单由
 | zbus_macros | 5.19.0 | MIT |
 | zbus_names | 4.3.4 | MIT |
 | zcheapstr | 1.1.0 | MIT |
+| zerocopy | 0.8.56 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zerocopy-derive | 0.8.56 | BSD-2-Clause OR Apache-2.0 OR MIT |
 | zerofrom | 0.1.8 | Unicode-3.0 |
 | zerofrom-derive | 0.1.7 | Unicode-3.0 |
 | zeroize | 1.9.0 | Apache-2.0 OR MIT |

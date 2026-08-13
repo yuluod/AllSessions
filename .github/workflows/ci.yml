@@ -47,8 +47,5 @@ jobs:
       - name: 构建 Web 前端
         run: pnpm build
 
-      - name: 准备 Node sidecar
-        run: pnpm desktop:prepare
-
       - name: 编译测试 Tauri 桌面端
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked

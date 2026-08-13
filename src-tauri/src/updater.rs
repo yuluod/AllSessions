@@ -21,12 +21,19 @@ pub fn check_for_updates(app: tauri::AppHandle) {
         let _guard = UpdateGuard;
         if let Err(error) = run_update(&app).await {
             app.dialog()
-                .message(format!("检查或安装更新失败：{error}"))
+                .message(update_error_message(&error))
                 .title("AllSessions 更新")
                 .kind(MessageDialogKind::Error)
                 .blocking_show();
         }
     });
+}
+
+fn update_error_message(error: &str) -> String {
+    if error.contains("None of the fallback platforms") {
+        return "当前发布没有适用于此设备架构的更新包。请从 GitHub Releases 手动下载安装，或等待包含此平台更新包的新版本。".to_string();
+    }
+    format!("检查或安装更新失败：{error}")
 }
 
 async fn run_update(app: &tauri::AppHandle) -> Result<(), String> {
@@ -68,4 +75,27 @@ async fn run_update(app: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     app.request_restart();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::update_error_message;
+
+    #[test]
+    fn 缺少当前平台时提供可执行的提示() {
+        let message = update_error_message(
+            "None of the fallback platforms [\"darwin-aarch64-app\", \"darwin-aarch64\"] were found",
+        );
+
+        assert!(message.contains("没有适用于此设备架构的更新包"));
+        assert!(!message.contains("fallback platforms"));
+    }
+
+    #[test]
+    fn 未知更新错误保留原始详情() {
+        assert_eq!(
+            update_error_message("network unavailable"),
+            "检查或安装更新失败：network unavailable"
+        );
+    }
 }

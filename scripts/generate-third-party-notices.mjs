@@ -6,16 +6,14 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const noticePath = path.join(projectRoot, "THIRD_PARTY_NOTICES.md");
-const bundledNodeLicensePath = path.join(projectRoot, "third-party", "node", "LICENSE");
 
 async function cargoPackages() {
   const lock = await fs.readFile(path.join(projectRoot, "src-tauri", "Cargo.lock"), "utf8");
-  return lock.split("[[package]]").slice(1).map((block) => {
-    const name = /^name = "([^"]+)"/m.exec(block)?.[1];
-    const version = /^version = "([^"]+)"/m.exec(block)?.[1];
-    const source = /^source = "([^"]+)"/m.exec(block)?.[1];
-    return { name, version, source };
-  }).filter((pkg) => pkg.name && pkg.version && pkg.source)
+  return lock.split("[[package]]").slice(1).map((block) => ({
+    name: /^name = "([^"]+)"/m.exec(block)?.[1],
+    version: /^version = "([^"]+)"/m.exec(block)?.[1],
+    source: /^source = "([^"]+)"/m.exec(block)?.[1]
+  })).filter((pkg) => pkg.name && pkg.version && pkg.source)
     .sort((left, right) => left.name.localeCompare(right.name) || left.version.localeCompare(right.version));
 }
 
@@ -45,15 +43,8 @@ function renderNotice(packages) {
   const rows = packages.map((pkg) => `| ${pkg.name} | ${pkg.version} | ${pkg.license} |`).join("\n");
   return `# Third-Party Notices
 
-AllSessions 的桌面安装包包含以下第三方软件。此清单由
+AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 \`pnpm licenses:generate\` 根据锁定依赖生成；发布前由 CI 验证。
-
-## Node.js
-
-桌面安装包会捆绑 Node.js ${process.version}。Node.js 使用 MIT 许可证，并包含其自身依赖的
-第三方许可声明。完整许可证文本随安装包提供在 \`third-party/node/LICENSE\`。
-
-来源：https://github.com/nodejs/node
 
 ## Rust dependencies
 
@@ -66,44 +57,16 @@ ${rows}
 `;
 }
 
-const expectedNodeVersion = await fs.readFile(path.join(projectRoot, ".nvmrc"), "utf8").then((value) => value.trim());
-if (process.version !== `v${expectedNodeVersion}`) {
-  throw new Error(`许可证必须使用 Node v${expectedNodeVersion} 生成，当前为 ${process.version}`);
-}
-
-const nodeLicenseCandidates = [
-  path.join(path.dirname(process.execPath), "LICENSE"),
-  path.join(path.dirname(path.dirname(process.execPath)), "LICENSE")
-];
-let nodeLicense = null;
-for (const candidate of nodeLicenseCandidates) {
-  try {
-    nodeLicense = await fs.readFile(candidate, "utf8");
-    break;
-  } catch (error) {
-    if (!error || typeof error !== "object" || error.code !== "ENOENT") throw error;
-  }
-}
-if (!nodeLicense) throw new Error(`当前 Node.js 安装缺少 LICENSE：${process.execPath}`);
 const checkOnly = process.argv.includes("--check");
 const packages = await cargoPackages();
 const roots = await registrySourceRoots();
 for (const pkg of packages) pkg.license = await licenseFromRegistrySource(pkg, roots);
-
 const notice = renderNotice(packages);
 
 if (checkOnly) {
-  const [currentNotice, currentNodeLicense] = await Promise.all([
-    fs.readFile(noticePath, "utf8"),
-    fs.readFile(bundledNodeLicensePath, "utf8")
-  ]);
-  if (currentNotice !== notice || currentNodeLicense !== nodeLicense) {
+  if (await fs.readFile(noticePath, "utf8") !== notice) {
     throw new Error("第三方许可证材料已过期，请运行 pnpm licenses:generate");
   }
 } else {
-  await fs.mkdir(path.dirname(bundledNodeLicensePath), { recursive: true });
-  await Promise.all([
-    fs.writeFile(noticePath, notice, "utf8"),
-    fs.writeFile(bundledNodeLicensePath, nodeLicense, "utf8")
-  ]);
+  await fs.writeFile(noticePath, notice, "utf8");
 }

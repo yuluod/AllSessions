@@ -1,7 +1,7 @@
 import { t, setLang, getLang, updateStaticI18n } from "./i18n.js";
-import { fetchJson as requestJson, setMutationToken } from "./api-client.js";
+import { fetchJson as requestJson } from "./api-client.js";
 import { createLatestRequestGate, isAbortError } from "./async-coordinator.js";
-import { bindSessionEvents } from "./session-events.js";
+import { bindTauriSessionEvents } from "./session-events.js";
 import { markdownToPlainText, renderMarkdown } from "./markdown.js";
 import {
   compactText,
@@ -1155,8 +1155,11 @@ function updateCodexMigrationApplyState() {
   }
 }
 
-function setCodexMigrationBusy(isBusy) {
+function setCodexMigrationBusy(isBusy, { allowMaintenanceToggle = false } = {}) {
   const maintenanceDisabled = !isCodexMaintenanceEnabled();
+  if (elements.codexMaintenanceToggle) {
+    elements.codexMaintenanceToggle.disabled = isBusy && !allowMaintenanceToggle;
+  }
   [
     elements.codexMigrationPreviewBtn,
     elements.codexMigrationRollbackBtn
@@ -1239,9 +1242,6 @@ function renderCodexMigrationDiagnostics(summary) {
 
 function renderCodexMigrationPreview(summary) {
   state.codexMigrationPreview = summary;
-  if (summary?.mutation_token) {
-    setMutationToken(summary.mutation_token);
-  }
   if (!summary) {
     resetCodexMigrationMetrics();
     updateCodexMigrationApplyState();
@@ -1341,7 +1341,7 @@ async function loadCodexMigrationPreview() {
     return;
   }
   const request = codexMigrationPreviewRequestGate.begin();
-  setCodexMigrationBusy(true);
+  setCodexMigrationBusy(true, { allowMaintenanceToggle: true });
   setCodexMigrationStatus(t("migrationPreviewing"));
   try {
     const providers = selectedCodexMigrationProviders();
@@ -1815,7 +1815,6 @@ async function loadFacets() {
 async function loadCapabilities() {
   try {
     state.capabilities = await fetchJson("/api/capabilities");
-    setMutationToken(state.capabilities?.codex_maintenance?.mutation_token);
   } catch (error) {
     console.error(error);
     state.capabilities = { codex_maintenance: { enabled: false } };
@@ -2129,8 +2128,7 @@ async function initialize() {
   await loadSessions();
   state._initialized = true;
 
-  const eventSource = new EventSource("/api/events");
-  bindSessionEvents(eventSource, {
+  await bindTauriSessionEvents({
     refresh: async () => {
       await loadFacets();
       await Promise.all([loadSessions(), loadStats()]);

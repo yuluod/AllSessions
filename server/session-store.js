@@ -1,21 +1,14 @@
-import fs from "node:fs/promises";
 import fss from "node:fs";
 import path from "node:path";
 
-import {
-  compareSummariesDesc,
-  parseFile,
-  parseFileSummary,
-  parseGeminiSessions,
-  sortTimestampValue
-} from "./parsers/index.js";
+import { compareSummariesDesc, sortTimestampValue } from "./parsers/index.js";
 import { ByteLruCache } from "./byte-lru-cache.js";
+import { createSourceAdapter } from "./source-adapters.js";
 import { SessionSearchIndex } from "./session-index.js";
 import { SessionIndexCache } from "./session-index-cache.js";
 import { dateKeyFromTimestamp, matchesSessionFilters } from "./session-query.js";
 
 const DEBOUNCE_MS = 500;
-const INITIAL_PARSE_BATCH_SIZE = 4;
 const MAX_CHANGE_RETRIES = 3;
 const CHANGE_RETRY_DELAY_MS = 750;
 
@@ -23,66 +16,9 @@ function sessionKey(sourceKind, id) {
   return `${sourceKind}:${id}`;
 }
 
-function getMatchFn(source) {
-  if (typeof source.matchFn === "function") return source.matchFn;
-  const filename = (fp) => path.basename(fp);
-  if (source.filePattern === "**/*.jsonl") return (fp) => fp.endsWith(".jsonl");
-  if (source.filePattern === "sessions/*.json") {
-    return (fp) => fp.endsWith(".json") && fp.includes(path.sep + "sessions" + path.sep + filename(fp));
-  }
-  if (source.filePattern === "tmp/*/logs.json") {
-    return (fp) => {
-      const parts = path.relative(source.rootDir, fp).split(path.sep);
-      return parts.length === 3 && parts[0] === "tmp" && parts[2] === "logs.json";
-    };
-  }
-  return () => false;
-}
-
 function isWithinRoot(filePath, rootDir) {
   const relativePath = path.relative(rootDir, filePath);
   return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
-}
-
-const MAX_COLLECT_DEPTH = 15;
-
-async function collectFiles(rootDir, source, depth = 0) {
-  if (depth > MAX_COLLECT_DEPTH) {
-    console.warn(`collectFiles: max depth ${MAX_COLLECT_DEPTH} reached at ${rootDir}, skipping deeper entries`);
-    return [];
-  }
-
-  let entries = [];
-  try {
-    entries = await fs.readdir(rootDir, { withFileTypes: true });
-  } catch (error) {
-    if (error && typeof error === "object" && error.code === "ENOENT") {
-      return [];
-    }
-    throw error;
-  }
-
-  const files = await Promise.all(
-    entries.map(async (entry) => {
-      const fullPath = path.join(rootDir, entry.name);
-      if (entry.isDirectory()) {
-        return collectFiles(fullPath, source, depth + 1);
-      }
-      if (entry.isFile() && getMatchFn(source)(fullPath)) {
-        return [fullPath];
-      }
-      return [];
-    })
-  );
-
-  return files.flat();
-}
-
-function sourceRoots(source, property) {
-  const configured = Array.isArray(source[property]) && source[property].length > 0
-    ? source[property]
-    : [source.rootDir];
-  return Array.from(new Set(configured.filter(Boolean).map((rootDir) => path.resolve(rootDir))));
 }
 
 function projectNameFromCwd(cwd) {
@@ -95,16 +31,6 @@ function projectNameFromCwd(cwd) {
 const DEFAULT_DETAIL_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 const DETAIL_CACHE_SIZE_MULTIPLIER = 2;
 
-async function parseFileSafely(filePath, sourceKind) {
-  try {
-    return await parseFileSummary(filePath, sourceKind);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`Cannot parse session file (${filePath}): ${message}`);
-    return null;
-  }
-}
-
 export class SessionStore {
   constructor({
     sources,
@@ -112,6 +38,7 @@ export class SessionStore {
     indexCacheFile = null
   }) {
     this.sources = sources;
+    this._sourceAdapters = sources.map((source) => createSourceAdapter(source));
     this.summaries = [];
     this.summaryByKey = new Map();
     this.summaryById = new Map();
@@ -126,8 +53,6 @@ export class SessionStore {
     this._searchIndex = new SessionSearchIndex();
     this._indexCache = new SessionIndexCache(indexCacheFile);
     this._mutationQueue = Promise.resolve();
-    this._parseFileSummary = parseFileSummary;
-    this._parseGeminiSessions = parseGeminiSessions;
     this.cacheStats = { hits: 0, misses: 0 };
   }
 
@@ -141,56 +66,27 @@ export class SessionStore {
     await this._indexCache.load();
     const discoveredCacheFiles = new Set();
 
-    for (const source of this.sources) {
-      if (source.kind === "gemini") {
-        const sessions = await this._parseGeminiSessions(source.rootDir);
-        for (const detail of sessions) {
-          this._addSessionDetail(detail);
+    for (const adapter of this._sourceAdapters) {
+      const initialized = await adapter.initialize({
+        indexCache: this._indexCache,
+        onCacheHit: () => { this.cacheStats.hits += 1; },
+        onCacheMiss: () => { this.cacheStats.misses += 1; }
+      });
+      for (const filePath of initialized.files) discoveredCacheFiles.add(filePath);
+      for (const result of initialized.records) {
+        if (result.cached) {
+          this._addCachedSession(result.cached.summary, result.cached.index_text);
+          continue;
         }
-      } else {
-        const discoveredFiles = await Promise.all(
-          sourceRoots(source, "discoveryRoots").map((rootDir) => collectFiles(rootDir, source))
-        );
-        const files = Array.from(new Set(discoveredFiles.flat()));
-        for (let start = 0; start < files.length; start += INITIAL_PARSE_BATCH_SIZE) {
-          const batch = files.slice(start, start + INITIAL_PARSE_BATCH_SIZE);
-          const parsed = await Promise.all(
-            batch.map(async (filePath) => {
-              let stat;
-              try {
-                stat = await fs.stat(filePath);
-              } catch (error) {
-                if (error && typeof error === "object" && error.code === "ENOENT") return null;
-                throw error;
-              }
-              discoveredCacheFiles.add(filePath);
-              const cached = this._indexCache.get(filePath, source.kind, stat);
-              if (cached) {
-                this.cacheStats.hits += 1;
-                return { cached, filePath, stat };
-              }
-              this.cacheStats.misses += 1;
-              const detail = await parseFileSafely(filePath, source.kind);
-              return detail ? { detail, filePath, stat } : null;
-            })
+        const summary = this._addSessionDetail(result.detail);
+        if (result.filePath && result.stat) {
+          this._indexCache.set(
+            result.filePath,
+            adapter.kind,
+            result.stat,
+            summary,
+            this._searchIndex.getText(summary._key)
           );
-
-          for (const result of parsed) {
-            if (!result) continue;
-            if (result.cached) {
-              const summary = { ...result.cached.summary, file_path: result.filePath };
-              this._addCachedSession(summary, result.cached.index_text);
-              continue;
-            }
-            const summary = this._addSessionDetail(result.detail);
-            this._indexCache.set(
-              result.filePath,
-              source.kind,
-              result.stat,
-              summary,
-              this._searchIndex.getText(summary._key)
-            );
-          }
         }
       }
     }
@@ -229,37 +125,6 @@ export class SessionStore {
     const registered = this._registerSummary(summary);
     this._searchIndex.addText(registered._key, indexText);
     return registered;
-  }
-
-  async _reloadGeminiSource(source) {
-    const details = await this._parseGeminiSessions(source.rootDir);
-    const previousKeys = new Set(
-      this.summaries
-        .filter((summary) => summary.source_kind === "gemini" && isWithinRoot(summary.file_path, source.rootDir))
-        .map((summary) => summary._key)
-    );
-
-    for (const key of previousKeys) {
-      this._removeSession(key);
-    }
-
-    const nextKeys = new Set();
-    const nextSummaries = [];
-    for (const detail of details) {
-      const summary = this._addSessionDetail(detail);
-      nextKeys.add(summary._key);
-      nextSummaries.push(summary);
-    }
-    this.summaries.sort(compareSummariesDesc);
-
-    for (const summary of nextSummaries) {
-      this._notifyChange({ type: previousKeys.has(summary._key) ? "session-updated" : "session-added", summary });
-    }
-    for (const key of previousKeys) {
-      if (!nextKeys.has(key)) {
-        this._notifyChange({ type: "session-deleted", id: key });
-      }
-    }
   }
 
   _indexSession(summary, messages) {
@@ -384,6 +249,10 @@ export class SessionStore {
       });
 
     return {
+      sources: this._sourceAdapters.map((adapter) => ({
+        kind: adapter.kind,
+        display_name: adapter.source.displayName || adapter.kind
+      })),
       providers: Array.from(providers).sort(),
       source_kinds: Array.from(sourceKinds).sort(),
       dates: Array.from(dates).sort().reverse(),
@@ -452,22 +321,16 @@ export class SessionStore {
     const cached = this._detailCache.get(summary._key);
     if (cached) return cached;
 
-    let detail;
-    if (summary.source_kind === "gemini") {
-      const { parseGeminiSessionById } = await import("./parsers/gemini.js");
-      const source = this.sources.find((s) => s.kind === "gemini" && isWithinRoot(summary.file_path, s.rootDir));
-      if (!source) return null;
-      detail = await parseGeminiSessionById(source.rootDir, summary.id);
-      if (!detail) return null;
-      detail.summary._key = summary._key;
-    } else {
-      detail = await parseFile(summary.file_path, summary.source_kind);
-      detail.summary._key = summary._key;
-    }
+    const adapter = this._sourceAdapters.find(
+      (candidate) => candidate.kind === summary.source_kind && candidate.contains(summary.file_path)
+    ) || this._sourceAdapters.find((candidate) => candidate.kind === summary.source_kind);
+    if (!adapter) return null;
+    const { detail, sourceBytes } = await adapter.getDetail(summary);
+    if (!detail) return null;
+    detail.summary._key = summary._key;
 
-    const stat = await fs.stat(summary.file_path).catch(() => null);
-    const estimatedBytes = stat
-      ? Math.max(1, stat.size * DETAIL_CACHE_SIZE_MULTIPLIER)
+    const estimatedBytes = sourceBytes > 0
+      ? Math.max(1, sourceBytes * DETAIL_CACHE_SIZE_MULTIPLIER)
       : DEFAULT_DETAIL_CACHE_MAX_BYTES + 1;
     this._detailCache.set(summary._key, detail, estimatedBytes);
 
@@ -491,14 +354,16 @@ export class SessionStore {
     }
   }
 
-  _watchDir(dir, source) {
+  _watchDir(dir) {
     if (this._watchedDirs.has(dir)) return;
     try {
       const watcher = fss.watch(dir, { recursive: true }, (eventType, filename) => {
         if (!filename) return;
         const fullPath = path.resolve(dir, String(filename));
         if (!isWithinRoot(fullPath, dir)) return;
-        const isTargetFile = getMatchFn(source)(fullPath);
+        const isTargetFile = this._sourceAdapters.some(
+          (adapter) => adapter.contains(fullPath) && adapter.matches(fullPath)
+        );
         if (isTargetFile) {
           this._pendingChanges.add(fullPath);
           this._schedulePendingChanges();
@@ -518,9 +383,9 @@ export class SessionStore {
   }
 
   async watch() {
-    for (const source of this.sources) {
-      for (const rootDir of sourceRoots(source, "watchRoots")) {
-        this._watchDir(rootDir, source);
+    for (const adapter of this._sourceAdapters) {
+      for (const rootDir of adapter.watchRoots()) {
+        this._watchDir(rootDir);
       }
     }
     console.log(`File system watcher enabled (${this._watchers.length} roots)`);
@@ -561,61 +426,29 @@ export class SessionStore {
 
     for (const filePath of files) {
       const key = this._filePathToKey.get(filePath);
-      const source = this.sources.find((s) => isWithinRoot(filePath, s.rootDir));
-      if (!source) continue;
+      const adapter = this._sourceAdapters.find((candidate) => candidate.contains(filePath) && candidate.matches(filePath));
+      if (!adapter) continue;
 
       try {
-        if (source.kind === "gemini") {
-          await this._reloadGeminiSource(source);
-          this._changeRetryCounts.delete(filePath);
-          continue;
-        }
+        const update = await adapter.handleChange(filePath, key);
+        const previousKeys = new Set(update.replaceKeys);
+        for (const replaceKey of previousKeys) this._removeSession(replaceKey);
 
-        const detail = await this._parseFileSummary(filePath, source.kind);
-        const summary = detail.summary;
-        summary._key = sessionKey(summary.source_kind, summary.id);
-        const existingKey = key || summary._key;
-        const existingIndex = this.summaries.findIndex((s) => s._key === existingKey);
-        if (existingIndex >= 0) {
-          const needsKeyChange = existingKey !== summary._key;
-          if (needsKeyChange) {
-            this._removeSession(existingKey);
-            this.summaries.push(summary);
-            this.summaries.sort(compareSummariesDesc);
-            this._indexSession(summary, detail.conversation_messages);
-            this._notifyChange({ type: "session-added", summary });
-          } else {
-            this._unindexSessionText(existingKey);
-            this.summaries[existingIndex] = summary;
-            this.summaries.sort(compareSummariesDesc);
-            this._detailCache.delete(existingKey);
-            this._indexSession(summary, detail.conversation_messages);
-            this._notifyChange({ type: "session-updated", summary });
-          }
-        } else {
-          this.summaries.push(summary);
-          this.summaries.sort(compareSummariesDesc);
-          this._indexSession(summary, detail.conversation_messages);
-          this._notifyChange({ type: "session-added", summary });
+        const nextKeys = new Set();
+        for (const detail of update.details) {
+          const summary = this._addSessionDetail(detail);
+          nextKeys.add(summary._key);
+          this._notifyChange({
+            type: previousKeys.has(summary._key) ? "session-updated" : "session-added",
+            summary
+          });
         }
-        this.summaryByKey.set(summary._key, summary);
-        if (!this.summaryById.has(summary.id)) {
-          this.summaryById.set(summary.id, new Set());
+        for (const previousKey of previousKeys) {
+          if (!nextKeys.has(previousKey)) this._notifyChange({ type: "session-deleted", id: previousKey });
         }
-        this.summaryById.get(summary.id).add(summary._key);
-        this._filePathToKey.set(summary.file_path, summary._key);
+        this.summaries.sort(compareSummariesDesc);
         this._changeRetryCounts.delete(filePath);
       } catch (err) {
-        if (err && typeof err === "object" && err.code === "ENOENT") {
-          const matchKey = key || this._filePathToKey.get(filePath);
-          if (matchKey) {
-            this._removeSession(matchKey);
-            this._notifyChange({ type: "session-deleted", id: matchKey });
-          }
-          this._changeRetryCounts.delete(filePath);
-          continue;
-        }
-
         const attempt = (this._changeRetryCounts.get(filePath) || 0) + 1;
         this._changeRetryCounts.set(filePath, attempt);
         console.error(

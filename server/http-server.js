@@ -23,6 +23,16 @@ const CONTENT_TYPES = {
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_:.-]{1,128}$/;
 const MUTATION_TOKEN_HEADER = "x-session-viewer-token";
+const SECURITY_HEADERS = Object.freeze({
+  "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY"
+});
+
+function responseHeaders(headers = {}) {
+  return { ...SECURITY_HEADERS, ...headers };
+}
 
 function validateSessionId(raw) {
   try {
@@ -37,18 +47,18 @@ function validateSessionId(raw) {
 }
 
 function sendJson(response, statusCode, payload) {
-  response.writeHead(statusCode, {
+  response.writeHead(statusCode, responseHeaders({
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store"
-  });
+  }));
   response.end(JSON.stringify(payload));
 }
 
 function sendText(response, statusCode, payload) {
-  response.writeHead(statusCode, {
+  response.writeHead(statusCode, responseHeaders({
     "Content-Type": "text/plain; charset=utf-8",
     "Cache-Control": "no-store"
-  });
+  }));
   response.end(payload);
 }
 
@@ -155,7 +165,7 @@ async function sendStaticFile(publicDir, pathname, request, response) {
 
   const etag = `"${Math.floor(stat.mtimeMs).toString(36)}-${stat.size.toString(36)}"`;
   if (request.headers["if-none-match"] === etag) {
-    response.writeHead(304, { ETag: etag, "Cache-Control": "no-cache" });
+    response.writeHead(304, responseHeaders({ ETag: etag, "Cache-Control": "no-cache" }));
     response.end();
     return;
   }
@@ -170,19 +180,19 @@ async function sendStaticFile(publicDir, pathname, request, response) {
     const compressed = await new Promise((resolve, reject) => {
       zlib.gzip(content, (err, result) => (err ? reject(err) : resolve(result)));
     });
-    response.writeHead(200, {
+    response.writeHead(200, responseHeaders({
       "Content-Type": contentType,
       "Content-Encoding": "gzip",
       ETag: etag,
       "Cache-Control": "no-cache"
-    });
+    }));
     response.end(compressed);
   } else {
-    response.writeHead(200, {
+    response.writeHead(200, responseHeaders({
       "Content-Type": contentType,
       ETag: etag,
       "Cache-Control": "no-cache"
-    });
+    }));
     response.end(content);
   }
 }
@@ -192,7 +202,8 @@ export function createHttpServer({
   publicDir,
   sessionRoots,
   codexMaintenanceEnabled = false,
-  codexMigrationOptions = {}
+  codexMigrationOptions = {},
+  desktopInstanceToken = ""
 }) {
   const sseClients = new Set();
   const mutationToken = codexMigrationOptions.mutationToken || crypto.randomBytes(24).toString("base64url");
@@ -249,6 +260,11 @@ export function createHttpServer({
           return;
         }
         sendJson(response, 200, {
+          service: {
+            name: "AllSessions",
+            protocol_version: 1,
+            desktop_instance_token: desktopInstanceToken
+          },
           codex_maintenance: {
             enabled: maintenanceEnabled,
             mutation_token: mutationToken
@@ -382,11 +398,11 @@ export function createHttpServer({
       }
 
       if (url.pathname === "/api/events") {
-        response.writeHead(200, {
+        response.writeHead(200, responseHeaders({
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
           Connection: "keep-alive"
-        });
+        }));
         response.write(`event: connected\ndata: {}\n\n`);
         sseClients.add(response);
         startSsePing();

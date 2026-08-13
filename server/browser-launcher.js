@@ -23,7 +23,9 @@ export async function isAllSessionsViewer(url, { fetchImpl = fetch } = {}) {
     });
     if (!response.ok) return false;
     const payload = await response.json();
-    return Boolean(payload && typeof payload === "object" && payload.codex_maintenance);
+    return payload?.service?.name === "AllSessions" &&
+      payload.service.protocol_version === 1 &&
+      Boolean(payload.codex_maintenance);
   } catch {
     return false;
   }

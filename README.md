@@ -41,6 +41,7 @@ AllSessions aggregates supported local AI session sources into one browser inter
 - Watch local session files and refresh the interface automatically
 - Switch between Chinese and English
 - Bound memory use for large Codex and Claude Code sessions with visible truncation markers
+- Discover source filters from registered source adapters instead of a fixed frontend list
 
 ## Supported sources
 
@@ -122,6 +123,10 @@ Local AI history may contain prompts, tool output, source snippets, working dire
 
 See [SECURITY.md](./SECURITY.md) for private vulnerability reporting guidance and the security boundary.
 
+Desktop releases bundle Node.js and Rust dependencies. Their versions and redistribution notices are listed in
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md); the complete Node.js license set is shipped in
+[`third-party/node/LICENSE`](./third-party/node/LICENSE). Node.js is pinned by `.nvmrc` for reproducible releases.
+
 ## Optional Codex provider repair
 
 AllSessions includes a maintenance tool, disabled by default, for Codex histories that became invisible after switching third-party providers. Start normally, then enable maintenance mode from the **Tools** page.
@@ -139,6 +144,7 @@ The server remains read-only while the switch is off. Enabling it still requires
 - Local session formats can change between upstream tool versions; unsupported historical records may fall back to raw-event display.
 - Claude Code project transcripts are not a stable public API; unknown records remain available as raw events, and legacy environments fall back to user-input history.
 - Large Codex and Claude Code details use a marked head/tail safety window, and the search index stores bounded text per session.
+- Gemini logs use a persistent file-fragment cache and incremental refresh, but each changed `logs.json` must still be parsed as a complete JSON array.
 - Injected developer and environment context is excluded from default conversation and search views, but remains present in raw local data and full exports.
 
 ## Development
@@ -148,7 +154,13 @@ pnpm install
 pnpm test
 pnpm lint
 pnpm build
+pnpm licenses:check
 ```
+
+Source-specific discovery, parsing, detail loading, caching, and refresh behavior is isolated behind adapters in
+`server/source-adapters.js`. See [Source adapter architecture](./docs/source-adapters.md) before adding another Agent source.
+Implementation notes for each built-in source live under [`docs/sources`](./docs/sources), including
+[Claude Code](./docs/sources/claude-code.md).
 
 ## License
 

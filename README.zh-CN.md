@@ -41,6 +41,7 @@ AllSessions 将受支持的本地 AI 会话来源聚合到同一个浏览器界�
 - 监听本地会话文件并自动刷新界面
 - 支持中英文切换
 - 对 Codex 和 Claude Code 大会话限制内存占用，并明确标记截断内容
+- 从已注册的来源适配器动态生成来源筛选，而不是在前端维护固定列表
 
 ## 支持来源
 
@@ -122,6 +123,10 @@ PORT=4000 CODEX_SESSIONS_DIR=/path/to/sessions pnpm start
 
 漏洞私下报告方式及安全边界见 [SECURITY.md](./SECURITY.md)。
 
+桌面安装包会捆绑 Node.js 和 Rust 依赖。对应版本与再分发声明记录在
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)，完整 Node.js 许可证集合随
+[`third-party/node/LICENSE`](./third-party/node/LICENSE) 分发。发布使用 `.nvmrc` 固定 Node.js 版本，保证可复现。
+
 ## 可选的 Codex Provider 修复
 
 AllSessions 包含一个默认关闭的维护工具，用于处理切换第三方 provider 后不可见的 Codex 历史。正常启动后，在「工具」页面打开维护模式开关即可使用。
@@ -139,6 +144,7 @@ pnpm start
 - 上游工具的本地会话格式可能随版本变化；不受支持的历史记录可能只显示原始事件。
 - Claude Code 的本地项目转录格式不是稳定公开 API；未知记录会保留在原始事件中，旧环境回退到用户输入历史。
 - Codex 和 Claude Code 大会话详情使用带标记的首尾安全窗口，搜索索引也会限制每个会话保存的文本长度。
+- Gemini 使用持久化文件分片缓存和增量刷新，但发生变化的 `logs.json` 仍需作为完整 JSON 数组重新解析。
 - 注入的 developer 和环境上下文默认不进入对话与搜索视图，但仍存在于本地原始数据和完整导出中。
 
 ## 开发
@@ -148,7 +154,12 @@ pnpm install
 pnpm test
 pnpm lint
 pnpm build
+pnpm licenses:check
 ```
+
+来源特有的发现、解析、详情加载、缓存和刷新行为统一收敛在 `server/source-adapters.js` 的适配器后。
+增加其他 Agent 来源前请阅读[来源适配器架构](./docs/source-adapters.md)。内置来源的实现边界统一归档在
+[`docs/sources`](./docs/sources)，其中包括 [Claude Code 来源说明](./docs/sources/claude-code.md)。
 
 ## 许可证
 

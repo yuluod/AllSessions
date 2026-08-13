@@ -42,9 +42,14 @@ test("桌面能力统一由 Tauri 提供", async () => {
 
   assert.match(config, /"externalBin": \["binaries\/node"\]/);
   assert.match(config, /"installMode": "currentUser"/);
+  assert.doesNotMatch(config, /"csp": null/);
   assert.match(cargo, /features = \["tray-icon", "image-png"\]/);
   assert.match(rustSource, /TrayIconBuilder/);
   assert.match(rustSource, /sidecar\("node"\)/);
+  assert.match(rustSource, /ALLSESSIONS_INSTANCE_TOKEN/);
+  assert.match(rustSource, /TcpListener::bind\(\("127\.0\.0\.1", 0\)\)/);
+  assert.match(rustSource, /\.env\("PORT", port\.to_string\(\)\)/);
+  assert.match(rustSource, /desktop_instance_token == instance_token/);
   assert.match(mainSource, /windows_subsystem = "windows"/);
   assert.match(rustSource, /tauri_plugin_updater::Builder/);
   assert.match(updater, /检查或安装更新失败/);

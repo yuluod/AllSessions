@@ -15,6 +15,8 @@ Include only the minimum information needed to reproduce the issue. Replace real
 ## Security boundary
 
 - AllSessions has no login or remote authentication and only permits loopback bind addresses.
+- The desktop shell starts its bundled service on a dynamically selected loopback port with a per-process random token and verifies the service identity before navigating to it.
+- The local HTTP interface sends a restrictive Content Security Policy and common browser hardening headers. These controls reduce browser-side attack surface but do not turn the loopback service into a multi-user authenticated service.
 - Normal startup begins in read-only mode. Provider repair remains blocked until the local user enables maintenance mode in the Tools page.
 - Maintenance mode is explicitly enabled and can modify Codex state databases and JSONL metadata after preview and confirmation.
 - Session content, the private index cache, and provider-repair backups may contain sensitive local information. Do not publish or share them without reviewing and redacting their contents.

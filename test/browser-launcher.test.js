@@ -36,7 +36,10 @@ test("只把可识别的 AllSessions 服务视为已运行实例", async () => {
       return {
         ok: true,
         async json() {
-          return { codex_maintenance: { enabled: false } };
+          return {
+            service: { name: "AllSessions", protocol_version: 1 },
+            codex_maintenance: { enabled: false }
+          };
         }
       };
     }
@@ -47,6 +50,22 @@ test("只把可识别的 AllSessions 服务视为已运行实例", async () => {
 
   assert.equal(accepted, true);
   assert.equal(rejected, false);
+});
+
+test("名称相同但协议版本不匹配的服务不会被复用", async () => {
+  const accepted = await isAllSessionsViewer("http://127.0.0.1:3210", {
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        return {
+          service: { name: "AllSessions", protocol_version: 2 },
+          codex_maintenance: { enabled: false }
+        };
+      }
+    })
+  });
+
+  assert.equal(accepted, false);
 });
 
 test("启动浏览器后会解除子进程对主进程的引用", () => {

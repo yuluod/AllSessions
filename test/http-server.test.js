@@ -370,6 +370,12 @@ test("默认服务保持只读并可通过受保护开关启停 Codex 维护模�
 
   const capabilities = await fetchFromServer(address.port, "/api/capabilities");
   assert.equal(capabilities.status, 200);
+  const service = JSON.parse(capabilities.body).service;
+  assert.deepEqual(service, {
+    name: "AllSessions",
+    protocol_version: 1,
+    desktop_instance_token: ""
+  });
   const capabilityData = JSON.parse(capabilities.body).codex_maintenance;
   assert.equal(capabilityData.enabled, false);
   assert.equal(typeof capabilityData.mutation_token, "string");
@@ -474,6 +480,9 @@ test("GET /styles.css 返回 CSS 文件", async (t) => {
   const res = await fetchFromServer(address.port, "/styles.css");
   assert.equal(res.status, 200);
   assert.match(res.headers["content-type"], /text\/css/);
+  assert.match(res.headers["content-security-policy"], /default-src 'self'/);
+  assert.equal(res.headers["x-content-type-options"], "nosniff");
+  assert.equal(res.headers["x-frame-options"], "DENY");
 });
 
 test("路径穿越返回 403", async (t) => {

@@ -31,7 +31,8 @@ async function main() {
       store,
       publicDir,
       sessionRoots: SOURCES.map((s) => s.rootDir),
-      codexMaintenanceEnabled
+      codexMaintenanceEnabled,
+      desktopInstanceToken: process.env.ALLSESSIONS_INSTANCE_TOKEN || ""
     });
     server.once("close", () => store.stopWatching());
     await listenForHttpRequests(server, { host: HOST, port: PORT });

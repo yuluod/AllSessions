@@ -1,6 +1,6 @@
 {
   "name": "allsessions",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "A lightweight, local-only web viewer for browsing Codex, Claude Code, and Gemini CLI session history.",
   "type": "module",
   "license": "Apache-2.0",

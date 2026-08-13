@@ -1,0 +1,54 @@
+name: 持续集成
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 测试与构建
+    runs-on: macos-15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v5
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: 安装 pnpm
+        run: corepack enable
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装项目依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 获取锁定的 Rust 依赖
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: 验证第三方许可证清单
+        run: pnpm licenses:check
+
+      - name: 运行 Node 测试
+        run: pnpm test
+
+      - name: 检查代码规范
+        run: pnpm lint
+
+      - name: 构建 Web 前端
+        run: pnpm build
+
+      - name: 准备 Node sidecar
+        run: pnpm desktop:prepare
+
+      - name: 编译测试 Tauri 桌面端
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked

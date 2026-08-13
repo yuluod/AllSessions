@@ -24,6 +24,8 @@
     "lint:fix": "eslint server public test scripts --fix",
     "format": "prettier --write .",
     "build": "vite build",
+    "licenses:generate": "node scripts/generate-third-party-notices.mjs",
+    "licenses:check": "node scripts/generate-third-party-notices.mjs --check",
     "desktop:prepare": "node scripts/prepare-tauri-sidecar.mjs",
     "desktop:dev": "pnpm desktop:prepare && tauri dev",
     "desktop:build": "pnpm desktop:prepare && tauri build",

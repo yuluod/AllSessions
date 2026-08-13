@@ -63,3 +63,27 @@ test("桌面能力统一由 Tauri 提供", async () => {
   assert.match(workflow, /updaterJsonPreferNsis: true/);
   assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v4/);
 });
+
+test("安装包包含第三方许可证且发布依赖质量门禁", async () => {
+  const [config, releaseWorkflow, ciWorkflow, packageJson, nvmrc, notices, nodeLicense] = await Promise.all([
+    readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
+    readFile(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8"),
+    readFile(path.join(projectRoot, ".github", "workflows", "ci.yml"), "utf8"),
+    readFile(path.join(projectRoot, "package.json"), "utf8"),
+    readFile(path.join(projectRoot, ".nvmrc"), "utf8"),
+    readFile(path.join(projectRoot, "THIRD_PARTY_NOTICES.md"), "utf8"),
+    readFile(path.join(projectRoot, "third-party", "node", "LICENSE"), "utf8")
+  ]);
+
+  assert.match(config, /THIRD_PARTY_NOTICES\.md/);
+  assert.match(config, /third-party\/node\/LICENSE/);
+  assert.match(releaseWorkflow, /quality:[\s\S]*pnpm licenses:check[\s\S]*pnpm test[\s\S]*pnpm lint[\s\S]*pnpm build/);
+  assert.match(releaseWorkflow, /publish:[\s\S]*needs: quality/);
+  assert.match(ciWorkflow, /pull_request:[\s\S]*pnpm licenses:check[\s\S]*cargo test/);
+  assert.match(packageJson, /"licenses:check"/);
+  assert.equal(nvmrc.trim(), "24.17.0");
+  assert.match(notices, /Node\.js v24\.17\.0/);
+  assert.match(notices, /## Rust dependencies/);
+  assert.match(notices, /\| tauri \| 2\.\d+\.\d+ \| (?:Apache|MIT)/);
+  assert.match(nodeLicense, /MIT License/);
+});

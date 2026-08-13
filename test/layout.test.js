@@ -7,7 +7,15 @@ import { fileURLToPath } from "node:url";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 async function readProjectFile(relativePath) {
-  return fs.readFile(path.join(rootDir, relativePath), "utf8");
+  const source = await fs.readFile(path.join(rootDir, relativePath), "utf8");
+  if (relativePath !== "public/styles.css") return source;
+
+  const imports = Array.from(source.matchAll(/@import url\("(.+?)"\);/g), (match) => match[1]);
+  const imported = await Promise.all(imports.map((file) => {
+    const resolved = path.join(path.dirname(relativePath), file);
+    return fs.readFile(path.join(rootDir, resolved), "utf8");
+  }));
+  return [source, ...imported].join("\n");
 }
 
 test("首页具备工作台式布局骨架", async () => {
@@ -203,10 +211,11 @@ test("会话列表提供一级来源快速切换并与高级筛选同步", async
   assert.match(html, /<header class="toolbar">[\s\S]*class="sidebar-tabs workspace-tabs"[\s\S]*id="source-kind-quick-filter"[\s\S]*class="toolbar-center"/);
   assert.doesNotMatch(html, /<aside class="sidebar-left"[\s\S]{0,300}id="source-kind-quick-filter"/);
   assert.doesNotMatch(html, /class="session-list-shell">[\s\S]{0,200}id="source-kind-quick-filter"/);
-  assert.match(source, /const QUICK_SOURCE_KINDS = \["", "codex", "claude_code", "gemini"\]/);
+  assert.match(source, /function quickSourceKinds\(\)/);
+  assert.match(source, /state\.facets\?\.sources/);
   assert.match(source, /async function setSourceKindFilter\(sourceKind\)/);
   assert.match(source, /elements\.sourceKindFilter\?\.addEventListener\("change",[\s\S]*setSourceKindFilter\(event\.target\.value\)/);
-  assert.match(source, /\.\.\.QUICK_SOURCE_KINDS\.filter\(Boolean\)/);
+  assert.match(source, /quickSourceKinds\(\)\.forEach/);
   assert.match(css, /\.source-kind-quick-filter\s*\{[\s\S]*grid-template-columns: 0\.8fr 1fr 1\.35fr 1\.25fr/);
   assert.match(css, /\.source-kind-quick-button\.active\b/);
   assert.match(css, /\.toolbar-source-filter\s*\{[\s\S]*width: 100%/);
@@ -276,10 +285,10 @@ test("语言切换会重渲染动态内容而不是只更新静态文案", async
 });
 
 test("时间格式会跟随当前语言", async () => {
-  const source = await readProjectFile("public/app.js");
+  const source = await readProjectFile("public/session-format.js");
 
-  assert.match(source, /const locale = getLang\(\) === "zh" \? "zh-CN" : "en";/);
-  assert.match(source, /new Intl\.DateTimeFormat\(locale,/);
+  assert.match(source, /return getLang\(\) === "zh" \? "zh-CN" : "en";/);
+  assert.match(source, /new Intl\.DateTimeFormat\(locale\(\),/);
 });
 
 test("session root 使用动态 i18n", async () => {

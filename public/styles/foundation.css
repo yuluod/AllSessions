@@ -1,0 +1,93 @@
+:root {
+  --bg: #f2f5f7;
+  --surface: #ffffff;
+  --surface-subtle: #f8fafb;
+  --surface-muted: #edf2f4;
+  --line: #d6e0e5;
+  --line-strong: #aebdc6;
+  --text: #172126;
+  --text-secondary: #34434b;
+  --muted: #52636d;
+  --accent: #0f766e;
+  --accent-strong: #0b5f59;
+  --accent-soft: #e6f4f2;
+  --info: #2563eb;
+  --info-soft: #edf4ff;
+  --warning: #985b0b;
+  --warning-soft: #fff7e8;
+  --danger: #b42318;
+  --danger-soft: #fff1f0;
+  --success: #16794f;
+  --success-soft: #edf8f2;
+  --radius: 10px;
+  --radius-small: 7px;
+  --sidebar-w: 320px;
+  --header-h: 66px;
+  --shadow-header: 0 2px 8px rgba(27, 42, 52, 0.07);
+  --z-sticky: 20;
+  --z-toast: 60;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+  color: var(--text);
+  background: var(--bg);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+button,
+summary,
+select,
+input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+button {
+  color: inherit;
+}
+
+code,
+pre,
+kbd {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(15, 118, 110, 0.55);
+  outline-offset: 2px;
+}
+
+::selection {
+  color: #fff;
+  background: var(--accent);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.page-shell {
+  width: min(1880px, 100%);
+  margin: 0 auto;
+  padding: 12px;
+}

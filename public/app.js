@@ -3,10 +3,18 @@ import { fetchJson as requestJson, setMutationToken } from "./api-client.js";
 import { createLatestRequestGate, isAbortError } from "./async-coordinator.js";
 import { bindSessionEvents } from "./session-events.js";
 import { markdownToPlainText, renderMarkdown } from "./markdown.js";
+import {
+  compactText,
+  cwdParts,
+  fillSelect,
+  formatDateGroup,
+  formatTimestamp,
+  sessionTimestamp
+} from "./session-format.js";
+import { displayMessageText, exportSessionJson, exportSessionMarkdown } from "./session-export.js";
 
 const PAGE_LIMIT = 50;
 const PROJECT_PREVIEW_LIMIT = 4;
-const QUICK_SOURCE_KINDS = ["", "codex", "claude_code", "gemini"];
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const sessionRequestGate = createLatestRequestGate();
@@ -200,77 +208,6 @@ function restoreFromUrl() {
   state.selectedSessionKey = params.get("session") || null;
 }
 
-// ── 工具函数 ──────────────────────────────────────────────────────────────────
-function formatTimestamp(value) {
-  if (!value) {
-    return t("unknownTime");
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  const locale = getLang() === "zh" ? "zh-CN" : "en";
-
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeStyle: "medium"
-  }).format(date);
-}
-
-function sessionTimestamp(session) {
-  return session.timestamp || session.last_timestamp || "";
-}
-
-function dateKeyFromValue(value) {
-  if (typeof value !== "string" || value.length < 10) {
-    return "";
-  }
-  return value.slice(0, 10);
-}
-
-function localDateKey(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatDateGroup(value) {
-  const date = new Date(value);
-  if (!value || Number.isNaN(date.getTime())) {
-    return { key: "unknown", label: t("unknownTime") };
-  }
-
-  const key = dateKeyFromValue(value) || localDateKey(date);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  if (key === localDateKey(today)) {
-    return { key, label: t("today") };
-  }
-  if (key === localDateKey(yesterday)) {
-    return { key, label: t("yesterday") };
-  }
-
-  const locale = getLang() === "zh" ? "zh-CN" : "en";
-  return {
-    key,
-    label: new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)
-  };
-}
-
-function cwdParts(cwd) {
-  if (!cwd) {
-    return { main: t("noCwd"), path: "" };
-  }
-  const parts = String(cwd).split(/[\\/]/).filter(Boolean);
-  const main = parts.at(-1) || cwd;
-  return { main, path: cwd };
-}
-
 function displaySourceLabel(summary) {
   if (isCodexArchivedSession(summary)) {
     return t("codexArchived");
@@ -283,31 +220,17 @@ function sourceKindValue(summary) {
   return summary?.source_kind || "unknown";
 }
 
-function createOption(value, label) {
-  const option = document.createElement("option");
-  option.value = value;
-  option.textContent = label;
-  return option;
-}
-
 function sourceKindLabel(sourceKind) {
-  const labels = {
-    codex: "Codex",
-    claude_code: "Claude Code",
-    gemini: "Gemini CLI"
-  };
   if (sourceKind === "codex_archived") return t("codexArchived");
-  return labels[sourceKind] || sourceKind;
+  const source = state.facets?.sources?.find((candidate) => candidate.kind === sourceKind);
+  return source?.display_name || sourceKind;
 }
 
-function fillSelect(select, values, labelFor = (value) => value) {
-  const currentValue = select.value;
-  select.innerHTML = "";
-  select.append(createOption("", t("all")));
-  values.forEach((value) => {
-    select.append(createOption(value, labelFor(value)));
-  });
-  select.value = values.includes(currentValue) ? currentValue : "";
+function quickSourceKinds() {
+  const configured = state.facets?.sources
+    ?.map((source) => source.kind)
+    .filter((kind) => kind && kind !== "codex_archived") || [];
+  return ["", ...configured];
 }
 
 async function setSourceKindFilter(sourceKind) {
@@ -323,7 +246,7 @@ function renderSourceKindQuickFilter() {
 
   elements.sourceKindQuickFilter.innerHTML = "";
 
-  QUICK_SOURCE_KINDS.forEach((sourceKind) => {
+  quickSourceKinds().forEach((sourceKind) => {
     const button = document.createElement("button");
     const active = state.filters.source_kind === sourceKind;
     button.className = "source-kind-quick-button";
@@ -426,7 +349,7 @@ function updateFacetFilters() {
   }
 
   const sourceKinds = Array.from(new Set([
-    ...QUICK_SOURCE_KINDS.filter(Boolean),
+    ...(state.facets.sources || []).map((source) => source.kind),
     ...(state.facets.source_kinds || [])
   ]));
   fillSelect(elements.sourceKindFilter, sourceKinds, sourceKindLabel);
@@ -815,63 +738,6 @@ function renderSessionList() {
 
   renderLoadMoreButton();
   updateSessionCount();
-}
-
-// ── 导出功能 ──────────────────────────────────────────────────────────────────
-function downloadBlob(content, filename, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 3000);
-}
-
-function displayMessageText(message) {
-  if (message.is_truncation_marker) {
-    return t("detailMessagesOmitted", { n: message.omitted_count || 0 });
-  }
-  if (message.text_truncated) {
-    return `${message.text}\n\n${t("detailMessageTextTruncated", {
-      n: message.text.length
-    })}`;
-  }
-  return message.text || "";
-}
-
-function exportSessionMarkdown(detail) {
-  const { summary, conversation_messages: messages } = detail;
-  const lines = [
-    `# ${t("session")}: ${summary.cwd || summary.id}`,
-    ``,
-    `- **${t("startTime")}**: ${formatTimestamp(summary.timestamp)}`,
-    `- **Provider**: ${summary.model_provider || "unknown"}`,
-    `- **${t("source")}**: ${summary.source || summary.originator || "-"}`,
-    `- **${t("sessionId")}**: ${summary.id}`,
-    ``
-  ];
-  messages.forEach((msg) => {
-    lines.push(`## ${msg.role}`);
-    lines.push(``);
-    lines.push(displayMessageText(msg));
-    lines.push(``);
-  });
-  const filename = `session-${summary.id.slice(0, 12)}.md`;
-  downloadBlob(lines.join("\n"), filename, "text/markdown; charset=utf-8");
-}
-
-function exportSessionJson(detail) {
-  const filename = `session-${detail.summary.id.slice(0, 12)}.json`;
-  downloadBlob(JSON.stringify(detail, null, 2), filename, "application/json; charset=utf-8");
-}
-
-function compactText(value, maxLength = 90) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (text.length <= maxLength) {
-    return text;
-  }
-  return text.slice(0, Math.max(0, maxLength - 3)).trimEnd() + "...";
 }
 
 // ── 详情标签行 ──────────────────────────────────────────────────────────────────

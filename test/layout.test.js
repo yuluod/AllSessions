@@ -63,11 +63,9 @@ test("统计与工具视图使用全宽工作区且手机端提供返回入口",
 
 test("统计页展示真实事件总数并使用最近日期", async () => {
   const source = await readProjectFile("public/app.js");
-  const store = await readProjectFile("server/session-store.js");
 
   assert.match(source, /value: formatCount\(stats\.total_events\)/);
   assert.match(source, /\(stats\.by_date \|\| \[\]\)\.slice\(-14\)/);
-  assert.match(store, /total_events: totalEvents/);
 });
 
 test("页面复用项目图标作为 favicon 与工具栏标识", async () => {
@@ -189,6 +187,12 @@ test("普通对话默认展开，仅收起工具、上下文和超长消息", as
   assert.match(source, /card\.classList\.toggle\("collapsed", shouldCollapse\)/);
 });
 
+test("维护预览期间仍允许关闭维护模式", async () => {
+  const source = await readProjectFile("public/app.js");
+
+  assert.match(source, /setCodexMigrationBusy\(true, \{ allowMaintenanceToggle: true \}\)/);
+});
+
 test("会话列表支持筛选状态 chips 和日期分组", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
@@ -268,12 +272,6 @@ test("样式包含紧凑工具栏和详情元信息条", async () => {
   assert.match(css, /\.detail-tags\b/);
   assert.match(css, /\.props-panel\b/);
   assert.match(css, /\.session-list-shell\b/);
-});
-
-test("启动流程会等待 watcher 初始化完成", async () => {
-  const source = await readProjectFile("server/index.js");
-
-  assert.match(source, /await store\.watch\(\);/);
 });
 
 test("语言切换会重渲染动态内容而不是只更新静态文案", async () => {
@@ -361,7 +359,7 @@ test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复�
   assert.match(html, /id="codex-archive-viewer-title"/);
   assert.match(html, /data-i18n="codexArchiveViewerDesc"/);
   assert.match(app, /\/api\/codex-maintenance/);
-  assert.match(app, /setMutationToken\(state\.capabilities/);
+  assert.match(app, /bindTauriSessionEvents/);
   assert.match(app, /codexMigrationPreviewRequestGate\.cancel\(\)/);
   assert.match(app, /signal: request\.signal/);
   assert.doesNotMatch(app, /if \(isTools && isCodexMaintenanceEnabled\(\)/);

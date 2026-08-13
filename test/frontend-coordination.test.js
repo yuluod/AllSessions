@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createLatestRequestGate } from "../public/async-coordinator.js";
-import { bindSessionEvents } from "../public/session-events.js";
+import { fetchJson } from "../public/api-client.js";
+import { bindSessionEvents, bindTauriSessionEvents } from "../public/session-events.js";
 
-class FakeEventSource {
+class FakeEventBridge {
   constructor() {
     this.listeners = new Map();
   }
@@ -40,8 +41,29 @@ test("后发请求会使先前请求失效并中止其网络信号", () => {
   assert.equal(second.isCurrent(), false);
 });
 
-test("SSE 变更会合并为一次服务端重查而不是直接拼接本地列表", async () => {
-  const eventSource = new FakeEventSource();
+test("Tauri invoke 的不可序列化错误会使用本地化回退", async (t) => {
+  const error = {};
+  error.self = error;
+  globalThis.window = {
+    __TAURI__: {
+      core: {
+        invoke: async () => { throw error; }
+      }
+    }
+  };
+  t.after(() => { delete globalThis.window; });
+
+  await assert.rejects(
+    fetchJson("/api/test", {}, { formatError: (status) => `fallback:${status}` }),
+    (caught) => {
+      assert.equal(caught.message, "fallback:500");
+      return true;
+    }
+  );
+});
+
+test("会话变更会合并为一次 Rust 重查而不是直接拼接本地列表", async () => {
+  const eventSource = new FakeEventBridge();
   const added = [];
   let refreshCount = 0;
   const dispose = bindSessionEvents(eventSource, {
@@ -67,8 +89,8 @@ test("SSE 变更会合并为一次服务端重查而不是直接拼接本地列�
   assert.equal(refreshCount, 1);
 });
 
-test("损坏的 SSE 数据会被报告，但仍触发一次权威重查", async () => {
-  const eventSource = new FakeEventSource();
+test("损坏的事件数据会被报告，但仍触发一次权威重查", async () => {
+  const eventSource = new FakeEventBridge();
   const errors = [];
   let refreshCount = 0;
   bindSessionEvents(eventSource, {
@@ -84,4 +106,34 @@ test("损坏的 SSE 数据会被报告，但仍触发一次权威重查", async 
 
   assert.equal(errors.length, 1);
   assert.equal(refreshCount, 1);
+});
+
+test("Tauri sessions-changed 事件会进入统一去抖刷新流程", async (t) => {
+  let listener;
+  let unlistenCount = 0;
+  globalThis.window = {
+    __TAURI__: {
+      event: {
+        listen: async (name, handler) => {
+          assert.equal(name, "sessions-changed");
+          listener = handler;
+          return () => { unlistenCount += 1; };
+        }
+      }
+    }
+  };
+  t.after(() => { delete globalThis.window; });
+  let refreshCount = 0;
+  const added = [];
+  const dispose = await bindTauriSessionEvents({
+    debounceMs: 5,
+    refresh: () => { refreshCount += 1; },
+    onSessionAdded: (summary) => added.push(summary)
+  });
+  listener({ payload: { type: "session-added", summary: { id: "new" } } });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(refreshCount, 1);
+  assert.deepEqual(added, [{ id: "new" }]);
+  dispose();
+  assert.equal(unlistenCount, 1);
 });

@@ -54,9 +54,6 @@ jobs:
       - name: 构建 Web 前端
         run: pnpm build
 
-      - name: 准备 Node sidecar
-        run: pnpm desktop:prepare
-
       - name: 编译测试 Tauri 桌面端
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
@@ -79,13 +76,13 @@ jobs:
             target: aarch64-apple-darwin
             platform: mac
             arch: arm64
-            bundles: dmg
+            bundles: app,dmg
           - name: macOS x64
             os: macos-15-intel
             target: x86_64-apple-darwin
             platform: mac
             arch: x64
-            bundles: dmg
+            bundles: app,dmg
           - name: Linux x64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -139,9 +136,6 @@ jobs:
             echo 'ALLSESSIONS_RELEASE_NOTES'
           } >> "$GITHUB_OUTPUT"
 
-      - name: 准备 Node sidecar
-        run: node scripts/prepare-tauri-sidecar.mjs --target ${{ matrix.target }}
-
       - name: 构建并发布 Tauri 安装包
         uses: tauri-apps/tauri-action@v0
         env:
@@ -152,6 +146,7 @@ jobs:
           releaseName: AllSessions ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           releaseBody: ${{ steps.release_notes.outputs.body }}
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          uploadUpdaterJson: false
           updaterJsonPreferNsis: true
 
       # v0.0.6 的旧更新器依赖这些名称；保留它们可完成一次平滑迁移。
@@ -163,3 +158,31 @@ jobs:
         run: |
           node scripts/collect-tauri-artifact.mjs --target ${{ matrix.target }} --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
           gh release upload "$RELEASE_TAG" release/AllSessions-* --clobber --repo "$GITHUB_REPOSITORY"
+
+  updater-manifest:
+    name: 汇总跨平台更新清单
+    needs: publish
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: 生成并上传完整更新清单
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,body,publishedAt,tagName > release-metadata.json
+          mkdir -p release-signatures
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.sig' --dir release-signatures
+          node scripts/build-updater-manifest.mjs release-metadata.json release-signatures latest.json
+          gh release upload "$RELEASE_TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"

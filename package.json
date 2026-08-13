@@ -1,7 +1,7 @@
 {
   "name": "allsessions",
   "version": "0.0.8",
-  "description": "A lightweight, local-only web viewer for browsing Codex, Claude Code, and Gemini CLI session history.",
+  "description": "A local-first Tauri desktop app for browsing Codex, Claude Code, and Gemini CLI session history.",
   "type": "module",
   "license": "Apache-2.0",
   "author": "yuluo",
@@ -16,22 +16,17 @@
   "packageManager": "pnpm@11.10.0",
   "keywords": ["ai", "codex", "session", "viewer", "local", "cli", "claude", "gemini"],
   "scripts": {
-    "start": "node server/index.js",
-    "start:maintenance": "node server/index.js --enable-codex-maintenance",
-    "dev": "node server/index.js",
+    "dev": "tauri dev",
     "test": "node --test",
-    "lint": "eslint server public test scripts",
-    "lint:fix": "eslint server public test scripts --fix",
+    "lint": "eslint public test scripts",
+    "lint:fix": "eslint public test scripts --fix",
     "format": "prettier --write .",
     "build": "vite build",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "licenses:check": "node scripts/generate-third-party-notices.mjs --check",
-    "desktop:prepare": "node scripts/prepare-tauri-sidecar.mjs",
-    "desktop:dev": "pnpm desktop:prepare && tauri dev",
-    "desktop:build": "pnpm desktop:prepare && tauri build",
-    "release:build": "pnpm desktop:build",
-    "codex:provider-repair": "node scripts/codex-provider-repair.mjs",
-    "codex:provider-migration": "node scripts/codex-provider-repair.mjs"
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "release:build": "pnpm desktop:build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.5",

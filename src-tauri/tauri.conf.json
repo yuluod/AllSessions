@@ -4,14 +4,16 @@
   "version": "../package.json",
   "identifier": "com.yuluod.allsessions",
   "build": {
-    "frontendDist": "../desktop"
+    "beforeDevCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
         "label": "main",
         "title": "AllSessions",
-        "url": "loading.html",
+        "url": "index.html",
         "width": 1280,
         "height": 820,
         "minWidth": 960,
@@ -19,8 +21,9 @@
         "center": true
       }
     ],
+    "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {
@@ -29,15 +32,10 @@
     "createUpdaterArtifacts": true,
     "category": "DeveloperTool",
     "shortDescription": "本地 AI 会话工作台",
-    "externalBin": ["binaries/node"],
     "resources": {
-      "../server/": "server/",
-      "../public/": "public/",
-      "../package.json": "package.json",
       "../CHANGELOG.md": "CHANGELOG.md",
       "../LICENSE": "LICENSE",
-      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
-      "../third-party/node/LICENSE": "third-party/node/LICENSE"
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
     },
     "icon": [
       "icons/32x32.png",
@@ -50,6 +48,9 @@
       "nsis": {
         "installMode": "currentUser"
       }
+    },
+    "macOS": {
+      "bundleVersion": "8"
     }
   },
   "plugins": {

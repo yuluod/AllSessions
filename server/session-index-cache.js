@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 8;
 const CACHE_WRITE_CHUNK_CHARS = 1024 * 1024;
 const CACHE_HEADER = `${JSON.stringify({ version: CACHE_VERSION })}\n`;
 
@@ -15,14 +15,21 @@ function fingerprint(stat) {
   };
 }
 
-function isCacheEntry(value) {
+function hasCacheFingerprint(value) {
   return value &&
     typeof value === "object" &&
     typeof value.file_path === "string" &&
     typeof value.source_kind === "string" &&
     Number.isFinite(value.size) &&
-    Number.isFinite(value.mtime_ms) &&
-    value.summary &&
+    Number.isFinite(value.mtime_ms);
+}
+
+function isCacheEntry(value) {
+  if (!hasCacheFingerprint(value)) return false;
+  if (value.entry_type === "source_fragment") {
+    return value.payload && typeof value.payload === "object";
+  }
+  return value.summary &&
     typeof value.summary === "object" &&
     typeof value.index_text === "string";
 }
@@ -84,7 +91,20 @@ export class SessionIndexCache {
       entry.mtime_ms !== current.mtime_ms) {
       return null;
     }
-    return entry;
+    return entry.entry_type === "source_fragment" ? null : entry;
+  }
+
+  getFragment(filePath, sourceKind, stat) {
+    const entry = this.entries.get(filePath);
+    const current = fingerprint(stat);
+    if (!entry ||
+      entry.entry_type !== "source_fragment" ||
+      entry.source_kind !== sourceKind ||
+      entry.size !== current.size ||
+      entry.mtime_ms !== current.mtime_ms) {
+      return null;
+    }
+    return entry.payload;
   }
 
   set(filePath, sourceKind, stat, summary, indexText) {
@@ -94,6 +114,17 @@ export class SessionIndexCache {
       ...fingerprint(stat),
       summary,
       index_text: indexText
+    });
+    this.dirty = true;
+  }
+
+  setFragment(filePath, sourceKind, stat, payload) {
+    this.entries.set(filePath, {
+      entry_type: "source_fragment",
+      file_path: filePath,
+      source_kind: sourceKind,
+      ...fingerprint(stat),
+      payload
     });
     this.dirty = true;
   }

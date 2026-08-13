@@ -14,7 +14,8 @@ function inferCwd(entries) {
   return "";
 }
 
-function buildSession(sessionId, entries, queueDirs, rootDir) {
+function buildSession(sessionId, entries, sourceFiles, rootDir) {
+  const queueDirs = new Set(sourceFiles.map((filePath) => path.basename(path.dirname(filePath))));
   entries.sort((a, b) => (a.messageId ?? 0) - (b.messageId ?? 0));
 
   const rawEvents = [];
@@ -66,7 +67,7 @@ function buildSession(sessionId, entries, queueDirs, rootDir) {
     .filter(Boolean)
     .sort();
 
-  const firstQueueDir = [...queueDirs][0] || "";
+  const firstSourceFile = sourceFiles[0] || path.join(rootDir, "tmp", "logs.json");
   const summary = {
     id: sessionId,
     source_kind: "gemini",
@@ -76,7 +77,7 @@ function buildSession(sessionId, entries, queueDirs, rootDir) {
     cwd: inferCwd(entries),
     source: "cli",
     originator: "google_gemini",
-    file_path: path.join(rootDir, "tmp", firstQueueDir, "logs.json"),
+    file_path: firstSourceFile,
     event_count: rawEvents.length,
     last_timestamp: timestamps[timestamps.length - 1] || null
   };
@@ -163,7 +164,45 @@ async function enrichWithBrain(rootDir, sessionId, result) {
   }
 }
 
-export async function parseGeminiSessions(rootDir) {
+export async function parseGeminiLogFile(filePath) {
+  const raw = await fs.readFile(filePath, "utf8");
+  const logs = JSON.parse(raw);
+  if (!Array.isArray(logs)) {
+    throw new Error(`Gemini 日志不是数组：${filePath}`);
+  }
+  return logs.filter((item) => item && typeof item === "object" && typeof item.sessionId === "string");
+}
+
+export async function buildGeminiSessions(rootDir, fragments, sessionIds = null) {
+  const selectedIds = sessionIds ? new Set(sessionIds) : null;
+  const allSessions = new Map();
+
+  for (const [filePath, logs] of fragments) {
+    for (const item of logs) {
+      const sid = item.sessionId;
+      if (!sid || (selectedIds && !selectedIds.has(sid))) continue;
+      if (!allSessions.has(sid)) {
+        allSessions.set(sid, { entries: [], sourceFiles: new Set() });
+      }
+      const session = allSessions.get(sid);
+      session.entries.push(item);
+      session.sourceFiles.add(filePath);
+    }
+  }
+
+  const results = [];
+  for (const [sessionId, session] of allSessions) {
+    const result = buildSession(sessionId, session.entries, [...session.sourceFiles].sort(), rootDir);
+    await enrichWithBrain(rootDir, sessionId, result);
+    if (result.conversation_messages.length > 0) {
+      finalizeSessionSummary(result.summary, result.conversation_messages);
+      results.push(result);
+    }
+  }
+  return results;
+}
+
+async function discoverGeminiLogFiles(rootDir) {
   const tmpDir = path.join(rootDir, "tmp");
   let tmpEntries;
   try {
@@ -171,85 +210,35 @@ export async function parseGeminiSessions(rootDir) {
   } catch {
     return [];
   }
+  return tmpEntries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(tmpDir, entry.name, "logs.json"));
+}
 
-  const allSessions = new Map();
-
-  for (const entry of tmpEntries) {
-    if (!entry.isDirectory()) continue;
-    const logsPath = path.join(tmpDir, entry.name, "logs.json");
-    let logs;
+export async function parseGeminiSessions(rootDir) {
+  const fragments = new Map();
+  for (const logsPath of await discoverGeminiLogFiles(rootDir)) {
     try {
-      const raw = await fs.readFile(logsPath, "utf8");
-      logs = JSON.parse(raw);
+      fragments.set(logsPath, await parseGeminiLogFile(logsPath));
     } catch {
-      continue;
-    }
-    if (!Array.isArray(logs)) continue;
-
-    for (const item of logs) {
-      const sid = item.sessionId;
-      if (!sid) continue;
-      if (!allSessions.has(sid)) {
-        allSessions.set(sid, { entries: [], queueDirs: new Set() });
-      }
-      const session = allSessions.get(sid);
-      session.entries.push(item);
-      session.queueDirs.add(entry.name);
+      // 单个队列日志损坏时继续加载其他 Gemini 会话。
     }
   }
-
-  const results = [];
-
-  for (const [sessionId, session] of allSessions) {
-    const result = buildSession(sessionId, session.entries, session.queueDirs, rootDir);
-    await enrichWithBrain(rootDir, sessionId, result);
-    if (result.conversation_messages.length > 0) {
-      finalizeSessionSummary(result.summary, result.conversation_messages);
-      results.push(result);
-    }
-  }
-
-  return results;
+  return buildGeminiSessions(rootDir, fragments);
 }
 
 export async function parseGeminiSessionById(rootDir, sessionId) {
-  const tmpDir = path.join(rootDir, "tmp");
-  let tmpEntries;
-  try {
-    tmpEntries = await fs.readdir(tmpDir, { withFileTypes: true });
-  } catch {
-    return null;
-  }
-
-  const entries = [];
-  const queueDirs = new Set();
-
-  for (const entry of tmpEntries) {
-    if (!entry.isDirectory()) continue;
-    const logsPath = path.join(tmpDir, entry.name, "logs.json");
-    let logs;
+  const fragments = new Map();
+  for (const logsPath of await discoverGeminiLogFiles(rootDir)) {
     try {
-      const raw = await fs.readFile(logsPath, "utf8");
-      logs = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    if (!Array.isArray(logs)) continue;
-
-    for (const item of logs) {
-      if (item.sessionId === sessionId) {
-        entries.push(item);
-        queueDirs.add(entry.name);
+      const entries = await parseGeminiLogFile(logsPath);
+      if (entries.some((item) => item.sessionId === sessionId)) {
+        fragments.set(logsPath, entries);
       }
+    } catch {
+      // 单个队列日志损坏时继续查找目标会话。
     }
   }
-
-  if (entries.length === 0) return null;
-
-  const result = buildSession(sessionId, entries, queueDirs, rootDir);
-  await enrichWithBrain(rootDir, sessionId, result);
-
-  if (result.conversation_messages.length === 0) return null;
-  finalizeSessionSummary(result.summary, result.conversation_messages);
-  return result;
+  const [result] = await buildGeminiSessions(rootDir, fragments, [sessionId]);
+  return result || null;
 }

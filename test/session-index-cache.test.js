@@ -32,7 +32,7 @@ test("索引缓存使用逐行格式保存并可释放初始化副本", async (t
 
   const lines = (await fs.readFile(cacheFile, "utf8")).trim().split("\n");
   assert.equal(lines.length, 3);
-  assert.deepEqual(JSON.parse(lines[0]), { version: 7 });
+  assert.deepEqual(JSON.parse(lines[0]), { version: 8 });
   assert.equal(JSON.parse(lines[1]).file_path, "/tmp/one.jsonl");
   assert.equal(JSON.parse(lines[2]).file_path, "/tmp/two.jsonl");
 

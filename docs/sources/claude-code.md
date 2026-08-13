@@ -1,4 +1,4 @@
-# Claude Code 本地会话接入说明
+# Claude Code 来源说明
 
 本文档记录 Claude Code 来源在 AllSessions 中的当前实现、数据边界和后续方向。早期接入计划已经完成，不再作为待实施方案维护。
 
@@ -9,14 +9,15 @@ AllSessions 已支持同时扫描和聚合 Codex、Codex Archived、Claude Code 
 当前实现涉及：
 
 - `server/config.js`：声明 Claude Code 来源目录和精确的发现、监听范围。
+- `server/source-adapters.js`：统一处理文件发现、摘要缓存、增量刷新和详情加载。
 - `server/parsers/claude-code.js`：解析本地 Claude Code 会话元数据并映射到统一详情结构。
 - `server/parsers/common.js`：提供跨来源共用的摘要与消息归一化工具。
 - `server/session-store.js`：以 `${source_kind}:${id}` 作为内部组合键，避免不同来源的原始 ID 冲突。
-- 前端来源筛选、详情页和统计视图：消费统一摘要字段，不依赖 Claude Code 专有结构。
+- 前端来源筛选、详情页和统计视图：消费统一摘要字段，并从后端适配器元数据动态获得来源名称。
 
 ## 数据边界
 
-Claude Code 本地目录在当前支持格式下主要提供会话元数据和用户输入历史。AllSessions 只展示本地文件中实际存在的内容，不通过 Anthropic API 补全云端对话，也不推断缺失的助手回复。
+Claude Code 的 `~/.claude/projects/**/*.jsonl` 转录当前可提供用户与助手消息、Thinking、工具调用与结果、原始事件、搜索和实时刷新。旧环境缺少项目转录时，才回退到 `~/.claude/sessions/*.json` 元数据与用户输入历史。AllSessions 只展示本地文件中实际存在的内容，不通过 Anthropic API 补全云端对话，也不推断缺失内容。
 
 解析结果使用统一结构：
 

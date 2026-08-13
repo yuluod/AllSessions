@@ -4,7 +4,6 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseFileSummary } from "../server/parsers/index.js";
 import { SessionStore } from "../server/session-store.js";
 
 async function createTempSessionDir() {
@@ -554,7 +553,7 @@ test("Claude Code 项目转录支持发现、搜索和增量刷新", async (t) =
   assert.deepEqual(detail.summary.role_counts, { user: 1, assistant: 1 });
 });
 
-test("Gemini logs 变更会重建 Gemini 来源索引", async (t) => {
+test("Gemini logs 变更只重读变化文件并更新受影响会话", async (t) => {
   const rootDir = await createTempSessionDir();
   const queueDir = path.join(rootDir, "tmp", "queue-a");
   await fs.mkdir(queueDir, { recursive: true });
@@ -564,6 +563,9 @@ test("Gemini logs 变更会重建 Gemini 来源索引", async (t) => {
   });
 
   const logsPath = path.join(queueDir, "logs.json");
+  const otherQueueDir = path.join(rootDir, "tmp", "queue-b");
+  await fs.mkdir(otherQueueDir, { recursive: true });
+  const otherLogsPath = path.join(otherQueueDir, "logs.json");
   await fs.writeFile(
     logsPath,
     JSON.stringify([
@@ -577,16 +579,30 @@ test("Gemini logs 变更会重建 Gemini 来源索引", async (t) => {
     ]),
     "utf8"
   );
+  await fs.writeFile(otherLogsPath, JSON.stringify([{
+    sessionId: "other-gemini-session",
+    messageId: 1,
+    timestamp: "2026-04-21T09:00:00.000Z",
+    type: "user",
+    message: "不应重新读取的会话"
+  }]), "utf8");
 
   const source = { kind: "gemini", rootDir, filePattern: "tmp/*/logs.json" };
   const store = new SessionStore({ sources: [source] });
   await store.initialize();
 
-  assert.equal(store.listSessions().sessions.length, 1);
+  assert.equal(store.listSessions().sessions.length, 2);
   assert.equal(store.search("第一次").length, 1);
 
   const events = [];
   store.onChange((event) => events.push(event));
+  const adapter = store._sourceAdapters[0];
+  const originalParseLogFile = adapter.parseLogFile;
+  const reparsedFiles = [];
+  adapter.parseLogFile = async (filePath) => {
+    reparsedFiles.push(filePath);
+    return originalParseLogFile(filePath);
+  };
 
   await fs.writeFile(
     logsPath,
@@ -605,10 +621,38 @@ test("Gemini logs 变更会重建 Gemini 来源索引", async (t) => {
   store._pendingChanges.add(logsPath);
   await store._processPendingChanges();
 
-  assert.equal(store.listSessions().sessions.length, 1);
+  assert.equal(store.listSessions().sessions.length, 2);
   assert.equal(store.search("第一次").length, 0);
   assert.equal(store.search("第二次").length, 1);
   assert.equal(events.some((event) => event.type === "session-updated"), true);
+  assert.deepEqual(reparsedFiles, [logsPath]);
+  assert.equal(store.search("不应重新读取").length, 1);
+});
+
+test("Gemini 重启时从私有缓存恢复未变化的日志分片", async (t) => {
+  const rootDir = await createTempSessionDir();
+  const queueDir = path.join(rootDir, "tmp", "queue-cache");
+  const cacheFile = path.join(rootDir, "cache", "session-index.json");
+  await fs.mkdir(queueDir, { recursive: true });
+  t.after(async () => fs.rm(rootDir, { recursive: true, force: true }));
+
+  await fs.writeFile(path.join(queueDir, "logs.json"), JSON.stringify([{
+    sessionId: "gemini-cached",
+    messageId: 1,
+    timestamp: "2026-04-21T10:00:00.000Z",
+    type: "user",
+    message: "Gemini 缓存正文"
+  }]), "utf8");
+  const source = { kind: "gemini", rootDir, filePattern: "tmp/*/logs.json" };
+
+  const first = new SessionStore({ sources: [source], indexCacheFile: cacheFile });
+  await first.initialize();
+  assert.deepEqual(first.cacheStats, { hits: 0, misses: 1 });
+
+  const second = new SessionStore({ sources: [source], indexCacheFile: cacheFile });
+  await second.initialize();
+  assert.deepEqual(second.cacheStats, { hits: 1, misses: 0 });
+  assert.equal(second.search("Gemini 缓存正文").length, 1);
 });
 
 test("SessionStore 重启时复用未变化文件的私有索引缓存", async (t) => {
@@ -691,12 +735,14 @@ test("文件变更处理通过单写者队列串行执行", async (t) => {
   await store.initialize();
   let active = 0;
   let maxActive = 0;
-  store._parseFileSummary = async (...args) => {
+  const adapter = store._sourceAdapters[0];
+  const originalHandleChange = adapter.handleChange.bind(adapter);
+  adapter.handleChange = async (...args) => {
     active += 1;
     maxActive = Math.max(maxActive, active);
     await new Promise((resolve) => setTimeout(resolve, 15));
     try {
-      return await parseFileSummary(...args);
+      return await originalHandleChange(...args);
     } finally {
       active -= 1;
     }
@@ -715,7 +761,7 @@ test("文件变更处理通过单写者队列串行执行", async (t) => {
   assert.equal(store.search("第三次").length, 1);
 });
 
-test("Gemini 重载失败时保留上一版可用索引", async (t) => {
+test("Gemini 增量解析失败时保留上一版可用索引", async (t) => {
   const rootDir = await createTempSessionDir();
   const queueDir = path.join(rootDir, "tmp", "queue-a");
   await fs.mkdir(queueDir, { recursive: true });
@@ -733,11 +779,13 @@ test("Gemini 重载失败时保留上一版可用索引", async (t) => {
   const source = { kind: "gemini", rootDir, filePattern: "tmp/*/logs.json" };
   const store = new SessionStore({ sources: [source] });
   await store.initialize();
-  store._parseGeminiSessions = async () => {
+  const adapter = store._sourceAdapters[0];
+  adapter.parseLogFile = async () => {
     throw new Error("transient parse failure");
   };
 
-  await assert.rejects(store._reloadGeminiSource(source), /transient parse failure/);
+  store._pendingChanges.add(path.join(queueDir, "logs.json"));
+  await store._processPendingChanges();
   assert.equal(store.search("保留的内容").length, 1);
   assert.equal(store.listSessions().sessions.length, 1);
 });

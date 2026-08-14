@@ -12,11 +12,15 @@ function errorMessage(error) {
   }
 }
 
+export const DESKTOP_RUNTIME_REQUIRED = "desktop_runtime_required";
+
 export async function fetchJson(url, options = {}, { formatError } = {}) {
   if (options.signal?.aborted) throw abortError();
   const invoke = window.__TAURI__?.core?.invoke;
   if (typeof invoke !== "function") {
-    throw new Error("当前页面不在 AllSessions 桌面应用中运行");
+    const error = new Error("当前页面不在 AllSessions 桌面应用中运行");
+    error.code = DESKTOP_RUNTIME_REQUIRED;
+    throw error;
   }
   let body = null;
   if (typeof options.body === "string" && options.body) {

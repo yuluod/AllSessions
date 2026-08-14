@@ -42,7 +42,7 @@
   }
 
   .toolbar {
-    grid-template-columns: auto auto minmax(270px, 310px) minmax(190px, 290px) auto;
+    grid-template-columns: auto auto minmax(270px, 1fr) auto;
     gap: 8px;
   }
 
@@ -56,10 +56,14 @@
 }
 
 @media (max-width: 1040px) {
+  :root {
+    --header-h: 114px;
+  }
+
   .toolbar {
     grid-template-areas:
       "brand views right"
-      "sources search search";
+      "search search search";
     grid-template-columns: auto 1fr auto;
   }
 
@@ -72,10 +76,6 @@
     justify-self: center;
   }
 
-  .toolbar-source-filter {
-    grid-area: sources;
-  }
-
   .toolbar-center {
     grid-area: search;
   }
@@ -86,8 +86,8 @@
 
   .sidebar-left,
   .props-panel {
-    top: 126px;
-    max-height: calc(100dvh - 138px);
+    top: calc(var(--header-h) + 12px);
+    max-height: calc(100dvh - var(--header-h) - 24px);
   }
 
   .stats-charts {
@@ -100,6 +100,10 @@
 }
 
 @media (max-width: 760px) {
+  :root {
+    --header-h: 0px;
+  }
+
   .page-shell {
     padding: 7px;
   }
@@ -109,7 +113,6 @@
     grid-template-areas:
       "brand right"
       "views views"
-      "sources sources"
       "search search";
     grid-template-columns: minmax(0, 1fr) auto;
     padding: 9px;
@@ -125,10 +128,6 @@
   }
 
   .workspace-tabs {
-    width: 100%;
-  }
-
-  .toolbar-source-filter {
     width: 100%;
   }
 
@@ -203,10 +202,29 @@
     justify-content: space-between;
   }
 
-  .conversation-toolbar {
+  .conversation-display-options[open],
+  .export-menu[open] {
+    width: 100%;
+  }
+
+  .conversation-display-options[open] > summary,
+  .export-menu[open] > summary {
+    width: 100%;
+  }
+
+  .conversation-display-options > summary,
+  .export-menu > summary {
+    min-height: 40px;
+    justify-content: center;
+  }
+
+  .conversation-display-options-body,
+  .export-menu .export-actions {
     position: static;
-    margin-inline: 0;
-    padding-inline: 0;
+    width: 100%;
+    min-width: 0;
+    margin-top: 6px;
+    box-shadow: none;
   }
 
   .role-filter {
@@ -251,14 +269,10 @@
     max-width: 190px;
   }
 
-  .filter-toggle-btn span {
-    display: none;
-  }
-
   .filter-toggle-btn {
-    width: 38px;
+    min-width: 40px;
+    min-height: 40px;
     justify-content: center;
-    padding: 0;
   }
 
   .filter-bar {
@@ -281,7 +295,9 @@
   }
 
   .tabs,
-  .export-actions {
+  .export-menu,
+  .export-menu > summary,
+  .export-menu .export-actions {
     width: 100%;
   }
 

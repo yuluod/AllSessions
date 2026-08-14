@@ -59,7 +59,9 @@
   border-radius: 999px;
   background: var(--surface-subtle);
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
 }
 
 .maintenance-toggle input::after {
@@ -71,7 +73,9 @@
   border-radius: 50%;
   background: var(--muted);
   content: "";
-  transition: transform 140ms ease, background 140ms ease;
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
 }
 
 .maintenance-toggle input:checked {
@@ -116,6 +120,12 @@
   font-size: 0.79rem;
   line-height: 1.55;
   text-wrap: pretty;
+}
+
+.tool-card-header .tool-card-hint {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
 }
 
 .tool-sidebar-copy {

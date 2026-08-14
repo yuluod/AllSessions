@@ -13,6 +13,36 @@ use tauri::{
 
 use backend::{request_json, BackendState};
 
+/// 托盘图标资产：来源 `icons/128x128.png`，与 `tauri.conf.json` 的窗口图标是两份配置。
+/// 去背景逻辑假设：背景为纯白（所有通道 ≥ TRAY_BACKGROUND_CHANNEL_MIN），
+/// 且字形内部不含近白色细节（否则会被打成透明洞）。更换图标时需同步检查
+/// `cargo test 托盘图标使用透明画布` 仍然通过。
+const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/128x128.png");
+const TRAY_BACKGROUND_CHANNEL_MIN: u8 = 245;
+
+fn transparent_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
+    let source = tauri::image::Image::from_bytes(TRAY_ICON_BYTES)?;
+    let mut rgba = source.rgba().to_vec();
+    transparentize_tray_background(&mut rgba);
+    Ok(tauri::image::Image::new_owned(
+        rgba,
+        source.width(),
+        source.height(),
+    ))
+}
+
+fn transparentize_tray_background(rgba: &mut [u8]) {
+    for pixel in rgba.chunks_exact_mut(4) {
+        if pixel[3] > 0
+            && pixel[..3]
+                .iter()
+                .all(|channel| *channel >= TRAY_BACKGROUND_CHANNEL_MIN)
+        {
+            pixel[3] = 0;
+        }
+    }
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -29,7 +59,8 @@ fn create_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&open_item, &update_item, &separator, &quit_item])?;
 
     TrayIconBuilder::new()
-        .icon(app.default_window_icon().expect("应用图标必须存在").clone())
+        .icon(transparent_tray_icon()?)
+        .icon_as_template(true)
         .tooltip("AllSessions")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -78,4 +109,37 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("无法启动 AllSessions");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{transparent_tray_icon, transparentize_tray_background};
+
+    #[test]
+    fn 托盘图标会移除白色方形背景() {
+        let mut rgba = [
+            255, 255, 255, 255, 244, 244, 244, 255, 18, 112, 110, 255, 255, 255, 255, 0,
+        ];
+
+        transparentize_tray_background(&mut rgba);
+
+        assert_eq!(rgba[3], 0);
+        assert_eq!(rgba[7], 255);
+        assert_eq!(rgba[11], 255);
+        assert_eq!(rgba[15], 0);
+    }
+
+    #[test]
+    fn 托盘图标使用透明画布() {
+        let icon = transparent_tray_icon().expect("托盘图标必须可被解码");
+        let width = icon.width() as usize;
+        let height = icon.height() as usize;
+        let rgba = icon.rgba();
+
+        assert!(rgba.chunks_exact(4).any(|pixel| pixel[3] > 0));
+        assert!(rgba[..width * 4].chunks_exact(4).all(|pixel| pixel[3] == 0));
+        assert!(rgba[(height - 1) * width * 4..]
+            .chunks_exact(4)
+            .all(|pixel| pixel[3] == 0));
+    }
 }

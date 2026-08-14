@@ -99,6 +99,23 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY/);
 });
 
+test("原生更新确认使用中文文案且托盘图标符合状态栏规范", async () => {
+  const [rustSource, updater] = await Promise.all([
+    readFile(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8"),
+    readFile(path.join(projectRoot, "src-tauri", "src", "updater.rs"), "utf8")
+  ]);
+
+  assert.match(
+    updater,
+    /MessageDialogButtons::OkCancelCustom\([\s\S]*"立即下载并安装"[\s\S]*"暂不"/
+  );
+  assert.doesNotMatch(updater, /MessageDialogButtons::YesNo/);
+  assert.match(rustSource, /fn transparent_tray_icon\(\)/);
+  assert.match(rustSource, /\.icon\(transparent_tray_icon\(\)\?\)/);
+  assert.match(rustSource, /\.icon_as_template\(true\)/);
+  assert.doesNotMatch(rustSource, /app\.default_window_icon/);
+});
+
 test("安装包包含 Rust 许可证且发布依赖质量门禁", async () => {
   const [config, releaseWorkflow, ciWorkflow, packageJson, notices] = await Promise.all([
     readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),

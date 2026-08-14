@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createLatestRequestGate } from "../public/async-coordinator.js";
-import { fetchJson } from "../public/api-client.js";
+import {
+  DESKTOP_RUNTIME_REQUIRED,
+  fetchJson,
+} from "../public/api-client.js";
 import { bindSessionEvents, bindTauriSessionEvents } from "../public/session-events.js";
 
 class FakeEventBridge {
@@ -60,6 +63,16 @@ test("Tauri invoke 的不可序列化错误会使用本地化回退", async (t) 
       return true;
     }
   );
+});
+
+test("缺少 Tauri runtime 时返回稳定错误码", async (t) => {
+  globalThis.window = {};
+  t.after(() => { delete globalThis.window; });
+
+  await assert.rejects(fetchJson("/api/test"), (caught) => {
+    assert.equal(caught.code, DESKTOP_RUNTIME_REQUIRED);
+    return true;
+  });
 });
 
 test("会话变更会合并为一次 Rust 重查而不是直接拼接本地列表", async () => {

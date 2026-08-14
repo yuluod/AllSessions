@@ -36,6 +36,10 @@ fn update_error_message(error: &str) -> String {
     format!("检查或安装更新失败：{error}")
 }
 
+fn update_confirmation_buttons() -> MessageDialogButtons {
+    MessageDialogButtons::OkCancelCustom("立即下载并安装".into(), "暂不".into())
+}
+
 async fn run_update(app: &tauri::AppHandle) -> Result<(), String> {
     let update = app
         .updater()
@@ -63,7 +67,7 @@ async fn run_update(app: &tauri::AppHandle) -> Result<(), String> {
         ))
         .title("AllSessions 更新")
         .kind(MessageDialogKind::Info)
-        .buttons(MessageDialogButtons::YesNo)
+        .buttons(update_confirmation_buttons())
         .blocking_show();
     if !confirmed {
         return Ok(());
@@ -79,7 +83,20 @@ async fn run_update(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::update_error_message;
+    use tauri_plugin_dialog::MessageDialogButtons;
+
+    use super::{update_confirmation_buttons, update_error_message};
+
+    #[test]
+    fn 更新确认使用中文操作文案() {
+        match update_confirmation_buttons() {
+            MessageDialogButtons::OkCancelCustom(confirm, cancel) => {
+                assert_eq!(confirm, "立即下载并安装");
+                assert_eq!(cancel, "暂不");
+            }
+            _ => panic!("更新确认必须使用自定义的确定和取消文案"),
+        }
+    }
 
     #[test]
     fn 缺少当前平台时提供可执行的提示() {

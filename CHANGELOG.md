@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- `CODEX_SESSIONS_DIR`、`CODEX_ARCHIVED_SESSIONS_DIR`、`CLAUDE_SESSIONS_DIR`、`GEMINI_SESSIONS_DIR` 支持以系统路径分隔符分隔的多个根目录，并支持前导 `~` 展开；同一会话在多个根中重复时只显示首个根中的副本。Codex Provider 维护工具仍只覆盖主 `CODEX_HOME` 目录。
+
 ## [0.0.11] - 2026-08-14
 
 ### 修复

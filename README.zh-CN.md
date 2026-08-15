@@ -55,17 +55,19 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 
 ## 配置
 
-环境变量需在启动桌面应用前设置：
+环境变量需在启动桌面应用前设置（启动时读取一次）：
 
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
-| `CODEX_HOME` | Codex 数据根目录 | `~/.codex` |
-| `CODEX_SESSIONS_DIR` | Codex 会话目录 | `$CODEX_HOME/sessions` |
-| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex 归档目录 | `$CODEX_HOME/archived_sessions` |
-| `CLAUDE_SESSIONS_DIR` | Claude Code 根目录 | `~/.claude` |
-| `GEMINI_SESSIONS_DIR` | Gemini CLI 根目录 | `~/.gemini` |
+| `CODEX_HOME` | Codex 数据根目录（单路径） | `~/.codex` |
+| `CODEX_SESSIONS_DIR` | Codex 会话根目录（路径列表） | `$CODEX_HOME/sessions` |
+| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex 归档根目录（路径列表） | `$CODEX_HOME/archived_sessions` |
+| `CLAUDE_SESSIONS_DIR` | Claude Code 根目录（路径列表） | `~/.claude` |
+| `GEMINI_SESSIONS_DIR` | Gemini CLI 根目录（路径列表） | `~/.gemini` |
 | `SESSION_VIEWER_CACHE_DIR` | Rust SQLite 索引缓存目录 | 系统用户缓存目录下的 `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存 | 未设置 |
+
+四个 `*_SESSIONS_DIR` 变量支持用系统路径分隔符（macOS/Linux 为 `:`，Windows 为 `;`）分隔的多个路径，例如 `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`。路径支持前导 `~` 展开为用户主目录，从 Finder/Dock 启动（无 shell 展开环境变量）时同样生效。不存在的根会被跳过；同一类来源的多个根中出现相同会话 id 时，只保留列表中靠前的根（备份副本只显示一次）。注意：Codex Provider 可见性修复工具只覆盖主 `CODEX_HOME` 下的会话目录，不包含额外列出的根。
 
 ## 隐私与安全
 

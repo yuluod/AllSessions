@@ -54,17 +54,19 @@ All platforms use the same Tauri 2 shell, tray actions, and signed updater. GNOM
 
 ## Configuration
 
-Set these before starting the desktop app:
+Set these before starting the desktop app (values are read once at startup):
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `CODEX_HOME` | Codex data root | `~/.codex` |
-| `CODEX_SESSIONS_DIR` | Codex sessions | `$CODEX_HOME/sessions` |
-| `CODEX_ARCHIVED_SESSIONS_DIR` | Archived Codex sessions | `$CODEX_HOME/archived_sessions` |
-| `CLAUDE_SESSIONS_DIR` | Claude Code root | `~/.claude` |
-| `GEMINI_SESSIONS_DIR` | Gemini CLI root | `~/.gemini` |
+| `CODEX_HOME` | Codex data root (single path) | `~/.codex` |
+| `CODEX_SESSIONS_DIR` | Codex session roots (path list) | `$CODEX_HOME/sessions` |
+| `CODEX_ARCHIVED_SESSIONS_DIR` | Archived Codex session roots (path list) | `$CODEX_HOME/archived_sessions` |
+| `CLAUDE_SESSIONS_DIR` | Claude Code roots (path list) | `~/.claude` |
+| `GEMINI_SESSIONS_DIR` | Gemini CLI roots (path list) | `~/.gemini` |
 | `SESSION_VIEWER_CACHE_DIR` | Rust SQLite index directory | Platform cache directory under `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset |
+
+The four `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator (`:` on macOS/Linux, `;` on Windows), e.g. `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`. A leading `~` expands to the home directory, so lists also work when the app is launched from Finder/Dock. Non-existent roots are skipped. If the same session id appears in several roots of one kind, only the first-listed root is kept (a backup copy shows once). Note: the Codex provider maintenance tool only covers the primary `CODEX_HOME` session directories, not additional listed roots.
 
 ## Privacy and security
 

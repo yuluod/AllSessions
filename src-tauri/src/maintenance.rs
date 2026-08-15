@@ -1130,6 +1130,7 @@ fn diagnostic(code: &str, message: impl Into<String>) -> Value {
 fn codex_home() -> PathBuf {
     env::var_os("CODEX_HOME")
         .map(PathBuf::from)
+        .map(crate::sessions::expand_tilde)
         .or_else(|| dirs::home_dir().map(|home| home.join(".codex")))
         .unwrap_or_else(|| PathBuf::from(".codex"))
 }

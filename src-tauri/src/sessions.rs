@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     env,
+    ffi::OsStr,
     fs::{self, File},
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -81,22 +82,21 @@ impl SessionStore {
                 for detail in parse_gemini_source(source)? {
                     let summary = detail["summary"].clone();
                     let key = summary["_key"].as_str().unwrap_or_default().to_string();
-                    next.insert(
-                        key,
-                        StoredSession {
-                            search_text: search_text_from_detail(&detail),
-                            summary,
-                            source: source.clone(),
-                            path: PathBuf::new(),
-                            inline_detail: Some(detail),
-                        },
-                    );
+                    next.entry(key).or_insert_with(|| StoredSession {
+                        search_text: search_text_from_detail(&detail),
+                        summary,
+                        source: source.clone(),
+                        path: PathBuf::new(),
+                        inline_detail: Some(detail),
+                    });
                 }
                 continue;
             }
             for path in discover_files(source) {
                 let path_key = path.to_string_lossy().into_owned();
-                active_paths.insert(path_key);
+                if !active_paths.insert(path_key) {
+                    continue;
+                }
                 let metadata = match fs::metadata(&path) {
                     Ok(value) => value,
                     Err(_) => continue,
@@ -112,16 +112,13 @@ impl SessionStore {
                         self.index_cache
                             .put(&path, source.kind, &metadata, &summary, &search_text);
                         let key = summary["_key"].as_str().unwrap_or_default().to_string();
-                        next.insert(
-                            key,
-                            StoredSession {
-                                summary,
-                                search_text,
-                                source: source.clone(),
-                                path,
-                                inline_detail: None,
-                            },
-                        );
+                        next.entry(key).or_insert_with(|| StoredSession {
+                            summary,
+                            search_text,
+                            source: source.clone(),
+                            path,
+                            inline_detail: None,
+                        });
                     }
                     Err(error) => eprintln!("无法解析会话摘要（{}）：{error}", path.display()),
                 }
@@ -180,16 +177,13 @@ impl SessionStore {
             self.index_cache
                 .put(path, source.kind, &metadata, &summary, &search_text);
             let key = summary["_key"].as_str().unwrap_or_default().to_string();
-            self.records.insert(
-                key,
-                StoredSession {
-                    summary,
-                    search_text,
-                    source,
-                    path: path.clone(),
-                    inline_detail: None,
-                },
-            );
+            self.records.entry(key).or_insert_with(|| StoredSession {
+                summary,
+                search_text,
+                source,
+                path: path.clone(),
+                inline_detail: None,
+            });
             changed = true;
         }
         if changed {
@@ -324,7 +318,14 @@ impl SessionStore {
         });
         let mut date_values = dates.into_iter().collect::<Vec<_>>();
         date_values.reverse();
-        json!({ "session_roots": self.session_roots(), "sources": self.sources.iter().map(|source| json!({ "kind": source.kind, "display_name": source.display_name })).collect::<Vec<_>>(), "providers": providers, "source_kinds": source_kinds, "dates": date_values, "cwds": cwds, "hidden_reasons": hidden_reasons, "projects": project_values })
+        let mut seen_source_kinds = BTreeSet::new();
+        let sources = self
+            .sources
+            .iter()
+            .filter(|source| seen_source_kinds.insert(source.kind))
+            .map(|source| json!({ "kind": source.kind, "display_name": source.display_name }))
+            .collect::<Vec<_>>();
+        json!({ "session_roots": self.session_roots(), "sources": sources, "providers": providers, "source_kinds": source_kinds, "dates": date_values, "cwds": cwds, "hidden_reasons": hidden_reasons, "projects": project_values })
     }
 
     pub fn stats(&self, query: &HashMap<String, String>) -> Value {
@@ -779,56 +780,88 @@ fn configured_sources() -> Vec<Source> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     let codex_home = env::var_os("CODEX_HOME")
         .map(PathBuf::from)
+        .map(expand_tilde)
         .unwrap_or_else(|| home.join(".codex"));
-    let codex = env_path("CODEX_SESSIONS_DIR", codex_home.join("sessions"));
-    let archived = env_path(
-        "CODEX_ARCHIVED_SESSIONS_DIR",
-        codex_home.join("archived_sessions"),
-    );
-    let claude_home = env_path("CLAUDE_SESSIONS_DIR", home.join(".claude"));
-    let gemini = env_path("GEMINI_SESSIONS_DIR", home.join(".gemini"));
-    let claude_projects = claude_home.join("projects");
-    let claude_sessions = claude_home.join("sessions");
-    [
-        Source {
+    sources_from_paths(
+        &env_paths("CODEX_SESSIONS_DIR", codex_home.join("sessions")),
+        &env_paths(
+            "CODEX_ARCHIVED_SESSIONS_DIR",
+            codex_home.join("archived_sessions"),
+        ),
+        &env_paths("CLAUDE_SESSIONS_DIR", home.join(".claude")),
+        &env_paths("GEMINI_SESSIONS_DIR", home.join(".gemini")),
+    )
+}
+fn sources_from_paths(
+    codex_roots: &[PathBuf],
+    codex_archived_roots: &[PathBuf],
+    claude_roots: &[PathBuf],
+    gemini_roots: &[PathBuf],
+) -> Vec<Source> {
+    codex_roots
+        .iter()
+        .map(|root| Source {
             kind: "codex",
             display_name: "Codex",
-            root: codex,
+            root: root.clone(),
             format: SourceFormat::Codex,
             archived: false,
-        },
-        Source {
+        })
+        .chain(codex_archived_roots.iter().map(|root| Source {
             kind: "codex_archived",
             display_name: "Codex Archived",
-            root: archived,
+            root: root.clone(),
             format: SourceFormat::Codex,
             archived: true,
-        },
-        Source {
-            kind: "claude_code",
-            display_name: "Claude Code",
-            root: if claude_projects.is_dir() {
-                claude_projects
-            } else {
-                claude_sessions
-            },
-            format: SourceFormat::Claude,
-            archived: false,
-        },
-        Source {
+        }))
+        .chain(claude_roots.iter().map(|root| {
+            let claude_projects = root.join("projects");
+            let claude_sessions = root.join("sessions");
+            Source {
+                kind: "claude_code",
+                display_name: "Claude Code",
+                root: if claude_projects.is_dir() {
+                    claude_projects
+                } else {
+                    claude_sessions
+                },
+                format: SourceFormat::Claude,
+                archived: false,
+            }
+        }))
+        .chain(gemini_roots.iter().map(|root| Source {
             kind: "gemini",
             display_name: "Gemini CLI",
-            root: gemini,
+            root: root.clone(),
             format: SourceFormat::Gemini,
             archived: false,
-        },
-    ]
-    .into_iter()
-    .filter(|source| source.root.exists())
-    .collect()
+        }))
+        .filter(|source| source.root.exists())
+        .collect()
 }
-fn env_path(key: &str, fallback: PathBuf) -> PathBuf {
-    env::var_os(key).map(PathBuf::from).unwrap_or(fallback)
+fn env_paths(key: &str, fallback: PathBuf) -> Vec<PathBuf> {
+    match env::var_os(key) {
+        Some(value) => split_path_list(&value),
+        None => vec![fallback],
+    }
+}
+fn split_path_list(value: &OsStr) -> Vec<PathBuf> {
+    env::split_paths(value)
+        .map(expand_tilde)
+        .filter(|path| !path.as_os_str().is_empty())
+        .collect()
+}
+pub(crate) fn expand_tilde(path: PathBuf) -> PathBuf {
+    let Some(text) = path.to_str() else {
+        return path;
+    };
+    if text == "~" {
+        return dirs::home_dir().unwrap_or_default();
+    }
+    if let Some(rest) = text.strip_prefix("~/") {
+        return dirs::home_dir().unwrap_or_default().join(rest);
+    }
+    path
 }
 fn existing_watch_root(path: &Path) -> Option<PathBuf> {
     let mut current = path;
@@ -1689,11 +1722,12 @@ mod tests {
 
     use super::{
         compact, generic_conversation_message, is_synthetic_context, parse_detail,
-        parse_gemini_source, parse_summary, search_query_matches, DetailCache, HeadTail,
-        SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT,
-        DETAIL_MESSAGE_LIMIT,
+        parse_gemini_source, parse_summary, search_query_matches, sources_from_paths,
+        split_path_list, DetailCache, HeadTail, SessionStore, Source, SourceFormat,
+        DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
+    use std::path::PathBuf;
     #[test]
     fn summary_text_has_limit() {
         assert_eq!(compact("abcdefgh", 6), "abc...");
@@ -1956,5 +1990,220 @@ mod tests {
         assert!(store.records["codex:first"]
             .search_text
             .contains("new first"));
+    }
+
+    #[test]
+    fn split_path_list_drops_empty_segments() {
+        let joined = std::env::join_paths(["/a/b", "", "/c/d"]).unwrap();
+        let paths = split_path_list(joined.as_os_str());
+        let expected = vec![PathBuf::from("/a/b"), PathBuf::from("/c/d")];
+        assert_eq!(paths, expected);
+
+        let single = std::env::join_paths(["/only/one"]).unwrap();
+        assert_eq!(split_path_list(single.as_os_str()).len(), 1);
+    }
+
+    #[test]
+    fn tilde_segments_expand_to_home() {
+        let joined = std::env::join_paths(["~/codex/sessions"]).unwrap();
+        let paths = split_path_list(joined.as_os_str());
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(paths, vec![home.join("codex/sessions")]);
+    }
+
+    #[test]
+    fn sources_from_paths_builds_one_source_per_root_in_order() {
+        let first = tempdir().unwrap();
+        let second = tempdir().unwrap();
+        let missing = first.path().join("missing");
+        let sources = sources_from_paths(
+            &[first.path().into(), second.path().into(), missing],
+            &[],
+            &[],
+            &[],
+        );
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].root, first.path());
+        assert_eq!(sources[1].root, second.path());
+        assert!(sources.iter().all(|source| source.kind == "codex"));
+        assert!(sources.iter().all(|source| !source.archived));
+
+        let archived_sources =
+            sources_from_paths(&[], &[second.path().into()], &[], &[]);
+        assert_eq!(archived_sources.len(), 1);
+        assert_eq!(archived_sources[0].kind, "codex_archived");
+        assert!(archived_sources[0].archived);
+    }
+
+    #[test]
+    fn sources_from_paths_resolves_each_claude_root_independently() {
+        let with_projects = tempdir().unwrap();
+        let projects = with_projects.path().join("projects");
+        std::fs::create_dir_all(&projects).unwrap();
+        let legacy = tempdir().unwrap();
+        let legacy_sessions = legacy.path().join("sessions");
+        std::fs::create_dir_all(&legacy_sessions).unwrap();
+
+        let sources = sources_from_paths(
+            &[],
+            &[],
+            &[with_projects.path().into(), legacy.path().into()],
+            &[],
+        );
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].root, projects);
+        assert_eq!(sources[1].root, legacy_sessions);
+        assert!(sources.iter().all(|source| {
+            source.kind == "claude_code" && matches!(source.format, SourceFormat::Claude)
+        }));
+    }
+
+    #[test]
+    fn duplicate_session_id_across_roots_keeps_first_root() {
+        let first = tempdir().unwrap();
+        let second = tempdir().unwrap();
+        let session = |message: &str| {
+            format!(
+                "{}\n{}\n",
+                json!({ "type": "session_meta", "payload": { "id": "dup", "model_provider": "custom" } }),
+                json!({ "type": "event_msg", "payload": { "type": "user_message", "message": message } })
+            )
+        };
+        std::fs::write(first.path().join("a.jsonl"), session("first root only")).unwrap();
+        std::fs::write(second.path().join("b.jsonl"), session("second root copy")).unwrap();
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: vec![
+                Source {
+                    kind: "codex",
+                    display_name: "Codex",
+                    root: first.path().into(),
+                    format: SourceFormat::Codex,
+                    archived: false,
+                },
+                Source {
+                    kind: "codex",
+                    display_name: "Codex",
+                    root: second.path().into(),
+                    format: SourceFormat::Codex,
+                    archived: false,
+                },
+            ],
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        };
+        store.refresh().unwrap();
+        assert_eq!(store.records.len(), 1);
+        let record = &store.records["codex:dup"];
+        assert_eq!(record.source.root, first.path());
+        assert!(record.search_text.contains("first root only"));
+        assert!(!record.search_text.contains("second root copy"));
+    }
+
+    #[test]
+    fn nested_roots_index_shared_file_once() {
+        let outer = tempdir().unwrap();
+        let nested = outer.path().join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        let shared = nested.join("shared.jsonl");
+        std::fs::write(
+            &shared,
+            concat!(
+                "{\"type\":\"session_meta\",\"payload\":{\"id\":\"shared\",\"model_provider\":\"custom\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"hello\"}}\n"
+            ),
+        )
+        .unwrap();
+        let source = |root: std::path::PathBuf| Source {
+            kind: "codex",
+            display_name: "Codex",
+            root,
+            format: SourceFormat::Codex,
+            archived: false,
+        };
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: vec![source(outer.path().into()), source(nested)],
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        };
+        store.refresh().unwrap();
+        assert_eq!(store.records.len(), 1);
+        assert_eq!(store.records["codex:shared"].source.root, outer.path());
+    }
+
+    #[test]
+    fn facets_sources_dedupe_kinds_but_keep_all_roots() {
+        let first = tempdir().unwrap();
+        let second = tempdir().unwrap();
+        let session = |id: &str| {
+            format!(
+                "{}\n",
+                json!({ "type": "session_meta", "payload": { "id": id, "model_provider": "custom" } })
+            )
+        };
+        std::fs::write(first.path().join("a.jsonl"), session("a")).unwrap();
+        std::fs::write(second.path().join("b.jsonl"), session("b")).unwrap();
+        let source = |root: std::path::PathBuf| Source {
+            kind: "codex",
+            display_name: "Codex",
+            root,
+            format: SourceFormat::Codex,
+            archived: false,
+        };
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: vec![source(first.path().into()), source(second.path().into())],
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        };
+        store.refresh().unwrap();
+        let facets = store.facets();
+        let sources = facets["sources"].as_array().unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0]["kind"], "codex");
+        assert_eq!(facets["session_roots"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn refresh_paths_attributes_shared_file_to_first_declared_root() {
+        let outer = tempdir().unwrap();
+        let nested = outer.path().join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        let shared = nested.join("shared.jsonl");
+        let session = |message: &str| {
+            format!(
+                "{}\n{}\n",
+                json!({ "type": "session_meta", "payload": { "id": "shared", "model_provider": "custom" } }),
+                json!({ "type": "event_msg", "payload": { "type": "user_message", "message": message } })
+            )
+        };
+        std::fs::write(&shared, session("before")).unwrap();
+        let source = |root: std::path::PathBuf| Source {
+            kind: "codex",
+            display_name: "Codex",
+            root,
+            format: SourceFormat::Codex,
+            archived: false,
+        };
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: vec![source(outer.path().into()), source(nested.clone())],
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        };
+        store.refresh().unwrap();
+        std::fs::write(&shared, session("after")).unwrap();
+        store
+            .refresh_paths(&BTreeSet::from([shared.clone()]))
+            .unwrap();
+        assert_eq!(store.records.len(), 1);
+        let record = &store.records["codex:shared"];
+        assert_eq!(record.source.root, outer.path());
+        assert!(record.search_text.contains("after"));
     }
 }

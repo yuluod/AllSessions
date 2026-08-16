@@ -37,8 +37,8 @@ AllSessions combines local Codex, Claude Code, and Gemini CLI history in one Tau
 | --- | --- | --- |
 | Codex | `~/.codex/sessions` | Metadata, messages, tools, raw events, search, live refresh |
 | Codex Archived | `~/.codex/archived_sessions` | Read-only archived sessions |
-| Claude Code | `~/.claude/projects/**/*.jsonl` | Messages, thinking, tools/results, search, live refresh; legacy `sessions/*.json` fallback |
-| Gemini CLI | `~/.gemini/tmp/*/logs.json` | Local session aggregation and details |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | Messages, thinking, tools/results, search, and live refresh; falls back to legacy `sessions/*.json` and enriches details from `history.jsonl` when available |
+| Gemini CLI | `~/.gemini/tmp/*/logs.json` | Streaming scan, per-file incremental cache, session aggregation, and bounded on-demand details |
 
 ## Install and run
 
@@ -103,7 +103,7 @@ pnpm licenses:check
 pnpm release:build
 ```
 
-Source behavior lives in [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs); caching, the Tauri boundary, and maintenance live in `cache.rs`, `backend.rs`, and `maintenance.rs`. Read the [source architecture](./docs/source-adapters.md) before adding an agent.
+The session store and normalized contract live in [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs), while the Gemini adapter lives in `src-tauri/src/sessions/gemini.rs`. Caching, the Tauri boundary, and maintenance live in `cache.rs`, `backend.rs`, and `maintenance.rs`. Read the [source architecture](./docs/source-adapters.md) before adding an agent.
 
 ## License
 

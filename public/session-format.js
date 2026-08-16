@@ -4,6 +4,10 @@ function locale() {
   return getLang() === "zh" ? "zh-CN" : "en";
 }
 
+export function formatCount(value) {
+  return new Intl.NumberFormat(locale()).format(Number(value || 0));
+}
+
 export function formatTimestamp(value) {
   if (!value) return t("unknownTime");
 

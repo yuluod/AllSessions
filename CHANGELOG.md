@@ -4,9 +4,18 @@
 
 ## [未发布]
 
+## [0.0.12] - 2026-08-16
+
 ### 新增
 
-- `CODEX_SESSIONS_DIR`、`CODEX_ARCHIVED_SESSIONS_DIR`、`CLAUDE_SESSIONS_DIR`、`GEMINI_SESSIONS_DIR` 支持以系统路径分隔符分隔的多个根目录，并支持前导 `~` 展开；同一会话在多个根中重复时只显示首个根中的副本。Codex Provider 维护工具仍只覆盖主 `CODEX_HOME` 目录。
+- `CODEX_SESSIONS_DIR`、`CODEX_ARCHIVED_SESSIONS_DIR`、`CLAUDE_SESSIONS_DIR`、`GEMINI_SESSIONS_DIR` 支持以系统路径分隔符分隔的多个根目录，并支持前导 `~` 与 Windows `~\` 展开；同一物理文件和同一会话在多个根中重复时只保留首个声明根中的副本。Codex Provider 维护工具仍只覆盖主 `CODEX_HOME` 目录。
+- Gemini CLI 日志改为流式扫描、逐文件增量缓存、跨文件会话聚合和有界按需详情；brain artifact 会与日志去重，且缓存会随 artifact 提示变化自动失效。
+- CI 覆盖 Windows、macOS 与 Ubuntu，并将 Rust 测试代码纳入 Clippy 门禁。
+
+### 变更
+
+- 拆分会话详情过滤/渲染、消息导航和统计视图模块，降低主应用模块体积。
+- 第三方许可证清单校验忽略 Windows 与 Unix 换行差异，并补充 Markdown 安全渲染、会话视图和文本格式回归测试。
 
 ## [0.0.11] - 2026-08-14
 

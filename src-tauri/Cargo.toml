@@ -1,6 +1,6 @@
 [package]
 name = "allsessions"
-version = "0.0.11"
+version = "0.0.12"
 description = "本地 AI 会话工作台"
 authors = ["yuluo"]
 license = "Apache-2.0"

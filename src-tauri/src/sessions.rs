@@ -1573,6 +1573,7 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
+    #[cfg(windows)]
     use crate::cache::IndexCache;
 
     use super::{

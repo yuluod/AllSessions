@@ -11,8 +11,15 @@ permissions:
 
 jobs:
   verify:
-    name: 测试与构建
-    runs-on: macos-15
+    name: 测试与构建 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-15
+          - ubuntu-22.04
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
@@ -28,6 +35,14 @@ jobs:
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: 安装 Linux 构建依赖
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - name: 安装项目依赖
         run: pnpm install --frozen-lockfile
@@ -49,3 +64,6 @@ jobs:
 
       - name: 编译测试 Tauri 桌面端
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: 检查 Rust 代码规范
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked -- -D warnings

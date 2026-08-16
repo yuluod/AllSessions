@@ -4,6 +4,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { normalizeNewlines } from "./text-format.mjs";
+
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const noticePath = path.join(projectRoot, "THIRD_PARTY_NOTICES.md");
 
@@ -64,7 +66,7 @@ for (const pkg of packages) pkg.license = await licenseFromRegistrySource(pkg, r
 const notice = renderNotice(packages);
 
 if (checkOnly) {
-  if (await fs.readFile(noticePath, "utf8") !== notice) {
+  if (normalizeNewlines(await fs.readFile(noticePath, "utf8")) !== normalizeNewlines(notice)) {
     throw new Error("第三方许可证材料已过期，请运行 pnpm licenses:generate");
   }
 } else {

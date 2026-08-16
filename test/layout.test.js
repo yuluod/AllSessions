@@ -166,7 +166,7 @@ test("统计与工具视图使用全宽工作区且手机端提供返回入口",
 });
 
 test("统计页展示真实事件总数并使用最近日期", async () => {
-  const source = await readProjectFile("public/app.js");
+  const source = await readProjectFile("public/stats-view.js");
 
   assert.match(source, /value: formatCount\(stats\.total_events\)/);
   assert.match(source, /\(stats\.by_date \|\| \[\]\)\.slice\(-14\)/);
@@ -228,19 +228,21 @@ test("页面提供项目导航入口并复用 cwd 筛选", async () => {
 
 test("详情页提供会话内搜索、工具消息开关和消息导航", async () => {
   const html = await readProjectFile("public/index.html");
-  const source = await readProjectFile("public/app.js");
+  const app = await readProjectFile("public/app.js");
+  const filter = await readProjectFile("public/conversation-filter.js");
+  const view = await readProjectFile("public/conversation-view.js");
   const css = await readProjectFile("public/styles.css");
 
   assert.match(html, /id="detail-search-input"/);
   assert.match(html, /id="show-tools-toggle"/);
   assert.match(html, /id="show-context-toggle"/);
   assert.match(html, /id="message-nav-inline-list"/);
-  assert.match(source, /function filteredConversationMessages\(messages\)/);
-  assert.match(source, /function createMessageNavSection\(messages\)/);
-  assert.match(source, /state\.showTools \|\| message\.role !== "tool"/);
+  assert.match(app, /createConversationView/);
+  assert.match(view, /createMessageNavSection/);
+  assert.match(filter, /showTools \|\| message\.role !== "tool"/);
   assert.match(
-    source,
-    /state\.showContext \|\| message\.synthetic_context !== true/
+    filter,
+    /showContext \|\| message\.synthetic_context !== true/
   );
   assert.match(css, /\.conversation-toolbar\b/);
   assert.match(css, /\.message-nav-list\b/);
@@ -285,7 +287,7 @@ test("中等宽度顶部栏为粘滞侧栏预留高度", async () => {
 
 test("折叠内容和属性复制按钮提供可访问状态与可点击区域", async () => {
   const html = await readProjectFile("public/index.html");
-  const source = await readProjectFile("public/app.js");
+  const source = await readProjectFile("public/conversation-view.js");
   const css = await readProjectFile("public/styles.css");
 
   assert.match(
@@ -309,7 +311,7 @@ test("折叠内容和属性复制按钮提供可访问状态与可点击区域",
 
 test("会话正文安全渲染 Markdown，导航使用纯文本摘要", async () => {
   const html = await readProjectFile("public/index.html");
-  const source = await readProjectFile("public/app.js");
+  const source = await readProjectFile("public/conversation-view.js");
   const markdown = await readProjectFile("public/markdown.js");
   const css = await readProjectFile("public/styles.css");
 
@@ -378,13 +380,13 @@ test("详情页默认使用双栏阅读布局并按需打开会话信息", async
 });
 
 test("普通对话默认展开，仅收起工具、上下文和超长消息", async () => {
-  const source = await readProjectFile("public/app.js");
+  const source = await readProjectFile("public/conversation-view.js");
 
   assert.match(source, /const shouldCollapse\s*=\s*message\.role === "tool"/);
   assert.match(source, /markdownToPlainText\(messageText\)\.length > 1800/);
   assert.match(
     source,
-    /setMessageCardCollapsed\(card, toggleBtn, shouldCollapse\)/
+    /setMessageCardCollapsed\(card, toggleButton, shouldCollapse\)/
   );
 });
 

@@ -5,20 +5,20 @@ import {
 } from "./api-client.js";
 import { createLatestRequestGate, isAbortError } from "./async-coordinator.js";
 import { bindTauriSessionEvents } from "./session-events.js";
-import { markdownToPlainText, renderMarkdown } from "./markdown.js";
 import {
-  compactText,
   cwdParts,
   fillSelect,
   formatDateGroup,
+  formatCount,
   formatTimestamp,
   sessionTimestamp,
 } from "./session-format.js";
 import {
-  displayMessageText,
   exportSessionJson,
   exportSessionMarkdown,
 } from "./session-export.js";
+import { createConversationView } from "./conversation-view.js";
+import { renderStats } from "./stats-view.js";
 
 const PAGE_LIMIT = 50;
 const PROJECT_PREVIEW_LIMIT = 4;
@@ -223,6 +223,8 @@ const elements = {
   ),
   rawEventTemplate: document.querySelector("#raw-event-template"),
 };
+
+const conversationView = createConversationView({ state, elements });
 
 // ── URL 状态同步 ──────────────────────────────────────────────────────────────
 function syncUrl() {
@@ -445,14 +447,14 @@ function rerenderLocalizedContent() {
       state.currentDetail.summary,
       state.currentDetail.conversation_messages
     );
-    renderConversation(state.currentDetail.conversation_messages);
+    conversationView.renderConversation(state.currentDetail.conversation_messages);
     renderRawEvents(state.currentDetail.raw_events);
     updateTabs();
   } else {
     setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
   }
   if (state.stats) {
-    renderStats(state.stats);
+    renderStats(state.stats, elements);
   }
   if (state.codexMigrationPreview) {
     renderCodexMigrationPreview(state.codexMigrationPreview);
@@ -964,7 +966,7 @@ function renderPropsPanel(summary, messages = []) {
   elements.propsContent.append(
     section(t("basicInfo"), basic),
     section(t("techInfo"), tech),
-    createMessageNavSection(messages)
+    conversationView.createMessageNavSection(messages)
   );
 }
 
@@ -989,15 +991,6 @@ function syncRoleFilterButtons() {
     });
 }
 
-function setMessageCardCollapsed(card, toggleButton, collapsed) {
-  card.classList.toggle("collapsed", collapsed);
-  toggleButton.textContent = collapsed ? "▶" : "▼";
-  toggleButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  const label = collapsed ? t("expandMessage") : t("collapseMessage");
-  toggleButton.title = label;
-  toggleButton.setAttribute("aria-label", label);
-}
-
 function setRawEventCardCollapsed(card, toggleButton, collapsed) {
   card.classList.toggle("collapsed", collapsed);
   toggleButton.textContent = collapsed ? "▶" : "▼";
@@ -1005,172 +998,6 @@ function setRawEventCardCollapsed(card, toggleButton, collapsed) {
   const label = collapsed ? t("expandRawEvent") : t("collapseRawEvent");
   toggleButton.title = label;
   toggleButton.setAttribute("aria-label", label);
-}
-
-function filteredConversationMessages(messages) {
-  const query = state.detailQuery.trim().toLowerCase();
-  return messages
-    .map((message, index) => ({ ...message, _origIdx: index }))
-    .filter((message) => state.showTools || message.role !== "tool")
-    .filter(
-      (message) => state.showContext || message.synthetic_context !== true
-    )
-    .filter((message) => !state.roleFilter || message.role === state.roleFilter)
-    .filter(
-      (message) =>
-        !query || displayMessageText(message).toLowerCase().includes(query)
-    );
-}
-
-function scrollToMessage(index) {
-  const target = document.querySelector(`#message-${index + 1}`);
-  if (!target) return;
-  const toggle = target.querySelector(".message-toggle");
-  if (toggle) setMessageCardCollapsed(target, toggle, false);
-  target.scrollIntoView({
-    block: "nearest",
-    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? "auto"
-      : "smooth",
-  });
-}
-
-function appendMessageNavItems(container, messages) {
-  container.innerHTML = "";
-  if (!messages.length) {
-    const empty = document.createElement("p");
-    empty.className = "props-empty";
-    empty.textContent = t("noMessageNav");
-    container.append(empty);
-    return;
-  }
-
-  messages.forEach((message) => {
-    const button = document.createElement("button");
-    button.className = "message-nav-item";
-    button.type = "button";
-    button.addEventListener("click", () => scrollToMessage(message._origIdx));
-
-    const top = document.createElement("span");
-    top.className = "message-nav-top";
-    top.textContent = `#${message._origIdx + 1} · ${message.tool_kind || message.role}`;
-
-    const text = document.createElement("span");
-    text.className = "message-nav-text";
-    text.textContent = compactText(
-      markdownToPlainText(displayMessageText(message)),
-      72
-    );
-
-    button.append(top, text);
-    container.append(button);
-  });
-}
-
-function createMessageNavSection(messages) {
-  const wrap = document.createElement("div");
-  wrap.className = "props-section message-nav-section";
-  const h3 = document.createElement("h3");
-  h3.textContent = t("messageNav");
-  const list = document.createElement("div");
-  list.className = "message-nav-list";
-  appendMessageNavItems(list, filteredConversationMessages(messages));
-  wrap.append(h3, list);
-  return wrap;
-}
-
-function renderMessageNavigation(messages) {
-  const filtered = filteredConversationMessages(messages);
-  if (elements.messageNavInlineList) {
-    appendMessageNavItems(elements.messageNavInlineList, filtered);
-  }
-  const propsNavList = elements.propsContent?.querySelector(
-    ".message-nav-section .message-nav-list"
-  );
-  if (propsNavList) {
-    appendMessageNavItems(propsNavList, filtered);
-  }
-}
-
-function renderConversation(messages) {
-  elements.conversationList.innerHTML = "";
-
-  const filtered = filteredConversationMessages(messages);
-  renderMessageNavigation(messages);
-
-  if (!filtered.length) {
-    const empty = document.createElement("p");
-    empty.className = "hero-copy";
-    empty.textContent = t("noConversations");
-    elements.conversationList.append(empty);
-    return;
-  }
-
-  filtered.forEach((message) => {
-    const fragment = elements.conversationItemTemplate.content.cloneNode(true);
-    const card = fragment.querySelector(".message-card");
-    card.id = `message-${message._origIdx + 1}`;
-    card.dataset.role = message.role;
-    fragment.querySelector(".message-idx").textContent =
-      `#${message._origIdx + 1}`;
-    fragment.querySelector(".message-role").textContent = message.role;
-    const toolEl = fragment.querySelector(".message-tool");
-    if (message.synthetic_context) {
-      toolEl.textContent = t("systemContext");
-      toolEl.classList.remove("hidden");
-    } else if (message.tool_kind || message.tool_name) {
-      toolEl.textContent = [message.tool_kind, message.tool_name]
-        .filter(Boolean)
-        .join(" · ");
-      toolEl.classList.remove("hidden");
-    }
-    fragment.querySelector(".message-time").textContent = formatTimestamp(
-      message.timestamp
-    );
-    const messageText = displayMessageText(message);
-    const messageContent = fragment.querySelector(".message-text");
-    messageContent.id = `message-content-${message._origIdx + 1}`;
-    renderMarkdown(messageContent, messageText);
-
-    const shouldCollapse =
-      message.role === "tool" ||
-      message.synthetic_context === true ||
-      markdownToPlainText(messageText).length > 1800;
-    const toggleBtn = fragment.querySelector(".message-toggle");
-    toggleBtn.setAttribute("aria-controls", messageContent.id);
-    setMessageCardCollapsed(card, toggleBtn, shouldCollapse);
-    toggleBtn.addEventListener("click", () => {
-      setMessageCardCollapsed(
-        card,
-        toggleBtn,
-        !card.classList.contains("collapsed")
-      );
-    });
-
-    const copyBtn = document.createElement("button");
-    copyBtn.className = "message-copy-btn";
-    copyBtn.title = t("copyMessage");
-    copyBtn.textContent = t("copy");
-    copyBtn.addEventListener("click", () => {
-      navigator.clipboard
-        .writeText(messageText)
-        .then(() => {
-          copyBtn.textContent = "✓";
-          setTimeout(() => {
-            copyBtn.textContent = t("copy");
-          }, 1500);
-        })
-        .catch(() => {
-          copyBtn.textContent = t("copyFailed");
-          setTimeout(() => {
-            copyBtn.textContent = t("copy");
-          }, 1500);
-        });
-    });
-    fragment.querySelector(".message-card header").append(copyBtn);
-
-    elements.conversationList.append(fragment);
-  });
 }
 
 function renderRawEvents(events) {
@@ -1409,12 +1236,6 @@ function resetCodexMigrationMetrics() {
   if (elements.codexMigrationProviderList) {
     elements.codexMigrationProviderList.textContent = t("migrationNoPreview");
   }
-}
-
-function formatCount(value) {
-  return new Intl.NumberFormat(getLang() === "zh" ? "zh-CN" : "en").format(
-    Number(value || 0)
-  );
 }
 
 function renderCodexMigrationDiagnostics(summary) {
@@ -1767,7 +1588,7 @@ async function loadSessionDetail(id) {
     elements.detailTitle.title = fullCwd;
     renderDetailTags(detail.summary);
     renderPropsPanel(detail.summary, detail.conversation_messages);
-    renderConversation(detail.conversation_messages);
+    conversationView.renderConversation(detail.conversation_messages);
     renderRawEvents(detail.raw_events);
     updateTabs();
     if (state._initialized && window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {
@@ -1879,205 +1700,6 @@ async function loadMoreSessions() {
   }
 }
 
-// ── 统计面板 ──────────────────────────────────────────────────────────────────
-function renderBar(label, count, max, displayLabel = label) {
-  const row = document.createElement("div");
-  row.className = "stats-bar-row";
-  const pct = max > 0 ? Math.round((count / max) * 100) : 0;
-  const labelEl = document.createElement("span");
-  labelEl.className = "stats-bar-label";
-  labelEl.title = label;
-  labelEl.textContent = displayLabel;
-  const track = document.createElement("div");
-  track.className = "stats-bar-track";
-  const fill = document.createElement("div");
-  fill.className = "stats-bar-fill";
-  fill.style.width = `${pct}%`;
-  track.append(fill);
-  const countEl = document.createElement("span");
-  countEl.className = "stats-bar-count";
-  countEl.textContent = String(count);
-  row.append(labelEl, track, countEl);
-  return row;
-}
-
-function renderStats(stats) {
-  const dashboard = elements.statsDashboard;
-  if (!dashboard) return;
-
-  // 指标卡片：优先使用后端字段，旧数据结构则回退到分组统计。
-  const metrics = elements.statsMetrics;
-  if (metrics) {
-    metrics.innerHTML = "";
-    const byDate = stats.by_date || [];
-    const total = stats.total ?? byDate.reduce((s, d) => s + (d.count || 0), 0);
-    const activeDays = stats.active_days ?? byDate.length;
-    const avg =
-      stats.avg_daily ??
-      (activeDays > 0 ? (total / activeDays).toFixed(1) : "0");
-    const cards = [
-      { label: t("statsTotalSessions"), value: String(total) },
-      { label: t("statsActiveDays"), value: String(activeDays) },
-      { label: t("statsAvgDaily"), value: String(avg) },
-      { label: t("statsEvents"), value: formatCount(stats.total_events) },
-    ];
-    cards.forEach(({ label, value }, idx) => {
-      const card = document.createElement("div");
-      card.className = "metric-card";
-      card.dataset.metricIdx = String(idx);
-      const val = document.createElement("div");
-      val.className = "metric-value";
-      val.textContent = value;
-      const lbl = document.createElement("div");
-      lbl.className = "metric-label";
-      lbl.textContent = label;
-      const spark = document.createElement("div");
-      spark.className = "metric-spark";
-      const sparkInner = document.createElement("div");
-      sparkInner.className = "metric-spark-bar";
-      const dates = stats.by_date || [];
-      sparkInner.style.width = dates.length
-        ? `${Math.min(100, (dates.reduce((s, d) => s + d.count, 0) / (dates.length * 10)) * 100)}%`
-        : "0%";
-      spark.append(sparkInner);
-      card.append(val, lbl, spark);
-      metrics.append(card);
-    });
-  }
-
-  // 趋势图。
-  const trendBody = document.querySelector("#trend-chart-body");
-  if (trendBody) {
-    trendBody.innerHTML = "";
-    const dates = (stats.by_date || []).slice(-14);
-    if (dates.length) {
-      const max = Math.max(...dates.map((d) => d.count), 1);
-      const wrap = document.createElement("div");
-      wrap.className = "trend-bars";
-      dates.forEach(({ label, count }) => {
-        const col = document.createElement("div");
-        col.className = "trend-col";
-
-        const val = document.createElement("span");
-        val.className = "trend-val";
-        val.textContent = String(count);
-
-        const barWrap = document.createElement("div");
-        barWrap.className = "trend-bar-wrap";
-        const bar = document.createElement("div");
-        bar.className = "trend-bar";
-        bar.style.height = `${(count / max) * 100}%`;
-        bar.title = `${label}: ${count}`;
-        barWrap.append(bar);
-
-        const date = document.createElement("span");
-        date.className = "trend-date";
-        date.textContent = label.length > 5 ? label.slice(5) : label;
-
-        col.append(val, barWrap, date);
-        wrap.append(col);
-      });
-      trendBody.append(wrap);
-    } else {
-      trendBody.innerHTML =
-        '<div style="text-align:center;color:var(--muted);padding:60px 0;">—</div>';
-    }
-  }
-
-  // Provider 分布图。
-  const donutBody = document.querySelector("#donut-chart-body");
-  if (donutBody) {
-    donutBody.innerHTML = "";
-    const items = (stats.by_provider || []).slice(0, 6);
-    if (items.length) {
-      const total = items.reduce((s, i) => s + i.count, 0);
-      const colors = [
-        "#0f766e",
-        "#2563eb",
-        "#a15c07",
-        "#b42318",
-        "#16794f",
-        "#7c3aed",
-      ];
-      let acc = 0;
-      const stops = items.map((item, idx) => {
-        const pct = (item.count / total) * 100;
-        const start = acc;
-        acc += pct;
-        return `${colors[idx % colors.length]} ${start.toFixed(2)}% ${acc.toFixed(2)}%`;
-      });
-      const wrap = document.createElement("div");
-      wrap.className = "donut-wrap";
-
-      const donut = document.createElement("div");
-      donut.className = "donut-chart";
-      donut.style.background = `conic-gradient(${stops.join(", ")})`;
-      donut.style.mask = "radial-gradient(transparent 55%, black 56%)";
-      donut.style.webkitMask = "radial-gradient(transparent 55%, black 56%)";
-
-      const legend = document.createElement("div");
-      legend.className = "donut-legend";
-      items.forEach((item, idx) => {
-        const row = document.createElement("div");
-        row.className = "donut-legend-item";
-        const dot = document.createElement("span");
-        dot.className = "donut-dot";
-        dot.style.background = colors[idx % colors.length];
-        const name = document.createElement("span");
-        name.textContent = item.label;
-        const count = document.createElement("span");
-        count.textContent = String(item.count);
-        count.style.textAlign = "right";
-        const pct = document.createElement("span");
-        pct.className = "donut-pct";
-        pct.textContent = `${((item.count / total) * 100).toFixed(1)}%`;
-        row.append(dot, name, count, pct);
-        legend.append(row);
-      });
-
-      wrap.append(donut, legend);
-      donutBody.append(wrap);
-    } else {
-      donutBody.innerHTML =
-        '<div style="text-align:center;color:var(--muted);padding:60px 0;">—</div>';
-    }
-  }
-
-  // 分组排行。
-  const grid = elements.statsGrid;
-  if (grid) {
-    grid.innerHTML = "";
-    const sections = [
-      { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(-14) },
-      { title: t("statsCommonSourceKind"), items: stats.by_source_kind || [] },
-      { title: t("statsCommonProvider"), items: stats.by_provider || [] },
-      {
-        title: t("statsCommonCwd"),
-        items: (stats.by_cwd || []).slice(0, 8),
-        isPath: true,
-      },
-    ];
-    sections.forEach(({ title, items, isPath }) => {
-      if (!items.length) return;
-      const section = document.createElement("div");
-      section.className = "stats-section";
-      const h = document.createElement("h3");
-      h.textContent = title;
-      section.append(h);
-      const max = Math.max(...items.map((i) => i.count), 1);
-      items.forEach(({ label, count }) => {
-        if (isPath) {
-          const basename = label.split("/").pop() || label;
-          section.append(renderBar(label, count, max, basename));
-        } else {
-          section.append(renderBar(label, count, max));
-        }
-      });
-      grid.append(section);
-    });
-  }
-}
-
 async function loadStats() {
   const request = statsRequestGate.begin();
   try {
@@ -2086,7 +1708,7 @@ async function loadStats() {
     const stats = await fetchJson(url, { signal: request.signal });
     if (!request.isCurrent()) return false;
     state.stats = stats;
-    renderStats(stats);
+    renderStats(stats, elements);
     updateSessionCount();
     return true;
   } catch (error) {
@@ -2558,21 +2180,21 @@ async function initialize() {
   elements.detailSearchInput?.addEventListener("input", (event) => {
     state.detailQuery = event.target.value.trim();
     if (state.currentDetail) {
-      renderConversation(state.currentDetail.conversation_messages || []);
+      conversationView.renderConversation(state.currentDetail.conversation_messages || []);
     }
   });
 
   elements.showToolsToggle?.addEventListener("change", () => {
     state.showTools = elements.showToolsToggle.checked;
     if (state.currentDetail) {
-      renderConversation(state.currentDetail.conversation_messages || []);
+      conversationView.renderConversation(state.currentDetail.conversation_messages || []);
     }
   });
 
   elements.showContextToggle?.addEventListener("change", () => {
     state.showContext = elements.showContextToggle.checked;
     if (state.currentDetail) {
-      renderConversation(state.currentDetail.conversation_messages || []);
+      conversationView.renderConversation(state.currentDetail.conversation_messages || []);
     }
   });
 
@@ -2581,7 +2203,7 @@ async function initialize() {
       state.roleFilter = btn.dataset.role;
       syncRoleFilterButtons();
       if (state.currentDetail) {
-        renderConversation(state.currentDetail.conversation_messages || []);
+        conversationView.renderConversation(state.currentDetail.conversation_messages || []);
       }
     });
   });

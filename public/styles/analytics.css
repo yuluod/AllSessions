@@ -71,6 +71,12 @@
   min-height: 180px;
 }
 
+.stats-empty {
+  padding: 60px 0;
+  color: var(--muted);
+  text-align: center;
+}
+
 .trend-bars {
   display: flex;
   height: 180px;

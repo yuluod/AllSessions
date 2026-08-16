@@ -84,6 +84,7 @@ impl SessionStore {
                 let parsed = gemini::parse_source(source, &self.index_cache)?;
                 for path in &parsed.active_paths {
                     active_paths.insert(path.clone());
+                    active_paths.insert(path_identity(Path::new(path)));
                 }
                 for session in parsed.sessions {
                     let key = session.summary["_key"]
@@ -101,10 +102,11 @@ impl SessionStore {
                 continue;
             }
             for path in discover_files(source) {
-                let path_key = path.to_string_lossy().into_owned();
+                let path_key = path_identity(&path);
                 if !active_paths.insert(path_key) {
                     continue;
                 }
+                active_paths.insert(path.to_string_lossy().into_owned());
                 let metadata = match fs::metadata(&path) {
                     Ok(value) => value,
                     Err(_) => continue,
@@ -867,10 +869,22 @@ pub(crate) fn expand_tilde(path: PathBuf) -> PathBuf {
     if text == "~" {
         return dirs::home_dir().unwrap_or_default();
     }
-    if let Some(rest) = text.strip_prefix("~/") {
+    if let Some(rest) = text.strip_prefix("~/").or_else(|| {
+        if cfg!(windows) {
+            text.strip_prefix("~\\")
+        } else {
+            None
+        }
+    }) {
         return dirs::home_dir().unwrap_or_default().join(rest);
     }
     path
+}
+
+pub(crate) fn path_identity(path: &Path) -> String {
+    fs::canonicalize(path)
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string_lossy().into_owned())
 }
 fn existing_watch_root(path: &Path) -> Option<PathBuf> {
     let mut current = path;
@@ -1559,6 +1573,8 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
+    use crate::cache::IndexCache;
+
     use super::{
         compact, generic_conversation_message, is_synthetic_context, parse_detail, parse_summary,
         search_query_matches, sources_from_paths, split_path_list, DetailCache, HeadTail,
@@ -1805,6 +1821,49 @@ mod tests {
         let paths = split_path_list(joined.as_os_str());
         let home = dirs::home_dir().unwrap();
         assert_eq!(paths, vec![home.join("codex/sessions")]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_backslash_tilde_expands_to_home() {
+        let joined = std::env::join_paths(["~\\.codex"]).unwrap();
+        let paths = split_path_list(joined.as_os_str());
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(paths, vec![home.join(".codex")]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn same_file_with_different_path_case_is_indexed_once() {
+        let first = tempdir().unwrap();
+        std::fs::write(first.path().join("session.jsonl"), "{}\n").unwrap();
+        let alternate = PathBuf::from(first.path().to_string_lossy().to_uppercase());
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: vec![
+                Source {
+                    kind: "codex",
+                    display_name: "Codex",
+                    root: first.path().into(),
+                    format: SourceFormat::Codex,
+                    archived: false,
+                },
+                Source {
+                    kind: "codex",
+                    display_name: "Codex",
+                    root: alternate,
+                    format: SourceFormat::Codex,
+                    archived: false,
+                },
+            ],
+            index_cache: IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        };
+
+        store.refresh().unwrap();
+
+        assert_eq!(store.summaries.len(), 1);
     }
 
     #[test]

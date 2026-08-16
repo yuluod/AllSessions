@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     fmt,
     fs::{self, File},
@@ -8,16 +9,18 @@ use std::{
 
 use serde::de::{DeserializeSeed, Deserializer, SeqAccess, Visitor};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use super::{
-    append_limited, conversation_messages, error_text, legacy_timestamp, nullable_string,
-    truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
-    DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT,
+    append_limited, error_text, legacy_timestamp, nullable_string, truncate_message, HeadTail,
+    ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT,
+    SEARCH_TEXT_LIMIT,
 };
 use crate::cache::IndexCache;
 
 const GEMINI_CACHE_KIND: &str = "gemini_file_v1";
+const MIN_DUPLICATE_PREFIX_CHARS: usize = 16;
 
 pub(super) struct ParsedSource {
     pub sessions: Vec<ParsedSession>,
@@ -43,12 +46,72 @@ pub(super) struct DetailLocator {
     session_id: String,
     primary_path: PathBuf,
     paths: Vec<PathBuf>,
-    duplicate_user_prefixes: BTreeSet<String>,
+    duplicate_user_keys: BTreeSet<DuplicateUserKey>,
     summary: Value,
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct DuplicateUserKey {
+    value: String,
+    prefix_matches: bool,
+}
+
+impl DuplicateUserKey {
+    fn from_text(text: &str) -> Self {
+        let prefix = user_prefix(text);
+        if prefix.chars().count() < MIN_DUPLICATE_PREFIX_CHARS {
+            Self {
+                value: text.to_string(),
+                prefix_matches: false,
+            }
+        } else {
+            Self {
+                value: prefix,
+                prefix_matches: true,
+            }
+        }
+    }
+
+    fn matches_text(&self, text: &str) -> bool {
+        if self.prefix_matches {
+            text.contains(self.value.as_str())
+        } else {
+            text == self.value
+        }
+    }
+
+    fn to_json(&self) -> Value {
+        json!({ "value": self.value, "prefix_matches": self.prefix_matches })
+    }
+
+    fn from_json(value: &Value) -> Option<Self> {
+        Some(Self {
+            value: value.get("value")?.as_str()?.to_string(),
+            prefix_matches: value.get("prefix_matches")?.as_bool()?,
+        })
+    }
+}
+
+fn duplicate_keys_from_json(value: &Value) -> Option<BTreeSet<DuplicateUserKey>> {
+    value
+        .as_array()?
+        .iter()
+        .map(DuplicateUserKey::from_json)
+        .collect()
 }
 
 fn user_prefix(text: &str) -> String {
     text.chars().take(80).collect()
+}
+
+fn compare_timestamps(left: &str, right: &str) -> Ordering {
+    match (
+        chrono::DateTime::parse_from_rfc3339(left).ok(),
+        chrono::DateTime::parse_from_rfc3339(right).ok(),
+    ) {
+        (Some(left), Some(right)) => left.cmp(&right),
+        _ => left.cmp(right),
+    }
 }
 
 type RecordKey = (i64, String, usize);
@@ -154,19 +217,51 @@ fn log_paths(source: &Source) -> Vec<PathBuf> {
         .map(|entry| entry.into_path())
         .collect::<Vec<_>>();
     paths.sort();
+    let mut path_identities = BTreeSet::new();
     paths
+        .into_iter()
+        .filter(|path| path_identities.insert(super::path_identity(path)))
+        .collect()
 }
 
-fn parse_file_contributions(path: &Path, source: &Source) -> Result<Vec<Value>, String> {
+fn parse_file_contributions(
+    path: &Path,
+    source: &Source,
+    brain_messages: &BTreeMap<String, Vec<BrainMessage>>,
+) -> Result<Vec<Value>, String> {
     let mut states = HashMap::<String, ParseState>::new();
+    let mut duplicate_keys = HashMap::<String, BTreeSet<DuplicateUserKey>>::new();
     visit_log_records(path, |record| {
         let Some(session_id) = record.get("sessionId").and_then(Value::as_str) else {
             return;
         };
-        states
+        let state = states
             .entry(session_id.to_string())
-            .or_insert_with(|| ParseState::new(path))
-            .accept(&record);
+            .or_insert_with(|| ParseState::new(path));
+        let messages = state.accept(&record);
+        let Some(artifacts) = brain_messages.get(session_id) else {
+            return;
+        };
+        for message in messages {
+            if message["role"].as_str() != Some("user") {
+                continue;
+            }
+            let Some(text) = message["text"].as_str() else {
+                continue;
+            };
+            for artifact in artifacts {
+                if artifact.role != "user" {
+                    continue;
+                }
+                let key = DuplicateUserKey::from_text(&artifact.text);
+                if key.matches_text(text) {
+                    duplicate_keys
+                        .entry(session_id.to_string())
+                        .or_default()
+                        .insert(key);
+                }
+            }
+        }
     })?;
 
     Ok(states
@@ -181,6 +276,10 @@ fn parse_file_contributions(path: &Path, source: &Source) -> Result<Vec<Value>, 
                 "first_assistant": state.first_assistant,
                 "first_message": state.first_message,
                 "saw_primary": state.saw_primary,
+                "duplicate_user_keys": duplicate_keys
+                    .get(&session_id)
+                    .map(|keys| keys.iter().map(DuplicateUserKey::to_json).collect::<Vec<_>>())
+                    .unwrap_or_default(),
             })
         })
         .collect())
@@ -190,18 +289,37 @@ fn cached_file_contributions(
     path: &Path,
     source: &Source,
     cache: &IndexCache,
+    brain_messages: &BTreeMap<String, Vec<BrainMessage>>,
+    cache_kind: &str,
 ) -> Result<Vec<Value>, String> {
     let metadata = fs::metadata(path).map_err(error_text)?;
-    if let Some(cached) = cache.get(path, GEMINI_CACHE_KIND, &metadata) {
+    if let Some(cached) = cache.get(path, cache_kind, &metadata) {
         if let Some(contributions) = cached.summary["contributions"].as_array() {
-            return Ok(contributions.clone());
+            let mut restored = Vec::with_capacity(contributions.len());
+            for contribution in contributions {
+                let mut contribution = contribution.clone();
+                let has_user_artifacts = contribution["session_id"]
+                    .as_str()
+                    .and_then(|session_id| brain_messages.get(session_id))
+                    .is_some_and(|messages| messages.iter().any(|message| message.role == "user"));
+                let keys = if has_user_artifacts {
+                    duplicate_keys_from_json(&contribution["duplicate_user_keys"])
+                        .ok_or_else(|| "Gemini 缓存缺少 artifact 去重字段".to_string())?
+                } else {
+                    BTreeSet::new()
+                };
+                contribution["duplicate_user_keys"] =
+                    Value::Array(keys.iter().map(DuplicateUserKey::to_json).collect());
+                restored.push(contribution);
+            }
+            return Ok(restored);
         }
     }
 
-    let contributions = parse_file_contributions(path, source)?;
+    let contributions = parse_file_contributions(path, source, brain_messages)?;
     cache.put(
         path,
-        GEMINI_CACHE_KIND,
+        cache_kind,
         &metadata,
         &json!({ "contributions": contributions }),
         "",
@@ -228,21 +346,24 @@ impl MergedSession {
 
     fn merge(&mut self, contribution: &Value) {
         let summary = &contribution["summary"];
-        if let Some(path) = summary["file_path"]
+        let path = summary["file_path"]
             .as_str()
-            .filter(|value| !value.is_empty())
-        {
+            .filter(|value| !value.is_empty());
+        if let Some(path) = path {
             self.paths.insert(PathBuf::from(path));
         }
         let timestamp = summary["timestamp"].as_str().unwrap_or_default();
         if !timestamp.is_empty()
-            && (self.state.timestamp.is_empty() || timestamp < self.state.timestamp.as_str())
+            && (self.state.timestamp.is_empty()
+                || compare_timestamps(timestamp, &self.state.timestamp) == Ordering::Less)
         {
             self.state.timestamp = timestamp.to_string();
-            self.path = PathBuf::from(summary["file_path"].as_str().unwrap_or_default());
+            if let Some(path) = path {
+                self.path = PathBuf::from(path);
+            }
         }
         let last_timestamp = summary["last_timestamp"].as_str().unwrap_or_default();
-        if last_timestamp > self.state.last_timestamp.as_str() {
+        if compare_timestamps(last_timestamp, &self.state.last_timestamp) == Ordering::Greater {
             self.state.last_timestamp = last_timestamp.to_string();
         }
         if let Some(cwd) = summary["cwd"].as_str().filter(|value| !value.is_empty()) {
@@ -307,7 +428,11 @@ impl MergedSession {
         self.state.accept_message(message);
     }
 
-    fn finish(self, source: &Source, duplicate_user_prefixes: BTreeSet<String>) -> ParsedSession {
+    fn finish(
+        self,
+        source: &Source,
+        duplicate_user_keys: BTreeSet<DuplicateUserKey>,
+    ) -> ParsedSession {
         let summary = self.state.summary(&self.path, source);
         let primary_path = self.path;
         ParsedSession {
@@ -318,7 +443,7 @@ impl MergedSession {
                 session_id: self.state.id,
                 primary_path,
                 paths: self.paths.into_iter().collect(),
-                duplicate_user_prefixes,
+                duplicate_user_keys,
                 summary,
             },
         }
@@ -326,6 +451,8 @@ impl MergedSession {
 }
 
 pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<ParsedSource, String> {
+    let brain_messages = collect_brain_messages(&source.root);
+    let cache_kind = gemini_cache_kind(&brain_messages);
     let paths = log_paths(source);
     let active_paths = paths
         .iter()
@@ -334,7 +461,7 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
     let mut grouped = HashMap::<String, Vec<Value>>::new();
 
     for path in paths {
-        match cached_file_contributions(&path, source, cache) {
+        match cached_file_contributions(&path, source, cache, &brain_messages, &cache_kind) {
             Ok(contributions) => {
                 for contribution in contributions {
                     if let Some(session_id) = contribution["session_id"].as_str() {
@@ -352,48 +479,46 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
     let mut sessions = Vec::with_capacity(grouped.len());
     for (session_id, mut contributions) in grouped {
         contributions.sort_by(|left, right| {
-            left["summary"]["timestamp"]
-                .as_str()
-                .cmp(&right["summary"]["timestamp"].as_str())
+            compare_timestamps(
+                left["summary"]["timestamp"].as_str().unwrap_or_default(),
+                right["summary"]["timestamp"].as_str().unwrap_or_default(),
+            )
+            .then_with(|| {
+                left["summary"]["file_path"]
+                    .as_str()
+                    .cmp(&right["summary"]["file_path"].as_str())
+            })
         });
         let initial_path = contributions
-            .first()
-            .and_then(|value| value["summary"]["file_path"].as_str())
+            .iter()
+            .filter_map(|value| value["summary"]["file_path"].as_str())
+            .find(|value| !value.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| source.root.clone());
         let mut merged = MergedSession::new(&session_id, initial_path);
+        let mut duplicate_user_keys = BTreeSet::new();
         for contribution in &contributions {
             merged.merge(contribution);
+            let keys = duplicate_keys_from_json(&contribution["duplicate_user_keys"])
+                .ok_or_else(|| "Gemini 缓存缺少 artifact 去重字段".to_string())?;
+            duplicate_user_keys.extend(keys);
         }
-        let mut brain_messages = Vec::new();
-        visit_brain_messages(
-            &source.root,
-            &session_id,
-            |role, text, timestamp, subtype| {
-                brain_messages.push(BrainMessage {
-                    role: role.into(),
-                    text: text.into(),
-                    timestamp: timestamp.into(),
-                    subtype: subtype.into(),
-                });
-            },
-        );
-        let duplicate_user_prefixes =
-            duplicate_user_prefixes(&merged.paths, &session_id, &brain_messages);
-        for message in brain_messages {
-            if message.role == "user"
-                && duplicate_user_prefixes.contains(&user_prefix(&message.text))
-            {
-                continue;
+        if let Some(messages) = brain_messages.get(&session_id) {
+            for message in messages {
+                if message.role == "user"
+                    && duplicate_user_keys.contains(&DuplicateUserKey::from_text(&message.text))
+                {
+                    continue;
+                }
+                merged.add_brain_message(
+                    &message.role,
+                    &message.text,
+                    &message.timestamp,
+                    &message.subtype,
+                );
             }
-            merged.add_brain_message(
-                &message.role,
-                &message.text,
-                &message.timestamp,
-                &message.subtype,
-            );
         }
-        sessions.push(merged.finish(source, duplicate_user_prefixes));
+        sessions.push(merged.finish(source, duplicate_user_keys));
     }
 
     Ok(ParsedSource {
@@ -468,11 +593,8 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
         &source.root,
         &locator.session_id,
         |role, text, timestamp, subtype| {
-            let prefix = user_prefix(text);
-            if role == "user"
-                && !prefix.is_empty()
-                && locator.duplicate_user_prefixes.contains(&prefix)
-            {
+            let duplicate_key = DuplicateUserKey::from_text(text);
+            if role == "user" && locator.duplicate_user_keys.contains(&duplicate_key) {
                 return;
             }
             let message = json!({
@@ -584,51 +706,65 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
     }))
 }
 
-fn duplicate_user_prefixes(
-    paths: &BTreeSet<PathBuf>,
-    session_id: &str,
-    brain_messages: &[BrainMessage],
-) -> BTreeSet<String> {
-    let prefixes = brain_messages
-        .iter()
-        .filter(|message| message.role == "user")
-        .map(|message| user_prefix(&message.text))
-        .filter(|prefix| !prefix.is_empty())
-        .collect::<Vec<_>>();
-    if prefixes.is_empty() {
-        return BTreeSet::new();
-    }
+fn collect_brain_messages(root: &Path) -> BTreeMap<String, Vec<BrainMessage>> {
+    let brain_root = root.join("antigravity").join("brain");
+    let Ok(entries) = fs::read_dir(&brain_root) else {
+        return BTreeMap::new();
+    };
+    let mut session_ids = entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|file_type| file_type.is_dir()))
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|session_id| valid_session_id(session_id))
+        .collect::<BTreeSet<_>>();
 
-    let mut duplicates = BTreeSet::new();
-    let mut tool_names = HashMap::new();
-    for path in paths {
-        let result = visit_log_records(path, |record: Value| {
-            if record.get("sessionId").and_then(Value::as_str) != Some(session_id) {
-                return;
-            }
-            let timestamp = record
-                .get("timestamp")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            for message in conversation_messages(&record, timestamp, &mut tool_names) {
-                if message["role"].as_str() != Some("user") {
-                    continue;
-                }
-                let Some(text) = message["text"].as_str() else {
-                    continue;
-                };
-                for prefix in &prefixes {
-                    if text.contains(prefix.as_str()) {
-                        duplicates.insert(prefix.clone());
-                    }
-                }
-            }
+    let mut messages_by_session = BTreeMap::new();
+    while let Some(session_id) = session_ids.pop_last() {
+        let mut messages = Vec::new();
+        visit_brain_messages(root, &session_id, |role, text, timestamp, subtype| {
+            messages.push(BrainMessage {
+                role: role.into(),
+                text: text.into(),
+                timestamp: timestamp.into(),
+                subtype: subtype.into(),
+            });
         });
-        if let Err(error) = result {
-            eprintln!("无法解析 Gemini 日志（{}）：{error}", path.display());
+        if !messages.is_empty() {
+            messages_by_session.insert(session_id, messages);
         }
     }
-    duplicates
+    messages_by_session
+}
+
+fn gemini_cache_kind(brain_messages: &BTreeMap<String, Vec<BrainMessage>>) -> String {
+    let has_user_artifacts = brain_messages
+        .values()
+        .flatten()
+        .any(|message| message.role == "user");
+    if !has_user_artifacts {
+        return GEMINI_CACHE_KIND.to_string();
+    }
+
+    let mut hasher = Sha256::new();
+    for (session_id, messages) in brain_messages {
+        hasher.update(session_id.as_bytes());
+        hasher.update([0]);
+        for message in messages {
+            if message.role != "user" {
+                continue;
+            }
+            let key = DuplicateUserKey::from_text(&message.text);
+            hasher.update(key.value.as_bytes());
+            hasher.update([u8::from(key.prefix_matches)]);
+            hasher.update([0]);
+        }
+    }
+    let digest = hasher.finalize();
+    let fingerprint = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("{GEMINI_CACHE_KIND}:{fingerprint}")
 }
 
 fn valid_session_id(session_id: &str) -> bool {
@@ -721,7 +857,7 @@ fn read_text_limited(path: &Path, char_limit: usize) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{io::Write, path::PathBuf};
 
     use serde_json::json;
     use tempfile::tempdir;
@@ -887,6 +1023,113 @@ mod tests {
             0
         );
         assert_eq!(detail["truncation"]["messages"]["omitted"], 600);
+    }
+
+    #[test]
+    fn 空文件路径不会覆盖主路径() {
+        let mut merged = super::MergedSession::new("g1", PathBuf::from("/primary/logs.json"));
+        merged.merge(&json!({
+            "summary": {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "last_timestamp": "2026-01-01T00:00:00Z",
+                "file_path": ""
+            },
+            "search_text": ""
+        }));
+
+        assert_eq!(merged.path, PathBuf::from("/primary/logs.json"));
+    }
+
+    #[test]
+    fn 跨文件时间戳按实际时间排序() {
+        let directory = tempdir().unwrap();
+        let lexical_earlier = directory.path().join("tmp").join("a");
+        let actual_earlier = directory.path().join("tmp").join("z");
+        std::fs::create_dir_all(&lexical_earlier).unwrap();
+        std::fs::create_dir_all(&actual_earlier).unwrap();
+        std::fs::write(
+            lexical_earlier.join("logs.json"),
+            json!([{ "sessionId": "g1", "messageId": 2, "timestamp": "2026-01-01T01:00:00Z", "type": "assistant", "message": "晚一小时" }])
+                .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            actual_earlier.join("logs.json"),
+            json!([{ "sessionId": "g1", "messageId": 1, "timestamp": "2026-01-01T08:00:00+08:00", "type": "user", "message": "实际更早" }])
+                .to_string(),
+        )
+        .unwrap();
+
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
+        assert_eq!(
+            parsed.sessions[0].summary["file_path"],
+            actual_earlier.join("logs.json").to_string_lossy().as_ref()
+        );
+    }
+
+    #[test]
+    fn brain提示变化后缓存去重结果失效() {
+        let directory = tempdir().unwrap();
+        let log_dir = directory.path().join("tmp").join("queue");
+        let brain_dir = directory
+            .path()
+            .join("antigravity")
+            .join("brain")
+            .join("g1");
+        std::fs::create_dir_all(&log_dir).unwrap();
+        std::fs::create_dir_all(&brain_dir).unwrap();
+        std::fs::write(
+            log_dir.join("logs.json"),
+            json!([{ "sessionId": "g1", "messageId": 1, "type": "user", "message": "原始提示" }])
+                .to_string(),
+        )
+        .unwrap();
+        std::fs::write(brain_dir.join("prompt"), "原始提示").unwrap();
+        let cache = IndexCache::open_at(&directory.path().join("index.sqlite"));
+
+        let first = parse_source(&source(directory.path()), &cache).unwrap();
+        assert_eq!(first.sessions[0].summary["message_count"], 1);
+
+        std::fs::write(brain_dir.join("prompt"), "新的提示").unwrap();
+        let second = parse_source(&source(directory.path()), &cache).unwrap();
+        assert_eq!(second.sessions[0].summary["message_count"], 2);
+    }
+
+    #[test]
+    fn 短brain提示只在完整相同时去重() {
+        let directory = tempdir().unwrap();
+        let log_dir = directory.path().join("tmp").join("queue");
+        let brain_dir = directory
+            .path()
+            .join("antigravity")
+            .join("brain")
+            .join("g1");
+        std::fs::create_dir_all(&log_dir).unwrap();
+        std::fs::create_dir_all(&brain_dir).unwrap();
+        std::fs::write(
+            log_dir.join("logs.json"),
+            json!([{ "sessionId": "g1", "messageId": 1, "type": "user", "message": "请继续执行" }])
+                .to_string(),
+        )
+        .unwrap();
+        std::fs::write(brain_dir.join("prompt"), "继续").unwrap();
+
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
+        assert_eq!(parsed.sessions[0].summary["message_count"], 2);
+        let detail = parse_detail(
+            &source(directory.path()),
+            &parsed.sessions[0].detail_locator,
+        )
+        .unwrap();
+        assert_eq!(
+            detail["conversation_messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|message| message["source_type"].as_str() == Some("artifact"))
+                .count(),
+            1
+        );
     }
 
     #[test]

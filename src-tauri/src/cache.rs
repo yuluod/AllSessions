@@ -27,6 +27,19 @@ impl IndexCache {
         Self { connection: None }
     }
 
+    #[cfg(test)]
+    pub fn open_at(path: &Path) -> Self {
+        match open_database(path) {
+            Ok(connection) => Self {
+                connection: Some(connection),
+            },
+            Err(error) => {
+                eprintln!("打开测试缓存失败：{error}");
+                Self { connection: None }
+            }
+        }
+    }
+
     pub fn open() -> Result<Self, String> {
         if std::env::var_os("SESSION_VIEWER_DISABLE_CACHE").as_deref()
             == Some(std::ffi::OsStr::new("1"))
@@ -174,21 +187,24 @@ fn open_database_with_legacy(path: &Path, legacy_paths: &[PathBuf]) -> Result<Co
     Ok(connection)
 }
 
+#[cfg(unix)]
 fn lock_down_cache_permissions(path: &Path) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .map_err(|error| error.to_string())?;
-        for suffix in ["-wal", "-shm"] {
-            let mut value = path.as_os_str().to_os_string();
-            value.push(suffix);
-            let auxiliary = PathBuf::from(value);
-            if auxiliary.is_file() {
-                fs::set_permissions(auxiliary, fs::Permissions::from_mode(0o600))
-                    .map_err(|error| error.to_string())?;
-            }
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
+    for suffix in ["-wal", "-shm"] {
+        let mut value = path.as_os_str().to_os_string();
+        value.push(suffix);
+        let auxiliary = PathBuf::from(value);
+        if auxiliary.is_file() {
+            fs::set_permissions(auxiliary, fs::Permissions::from_mode(0o600))
+                .map_err(|error| error.to_string())?;
         }
     }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn lock_down_cache_permissions(_path: &Path) -> Result<(), String> {
     Ok(())
 }
 

@@ -13,6 +13,8 @@ use walkdir::WalkDir;
 
 use crate::cache::IndexCache;
 
+mod gemini;
+
 const PAGE_LIMIT: usize = 50;
 const SEARCH_TEXT_LIMIT: usize = 64_000;
 const DETAIL_MESSAGE_LIMIT: usize = 800;
@@ -41,7 +43,7 @@ struct StoredSession {
     search_text: String,
     source: Source,
     path: PathBuf,
-    inline_detail: Option<Value>,
+    detail_locator: Option<gemini::DetailLocator>,
 }
 
 pub struct SessionStore {
@@ -79,15 +81,21 @@ impl SessionStore {
         let mut active_paths = BTreeSet::new();
         for source in &self.sources {
             if matches!(source.format, SourceFormat::Gemini) {
-                for detail in parse_gemini_source(source)? {
-                    let summary = detail["summary"].clone();
-                    let key = summary["_key"].as_str().unwrap_or_default().to_string();
+                let parsed = gemini::parse_source(source, &self.index_cache)?;
+                for path in &parsed.active_paths {
+                    active_paths.insert(path.clone());
+                }
+                for session in parsed.sessions {
+                    let key = session.summary["_key"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string();
                     next.entry(key).or_insert_with(|| StoredSession {
-                        search_text: search_text_from_detail(&detail),
-                        summary,
+                        search_text: session.search_text,
+                        summary: session.summary,
                         source: source.clone(),
-                        path: PathBuf::new(),
-                        inline_detail: Some(detail),
+                        path: session.path,
+                        detail_locator: Some(session.detail_locator),
                     });
                 }
                 continue;
@@ -117,7 +125,7 @@ impl SessionStore {
                             search_text,
                             source: source.clone(),
                             path,
-                            inline_detail: None,
+                            detail_locator: None,
                         });
                     }
                     Err(error) => eprintln!("无法解析会话摘要（{}）：{error}", path.display()),
@@ -182,7 +190,7 @@ impl SessionStore {
                 search_text,
                 source,
                 path: path.clone(),
-                inline_detail: None,
+                detail_locator: None,
             });
             changed = true;
         }
@@ -260,10 +268,11 @@ impl SessionStore {
             return Some(detail);
         }
         let record = self.records.get(&resolved)?;
-        let detail = record
-            .inline_detail
-            .clone()
-            .or_else(|| parse_detail(&record.path, &record.source).ok())?;
+        let detail = if let Some(locator) = &record.detail_locator {
+            gemini::parse_detail(&record.source, locator).ok()
+        } else {
+            parse_detail(&record.path, &record.source).ok()
+        }?;
         let size = serde_json::to_vec(&detail)
             .map(|value| value.len())
             .unwrap_or_default();
@@ -1067,176 +1076,6 @@ fn timestamp_from_millis(milliseconds: i64) -> Option<String> {
         .map(|value| value.to_rfc3339_opts(SecondsFormat::Millis, true))
 }
 
-fn parse_gemini_source(source: &Source) -> Result<Vec<Value>, String> {
-    let mut grouped: HashMap<String, Vec<(PathBuf, Value)>> = HashMap::new();
-    for entry in WalkDir::new(source.root.join("tmp"))
-        .max_depth(3)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        if !entry.file_type().is_file() || entry.file_name() != "logs.json" {
-            continue;
-        }
-        let logs: Value =
-            match serde_json::from_reader(File::open(entry.path()).map_err(error_text)?) {
-                Ok(value) => value,
-                Err(error) => {
-                    eprintln!(
-                        "无法解析 Gemini 日志（{}）：{error}",
-                        entry.path().display()
-                    );
-                    continue;
-                }
-            };
-        for item in logs.as_array().into_iter().flatten() {
-            if let Some(id) = item.get("sessionId").and_then(Value::as_str) {
-                grouped
-                    .entry(id.into())
-                    .or_default()
-                    .push((entry.path().into(), item.clone()));
-            }
-        }
-    }
-    let mut results = Vec::new();
-    for (session_id, mut items) in grouped {
-        items.sort_by_key(|(_, item)| {
-            item.get("messageId")
-                .and_then(Value::as_i64)
-                .unwrap_or_default()
-        });
-        let path = items.first().map(|item| item.0.clone()).unwrap_or_default();
-        let mut state = ParseState::new(&path);
-        let mut messages = Vec::new();
-        let mut events = Vec::new();
-        for (index, (_, record)) in items.into_iter().enumerate() {
-            messages.extend(state.accept(&record));
-            events.push(json!({ "line_number": index + 1, "timestamp": record.get("timestamp").cloned().unwrap_or(Value::Null), "type": record.get("type").and_then(Value::as_str).unwrap_or("unknown"), "payload": record }));
-        }
-        enrich_gemini_with_brain(&source.root, &session_id, &mut state, &mut messages);
-        let summary = state.summary(&path, source);
-        results.push(
-            json!({ "summary": summary, "conversation_messages": messages, "raw_events": events }),
-        );
-    }
-    Ok(results)
-}
-
-fn enrich_gemini_with_brain(
-    root: &Path,
-    session_id: &str,
-    state: &mut ParseState,
-    messages: &mut Vec<Value>,
-) {
-    if session_id.is_empty()
-        || matches!(session_id, "." | "..")
-        || session_id
-            .chars()
-            .any(|value| matches!(value, '/' | '\\' | ':'))
-    {
-        return;
-    }
-    let brain_dir = root.join("antigravity").join("brain").join(session_id);
-    let Ok(entries) = fs::read_dir(&brain_dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if !file_type.is_file() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.ends_with(".metadata.json")
-            || name.ends_with(".resolved")
-            || name.to_ascii_lowercase().starts_with("uploaded_")
-        {
-            continue;
-        }
-        let artifact_path = entry.path();
-        let Ok(prompt) = fs::read_to_string(&artifact_path) else {
-            continue;
-        };
-        let prompt = prompt.trim().to_owned();
-        if !prompt.is_empty() {
-            let prefix = prompt.chars().take(80).collect::<String>();
-            let duplicate = messages.iter().any(|message| {
-                message["role"].as_str() == Some("user")
-                    && message["text"]
-                        .as_str()
-                        .is_some_and(|text| text.contains(&prefix))
-            });
-            if !duplicate {
-                let timestamp = fs::read_to_string(brain_dir.join(format!("{name}.metadata.json")))
-                    .ok()
-                    .and_then(|content| serde_json::from_str::<Value>(&content).ok())
-                    .and_then(|metadata| legacy_timestamp(&metadata, &["updatedAt"]))
-                    .unwrap_or_default();
-                append_gemini_message(
-                    state, messages, "user", &prompt, &timestamp, "artifact", &name,
-                );
-            }
-        }
-
-        let resolved_path = brain_dir.join(format!("{name}.resolved"));
-        append_gemini_resolved(state, messages, &resolved_path, &name);
-        let mut index = 0;
-        loop {
-            let fragment = PathBuf::from(format!("{}.{}", resolved_path.display(), index));
-            if !fragment.is_file() {
-                break;
-            }
-            append_gemini_resolved(state, messages, &fragment, &name);
-            index += 1;
-        }
-    }
-}
-
-fn append_gemini_resolved(
-    state: &mut ParseState,
-    messages: &mut Vec<Value>,
-    path: &Path,
-    artifact_name: &str,
-) {
-    let Ok(text) = fs::read_to_string(path) else {
-        return;
-    };
-    let text = text.trim();
-    if !text.is_empty() {
-        append_gemini_message(
-            state,
-            messages,
-            "assistant",
-            text,
-            "",
-            "resolved",
-            artifact_name,
-        );
-    }
-}
-
-fn append_gemini_message(
-    state: &mut ParseState,
-    messages: &mut Vec<Value>,
-    role: &str,
-    text: &str,
-    timestamp: &str,
-    source_type: &str,
-    source_subtype: &str,
-) {
-    if let Some(message) = state.accept_message(message_value(
-        role,
-        text,
-        timestamp,
-        source_type,
-        source_subtype,
-        false,
-    )) {
-        messages.push(message);
-    }
-}
-
 fn conversation_messages(
     record: &Value,
     timestamp: &str,
@@ -1721,10 +1560,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        compact, generic_conversation_message, is_synthetic_context, parse_detail,
-        parse_gemini_source, parse_summary, search_query_matches, sources_from_paths,
-        split_path_list, DetailCache, HeadTail, SessionStore, Source, SourceFormat,
-        DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+        compact, generic_conversation_message, is_synthetic_context, parse_detail, parse_summary,
+        search_query_matches, sources_from_paths, split_path_list, DetailCache, HeadTail,
+        SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT,
+        DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
@@ -1845,49 +1684,6 @@ mod tests {
         assert_eq!(detail["summary"]["event_count"], 2);
         assert_eq!(detail["conversation_messages"][0]["text"], "legacy prompt");
         assert_eq!(detail["raw_events"].as_array().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn gemini_brain_artifacts_are_added_to_the_session() {
-        let directory = tempdir().unwrap();
-        let root = directory.path();
-        let log_dir = root.join("tmp").join("queue");
-        let brain_dir = root.join("antigravity").join("brain").join("gemini-1");
-        std::fs::create_dir_all(&log_dir).unwrap();
-        std::fs::create_dir_all(&brain_dir).unwrap();
-        std::fs::write(
-            log_dir.join("logs.json"),
-            json!([
-                { "sessionId": "gemini-1", "messageId": 1, "type": "user", "message": "log prompt" }
-            ])
-            .to_string(),
-        )
-        .unwrap();
-        std::fs::write(brain_dir.join("task.txt"), "artifact prompt").unwrap();
-        std::fs::write(
-            brain_dir.join("task.txt.metadata.json"),
-            json!({ "updatedAt": 1767225602000_i64 }).to_string(),
-        )
-        .unwrap();
-        std::fs::write(brain_dir.join("task.txt.resolved"), "artifact answer").unwrap();
-        let source = Source {
-            kind: "gemini",
-            display_name: "Gemini CLI",
-            root: root.into(),
-            format: SourceFormat::Gemini,
-            archived: false,
-        };
-
-        let details = parse_gemini_source(&source).unwrap();
-        assert_eq!(details.len(), 1);
-        let messages = details[0]["conversation_messages"].as_array().unwrap();
-        assert!(messages
-            .iter()
-            .any(|message| message["text"] == "artifact prompt"));
-        assert!(messages
-            .iter()
-            .any(|message| message["text"] == "artifact answer"));
-        assert_eq!(details[0]["summary"]["message_count"], 3);
     }
 
     #[test]
@@ -2028,8 +1824,7 @@ mod tests {
         assert!(sources.iter().all(|source| source.kind == "codex"));
         assert!(sources.iter().all(|source| !source.archived));
 
-        let archived_sources =
-            sources_from_paths(&[], &[second.path().into()], &[], &[]);
+        let archived_sources = sources_from_paths(&[], &[second.path().into()], &[], &[]);
         assert_eq!(archived_sources.len(), 1);
         assert_eq!(archived_sources[0].kind, "codex_archived");
         assert!(archived_sources[0].archived);

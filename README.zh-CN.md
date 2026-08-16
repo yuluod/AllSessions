@@ -38,8 +38,8 @@ AllSessions 将 Codex、Claude Code 和 Gemini CLI 的本地会话聚合到一�
 | --- | --- | --- |
 | Codex | `~/.codex/sessions` | 元数据、消息、工具调用、原始事件、搜索和实时刷新 |
 | Codex 归档 | `~/.codex/archived_sessions` | 只读浏览归档会话 |
-| Claude Code | `~/.claude/projects/**/*.jsonl` | 对话、Thinking、工具调用/结果、搜索和实时刷新；旧版 `sessions/*.json` 作为回退 |
-| Gemini CLI | `~/.gemini/tmp/*/logs.json` | 按 sessionId 聚合本地对话和详情 |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | 对话、Thinking、工具调用/结果、搜索和实时刷新；兼容旧版 `sessions/*.json`，并在可用时从 `history.jsonl` 补充详情 |
+| Gemini CLI | `~/.gemini/tmp/*/logs.json` | 流式扫描、按 sessionId 聚合、逐文件增量缓存和按需加载有界详情 |
 
 ## 安装包与运行
 
@@ -106,7 +106,7 @@ pnpm licenses:check
 pnpm release:build
 ```
 
-来源实现集中在 [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs)，缓存、Tauri 边界和维护操作分别位于 `cache.rs`、`backend.rs` 与 `maintenance.rs`。增加来源前请阅读[来源架构](./docs/source-adapters.md)。
+来源存储与统一契约位于 [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs)，Gemini 适配器位于 `src-tauri/src/sessions/gemini.rs`；缓存、Tauri 边界和维护操作分别位于 `cache.rs`、`backend.rs` 与 `maintenance.rs`。增加来源前请阅读[来源架构](./docs/source-adapters.md)。
 
 ## 许可证
 

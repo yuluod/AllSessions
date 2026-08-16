@@ -10,6 +10,11 @@ class TestNode {
     this.children = [];
     this.className = "";
     this.style = {};
+    this.attributes = new Map();
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(String(name), String(value));
   }
 
   append(...nodes) {
@@ -36,13 +41,15 @@ function escapeHtml(value) {
 function serialize(node) {
   if (node.type === "text") return escapeHtml(node.value);
   if (node.type === "fragment") return node.children.map(serialize).join("");
-  const attributes = [
-    node.className && `class="${escapeHtml(node.className)}"`,
-    node.href && `href="${escapeHtml(node.href)}"`,
-    node.target && `target="${escapeHtml(node.target)}"`,
-    node.rel && `rel="${escapeHtml(node.rel)}"`
-  ].filter(Boolean).join(" ");
-  return `<${node.type}${attributes ? ` ${attributes}` : ""}>${node.children.map(serialize).join("")}</${node.type}>`;
+  const attributes = new Map(node.attributes);
+  if (node.className) attributes.set("class", node.className);
+  if (node.href) attributes.set("href", node.href);
+  if (node.target) attributes.set("target", node.target);
+  if (node.rel) attributes.set("rel", node.rel);
+  const serializedAttributes = [...attributes]
+    .map(([name, value]) => `${escapeHtml(name)}="${escapeHtml(value)}"`)
+    .join(" ");
+  return `<${node.type}${serializedAttributes ? ` ${serializedAttributes}` : ""}>${node.children.map(serialize).join("")}</${node.type}>`;
 }
 
 const previousDocument = globalThis.document;

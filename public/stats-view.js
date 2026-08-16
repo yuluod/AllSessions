@@ -169,9 +169,7 @@ function renderRankings(stats, container) {
 export function renderStats(stats, elements) {
   if (!elements.statsDashboard) return;
   if (elements.statsMetrics) renderMetrics(stats, elements.statsMetrics);
-  const trend = document.querySelector("#trend-chart-body");
-  if (trend) renderTrend(stats, trend);
-  const providers = document.querySelector("#donut-chart-body");
-  if (providers) renderProviders(stats, providers);
+  if (elements.trendChartBody) renderTrend(stats, elements.trendChartBody);
+  if (elements.donutChartBody) renderProviders(stats, elements.donutChartBody);
   if (elements.statsGrid) renderRankings(stats, elements.statsGrid);
 }

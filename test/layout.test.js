@@ -170,6 +170,9 @@ test("统计页展示真实事件总数并使用最近日期", async () => {
 
   assert.match(source, /value: formatCount\(stats\.total_events\)/);
   assert.match(source, /\(stats\.by_date \|\| \[\]\)\.slice\(-14\)/);
+  assert.doesNotMatch(source, /document\.querySelector/);
+  const css = await readProjectFile("public/styles/analytics.css");
+  assert.match(css, /\.stats-empty\s*\{/);
 });
 
 test("页面复用项目图标作为 favicon 与工具栏标识", async () => {

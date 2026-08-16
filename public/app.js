@@ -167,6 +167,8 @@ const elements = {
   statsDashboard: document.querySelector("#stats-dashboard"),
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
+  trendChartBody: document.querySelector("#trend-chart-body"),
+  donutChartBody: document.querySelector("#donut-chart-body"),
   toolsDashboard: document.querySelector("#tools-dashboard"),
   codexMigrationCard: document.querySelector("#codex-migration-card"),
   codexMaintenanceToggle: document.querySelector("#codex-maintenance-toggle"),

@@ -20,10 +20,10 @@ AllSessions includes an optional Rust maintenance tool for Codex history that be
 
 1. Start AllSessions and open **Tools**.
 2. Enable maintenance mode.
-3. Run a read-only preview and inspect candidates and blockers.
-4. Select source providers explicitly and generate the exact plan again.
-5. Review affected thread, file, and replacement counts.
-6. Fully quit Codex App and confirm.
+3. Choose **Scan historical providers** and inspect candidates and blockers.
+4. Select source providers explicitly. Changed selections dim the previous metrics; choose **Rebuild repair plan** to build the exact plan.
+5. Follow the next-step prompt and review affected thread, file, and replacement counts.
+6. Fully quit Codex App, then use the shared safety confirmation.
 7. Apply the plan; use the displayed backup directory if rollback is needed.
 8. Disable maintenance mode when finished.
 

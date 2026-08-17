@@ -45,6 +45,7 @@ const state = {
   showAllProjects: false,
   codexMigrationPreview: null,
   codexMigrationSelectedProviders: new Set(),
+  codexMigrationApplied: false,
   currentDetail: null,
   detailQuery: "",
   showTools: true,
@@ -192,6 +193,11 @@ const elements = {
   ),
   codexMigrationDiagnostics: document.querySelector(
     "#codex-migration-diagnostics"
+  ),
+  codexMigrationMetrics: document.querySelector("#codex-migration-metrics"),
+  codexMigrationNextStep: document.querySelector("#codex-migration-next-step"),
+  codexMigrationPlanStaleNotice: document.querySelector(
+    "#codex-migration-plan-stale"
   ),
   codexMigrationCurrentProvider: document.querySelector(
     "#codex-migration-current-provider"
@@ -1104,6 +1110,77 @@ function sameProviderSelection(left, right) {
   );
 }
 
+function isCodexMigrationPlanStale() {
+  return (
+    state.codexMigrationPreview !== null &&
+    !sameProviderSelection(
+      selectedCodexMigrationProviders(),
+      state.codexMigrationPreview.providers
+    )
+  );
+}
+
+function updateCodexMigrationPreviewButton() {
+  if (!elements.codexMigrationPreviewBtn) return;
+  const preview = state.codexMigrationPreview;
+  const selectedProviders = selectedCodexMigrationProviders();
+  const hasCandidates =
+    (preview?.candidateMappings || preview?.mappings || []).length > 0;
+  let key = "scanHistoricalProviders";
+  if (preview && selectedProviders.length > 0) {
+    key = "rebuildRepairPlan";
+  } else if (preview && hasCandidates) {
+    key = "buildExactRepairPlan";
+  } else if (preview) {
+    key = "rebuildRepairPlan";
+  }
+  elements.codexMigrationPreviewBtn.textContent = t(key);
+}
+
+function updateCodexMigrationNextStep() {
+  if (!elements.codexMigrationNextStep) return;
+  const preview = state.codexMigrationPreview;
+  const selectedProviders = selectedCodexMigrationProviders();
+  let key = "nextStepEnableMaintenance";
+  if (isCodexMaintenanceEnabled()) {
+    if (state.codexMigrationApplied) {
+      key = "nextStepRepairDone";
+    } else if (!preview) {
+      key = "nextStepScanProviders";
+    } else if (
+      !selectedProviders.length &&
+      (preview.candidateMappings || preview.mappings || []).length > 0
+    ) {
+      key = "nextStepSelectProviders";
+    } else if (isCodexMigrationPlanStale()) {
+      key = "nextStepRebuildPlan";
+    } else if (!preview.canApply) {
+      key = "nextStepResolveBlockers";
+    } else if (!preview.hasChanges) {
+      key = "nextStepNoChanges";
+    } else if (elements.codexMigrationConfirm?.checked !== true) {
+      key = "nextStepConfirmClosed";
+    } else {
+      key = "nextStepApplyPlan";
+    }
+  }
+  elements.codexMigrationNextStep.textContent = t(key);
+}
+
+function syncCodexMigrationFlowState() {
+  const stale = isCodexMigrationPlanStale();
+  if (elements.codexMigrationMetrics) {
+    elements.codexMigrationMetrics.dataset.stale = String(stale);
+  }
+  if (elements.codexMigrationDiagnostics) {
+    elements.codexMigrationDiagnostics.dataset.stale = String(stale);
+  }
+  elements.codexMigrationPlanStaleNotice?.classList.toggle("hidden", !stale);
+  updateCodexMigrationPreviewButton();
+  updateCodexMigrationNextStep();
+  updateCodexMigrationApplyState();
+}
+
 function configureCodexMaintenanceUi() {
   const enabled = isCodexMaintenanceEnabled();
   if (elements.codexMigrationCard) {
@@ -1132,6 +1209,7 @@ function configureCodexMaintenanceUi() {
   } else if (!state.codexMigrationPreview) {
     setCodexMigrationStatus(t("migrationNotPreviewed"));
   }
+  syncCodexMigrationFlowState();
 }
 
 async function toggleCodexMaintenance() {
@@ -1151,6 +1229,7 @@ async function toggleCodexMaintenance() {
     state.capabilities.codex_maintenance.enabled = result.enabled === true;
     state.codexMigrationPreview = null;
     state.codexMigrationSelectedProviders.clear();
+    state.codexMigrationApplied = false;
     if (elements.codexMigrationConfirm)
       elements.codexMigrationConfirm.checked = false;
     resetCodexMigrationMetrics();
@@ -1214,7 +1293,7 @@ function setCodexMigrationBusy(
     elements.codexMigrationApplyBtn.disabled = true;
   }
   if (!isBusy) {
-    updateCodexMigrationApplyState();
+    syncCodexMigrationFlowState();
   }
 }
 
@@ -1238,6 +1317,7 @@ function resetCodexMigrationMetrics() {
   if (elements.codexMigrationProviderList) {
     elements.codexMigrationProviderList.textContent = t("migrationNoPreview");
   }
+  syncCodexMigrationFlowState();
 }
 
 function renderCodexMigrationDiagnostics(summary) {
@@ -1353,6 +1433,7 @@ function renderCodexMigrationPreview(summary) {
           } else {
             state.codexMigrationSelectedProviders.delete(mapping.source);
           }
+          state.codexMigrationApplied = false;
           if (elements.codexMigrationConfirm) {
             elements.codexMigrationConfirm.checked = false;
           }
@@ -1363,7 +1444,7 @@ function renderCodexMigrationPreview(summary) {
               : t("migrationSelectProviders"),
             "warning"
           );
-          updateCodexMigrationApplyState();
+          syncCodexMigrationFlowState();
         });
         const name = document.createElement("span");
         name.textContent = `${mapping.source} → ${mapping.target}`;
@@ -1403,7 +1484,7 @@ function renderCodexMigrationPreview(summary) {
     }
   }
 
-  updateCodexMigrationApplyState();
+  syncCodexMigrationFlowState();
 }
 
 async function loadCodexMigrationPreview() {
@@ -1426,6 +1507,7 @@ async function loadCodexMigrationPreview() {
       }
     );
     if (!request.isCurrent() || !isCodexMaintenanceEnabled()) return;
+    state.codexMigrationApplied = false;
     renderCodexMigrationPreview(summary);
     if (summary.selectionRequired) {
       setCodexMigrationStatus(t("migrationSelectProviders"), "warning");
@@ -1471,6 +1553,7 @@ async function applyCodexMigration() {
   }
 
   setCodexMigrationBusy(true);
+  state.codexMigrationApplied = false;
   setCodexMigrationStatus(t("migrationApplying"));
   try {
     const preview = state.codexMigrationPreview;
@@ -1490,6 +1573,7 @@ async function applyCodexMigration() {
     });
     renderCodexMigrationPreview(summary);
     state.codexMigrationPreview = null;
+    state.codexMigrationApplied = true;
     if (elements.codexMigrationConfirm) {
       elements.codexMigrationConfirm.checked = false;
     }
@@ -2017,7 +2101,7 @@ async function initialize() {
   );
   elements.codexMigrationConfirm?.addEventListener(
     "change",
-    updateCodexMigrationApplyState
+    syncCodexMigrationFlowState
   );
   elements.codexMigrationApplyBtn?.addEventListener(
     "click",

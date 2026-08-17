@@ -67,6 +67,25 @@ const DICT = {
     migrationSelectProviders:
       "请选择一个或多个历史 Provider，然后生成精确修复计划。",
     migrationSelectionChanged: "来源选择已变化，请重新生成修复计划。",
+    migrationPlanStale:
+      "来源选择已变化；下方旧计划仅作参考，重新生成后才能执行。",
+    scanHistoricalProviders: "扫描历史 Provider",
+    buildExactRepairPlan: "生成精确修复计划",
+    rebuildRepairPlan: "重新生成修复计划",
+    nextStepEnableMaintenance: "下一步：开启维护模式",
+    nextStepScanProviders: "下一步：扫描可恢复的历史 Provider",
+    nextStepSelectProviders: "下一步：选择来源 Provider",
+    nextStepRebuildPlan: "下一步：重新生成精确修复计划",
+    nextStepResolveBlockers: "下一步：根据阻塞项检查本机 Codex 配置",
+    nextStepConfirmClosed: "下一步：确认 Codex App 已退出",
+    nextStepApplyPlan: "下一步：执行修复",
+    nextStepNoChanges: "无需修复；可关闭维护模式。",
+    nextStepRepairDone: "修复已完成；如需恢复旧 Provider，请使用备份目录回滚。",
+    maintenanceSafetyTitle: "危险操作安全确认",
+    maintenanceSafetyDesc:
+      "执行修复和回滚都会写入 Codex 本地数据；两项操作前都必须确认 Codex App 已退出。",
+    migrationRollbackHint:
+      "回滚是修复后的安全网。执行修复会生成具体备份目录；也可手动输入历史备份目录。",
     migrationConfirmClosed: "我已退出 Codex App",
     applyMigration: "恢复到当前 Provider",
     rollbackBackupDir: "备份目录",
@@ -287,6 +306,26 @@ const DICT = {
       "Select one or more historical providers, then build the exact repair plan.",
     migrationSelectionChanged:
       "The source selection changed. Build the repair plan again.",
+    migrationPlanStale:
+      "The source selection changed. The plan below is reference only until it is rebuilt.",
+    scanHistoricalProviders: "Scan historical providers",
+    buildExactRepairPlan: "Build exact repair plan",
+    rebuildRepairPlan: "Rebuild repair plan",
+    nextStepEnableMaintenance: "Next: enable maintenance mode",
+    nextStepScanProviders: "Next: scan restorable historical providers",
+    nextStepSelectProviders: "Next: select source providers",
+    nextStepRebuildPlan: "Next: rebuild the exact repair plan",
+    nextStepResolveBlockers: "Next: inspect your Codex configuration blockers",
+    nextStepConfirmClosed: "Next: confirm Codex App is quit",
+    nextStepApplyPlan: "Next: run the repair",
+    nextStepNoChanges: "No repair needed; maintenance mode can be disabled.",
+    nextStepRepairDone:
+      "Repair complete. To restore the old provider, roll back from the backup directory.",
+    maintenanceSafetyTitle: "Destructive-action safety confirmation",
+    maintenanceSafetyDesc:
+      "Both repair and rollback write to local Codex data. Confirm that Codex App is quit before either action.",
+    migrationRollbackHint:
+      "Rollback is the safety net after repair. Running a repair creates a concrete backup directory; you can also enter an older backup directory manually.",
     migrationConfirmClosed: "I have quit Codex App",
     applyMigration: "Restore to active provider",
     rollbackBackupDir: "Backup directory",

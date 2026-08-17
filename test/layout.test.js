@@ -402,6 +402,29 @@ test("维护预览期间仍允许关闭维护模式", async () => {
   );
 });
 
+test("Codex 维护流程提供分阶段操作指引", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles/maintenance.css");
+
+  assert.match(html, /id="codex-migration-next-step"/);
+  assert.match(html, /id="codex-migration-plan-stale"[\s\S]*data-i18n="migrationPlanStale"/);
+  assert.match(html, /id="codex-migration-metrics"[\s\S]*data-stale="false"/);
+  assert.match(html, /id="codex-migration-diagnostics"[\s\S]*data-stale="false"/);
+  assert.match(html, /data-i18n="maintenanceSafetyTitle"/);
+  assert.match(html, /data-i18n="migrationRollbackHint"/);
+  assert.doesNotMatch(
+    html.match(/<button[^>]*id="codex-migration-preview-btn"[\s\S]*?<\/button>/)?.[0] || "",
+    /data-i18n/
+  );
+  assert.match(source, /function syncCodexMigrationFlowState\(\)/);
+  assert.match(source, /scanHistoricalProviders/);
+  assert.match(source, /buildExactRepairPlan/);
+  assert.match(source, /rebuildRepairPlan/);
+  assert.match(source, /dataset\.stale = String\(stale\)/);
+  assert.match(css, /\.migration-metrics\[data-stale="true"\][\s\S]*opacity: 0\.58/);
+});
+
 test("会话列表支持筛选状态 chips 和日期分组", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");

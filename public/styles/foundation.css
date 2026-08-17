@@ -100,7 +100,7 @@ kbd {
 }
 
 .page-shell {
-  width: min(1880px, 100%);
+  width: min(2240px, 100%);
   margin: 0 auto;
   padding: 12px;
 }

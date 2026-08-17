@@ -14,6 +14,13 @@
   font-size: 0.79rem;
 }
 
+/* 宽屏：放宽会话阅读列，减少两侧空白 */
+@media (min-width: 1600px) {
+  .detail-body {
+    max-width: 1200px;
+  }
+}
+
 /* 中等宽度：保留双栏浏览 */
 @media (max-width: 1320px) {
   :root {

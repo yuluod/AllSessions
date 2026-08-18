@@ -14,6 +14,7 @@ use serde_json::Value;
 
 pub struct IndexCache {
     connection: Option<Connection>,
+    path: Option<PathBuf>,
 }
 
 pub struct CachedSummary {
@@ -24,7 +25,10 @@ pub struct CachedSummary {
 impl IndexCache {
     #[cfg(test)]
     pub fn disabled() -> Self {
-        Self { connection: None }
+        Self {
+            connection: None,
+            path: None,
+        }
     }
 
     #[cfg(test)]
@@ -32,10 +36,14 @@ impl IndexCache {
         match open_database(path) {
             Ok(connection) => Self {
                 connection: Some(connection),
+                path: Some(path.to_path_buf()),
             },
             Err(error) => {
                 eprintln!("打开测试缓存失败：{error}");
-                Self { connection: None }
+                Self {
+                    connection: None,
+                    path: None,
+                }
             }
         }
     }
@@ -44,19 +52,49 @@ impl IndexCache {
         if std::env::var_os("SESSION_VIEWER_DISABLE_CACHE").as_deref()
             == Some(std::ffi::OsStr::new("1"))
         {
-            return Ok(Self { connection: None });
+            return Ok(Self {
+                connection: None,
+                path: None,
+            });
         }
-        let connection = match cache_database_paths() {
+        let (path, connection) = match cache_database_paths() {
             Some((path, legacy_paths)) => match open_database_with_legacy(&path, &legacy_paths) {
-                Ok(connection) => Some(connection),
+                Ok(connection) => (Some(path), Some(connection)),
                 Err(error) => {
                     eprintln!("打开会话索引缓存失败，已禁用缓存：{error}");
-                    None
+                    (None, None)
                 }
             },
-            None => None,
+            None => (None, None),
         };
-        Ok(Self { connection })
+        Ok(Self { connection, path })
+    }
+
+    pub fn clear(&self) {
+        if let Some(connection) = &self.connection {
+            if let Err(error) = connection.execute("delete from sessions", []) {
+                eprintln!("清空会话索引缓存失败：{error}");
+            }
+        }
+    }
+
+    pub fn storage_info(&self) -> Value {
+        let Some(path) = &self.path else {
+            return serde_json::json!({ "enabled": false });
+        };
+        let mut bytes = 0_u64;
+        for suffix in ["", "-wal", "-shm"] {
+            let mut value = path.as_os_str().to_os_string();
+            value.push(suffix);
+            if let Ok(metadata) = fs::metadata(&value) {
+                bytes += metadata.len();
+            }
+        }
+        serde_json::json!({
+            "enabled": true,
+            "path": path.to_string_lossy(),
+            "bytes": bytes,
+        })
     }
 
     pub fn get(&self, path: &Path, kind: &str, metadata: &fs::Metadata) -> Option<CachedSummary> {

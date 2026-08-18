@@ -12,7 +12,26 @@ use tauri::{AppHandle, Manager};
 use crate::backend::BackendState;
 
 pub struct WatcherState {
-    _watcher: Mutex<RecommendedWatcher>,
+    watcher: Mutex<(RecommendedWatcher, Vec<PathBuf>)>,
+}
+
+impl WatcherState {
+    pub fn rewatch(&self, roots: &[PathBuf]) -> Result<(), String> {
+        let mut guard = self.watcher.lock().map_err(|_| "文件监听状态已损坏".to_string())?;
+        let (watcher, watched) = &mut *guard;
+        for old in watched.drain(..) {
+            let _ = watcher.unwatch(&old);
+        }
+        let mut next = Vec::new();
+        for root in roots {
+            watcher
+                .watch(root, RecursiveMode::Recursive)
+                .map_err(|error| format!("无法监听会话目录 {}：{error}", root.display()))?;
+            next.push(root.clone());
+        }
+        *watched = next;
+        Ok(())
+    }
 }
 
 pub fn start(app: &AppHandle) -> Result<WatcherState, String> {
@@ -26,10 +45,12 @@ pub fn start(app: &AppHandle) -> Result<WatcherState, String> {
         }
     })
     .map_err(|error| error.to_string())?;
+    let mut watched = Vec::new();
     for root in roots {
         watcher
             .watch(&root, RecursiveMode::Recursive)
             .map_err(|error| format!("无法监听会话目录 {}：{error}", root.display()))?;
+        watched.push(root);
     }
 
     let app_handle = app.clone();
@@ -48,6 +69,6 @@ pub fn start(app: &AppHandle) -> Result<WatcherState, String> {
         }
     });
     Ok(WatcherState {
-        _watcher: Mutex::new(watcher),
+        watcher: Mutex::new((watcher, watched)),
     })
 }

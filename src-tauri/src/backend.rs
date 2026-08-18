@@ -10,25 +10,50 @@ use std::{
 use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use url::Url;
 
-use crate::{maintenance, sessions::SessionStore};
+use crate::{
+    config::{self, AppConfig},
+    maintenance,
+    sessions::SessionStore,
+};
 
 #[derive(Clone)]
 pub struct BackendState {
     store: Arc<Mutex<SessionStore>>,
+    config: Arc<Mutex<AppConfig>>,
+    config_path: Option<PathBuf>,
     maintenance_enabled: Arc<AtomicBool>,
     maintenance_lock: Arc<Mutex<()>>,
 }
 
 impl BackendState {
     pub fn load() -> Result<Self, String> {
+        let config_path = config::config_path();
+        let config = match &config_path {
+            Some(path) => config::load(path)?,
+            None => AppConfig::default(),
+        };
         Ok(Self {
-            store: Arc::new(Mutex::new(SessionStore::load()?)),
+            store: Arc::new(Mutex::new(SessionStore::load(&config)?)),
+            config: Arc::new(Mutex::new(config)),
+            config_path,
             maintenance_enabled: Arc::new(AtomicBool::new(false)),
             maintenance_lock: Arc::new(Mutex::new(())),
         })
+    }
+
+    fn settings_payload(&self) -> Result<Value, String> {
+        let config = self.config.lock().map_err(lock_error)?.clone();
+        let store = self.store.lock().map_err(lock_error)?;
+        Ok(json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "config_path": self.config_path.as_ref().map(|path| path.to_string_lossy()),
+            "sources": serde_json::to_value(&config.sources).map_err(|error| error.to_string())?,
+            "resolved": crate::sessions::describe_sources(&config.sources),
+            "cache": store.cache_storage(),
+        }))
     }
 
     pub fn refresh_and_emit(&self, app: &AppHandle) -> Result<(), String> {
@@ -151,6 +176,44 @@ fn route_request(
                 return Err("缺少搜索内容".into());
             }
             Ok(state.store.lock().map_err(lock_error)?.search(&query))
+        }
+        ("GET", "/api/settings") => state.settings_payload(),
+        ("POST", "/api/settings") => {
+            let sources = config::parse_sources(
+                request
+                    .body
+                    .get("sources")
+                    .ok_or_else(|| "缺少 sources 字段".to_string())?,
+            )?;
+            let config_path = state
+                .config_path
+                .clone()
+                .ok_or_else(|| "无法确定配置文件位置".to_string())?;
+            let mut config = state.config.lock().map_err(lock_error)?.clone();
+            config.sources = sources;
+            config::save(&config_path, &config)?;
+            *state.config.lock().map_err(lock_error)? = config.clone();
+            {
+                let mut store = state.store.lock().map_err(lock_error)?;
+                store.reconfigure(&config)?;
+            }
+            if let Some(watcher) = app.try_state::<crate::watcher::WatcherState>() {
+                let roots = state.watch_roots()?;
+                watcher.rewatch(&roots)?;
+            }
+            app.emit("sessions-changed", json!({ "type": "session-updated" }))
+                .map_err(|error| error.to_string())?;
+            state.settings_payload()
+        }
+        ("POST", "/api/settings/clear-cache") => {
+            {
+                let mut store = state.store.lock().map_err(lock_error)?;
+                store.clear_index_cache();
+                store.refresh()?;
+            }
+            app.emit("sessions-changed", json!({ "type": "session-updated" }))
+                .map_err(|error| error.to_string())?;
+            state.settings_payload()
         }
         ("GET", "/api/facets") => Ok(state.store.lock().map_err(lock_error)?.facets()),
         ("GET", "/api/stats") => Ok(state.store.lock().map_err(lock_error)?.stats(&query)),

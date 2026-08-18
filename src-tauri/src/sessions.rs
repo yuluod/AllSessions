@@ -55,16 +55,29 @@ pub struct SessionStore {
 }
 
 impl SessionStore {
-    pub fn load() -> Result<Self, String> {
+    pub fn load(config: &crate::config::AppConfig) -> Result<Self, String> {
         let mut store = Self {
             summaries: Vec::new(),
             records: HashMap::new(),
-            sources: configured_sources(),
+            sources: configured_sources(&config.sources),
             index_cache: IndexCache::open()?,
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
         };
         store.refresh()?;
         Ok(store)
+    }
+
+    pub fn reconfigure(&mut self, config: &crate::config::AppConfig) -> Result<(), String> {
+        self.sources = configured_sources(&config.sources);
+        self.refresh()
+    }
+
+    pub fn clear_index_cache(&mut self) {
+        self.index_cache.clear();
+    }
+
+    pub fn cache_storage(&self) -> Value {
+        self.index_cache.storage_info()
     }
 
     pub fn watch_roots(&self) -> Vec<PathBuf> {
@@ -787,20 +800,88 @@ impl DetailCache {
     }
 }
 
-fn configured_sources() -> Vec<Source> {
+pub(crate) struct RootLists {
+    pub codex: Vec<PathBuf>,
+    pub codex_archived: Vec<PathBuf>,
+    pub claude: Vec<PathBuf>,
+    pub gemini: Vec<PathBuf>,
+}
+
+fn resolve_kind(
+    config_roots: Option<&Vec<String>>,
+    env_key: &str,
+    fallback: PathBuf,
+) -> (Vec<PathBuf>, &'static str) {
+    if let Some(roots) = config_roots {
+        return (
+            roots
+                .iter()
+                .map(|raw| expand_tilde(PathBuf::from(raw)))
+                .filter(|path| !path.as_os_str().is_empty())
+                .collect(),
+            "config",
+        );
+    }
+    if let Some(value) = env::var_os(env_key) {
+        return (split_path_list(&value), "env");
+    }
+    (vec![fallback], "default")
+}
+
+fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     let codex_home = env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .map(expand_tilde)
         .unwrap_or_else(|| home.join(".codex"));
+    let (codex, codex_origin) = resolve_kind(
+        config.get("codex"),
+        "CODEX_SESSIONS_DIR",
+        codex_home.join("sessions"),
+    );
+    let (codex_archived, codex_archived_origin) = resolve_kind(
+        config.get("codex_archived"),
+        "CODEX_ARCHIVED_SESSIONS_DIR",
+        codex_home.join("archived_sessions"),
+    );
+    let (claude, claude_origin) = resolve_kind(
+        config.get("claude"),
+        "CLAUDE_SESSIONS_DIR",
+        home.join(".claude"),
+    );
+    let (gemini, gemini_origin) = resolve_kind(
+        config.get("gemini"),
+        "GEMINI_SESSIONS_DIR",
+        home.join(".gemini"),
+    );
+    let description = json!({
+        "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
+        "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
+        "claude": { "roots": claude.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": claude_origin },
+        "gemini": { "roots": gemini.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": gemini_origin },
+    });
+    (
+        RootLists {
+            codex,
+            codex_archived,
+            claude,
+            gemini,
+        },
+        description,
+    )
+}
+
+pub(crate) fn describe_sources(config: &crate::config::SourceRoots) -> Value {
+    root_lists(config).1
+}
+
+fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
+    let lists = root_lists(config).0;
     sources_from_paths(
-        &env_paths("CODEX_SESSIONS_DIR", codex_home.join("sessions")),
-        &env_paths(
-            "CODEX_ARCHIVED_SESSIONS_DIR",
-            codex_home.join("archived_sessions"),
-        ),
-        &env_paths("CLAUDE_SESSIONS_DIR", home.join(".claude")),
-        &env_paths("GEMINI_SESSIONS_DIR", home.join(".gemini")),
+        &lists.codex,
+        &lists.codex_archived,
+        &lists.claude,
+        &lists.gemini,
     )
 }
 fn sources_from_paths(
@@ -849,12 +930,6 @@ fn sources_from_paths(
         }))
         .filter(|source| source.root.exists())
         .collect()
-}
-fn env_paths(key: &str, fallback: PathBuf) -> Vec<PathBuf> {
-    match env::var_os(key) {
-        Some(value) => split_path_list(&value),
-        None => vec![fallback],
-    }
 }
 fn split_path_list(value: &OsStr) -> Vec<PathBuf> {
     env::split_paths(value)
@@ -1578,8 +1653,8 @@ mod tests {
 
     use super::{
         compact, generic_conversation_message, is_synthetic_context, parse_detail, parse_summary,
-        search_query_matches, sources_from_paths, split_path_list, DetailCache, HeadTail,
-        SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT,
+        resolve_kind, search_query_matches, sources_from_paths, split_path_list, DetailCache,
+        HeadTail, SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT,
         DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
@@ -1587,6 +1662,26 @@ mod tests {
     #[test]
     fn summary_text_has_limit() {
         assert_eq!(compact("abcdefgh", 6), "abc...");
+    }
+
+    #[test]
+    fn 配置根目录优先于环境变量并展开波浪线() {
+        let configured = vec!["~/custom-codex".to_string()];
+        let (roots, origin) =
+            resolve_kind(Some(&configured), "CODEX_SESSIONS_DIR", PathBuf::from("/fallback"));
+        assert_eq!(origin, "config");
+        assert_eq!(
+            roots,
+            vec![dirs::home_dir().unwrap().join("custom-codex")]
+        );
+    }
+
+    #[test]
+    fn 配置空数组会停用对应来源() {
+        let (roots, origin) =
+            resolve_kind(Some(&Vec::new()), "CODEX_SESSIONS_DIR", PathBuf::from("/fallback"));
+        assert_eq!(origin, "config");
+        assert!(roots.is_empty());
     }
     #[test]
     fn injected_context_is_detected() {

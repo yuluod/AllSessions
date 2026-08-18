@@ -54,6 +54,8 @@ All platforms use the same Tauri 2 shell, tray actions, and signed updater. GNOM
 
 ## Configuration
 
+The toolbar **Settings** button opens a dialog for switching the UI language, editing per-source session root lists (with `~` expansion), and inspecting or clearing the index cache. Root lists are persisted to `AllSessions/config.json` in the user config directory (override with `ALLSESSIONS_CONFIG_PATH`) and take effect immediately; a configured source no longer reads its environment variable, and "Restore default" falls back to the env var or system default path.
+
 Set these before starting the desktop app (values are read once at startup):
 
 | Variable | Purpose | Default |

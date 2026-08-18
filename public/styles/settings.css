@@ -1,0 +1,233 @@
+/* 设置对话框 */
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 24px 64px rgba(27, 42, 52, 0.24);
+}
+
+.settings-dialog::backdrop {
+  background: rgba(23, 33, 38, 0.32);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.settings-body {
+  display: grid;
+  gap: 18px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  max-height: calc(100dvh - 190px);
+}
+
+.settings-section h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+}
+
+.settings-field {
+  max-width: 240px;
+}
+
+.settings-hint {
+  margin: 0 0 9px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.settings-sources {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-source {
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface-subtle);
+}
+
+.settings-source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 0.82rem;
+}
+
+.settings-origin {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface-muted);
+}
+
+.settings-origin[data-origin="config"] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.settings-origin[data-origin="env"] {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.settings-root-list {
+  margin: 0 0 8px;
+  padding: 0 0 0 2px;
+  list-style: none;
+  color: var(--text-secondary);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.7;
+  word-break: break-all;
+}
+
+.settings-root-editor {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.settings-root-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.settings-root-row input {
+  min-width: 0;
+  height: 32px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.76rem;
+  background: var(--surface);
+}
+
+.settings-root-row input:focus {
+  border-color: rgba(15, 118, 110, 0.52);
+  outline: none;
+}
+
+.settings-root-remove {
+  min-height: 32px;
+  padding: 4px 9px;
+  font-size: 0.72rem;
+}
+
+.settings-source-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.settings-source-action {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 0.72rem;
+}
+
+.settings-storage-info {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 9px;
+}
+
+.settings-storage-info > div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.settings-storage-info dt {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.settings-storage-info dd {
+  margin: 0;
+  overflow: hidden;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-about {
+  margin: 0 0 4px;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-status {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.settings-status[data-state="error"] {
+  color: var(--danger);
+}
+
+.settings-save-btn {
+  flex: 0 0 auto;
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+.settings-save-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 500px) {
+  .settings-toggle span {
+    display: none;
+  }
+
+  .settings-storage-info > div {
+    grid-template-columns: 1fr;
+    gap: 1px;
+  }
+}

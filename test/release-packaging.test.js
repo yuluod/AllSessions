@@ -149,6 +149,7 @@ test("macOS 构建号独立于显示版本且发布会汇总更新清单", async
 
   assert.equal(config.bundle.macOS.bundleVersion, expectedBuildNumber);
   assert.match(workflow, /bundles: app,dmg/);
-  assert.match(workflow, /uploadUpdaterJson: false/);
+  assert.match(workflow, /includeUpdaterJson: false/);
+  assert.doesNotMatch(workflow, /uploadUpdaterJson/);
   assert.match(workflow, /updater-manifest:[\s\S]*build-updater-manifest\.mjs[\s\S]*gh release upload/);
 });

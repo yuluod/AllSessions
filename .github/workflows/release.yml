@@ -149,7 +149,7 @@ jobs:
           releaseName: AllSessions ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           releaseBody: ${{ steps.release_notes.outputs.body }}
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-          uploadUpdaterJson: false
+          includeUpdaterJson: false
           updaterJsonPreferNsis: true
 
       # v0.0.6 的旧更新器依赖这些名称；保留它们可完成一次平滑迁移。

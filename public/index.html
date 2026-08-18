@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n-page-title="title">AllSessions</title>
     <link rel="icon" type="image/png" href="/assets/allsessions-icon-v2.png" />
-    <link rel="stylesheet" href="/styles.css?v=20260814-workspace-polish" />
+    <link rel="stylesheet" href="/styles.css?v=20260818-settings" />
   </head>
   <body>
     <div class="page-shell">
@@ -108,6 +108,32 @@
               >加载中...</span
             >
           </div>
+          <button
+            id="settings-toggle"
+            class="ghost-button settings-toggle"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="settings-dialog"
+            data-i18n="settings"
+            data-i18n-attr="title"
+            title="设置"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.24.6.86 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.65 0-1.27.4-1.51 1z"
+              />
+            </svg>
+            <span data-i18n="settings">设置</span>
+          </button>
           <button
             id="lang-toggle"
             class="ghost-button"
@@ -691,6 +717,89 @@
         </aside>
       </main>
     </div>
+
+    <dialog
+      id="settings-dialog"
+      class="settings-dialog"
+      aria-labelledby="settings-title"
+    >
+      <div class="settings-header">
+        <h2 id="settings-title" data-i18n="settings">设置</h2>
+        <button
+          id="settings-close-btn"
+          class="ghost-button props-close-btn"
+          type="button"
+          data-i18n="closeSettings"
+        >
+          关闭
+        </button>
+      </div>
+      <div class="settings-body">
+        <section class="settings-section" aria-labelledby="settings-general-title">
+          <h3 id="settings-general-title" data-i18n="settingsGeneral">常规</h3>
+          <label class="field settings-field">
+            <span data-i18n="language">语言</span>
+            <select id="settings-language-select">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+        </section>
+        <section class="settings-section" aria-labelledby="settings-sources-title">
+          <h3 id="settings-sources-title" data-i18n="settingsSources">
+            会话来源
+          </h3>
+          <p class="settings-hint" data-i18n="settingsSourcesHint">
+            自定义每类会话的根目录列表；不自定义时跟随对应环境变量或系统默认路径。保存后立即重建索引并更新监听。
+          </p>
+          <div id="settings-sources" class="settings-sources"></div>
+        </section>
+        <section class="settings-section" aria-labelledby="settings-storage-title">
+          <h3 id="settings-storage-title" data-i18n="settingsStorage">存储</h3>
+          <dl class="settings-storage-info">
+            <div>
+              <dt data-i18n="settingsCachePath">索引缓存位置</dt>
+              <dd id="settings-cache-path">-</dd>
+            </div>
+            <div>
+              <dt data-i18n="settingsCacheSize">缓存大小</dt>
+              <dd id="settings-cache-size">-</dd>
+            </div>
+          </dl>
+          <button
+            id="settings-clear-cache"
+            class="ghost-button"
+            type="button"
+            data-i18n="settingsClearCache"
+          >
+            清除索引缓存并重建
+          </button>
+        </section>
+        <section class="settings-section" aria-labelledby="settings-about-title">
+          <h3 id="settings-about-title" data-i18n="settingsAbout">关于</h3>
+          <p class="settings-about">
+            AllSessions <span id="settings-version">-</span>
+          </p>
+          <p class="settings-hint">github.com/yuluod/AllSessions</p>
+        </section>
+      </div>
+      <div class="settings-footer">
+        <span
+          id="settings-status"
+          class="settings-status"
+          role="status"
+          aria-live="polite"
+        ></span>
+        <button
+          id="settings-save-btn"
+          class="ghost-button settings-save-btn"
+          type="button"
+          data-i18n="settingsSave"
+        >
+          保存并刷新
+        </button>
+      </div>
+    </dialog>
 
     <template id="session-item-template">
       <div class="session-row">

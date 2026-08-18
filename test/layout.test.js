@@ -641,3 +641,43 @@ test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复�
   assert.match(app, /signal: request\.signal/);
   assert.doesNotMatch(app, /if \(isTools && isCodexMaintenanceEnabled\(\)/);
 });
+
+test("顶栏提供设置入口且对话框包含常规、来源、存储与关于分区", async () => {
+  const html = await readProjectFile("public/index.html");
+  const css = await readProjectFile("public/styles.css");
+
+  assert.match(html, /id="settings-toggle"[\s\S]*aria-haspopup="dialog"/);
+  assert.match(html, /<dialog\s+id="settings-dialog"/);
+  assert.match(html, /id="settings-language-select"/);
+  assert.match(html, /id="settings-sources"/);
+  assert.match(html, /id="settings-clear-cache"/);
+  assert.match(html, /id="settings-version"/);
+  assert.match(html, /id="settings-save-btn"/);
+  assert.match(html, /id="settings-status"[\s\S]*aria-live="polite"/);
+  assert.match(css, /\.settings-dialog\s*\{/);
+  assert.match(css, /\.settings-dialog::backdrop/);
+});
+
+test("设置视图通过专用接口读写配置并支持语言切换", async () => {
+  const source = await readProjectFile("public/settings-view.js");
+  const app = await readProjectFile("public/app.js");
+  const i18n = await readProjectFile("public/i18n.js");
+
+  assert.match(source, /fetchJson\("\/api\/settings"\)/);
+  assert.match(source, /fetchJson\("\/api\/settings", \{\s*method: "POST"/);
+  assert.match(source, /fetchJson\("\/api\/settings\/clear-cache"/);
+  assert.match(source, /setLang\(event\.target\.value === "en" \? "en" : "zh"\)/);
+  assert.match(source, /t\(`settingsOrigin_\$\{resolved\.origin\}`\)/);
+  assert.match(app, /createSettingsController\(\{[\s\S]*onLanguageChanged[\s\S]*onSaved/);
+  for (const key of [
+    "settingsSources",
+    "settingsSave",
+    "settingsSaved",
+    "settingsOrigin_config",
+    "settingsOrigin_env",
+    "settingsOrigin_default",
+    "settingsCacheCleared"
+  ]) {
+    assert.match(i18n, new RegExp(`${key}: "`));
+  }
+});

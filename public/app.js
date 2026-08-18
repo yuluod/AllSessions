@@ -19,6 +19,7 @@ import {
 } from "./session-export.js";
 import { createConversationView } from "./conversation-view.js";
 import { renderStats } from "./stats-view.js";
+import { createSettingsController } from "./settings-view.js";
 
 const PAGE_LIMIT = 50;
 const PROJECT_PREVIEW_LIMIT = 4;
@@ -225,6 +226,17 @@ const elements = {
   ),
   openCodexArchiveBtn: document.querySelector("#open-codex-archive-btn"),
   mobileBackBtn: document.querySelector("#mobile-back-btn"),
+  settingsToggle: document.querySelector("#settings-toggle"),
+  settingsDialog: document.querySelector("#settings-dialog"),
+  settingsCloseBtn: document.querySelector("#settings-close-btn"),
+  settingsLanguageSelect: document.querySelector("#settings-language-select"),
+  settingsSources: document.querySelector("#settings-sources"),
+  settingsCachePath: document.querySelector("#settings-cache-path"),
+  settingsCacheSize: document.querySelector("#settings-cache-size"),
+  settingsClearCache: document.querySelector("#settings-clear-cache"),
+  settingsVersion: document.querySelector("#settings-version"),
+  settingsSaveBtn: document.querySelector("#settings-save-btn"),
+  settingsStatus: document.querySelector("#settings-status"),
   sessionItemTemplate: document.querySelector("#session-item-template"),
   conversationItemTemplate: document.querySelector(
     "#conversation-item-template"
@@ -233,6 +245,18 @@ const elements = {
 };
 
 const conversationView = createConversationView({ state, elements });
+const settingsController = createSettingsController({
+  elements,
+  onLanguageChanged: () => {
+    syncLanguageToggle();
+    rerenderLocalizedContent();
+  },
+  onSaved: () => {
+    loadFacets()
+      .then(() => Promise.all([loadSessions(), loadStats()]))
+      .catch((error) => showError(error.message));
+  },
+});
 
 // ── URL 状态同步 ──────────────────────────────────────────────────────────────
 function syncUrl() {
@@ -2262,6 +2286,8 @@ async function initialize() {
       rerenderLocalizedContent();
     });
   }
+
+  settingsController.bind();
 
   elements.detailSearchInput?.addEventListener("input", (event) => {
     state.detailQuery = event.target.value.trim();

@@ -256,12 +256,14 @@
   }
 
   .tool-card-header,
+  .maintenance-step-header,
   .migration-backup-row {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .tool-card-header .ghost-button {
+  .tool-card-header .ghost-button,
+  .maintenance-step-header .ghost-button {
     width: fit-content;
   }
 }

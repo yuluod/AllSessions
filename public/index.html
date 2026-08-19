@@ -516,6 +516,39 @@
               </div>
             </section>
             <section
+              class="tool-card tool-card-compact"
+              aria-labelledby="codex-rollback-launcher-title"
+            >
+              <div class="tool-card-header">
+                <div>
+                  <span
+                    class="tool-mode-badge"
+                    data-mode="maintenance"
+                    data-i18n="recoveryTool"
+                    >恢复工具</span
+                  >
+                  <h2
+                    id="codex-rollback-launcher-title"
+                    data-i18n="codexRollbackTitle"
+                  >
+                    Codex 修复回滚
+                  </h2>
+                  <p data-i18n="codexRollbackDesc">
+                    从修复时生成的备份恢复旧
+                    Provider。仅在修复后出现异常时使用。
+                  </p>
+                </div>
+                <button
+                  id="open-codex-rollback-btn"
+                  class="ghost-button"
+                  type="button"
+                  data-i18n="openRollbackTool"
+                >
+                  打开回滚工具
+                </button>
+              </div>
+            </section>
+            <section
               id="codex-migration-card"
               class="tool-card"
               aria-labelledby="codex-migration-title"
@@ -543,7 +576,31 @@
                     仅在切换 Provider 后，明确知道旧会话不可见时使用。
                   </p>
                 </div>
-                <div class="maintenance-header-actions">
+              </div>
+
+              <p class="maintenance-next-step" id="codex-migration-next-step">
+                下一步：开启维护模式
+              </p>
+
+              <div
+                class="maintenance-workflow"
+                id="codex-migration-workflow"
+                data-phase="disabled"
+              >
+                <section
+                  class="maintenance-step"
+                  data-step="1"
+                  data-state="active"
+                >
+                  <div class="maintenance-step-heading">
+                    <span class="maintenance-step-number">1</span>
+                    <div>
+                      <h3 data-i18n="maintenanceStepEnable">开启维护模式</h3>
+                      <p data-i18n="maintenanceStepEnableDesc">
+                        临时允许生成计划和执行修复，关闭后立即恢复只读。
+                      </p>
+                    </div>
+                  </div>
                   <label class="maintenance-toggle">
                     <span data-i18n="maintenanceToggle">维护模式</span>
                     <input
@@ -552,129 +609,246 @@
                       role="switch"
                     />
                   </label>
-                  <button
-                    id="codex-migration-preview-btn"
-                    class="ghost-button"
-                    type="button"
+                  <p
+                    class="maintenance-boundary"
+                    data-i18n="maintenanceBoundary"
                   >
-                    扫描历史 Provider
-                  </button>
-                </div>
-              </div>
+                    维护模式默认关闭。开启后才允许生成修复计划、执行修复或回滚；关闭后立即恢复只读状态。
+                  </p>
+                </section>
 
-              <p class="maintenance-boundary" data-i18n="maintenanceBoundary">
-                维护模式默认关闭。开启后才允许生成修复计划、执行修复或回滚；关闭后立即恢复只读状态。
-              </p>
-
-              <p class="maintenance-next-step" id="codex-migration-next-step">
-                下一步：开启维护模式
-              </p>
-
-              <div
-                class="tool-status"
-                id="codex-migration-status"
-                role="status"
-                aria-live="polite"
-                data-i18n="migrationNotPreviewed"
-              >
-                尚未预览
-              </div>
-
-              <p class="migration-stale-notice hidden" id="codex-migration-plan-stale" data-i18n="migrationPlanStale">
-                来源选择已变化；下方旧计划仅作参考，重新生成后才能执行。
-              </p>
-
-              <div
-                class="migration-metrics"
-                id="codex-migration-metrics"
-                data-stale="false"
-              >
-                <div class="migration-metric">
-                  <span data-i18n="migrationThreads">匹配线程</span>
-                  <strong id="codex-migration-thread-count">-</strong>
-                </div>
-                <div class="migration-metric">
-                  <span data-i18n="migrationJsonlFiles">JSONL 文件</span>
-                  <strong id="codex-migration-jsonl-count">-</strong>
-                </div>
-                <div class="migration-metric">
-                  <span data-i18n="migrationReplacements">替换条目</span>
-                  <strong id="codex-migration-replacement-count">-</strong>
-                </div>
-              </div>
-
-              <div
-                class="migration-diagnostics"
-                id="codex-migration-diagnostics"
-                data-kind="neutral"
-                data-stale="false"
-              >
-                <div>
-                  <span data-i18n="migrationCurrentProvider"
-                    >当前 Provider</span
-                  >
-                  <strong id="codex-migration-current-provider">-</strong>
-                </div>
-                <div>
-                  <span data-i18n="migrationTargetProvider"
-                    >可见性修复目标</span
-                  >
-                  <strong id="codex-migration-target-provider">-</strong>
-                </div>
-                <ul id="codex-migration-diagnostic-list"></ul>
-              </div>
-
-              <div class="migration-provider-section">
-                <h3 data-i18n="migrationProviders">
-                  选择要恢复的历史 Providers
-                </h3>
-                <div
-                  id="codex-migration-provider-list"
-                  class="migration-provider-list"
-                ></div>
-              </div>
-
-              <div
-                class="migration-backup-notice hidden"
-                id="codex-migration-backup-notice"
-              >
-                <span
-                  id="codex-migration-backup-label"
-                  data-i18n="backupWillSaveTo"
-                  >备份将保存到</span
+                <section
+                  class="maintenance-step"
+                  data-step="2"
+                  data-state="pending"
                 >
-                <code id="codex-migration-backup-path"></code>
-              </div>
+                  <div class="maintenance-step-header">
+                    <div class="maintenance-step-heading">
+                      <span class="maintenance-step-number">2</span>
+                      <div>
+                        <h3 data-i18n="maintenanceStepSelect">
+                          选择历史 Provider
+                        </h3>
+                        <p data-i18n="maintenanceStepSelectDesc">
+                          先扫描候选项，勾选需要恢复的来源，再生成精确计划。
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      id="codex-migration-preview-btn"
+                      class="ghost-button"
+                      type="button"
+                    >
+                      扫描历史 Provider
+                    </button>
+                  </div>
+                  <div class="migration-provider-section">
+                    <h3 data-i18n="migrationProviders">
+                      选择要恢复的历史 Providers
+                    </h3>
+                    <div
+                      id="codex-migration-provider-list"
+                      class="migration-provider-list"
+                    ></div>
+                  </div>
+                </section>
 
-              <div class="migration-actions">
-                <div class="migration-safety-copy">
-                  <h3 data-i18n="maintenanceSafetyTitle">危险操作安全确认</h3>
-                  <p data-i18n="maintenanceSafetyDesc">
-                    执行修复和回滚都会写入 Codex 本地数据；两项操作前都必须确认 Codex App 已退出。
+                <section
+                  class="maintenance-step"
+                  data-step="3"
+                  data-state="pending"
+                >
+                  <div class="maintenance-step-heading">
+                    <span class="maintenance-step-number">3</span>
+                    <div>
+                      <h3 data-i18n="maintenanceStepReview">核对修复计划</h3>
+                      <p data-i18n="maintenanceStepReviewDesc">
+                        确认目标 Provider、影响数量和备份位置后再继续。
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    class="tool-status"
+                    id="codex-migration-status"
+                    role="status"
+                    aria-live="polite"
+                    data-i18n="migrationNotPreviewed"
+                  >
+                    尚未预览
+                  </div>
+                  <p
+                    class="migration-stale-notice hidden"
+                    id="codex-migration-plan-stale"
+                    data-i18n="migrationPlanStale"
+                  >
+                    来源选择已变化；下方旧计划仅作参考，重新生成后才能执行。
+                  </p>
+                  <div
+                    class="migration-metrics"
+                    id="codex-migration-metrics"
+                    data-stale="false"
+                  >
+                    <div class="migration-metric">
+                      <span data-i18n="migrationThreads">匹配线程</span>
+                      <strong id="codex-migration-thread-count">-</strong>
+                    </div>
+                    <div class="migration-metric">
+                      <span data-i18n="migrationJsonlFiles">JSONL 文件</span>
+                      <strong id="codex-migration-jsonl-count">-</strong>
+                    </div>
+                    <div class="migration-metric">
+                      <span data-i18n="migrationReplacements">替换条目</span>
+                      <strong id="codex-migration-replacement-count">-</strong>
+                    </div>
+                  </div>
+                  <div
+                    class="migration-diagnostics"
+                    id="codex-migration-diagnostics"
+                    data-kind="neutral"
+                    data-stale="false"
+                  >
+                    <div>
+                      <span data-i18n="migrationCurrentProvider"
+                        >当前 Provider</span
+                      >
+                      <strong id="codex-migration-current-provider">-</strong>
+                    </div>
+                    <div>
+                      <span data-i18n="migrationTargetProvider"
+                        >可见性修复目标</span
+                      >
+                      <strong id="codex-migration-target-provider">-</strong>
+                    </div>
+                    <ul id="codex-migration-diagnostic-list"></ul>
+                  </div>
+                  <div
+                    class="migration-backup-notice hidden"
+                    id="codex-migration-backup-notice"
+                  >
+                    <span
+                      id="codex-migration-backup-label"
+                      data-i18n="backupWillSaveTo"
+                      >备份将保存到</span
+                    >
+                    <code id="codex-migration-backup-path"></code>
+                  </div>
+                </section>
+
+                <section
+                  class="maintenance-step"
+                  data-step="4"
+                  data-state="pending"
+                >
+                  <div class="maintenance-step-heading">
+                    <span class="maintenance-step-number">4</span>
+                    <div class="migration-safety-copy">
+                      <h3 data-i18n="maintenanceSafetyTitle">
+                        退出 Codex 并执行
+                      </h3>
+                      <p data-i18n="maintenanceSafetyDesc">
+                        完全退出 Codex App 后勾选确认，再执行修复。
+                      </p>
+                    </div>
+                  </div>
+                  <div class="migration-actions">
+                    <label class="migration-confirm">
+                      <input id="codex-migration-confirm" type="checkbox" />
+                      <span data-i18n="migrationConfirmClosed"
+                        >我已退出 Codex App</span
+                      >
+                    </label>
+                    <button
+                      id="codex-migration-apply-btn"
+                      class="danger-button"
+                      type="button"
+                      disabled
+                      data-i18n="applyMigration"
+                    >
+                      恢复到当前 Provider
+                    </button>
+                  </div>
+                  <div
+                    class="migration-complete hidden"
+                    id="codex-migration-complete"
+                    role="status"
+                  >
+                    <strong data-i18n="migrationCompleteTitle"
+                      >修复已完成</strong
+                    >
+                    <span data-i18n="migrationCompleteDesc">
+                      无需再次生成计划。关闭维护模式，然后重新打开 Codex App
+                      检查历史会话。
+                    </span>
+                    <button
+                      id="codex-migration-finish-btn"
+                      class="ghost-button"
+                      type="button"
+                      data-i18n="finishMaintenance"
+                    >
+                      关闭维护模式
+                    </button>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </div>
+
+          <div class="tools-dashboard hidden" id="codex-rollback-dashboard">
+            <section
+              class="tool-card codex-rollback-card"
+              aria-labelledby="codex-rollback-title"
+              data-enabled="false"
+            >
+              <div class="tool-page-header">
+                <button
+                  id="codex-rollback-back-btn"
+                  class="ghost-button"
+                  type="button"
+                  data-i18n="backToTools"
+                >
+                  返回工具
+                </button>
+                <div>
+                  <span
+                    class="tool-mode-badge"
+                    data-mode="maintenance"
+                    data-i18n="recoveryTool"
+                    >恢复工具</span
+                  >
+                  <h2 id="codex-rollback-title" data-i18n="codexRollbackTitle">
+                    Codex 修复回滚
+                  </h2>
+                  <p data-i18n="codexRollbackPageDesc">
+                    选择一次修复生成的备份目录，将 Provider
+                    字段恢复到修复前状态。
                   </p>
                 </div>
-                <label class="migration-confirm">
-                  <input id="codex-migration-confirm" type="checkbox" />
-                  <span data-i18n="migrationConfirmClosed"
-                    >我已退出 Codex App</span
-                  >
-                </label>
-                <button
-                  id="codex-migration-apply-btn"
-                  class="danger-button"
-                  type="button"
-                  disabled
-                  data-i18n="applyMigration"
-                >
-                  恢复到当前 Provider
-                </button>
               </div>
 
-              <p class="migration-rollback-hint" data-i18n="migrationRollbackHint">
-                回滚是修复后的安全网。执行修复会生成具体备份目录；也可手动输入历史备份目录。
-              </p>
+              <div class="rollback-section">
+                <div>
+                  <h3 data-i18n="rollbackEnableTitle">1. 开启维护模式</h3>
+                  <p data-i18n="rollbackEnableDesc">
+                    回滚会写入 Codex 本地数据，完成后请立即关闭维护模式。
+                  </p>
+                </div>
+                <label class="maintenance-toggle">
+                  <span data-i18n="maintenanceToggle">维护模式</span>
+                  <input
+                    id="codex-rollback-maintenance-toggle"
+                    type="checkbox"
+                    role="switch"
+                  />
+                </label>
+              </div>
 
-              <div class="migration-backup-row">
+              <div class="rollback-section">
+                <div>
+                  <h3 data-i18n="rollbackBackupTitle">2. 选择备份</h3>
+                  <p data-i18n="migrationRollbackHint">
+                    使用修复完成时生成的具体备份目录，也可以输入历史备份目录。
+                  </p>
+                </div>
                 <label class="field">
                   <span data-i18n="rollbackBackupDir">备份目录</span>
                   <input
@@ -684,14 +858,42 @@
                     data-i18n-placeholder="rollbackBackupPlaceholder"
                   />
                 </label>
+              </div>
+
+              <div class="rollback-section">
+                <div>
+                  <h3 data-i18n="rollbackExecuteTitle">3. 退出 Codex 并回滚</h3>
+                  <p data-i18n="rollbackExecuteDesc">
+                    完全退出 Codex App，勾选确认后再执行回滚。
+                  </p>
+                </div>
+                <label class="migration-confirm">
+                  <input
+                    id="codex-migration-rollback-confirm"
+                    type="checkbox"
+                  />
+                  <span data-i18n="migrationConfirmClosed"
+                    >我已退出 Codex App</span
+                  >
+                </label>
                 <button
                   id="codex-migration-rollback-btn"
-                  class="ghost-button"
+                  class="danger-button"
                   type="button"
                   data-i18n="rollbackMigration"
                 >
                   回滚
                 </button>
+              </div>
+
+              <div
+                class="tool-status"
+                id="codex-rollback-status"
+                role="status"
+                aria-live="polite"
+                data-i18n="rollbackMaintenanceDisabled"
+              >
+                开启维护模式后才能执行回滚。
               </div>
             </section>
           </div>
@@ -735,7 +937,10 @@
         </button>
       </div>
       <div class="settings-body">
-        <section class="settings-section" aria-labelledby="settings-general-title">
+        <section
+          class="settings-section"
+          aria-labelledby="settings-general-title"
+        >
           <h3 id="settings-general-title" data-i18n="settingsGeneral">常规</h3>
           <label class="field settings-field">
             <span data-i18n="language">语言</span>
@@ -745,7 +950,10 @@
             </select>
           </label>
         </section>
-        <section class="settings-section" aria-labelledby="settings-sources-title">
+        <section
+          class="settings-section"
+          aria-labelledby="settings-sources-title"
+        >
           <h3 id="settings-sources-title" data-i18n="settingsSources">
             会话来源
           </h3>
@@ -754,7 +962,10 @@
           </p>
           <div id="settings-sources" class="settings-sources"></div>
         </section>
-        <section class="settings-section" aria-labelledby="settings-storage-title">
+        <section
+          class="settings-section"
+          aria-labelledby="settings-storage-title"
+        >
           <h3 id="settings-storage-title" data-i18n="settingsStorage">存储</h3>
           <dl class="settings-storage-info">
             <div>
@@ -775,7 +986,10 @@
             清除索引缓存并重建
           </button>
         </section>
-        <section class="settings-section" aria-labelledby="settings-about-title">
+        <section
+          class="settings-section"
+          aria-labelledby="settings-about-title"
+        >
           <h3 id="settings-about-title" data-i18n="settingsAbout">关于</h3>
           <p class="settings-about">
             AllSessions <span id="settings-version">-</span>

@@ -33,13 +33,6 @@
   min-width: 0;
 }
 
-.maintenance-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
 .maintenance-toggle {
   display: inline-flex;
   align-items: center;
@@ -146,6 +139,97 @@
   line-height: 1.5;
 }
 
+.maintenance-workflow {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.maintenance-step {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+}
+
+.maintenance-step + .maintenance-step {
+  border-top: 1px solid var(--line);
+}
+
+.maintenance-step[data-state="pending"] {
+  background: var(--surface-subtle);
+  opacity: 0.62;
+}
+
+.maintenance-step[data-state="active"] {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.maintenance-step[data-state="active"] .maintenance-step-number {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.maintenance-step[data-state="complete"] .maintenance-step-number {
+  border-color: #badfc9;
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.maintenance-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.maintenance-step-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.maintenance-step-heading > div {
+  min-width: 0;
+}
+
+.maintenance-step-number {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.maintenance-step-heading h3 {
+  margin: 1px 0 0;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.maintenance-step-heading p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+.maintenance-step > .maintenance-toggle {
+  width: fit-content;
+  margin-left: 34px;
+}
+
+.maintenance-step > .maintenance-boundary {
+  margin-left: 34px;
+}
+
 .tool-status {
   border-color: var(--line);
   color: var(--muted);
@@ -172,12 +256,19 @@
 }
 
 .maintenance-next-step,
-.migration-stale-notice,
-.migration-rollback-hint {
+.migration-stale-notice {
   margin: 0;
   color: var(--text-secondary);
   font-size: 0.76rem;
   line-height: 1.5;
+}
+
+.maintenance-next-step {
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  color: var(--text);
+  background: var(--surface-subtle);
+  font-weight: 650;
 }
 
 .migration-stale-notice {
@@ -334,6 +425,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  margin-left: 34px;
 }
 
 .migration-safety-copy {
@@ -348,8 +440,7 @@
   font-size: 0.76rem;
 }
 
-.migration-safety-copy p,
-.migration-rollback-hint {
+.migration-safety-copy p {
   color: var(--muted);
 }
 
@@ -358,4 +449,72 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 10px;
+}
+
+.tool-page-header {
+  display: grid;
+  gap: 14px;
+}
+
+.tool-page-header .ghost-button {
+  width: fit-content;
+}
+
+.tool-page-header h2 {
+  margin: 8px 0 0;
+  font-size: 1.06rem;
+}
+
+.tool-page-header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.79rem;
+  line-height: 1.55;
+}
+
+.rollback-section {
+  display: grid;
+  gap: 10px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.rollback-section h3 {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.rollback-section p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.rollback-section .maintenance-toggle,
+.rollback-section > .migration-confirm,
+.rollback-section > .danger-button {
+  width: fit-content;
+}
+
+.migration-complete {
+  display: grid;
+  gap: 4px;
+  margin-left: 34px;
+  padding: 11px 12px;
+  border: 1px solid #badfc9;
+  border-radius: var(--radius-small);
+  color: var(--success);
+  background: var(--success-soft);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.migration-complete span {
+  color: var(--text-secondary);
+}
+
+.migration-complete .ghost-button {
+  width: fit-content;
+  margin-top: 5px;
 }

@@ -118,10 +118,7 @@ test("工作区新增说明文字使用可缩放字号且不依赖 !important", 
     css,
     /\.workspace-load-state \.workspace-load-detail\s*\{[^}]*font-size: 0\.75rem/
   );
-  assert.doesNotMatch(
-    css,
-    /\.workspace-load-detail\s*\{[^}]*!important/
-  );
+  assert.doesNotMatch(css, /\.workspace-load-detail\s*\{[^}]*!important/);
 });
 
 test("属性型 i18n 不会覆盖带子节点的控件内容", async () => {
@@ -243,10 +240,7 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   assert.match(app, /createConversationView/);
   assert.match(view, /createMessageNavSection/);
   assert.match(filter, /showTools \|\| message\.role !== "tool"/);
-  assert.match(
-    filter,
-    /showContext \|\| message\.synthetic_context !== true/
-  );
+  assert.match(filter, /showContext \|\| message\.synthetic_context !== true/);
   assert.match(css, /\.conversation-toolbar\b/);
   assert.match(css, /\.message-nav-list\b/);
 });
@@ -408,13 +402,37 @@ test("Codex 维护流程提供分阶段操作指引", async () => {
   const css = await readProjectFile("public/styles/maintenance.css");
 
   assert.match(html, /id="codex-migration-next-step"/);
-  assert.match(html, /id="codex-migration-plan-stale"[\s\S]*data-i18n="migrationPlanStale"/);
+  assert.match(html, /class="maintenance-workflow"/);
+  assert.match(
+    html,
+    /id="codex-migration-workflow"[\s\S]*data-phase="disabled"/
+  );
+  assert.match(html, /data-step="1"[\s\S]*data-state="active"/);
+  assert.match(html, /data-step="4"[\s\S]*data-state="pending"/);
+  assert.doesNotMatch(html, /migration-rollback-panel/);
+  assert.match(html, /id="open-codex-rollback-btn"/);
+  assert.match(html, /id="codex-rollback-dashboard"/);
+  assert.match(html, /id="codex-rollback-back-btn"/);
+  assert.match(html, /id="codex-rollback-maintenance-toggle"/);
+  assert.match(html, /id="codex-rollback-status"/);
+  assert.match(html, /id="codex-migration-rollback-confirm"/);
+  assert.match(html, /id="codex-migration-complete"/);
+  assert.match(html, /id="codex-migration-finish-btn"/);
+  assert.match(
+    html,
+    /id="codex-migration-plan-stale"[\s\S]*data-i18n="migrationPlanStale"/
+  );
   assert.match(html, /id="codex-migration-metrics"[\s\S]*data-stale="false"/);
-  assert.match(html, /id="codex-migration-diagnostics"[\s\S]*data-stale="false"/);
+  assert.match(
+    html,
+    /id="codex-migration-diagnostics"[\s\S]*data-stale="false"/
+  );
   assert.match(html, /data-i18n="maintenanceSafetyTitle"/);
   assert.match(html, /data-i18n="migrationRollbackHint"/);
   assert.doesNotMatch(
-    html.match(/<button[^>]*id="codex-migration-preview-btn"[\s\S]*?<\/button>/)?.[0] || "",
+    html.match(
+      /<button[^>]*id="codex-migration-preview-btn"[\s\S]*?<\/button>/
+    )?.[0] || "",
     /data-i18n/
   );
   assert.match(source, /function syncCodexMigrationFlowState\(\)/);
@@ -422,7 +440,18 @@ test("Codex 维护流程提供分阶段操作指引", async () => {
   assert.match(source, /buildExactRepairPlan/);
   assert.match(source, /rebuildRepairPlan/);
   assert.match(source, /dataset\.stale = String\(stale\)/);
-  assert.match(css, /\.migration-metrics\[data-stale="true"\][\s\S]*opacity: 0\.58/);
+  assert.match(
+    source,
+    /state\.codexMigrationSelectedProviders\.clear\(\);[\s\S]*renderCodexMigrationPreview\(summary\)/
+  );
+  assert.match(source, /function updateCodexMigrationStepStates\(\)/);
+  assert.match(source, /if \(state\.codexMigrationApplied\) return;/);
+  assert.match(
+    css,
+    /\.migration-metrics\[data-stale="true"\][\s\S]*opacity: 0\.58/
+  );
+  assert.match(css, /\.maintenance-step \+ \.maintenance-step/);
+  assert.match(css, /\.maintenance-step\[data-state="active"\]/);
 });
 
 test("会话列表支持筛选状态 chips 和日期分组", async () => {
@@ -629,6 +658,10 @@ test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复�
   assert.match(html, /id="codex-migration-preview-btn"/);
   assert.match(html, /id="codex-migration-apply-btn"/);
   assert.match(html, /id="codex-migration-rollback-btn"/);
+  assert.match(
+    html,
+    /id="codex-rollback-dashboard"[\s\S]*id="codex-migration-rollback-btn"/
+  );
   assert.match(html, /id="codex-migration-diagnostics"/);
   assert.match(html, /id="codex-migration-card"[\s\S]*data-enabled="false"/);
   assert.match(html, /id="codex-maintenance-toggle"[\s\S]*role="switch"/);
@@ -666,9 +699,15 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
   assert.match(source, /fetchJson\("\/api\/settings"\)/);
   assert.match(source, /fetchJson\("\/api\/settings", \{\s*method: "POST"/);
   assert.match(source, /fetchJson\("\/api\/settings\/clear-cache"/);
-  assert.match(source, /setLang\(event\.target\.value === "en" \? "en" : "zh"\)/);
+  assert.match(
+    source,
+    /setLang\(event\.target\.value === "en" \? "en" : "zh"\)/
+  );
   assert.match(source, /t\(`settingsOrigin_\$\{resolved\.origin\}`\)/);
-  assert.match(app, /createSettingsController\(\{[\s\S]*onLanguageChanged[\s\S]*onSaved/);
+  assert.match(
+    app,
+    /createSettingsController\(\{[\s\S]*onLanguageChanged[\s\S]*onSaved/
+  );
   for (const key of [
     "settingsSources",
     "settingsSave",
@@ -676,7 +715,7 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
     "settingsOrigin_config",
     "settingsOrigin_env",
     "settingsOrigin_default",
-    "settingsCacheCleared"
+    "settingsCacheCleared",
   ]) {
     assert.match(i18n, new RegExp(`${key}: "`));
   }

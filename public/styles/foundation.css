@@ -22,6 +22,7 @@
   --radius: 10px;
   --radius-small: 7px;
   --sidebar-w: 320px;
+  --inspector-w: 320px;
   --header-h: 66px;
   --shadow-header: 0 2px 8px rgba(27, 42, 52, 0.07);
   --z-sticky: 20;
@@ -44,7 +45,13 @@ body {
   margin: 0;
   color: var(--text);
   background: var(--bg);
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-family:
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "Segoe UI",
+    sans-serif;
   font-size: 14px;
   line-height: 1.45;
 }

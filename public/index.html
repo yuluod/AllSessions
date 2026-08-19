@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n-page-title="title">AllSessions</title>
     <link rel="icon" type="image/png" href="/assets/allsessions-icon-v2.png" />
-    <link rel="stylesheet" href="/styles.css?v=20260818-settings" />
+    <link rel="stylesheet" href="/styles.css?v=20260819-three-column" />
   </head>
   <body>
     <div class="page-shell">
@@ -74,26 +74,6 @@
             />
             <kbd class="search-kbd">⌘ K</kbd>
           </div>
-          <button
-            id="filter-toggle"
-            class="ghost-button filter-toggle-btn"
-            type="button"
-            title="筛选器"
-            aria-controls="sidebar-filters"
-            aria-expanded="false"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              width="16"
-              height="16"
-            >
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-            </svg>
-            <span data-i18n="filter">筛选</span>
-          </button>
         </div>
         <div class="toolbar-right">
           <div class="meta-chip">
@@ -899,7 +879,7 @@
           </div>
         </section>
 
-        <aside class="props-panel" id="props-panel" aria-hidden="true">
+        <aside class="props-panel" id="props-panel" aria-hidden="false">
           <div class="props-header">
             <h2 id="props-eyebrow" data-i18n="sessionInspector">会话信息</h2>
             <button
@@ -1072,6 +1052,6 @@
       aria-live="polite"
       role="status"
     ></div>
-    <script type="module" src="/app.js?v=20260814-workspace-polish"></script>
+    <script type="module" src="/app.js?v=20260819-three-column"></script>
   </body>
 </html>

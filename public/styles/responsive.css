@@ -37,11 +37,23 @@
   }
 
   .props-panel {
+    position: fixed;
+    top: calc(var(--header-h) + 24px);
+    right: 12px;
+    z-index: calc(var(--z-sticky) + 5);
     display: none;
+    width: min(360px, calc(100vw - 24px));
+    min-height: 320px;
+    box-shadow: 0 18px 48px rgba(27, 42, 52, 0.18);
   }
 
   .props-panel.is-open {
     display: block;
+  }
+
+  .inspector-toggle,
+  .props-header .props-close-btn {
+    display: inline-flex;
   }
 
   .message-nav-inline {
@@ -276,12 +288,6 @@
 
   .toolbar-heading {
     max-width: 190px;
-  }
-
-  .filter-toggle-btn {
-    min-width: 40px;
-    min-height: 40px;
-    justify-content: center;
   }
 
   .filter-bar {

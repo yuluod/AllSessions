@@ -358,7 +358,7 @@ test("列表和详情为不同 Agent 来源设置明确标识", async () => {
   assert.match(css, /data-source-kind="codex_archived"/);
 });
 
-test("详情页默认使用双栏阅读布局并按需打开会话信息", async () => {
+test("详情页宽屏使用三栏布局并在中等宽度回退为信息抽屉", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
   const css = await readProjectFile("public/styles.css");
@@ -367,11 +367,24 @@ test("详情页默认使用双栏阅读布局并按需打开会话信息", async
     html,
     /id="session-inspector-toggle"[\s\S]*aria-expanded="false"/
   );
-  assert.match(html, /id="props-panel" aria-hidden="true"/);
+  assert.match(html, /id="props-panel" aria-hidden="false"/);
   assert.match(source, /function setInspectorOpen\(open\)/);
   assert.match(
+    source,
+    /const INSPECTOR_DRAWER_QUERY = "\(max-width: 1320px\)"/
+  );
+  assert.match(source, /function setPropsPlaceholder\(message\)/);
+  assert.match(
     css,
-    /\.app-layout\s*\{[\s\S]*grid-template-columns: var\(--sidebar-w\) minmax\(0, 1fr\)/
+    /\.app-layout\s*\{[\s\S]*var\(--sidebar-w\) minmax\(0, 1fr\)[\s\S]*var\(--inspector-w\)/
+  );
+  assert.match(
+    css,
+    /\.props-panel\s*\{[\s\S]*position: sticky;[\s\S]*display: block;[\s\S]*box-shadow: none/
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 1320px\)[\s\S]*\.props-panel\s*\{[\s\S]*position: fixed;[\s\S]*display: none;[\s\S]*width: min\(360px, calc\(100vw - 24px\)\)/
   );
   assert.match(css, /\.props-panel\.is-open\s*\{\s*display: block/);
 });
@@ -506,18 +519,12 @@ test("本地归档不会被初始自动选中，空页仍可继续加载", async
   );
 });
 
-test("顶部筛选按钮聚焦筛选区而不是切换到统计页", async () => {
-  const source = await readProjectFile("public/app.js");
+test("筛选入口归入左栏且顶部保留全局导航与搜索", async () => {
+  const html = await readProjectFile("public/index.html");
 
-  assert.match(
-    source,
-    /document\.querySelector\(\s*'\.sidebar-tab\[data-sidebar-tab="list"\]'\s*\)/
-  );
-  assert.match(source, /elements\.sourceKindFilter\?\.focus\(\)/);
-  assert.doesNotMatch(
-    source,
-    /document\.querySelector\('\.sidebar-tab\[data-sidebar-tab="stats"\]'\)/
-  );
+  assert.match(html, /<header class="toolbar">[\s\S]*id="search-input"/);
+  assert.match(html, /<aside class="sidebar-left"[\s\S]*id="sidebar-filters"/);
+  assert.doesNotMatch(html, /id="filter-toggle"/);
 });
 
 test("全局搜索支持快捷键并从其他视图返回会话列表", async () => {

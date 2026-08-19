@@ -293,14 +293,6 @@
   background: #9f2017;
 }
 
-.filter-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  min-height: 40px;
-}
-
 .field {
   display: grid;
   gap: 5px;
@@ -335,7 +327,9 @@
 /* 主工作区 */
 .app-layout {
   display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-columns:
+    var(--sidebar-w) minmax(0, 1fr)
+    var(--inspector-w);
   align-items: start;
   gap: 12px;
   margin-top: 12px;
@@ -386,10 +380,6 @@
 .app-layout[data-view="tools"] .sidebar-left,
 .app-layout[data-view="tools"] .props-panel {
   display: none;
-}
-
-body[data-view="tools"] #filter-toggle {
-  visibility: hidden;
 }
 
 /* 左侧浏览器 */
@@ -1150,6 +1140,10 @@ body[data-view="tools"] #filter-toggle {
   background: var(--accent-soft);
 }
 
+.inspector-toggle {
+  display: none;
+}
+
 .tabs,
 .role-filter {
   display: inline-flex;
@@ -1555,18 +1549,16 @@ body[data-view="tools"] #filter-toggle {
 
 /* 属性检查器 */
 .props-panel {
-  position: fixed;
+  position: sticky;
   top: calc(var(--header-h) + 24px);
-  right: 12px;
-  z-index: calc(var(--z-sticky) + 5);
-  display: none;
-  width: min(360px, calc(100vw - 24px));
+  display: block;
+  width: auto;
   max-height: calc(100dvh - var(--header-h) - 38px);
-  min-height: 320px;
+  min-height: calc(100dvh - var(--header-h) - 38px);
   padding: 13px;
   overflow-x: hidden;
   overflow-y: auto;
-  box-shadow: 0 18px 48px rgba(27, 42, 52, 0.18);
+  box-shadow: none;
 }
 
 .props-panel.is-open {
@@ -1591,6 +1583,10 @@ body[data-view="tools"] #filter-toggle {
   min-height: 28px;
   padding: 4px 8px;
   font-size: 0.7rem;
+}
+
+.props-header .props-close-btn {
+  display: none;
 }
 
 .props-content {

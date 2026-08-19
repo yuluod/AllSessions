@@ -21,6 +21,7 @@ import { createSettingsController } from "./settings-view.js";
 const PAGE_LIMIT = 50;
 const PROJECT_PREVIEW_LIMIT = 4;
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
+const INSPECTOR_DRAWER_QUERY = "(max-width: 1320px)";
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const sessionRequestGate = createLatestRequestGate();
 const detailRequestGate = createLatestRequestGate();
@@ -502,6 +503,7 @@ function rerenderLocalizedContent() {
     updateTabs();
   } else {
     setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
+    setPropsPlaceholder(t("selectSession"));
   }
   if (state.stats) {
     renderStats(state.stats, elements);
@@ -809,6 +811,7 @@ function appendSessionItems(sessions) {
 function selectSession(key, buttonEl) {
   state.selectedSessionKey = key;
   state.currentDetail = null;
+  setPropsPlaceholder(t("loading"));
   detailRequestGate.cancel();
   elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
     el.classList.remove("active");
@@ -1020,15 +1023,32 @@ function renderPropsPanel(summary, messages = []) {
   );
 }
 
+function setPropsPlaceholder(message) {
+  if (!elements.propsContent) return;
+  const placeholder = document.createElement("div");
+  placeholder.className = "props-empty";
+  placeholder.textContent = message;
+  elements.propsContent.replaceChildren(placeholder);
+}
+
 function setInspectorOpen(open) {
   const panel = elements.propsContent?.closest(".props-panel");
-  const isOpen = Boolean(open && state.currentDetail);
+  const drawerLayout = window.matchMedia(INSPECTOR_DRAWER_QUERY).matches;
+  const isOpen = Boolean(drawerLayout && open && state.currentDetail);
   panel?.classList.toggle("is-open", isOpen);
-  panel?.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  panel?.setAttribute(
+    "aria-hidden",
+    !drawerLayout || isOpen ? "false" : "true"
+  );
   elements.sessionInspectorToggle?.setAttribute(
     "aria-expanded",
     isOpen ? "true" : "false"
   );
+}
+
+function syncInspectorLayout() {
+  const panel = elements.propsContent?.closest(".props-panel");
+  setInspectorOpen(panel?.classList.contains("is-open") === true);
 }
 
 function syncRoleFilterButtons() {
@@ -1834,6 +1854,7 @@ async function loadSessionDetail(id) {
       elements.detailView.classList.add("hidden");
       elements.detailEmpty.classList.remove("hidden");
       setDetailPlaceholder(t("loadDetailFailed"), error.message);
+      setPropsPlaceholder(t("loadDetailFailed"));
     }
     return false;
   }
@@ -1893,6 +1914,7 @@ async function loadSessions({ reportError = true } = {}) {
       elements.detailView.classList.add("hidden");
       elements.detailEmpty.classList.remove("hidden");
       setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
+      setPropsPlaceholder(t("selectSession"));
     }
     if (request.isCurrent() && state._initialized) syncUrl();
     return request.isCurrent();
@@ -2073,6 +2095,7 @@ async function returnHome() {
   state.activeTab = "conversation";
   state.detailQuery = "";
   state.roleFilter = "";
+  setPropsPlaceholder(t("selectSession"));
   setInspectorOpen(false);
   if (elements.sidebarFilters) elements.sidebarFilters.open = false;
   if (elements.projectNav) elements.projectNav.open = false;
@@ -2136,6 +2159,10 @@ async function initialize() {
   restoreFromUrl();
   resetCodexMigrationMetrics();
   configureCodexMaintenanceUi();
+  syncInspectorLayout();
+  window
+    .matchMedia(INSPECTOR_DRAWER_QUERY)
+    .addEventListener("change", syncInspectorLayout);
 
   elements.homeLink?.addEventListener("click", (event) => {
     if (
@@ -2313,28 +2340,6 @@ async function initialize() {
       workspaceTabs[nextIndex].click();
     });
   });
-
-  const filterToggle = document.querySelector("#filter-toggle");
-  if (filterToggle) {
-    const syncFilterToggle = () => {
-      filterToggle.setAttribute(
-        "aria-expanded",
-        elements.sidebarFilters?.open ? "true" : "false"
-      );
-    };
-    elements.sidebarFilters?.addEventListener("toggle", syncFilterToggle);
-    syncFilterToggle();
-    filterToggle.addEventListener("click", () => {
-      const tab = document.querySelector(
-        '.sidebar-tab[data-sidebar-tab="list"]'
-      );
-      if (tab && !tab.classList.contains("active")) tab.click();
-      if (elements.sidebarFilters) elements.sidebarFilters.open = true;
-      syncFilterToggle();
-      elements.sidebarFilters?.scrollIntoView({ block: "nearest" });
-      requestAnimationFrame(() => elements.sourceKindFilter?.focus());
-    });
-  }
 
   if (elements.exportMdBtn) {
     elements.exportMdBtn.addEventListener("click", () => {

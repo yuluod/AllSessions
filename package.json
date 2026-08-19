@@ -1,6 +1,6 @@
 {
   "name": "allsessions",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "description": "A local-first Tauri desktop app for browsing Codex, Claude Code, and Gemini CLI session history.",
   "type": "module",
   "license": "Apache-2.0",
@@ -14,7 +14,16 @@
     "url": "https://github.com/yuluod/AllSessions/issues"
   },
   "packageManager": "pnpm@11.10.0",
-  "keywords": ["ai", "codex", "session", "viewer", "local", "cli", "claude", "gemini"],
+  "keywords": [
+    "ai",
+    "codex",
+    "session",
+    "viewer",
+    "local",
+    "cli",
+    "claude",
+    "gemini"
+  ],
   "scripts": {
     "dev": "tauri dev",
     "test": "node --test",

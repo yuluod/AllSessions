@@ -39,10 +39,34 @@ const DICT = {
     codexArchiveViewer: "Codex 归档查看",
     codexArchiveViewerDesc:
       "只读显示 Codex 自身归档的会话，不移动文件，也不恢复归档状态。",
+    recoveryTool: "恢复工具",
+    codexRollbackTitle: "Codex 修复回滚",
+    codexRollbackDesc:
+      "从修复时生成的备份恢复旧 Provider。仅在修复后出现异常时使用。",
+    openRollbackTool: "打开回滚工具",
+    backToTools: "返回工具",
+    codexRollbackPageDesc:
+      "选择一次修复生成的备份目录，将 Provider 字段恢复到修复前状态。",
+    rollbackEnableTitle: "1. 开启维护模式",
+    rollbackEnableDesc: "回滚会写入 Codex 本地数据，完成后请立即关闭维护模式。",
+    rollbackBackupTitle: "2. 选择备份",
+    rollbackExecuteTitle: "3. 退出 Codex 并回滚",
+    rollbackExecuteDesc: "完全退出 Codex App，勾选确认后再执行回滚。",
+    rollbackMaintenanceDisabled: "开启维护模式后才能执行回滚。",
+    rollbackReady: "填写备份目录并确认 Codex App 已退出后，即可回滚。",
     localTool: "显式维护模式",
     maintenanceToggle: "维护模式",
     maintenanceBoundary:
-      "维护模式默认关闭。开启后才允许生成修复计划、执行修复或回滚；关闭后立即恢复只读状态。",
+      "维护模式默认关闭。开启后才允许生成修复计划和执行修复；关闭后立即恢复只读状态。",
+    maintenanceStepEnable: "开启维护模式",
+    maintenanceStepEnableDesc:
+      "临时允许生成计划和执行修复，关闭后立即恢复只读。",
+    maintenanceStepSelect: "选择历史 Provider",
+    maintenanceStepSelectDesc:
+      "先扫描候选项，勾选需要恢复的来源，再生成精确计划。",
+    maintenanceStepReview: "核对修复计划",
+    maintenanceStepReviewDesc:
+      "确认目标 Provider、影响数量和备份位置后再继续。",
     maintenanceWhenToUse: "仅在切换 Provider 后，明确知道旧会话不可见时使用。",
     maintenanceDisabled: "维护模式未启用；当前服务保持只读。",
     maintenanceDisabledHint:
@@ -80,14 +104,21 @@ const DICT = {
     nextStepConfirmClosed: "下一步：确认 Codex App 已退出",
     nextStepApplyPlan: "下一步：执行修复",
     nextStepNoChanges: "无需修复；可关闭维护模式。",
-    nextStepRepairDone: "修复已完成；如需恢复旧 Provider，请使用备份目录回滚。",
-    maintenanceSafetyTitle: "危险操作安全确认",
-    maintenanceSafetyDesc:
-      "执行修复和回滚都会写入 Codex 本地数据；两项操作前都必须确认 Codex App 已退出。",
+    nextStepRepairDone:
+      "修复已完成：关闭维护模式，然后重新打开 Codex App 检查历史会话。",
+    maintenanceSafetyTitle: "退出 Codex 并执行",
+    maintenanceSafetyDesc: "完全退出 Codex App 后勾选确认，再执行修复。",
+    migrationRollbackTitle: "需要撤销已执行的修复？",
     migrationRollbackHint:
       "回滚是修复后的安全网。执行修复会生成具体备份目录；也可手动输入历史备份目录。",
     migrationConfirmClosed: "我已退出 Codex App",
     applyMigration: "恢复到当前 Provider",
+    migrationCompleteTitle: "修复已完成",
+    migrationCompleteDesc:
+      "无需再次生成计划。关闭维护模式，然后重新打开 Codex App 检查历史会话。",
+    migrationCompletedSources:
+      "所选历史 Provider 已完成迁移，无需再次生成计划。",
+    finishMaintenance: "关闭维护模式",
     rollbackBackupDir: "备份目录",
     rollbackBackupPlaceholder: "~/.codex/backups/...",
     rollbackMigration: "回滚",
@@ -301,10 +332,38 @@ const DICT = {
     codexArchiveViewer: "Codex Archive Viewer",
     codexArchiveViewerDesc:
       "Read-only view for sessions archived by Codex itself. It does not move files or restore archive state.",
+    recoveryTool: "Recovery tool",
+    codexRollbackTitle: "Codex Repair Rollback",
+    codexRollbackDesc:
+      "Restore old provider data from a repair backup. Use only if a completed repair caused problems.",
+    openRollbackTool: "Open rollback tool",
+    backToTools: "Back to tools",
+    codexRollbackPageDesc:
+      "Choose a backup created by a repair to restore provider fields to their previous state.",
+    rollbackEnableTitle: "1. Enable maintenance mode",
+    rollbackEnableDesc:
+      "Rollback writes to local Codex data. Disable maintenance mode immediately afterward.",
+    rollbackBackupTitle: "2. Choose a backup",
+    rollbackExecuteTitle: "3. Quit Codex and roll back",
+    rollbackExecuteDesc:
+      "Quit Codex App completely, confirm it below, then run the rollback.",
+    rollbackMaintenanceDisabled:
+      "Enable maintenance mode before running a rollback.",
+    rollbackReady:
+      "Enter a backup directory and confirm Codex App is closed to continue.",
     localTool: "Opt-in maintenance",
     maintenanceToggle: "Maintenance mode",
     maintenanceBoundary:
-      "Maintenance mode is off by default. Enable it to build or apply a repair plan or to roll back; disabling it immediately restores read-only mode.",
+      "Maintenance mode is off by default. Enable it to build or apply a repair plan; disabling it immediately restores read-only mode.",
+    maintenanceStepEnable: "Enable maintenance mode",
+    maintenanceStepEnableDesc:
+      "Temporarily allow repair planning and execution. Disable it to return to read-only mode.",
+    maintenanceStepSelect: "Select historical providers",
+    maintenanceStepSelectDesc:
+      "Scan candidates, select the sources to restore, then build the exact plan.",
+    maintenanceStepReview: "Review the repair plan",
+    maintenanceStepReviewDesc:
+      "Check the target provider, affected items, and backup location before continuing.",
     maintenanceWhenToUse:
       "Use this only after switching providers when you know earlier sessions are no longer visible.",
     maintenanceDisabled:
@@ -347,14 +406,21 @@ const DICT = {
     nextStepApplyPlan: "Next: run the repair",
     nextStepNoChanges: "No repair needed; maintenance mode can be disabled.",
     nextStepRepairDone:
-      "Repair complete. To restore the old provider, roll back from the backup directory.",
-    maintenanceSafetyTitle: "Destructive-action safety confirmation",
+      "Repair complete: disable maintenance mode, then reopen Codex App and check your history.",
+    maintenanceSafetyTitle: "Quit Codex and run",
     maintenanceSafetyDesc:
-      "Both repair and rollback write to local Codex data. Confirm that Codex App is quit before either action.",
+      "Quit Codex App completely, confirm it below, then run the repair.",
+    migrationRollbackTitle: "Need to undo a completed repair?",
     migrationRollbackHint:
       "Rollback is the safety net after repair. Running a repair creates a concrete backup directory; you can also enter an older backup directory manually.",
     migrationConfirmClosed: "I have quit Codex App",
     applyMigration: "Restore to active provider",
+    migrationCompleteTitle: "Repair complete",
+    migrationCompleteDesc:
+      "Do not rebuild the plan. Disable maintenance mode, then reopen Codex App and check your history.",
+    migrationCompletedSources:
+      "The selected historical providers have been migrated. No new plan is needed.",
+    finishMaintenance: "Disable maintenance mode",
     rollbackBackupDir: "Backup directory",
     rollbackBackupPlaceholder: "~/.codex/backups/...",
     rollbackMigration: "Rollback",

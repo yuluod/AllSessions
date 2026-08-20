@@ -24,11 +24,6 @@ export function sessionTimestamp(session) {
   return session.timestamp || session.last_timestamp || "";
 }
 
-function dateKeyFromValue(value) {
-  if (typeof value !== "string" || value.length < 10) return "";
-  return value.slice(0, 10);
-}
-
 function localDateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -42,7 +37,9 @@ export function formatDateGroup(value) {
     return { key: "unknown", label: t("unknownTime") };
   }
 
-  const key = dateKeyFromValue(value) || localDateKey(date);
+  // 统一用本地时区计算日期键：时间字符串可能带 Z 或偏移（UTC 日期），
+  // 直接截取前缀会把本地同一天的会话拆到两个分组、凌晨会话标错"今天/昨天"。
+  const key = localDateKey(date);
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);

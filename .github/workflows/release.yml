@@ -60,7 +60,7 @@ jobs:
       - name: 编译测试 Tauri 桌面端
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
-  publish:
+  build-installers:
     name: ${{ matrix.name }}
     needs: quality
     runs-on: ${{ matrix.os }}
@@ -126,45 +126,37 @@ jobs:
       - name: 安装项目依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 提取当前版本更新日志
-        id: release_notes
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-        run: |
-          node scripts/extract-release-notes.mjs "$RELEASE_TAG" CHANGELOG.md release-notes.md
-          {
-            echo 'body<<ALLSESSIONS_RELEASE_NOTES'
-            cat release-notes.md
-            echo 'ALLSESSIONS_RELEASE_NOTES'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: 构建并发布 Tauri 安装包
+      - name: 构建 Tauri 安装包
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ github.token }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
-          tagName: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          releaseName: AllSessions ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          releaseBody: ${{ steps.release_notes.outputs.body }}
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-          includeUpdaterJson: false
-          updaterJsonPreferNsis: true
 
       # v0.0.6 的旧更新器依赖这些名称；保留它们可完成一次平滑迁移。
-      - name: 上传兼容安装包名称
+      - name: 收集兼容安装包名称
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           node scripts/collect-tauri-artifact.mjs --target ${{ matrix.target }} --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
-          gh release upload "$RELEASE_TAG" release/AllSessions-* --clobber --repo "$GITHUB_REPOSITORY"
 
-  updater-manifest:
-    name: 汇总跨平台更新清单
-    needs: publish
+      - name: 暂存平台安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            release/*
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb.sig
+
+  publish:
+    name: 完整发布所有平台
+    needs: build-installers
     runs-on: ubuntu-22.04
     steps:
       - name: 检出代码
@@ -178,14 +170,64 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
+      - name: 下载所有平台安装包
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: 提取当前版本更新日志
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: node scripts/extract-release-notes.mjs "$RELEASE_TAG" CHANGELOG.md release-notes.md
+
+      - name: 创建或复用发布草稿
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if [[ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" != "true" ]]; then
+              echo "::error::标签 $RELEASE_TAG 已有正式 Release；为避免部分覆盖，本次不会修改它。"
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --title "AllSessions $RELEASE_TAG" --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "AllSessions $RELEASE_TAG" --notes-file release-notes.md
+          fi
+
+      - name: 上传全部安装包到草稿
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          mapfile -d '' RELEASE_FILES < <(find release-assets -type f \( -name '*.exe' -o -name '*.exe.sig' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o -name '*.deb' -o -name '*.deb.sig' \) -print0)
+          if [[ "${#RELEASE_FILES[@]}" -eq 0 ]]; then
+            echo "::error::没有找到可发布的安装包。"
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${RELEASE_FILES[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+
       - name: 生成并上传完整更新清单
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,body,publishedAt,tagName > release-metadata.json
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,body,tagName > release-metadata-draft.json
+          jq --arg published_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" '. + {publishedAt: $published_at}' release-metadata-draft.json > release-metadata.json
           mkdir -p release-signatures
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.sig' --dir release-signatures
           node scripts/build-updater-manifest.mjs release-metadata.json release-signatures latest.json
           gh release upload "$RELEASE_TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: 正式发布完整 Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

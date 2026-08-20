@@ -128,7 +128,8 @@ test("安装包包含 Rust 许可证且发布依赖质量门禁", async () => {
   assert.match(config, /THIRD_PARTY_NOTICES\.md/);
   assert.doesNotMatch(config, /third-party\/node/);
   assert.match(releaseWorkflow, /quality:[\s\S]*pnpm licenses:check[\s\S]*pnpm test[\s\S]*pnpm lint[\s\S]*pnpm build/);
-  assert.match(releaseWorkflow, /publish:[\s\S]*needs: quality/);
+  assert.match(releaseWorkflow, /build-installers:[\s\S]*needs: quality/);
+  assert.match(releaseWorkflow, /publish:[\s\S]*needs: build-installers/);
   assert.match(ciWorkflow, /pull_request:[\s\S]*pnpm licenses:check[\s\S]*cargo test/);
   assert.match(packageJson, /"licenses:check"/);
   assert.doesNotMatch(notices, /## Node\.js/);
@@ -149,7 +150,13 @@ test("macOS 构建号独立于显示版本且发布会汇总更新清单", async
 
   assert.equal(config.bundle.macOS.bundleVersion, expectedBuildNumber);
   assert.match(workflow, /bundles: app,dmg/);
-  assert.match(workflow, /includeUpdaterJson: false/);
-  assert.doesNotMatch(workflow, /uploadUpdaterJson/);
-  assert.match(workflow, /updater-manifest:[\s\S]*build-updater-manifest\.mjs[\s\S]*gh release upload/);
+  assert.match(workflow, /actions\/upload-artifact@v4/);
+  assert.match(workflow, /publish:[\s\S]*needs: build-installers/);
+  assert.match(workflow, /publish:[\s\S]*build-updater-manifest\.mjs[\s\S]*gh release upload/);
+  assert.match(workflow, /gh release create[\s\S]*--draft/);
+  assert.match(workflow, /gh release edit[\s\S]*--draft=false/);
+  assert.doesNotMatch(
+    workflow.match(/build-installers:[\s\S]*?\n[ ]{2}publish:/)?.[0] ?? "",
+    /gh release (?:create|upload|edit)/
+  );
 });

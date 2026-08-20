@@ -1810,7 +1810,7 @@ async function rollbackCodexMigration() {
   }
 }
 
-async function loadSessionDetail(id) {
+async function loadSessionDetail(id, { silent = false } = {}) {
   const request = detailRequestGate.begin();
   try {
     const detail = await fetchJson(`/api/sessions/${encodeURIComponent(id)}`, {
@@ -1848,6 +1848,7 @@ async function loadSessionDetail(id) {
   } catch (error) {
     if (isAbortError(error) || !request.isCurrent()) return false;
     console.error(error);
+    if (silent) return false;
     showError(`${t("loadDetailFailed")}: ${error.message}`);
     if (state.selectedSessionKey === id) {
       state.currentDetail = null;
@@ -1860,7 +1861,15 @@ async function loadSessionDetail(id) {
   }
 }
 
-async function loadSessions({ reportError = true } = {}) {
+function showSelectSessionPlaceholder() {
+  detailRequestGate.cancel();
+  elements.detailView.classList.add("hidden");
+  elements.detailEmpty.classList.remove("hidden");
+  setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
+  setPropsPlaceholder(t("selectSession"));
+}
+
+async function loadSessions({ reportError = true, background = false } = {}) {
   const request = sessionRequestGate.begin();
   detailRequestGate.cancel();
   state.lastSessionError = null;
@@ -1884,15 +1893,22 @@ async function loadSessions({ reportError = true } = {}) {
     }
     syncSessionRoot();
 
-    if (
+    const selectedMissing = Boolean(
       state.selectedSessionKey &&
-      !visibleSessions().find(
-        (session) => session._key === state.selectedSessionKey
-      )
-    ) {
+        !visibleSessions().find(
+          (session) => session._key === state.selectedSessionKey
+        )
+    );
+    // 初始化恢复与后台刷新都保留首屏之外的选择（详情接口可按 key 直读）；
+    // 只有用户主动改变列表语义（筛选、搜索、设置迁移等）才在当前列表
+    // 找不到目标时清除选择。
+    if (state._initialized && !background && selectedMissing) {
       state.selectedSessionKey = null;
       state.currentDetail = null;
     }
+
+    const keepingOffscreenSelection =
+      selectedMissing && (background || !state._initialized);
 
     renderSessionList();
 
@@ -1908,13 +1924,37 @@ async function loadSessions({ reportError = true } = {}) {
           el.dataset.sessionKey === state.selectedSessionKey
         );
       });
-      await loadSessionDetail(state.selectedSessionKey);
+      const restoreKey = state.selectedSessionKey;
+      const loaded = await loadSessionDetail(restoreKey, {
+        silent: keepingOffscreenSelection
+      });
+      if (
+        keepingOffscreenSelection &&
+        !loaded &&
+        request.isCurrent() &&
+        // 加载期间用户手动选择了其他会话时不回退
+        state.selectedSessionKey === restoreKey
+      ) {
+        if (!state._initialized) {
+          // 初始化恢复的分享链接已失效：静默回退为默认选中第一个
+          state.selectedSessionKey = null;
+          const first = visibleSessions()[0];
+          if (first) {
+            state.selectedSessionKey = first._key;
+            elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
+              el.classList.toggle("active", el.dataset.sessionKey === first._key);
+            });
+            await loadSessionDetail(first._key);
+          }
+        } else {
+          // 后台刷新时目标会话已被删除：清除选择并显示占位
+          state.selectedSessionKey = null;
+          state.currentDetail = null;
+          showSelectSessionPlaceholder();
+        }
+      }
     } else {
-      detailRequestGate.cancel();
-      elements.detailView.classList.add("hidden");
-      elements.detailEmpty.classList.remove("hidden");
-      setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
-      setPropsPlaceholder(t("selectSession"));
+      showSelectSessionPlaceholder();
     }
     if (request.isCurrent() && state._initialized) syncUrl();
     return request.isCurrent();
@@ -2038,7 +2078,7 @@ async function bindTauriSessionEventsOnce() {
     await bindTauriSessionEvents({
       refresh: async () => {
         await loadFacets();
-        await Promise.all([loadSessions(), loadStats()]);
+        await Promise.all([loadSessions({ background: true }), loadStats()]);
       },
       onSessionAdded: (summary) => {
         const ariaLive = document.querySelector("#aria-live");
@@ -2218,7 +2258,7 @@ async function initialize() {
       try {
         await fetchJson("/api/refresh");
         await loadFacets();
-        await Promise.all([loadSessions(), loadStats()]);
+        await Promise.all([loadSessions({ background: true }), loadStats()]);
       } catch (error) {
         showError(`${t("refreshFailed")}: ${error.message}`);
       } finally {

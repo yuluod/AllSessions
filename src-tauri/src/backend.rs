@@ -58,6 +58,7 @@ impl BackendState {
 
     pub fn refresh_and_emit(&self, app: &AppHandle) -> Result<(), String> {
         self.store.lock().map_err(lock_error)?.refresh()?;
+        self.sync_watcher_roots(app);
         app.emit("sessions-changed", json!({ "type": "session-updated" }))
             .map_err(|error| error.to_string())
     }
@@ -72,11 +73,28 @@ impl BackendState {
             .lock()
             .map_err(lock_error)?
             .refresh_paths(paths)?;
+        self.sync_watcher_roots(app);
         if changed {
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
         }
         Ok(())
+    }
+
+    /// 来源目录可能在刷新时新建或删除（例如用户首次运行 Codex/Claude/Gemini
+    /// 后默认目录才出现），刷新后按当前来源重新同步监听。
+    fn sync_watcher_roots(&self, app: &AppHandle) {
+        let Some(watcher) = app.try_state::<crate::watcher::WatcherState>() else {
+            return;
+        };
+        match self.watch_roots() {
+            Ok(roots) => {
+                if let Err(error) = watcher.rewatch(&roots) {
+                    eprintln!("更新会话监听目录失败：{error}");
+                }
+            }
+            Err(error) => eprintln!("获取会话监听目录失败：{error}"),
+        }
     }
 
     pub fn watch_roots(&self) -> Result<Vec<std::path::PathBuf>, String> {
@@ -197,10 +215,8 @@ fn route_request(
                 let mut store = state.store.lock().map_err(lock_error)?;
                 store.reconfigure(&config)?;
             }
-            if let Some(watcher) = app.try_state::<crate::watcher::WatcherState>() {
-                let roots = state.watch_roots()?;
-                watcher.rewatch(&roots)?;
-            }
+            // 监听只是自动刷新的辅助能力；失败时保留旧监听，后续刷新会重试。
+            state.sync_watcher_roots(&app);
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
             state.settings_payload()

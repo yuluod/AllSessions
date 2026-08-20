@@ -12,6 +12,10 @@ use std::os::unix::fs::PermissionsExt;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
+/// 摘要缓存格式版本。当 parse_summary 的字段、隐藏规则或消息解析逻辑发生变化时
+/// 必须递增：版本不匹配的旧缓存会在打开时被整体清空，避免历史文件复用过期摘要。
+const CACHE_VERSION: i32 = 1;
+
 pub struct IndexCache {
     connection: Option<Connection>,
     path: Option<PathBuf>,
@@ -218,8 +222,24 @@ fn open_database_with_legacy(path: &Path, legacy_paths: &[PathBuf]) -> Result<Co
          );",
         )
         .map_err(|error| error.to_string())?;
-    for legacy_path in legacy_paths {
-        migrate_legacy_cache(&connection, legacy_path);
+    let stored_version = connection
+        .query_row("pragma user_version", [], |row| row.get::<_, i32>(0))
+        .unwrap_or(0);
+    let version_matches = stored_version == CACHE_VERSION;
+    if !version_matches {
+        // 解析器版本变化：整体丢弃旧缓存，未修改的历史文件也会重新解析。
+        // 版本不匹配时同时跳过旧 JSON 索引迁移，避免清空后又被旧摘要回填。
+        connection
+            .execute("delete from sessions", [])
+            .map_err(|error| error.to_string())?;
+        connection
+            .pragma_update(None, "user_version", CACHE_VERSION)
+            .map_err(|error| error.to_string())?;
+    }
+    if version_matches {
+        for legacy_path in legacy_paths {
+            migrate_legacy_cache(&connection, legacy_path);
+        }
     }
     lock_down_cache_permissions(path)?;
     Ok(connection)
@@ -325,10 +345,56 @@ fn fingerprint(metadata: &fs::Metadata) -> Option<(i64, i64)> {
 mod tests {
     use std::io::Write;
 
+    use rusqlite::Connection;
     use serde_json::json;
     use tempfile::tempdir;
 
-    use super::{modified_millis, open_database};
+    use super::{modified_millis, open_database, CACHE_VERSION};
+
+    #[test]
+    fn clears_stale_cache_when_parser_version_changes() {
+        let directory = tempdir().unwrap();
+        let db_path = directory.path().join("session-index.sqlite");
+        {
+            let connection = Connection::open(&db_path).unwrap();
+            connection
+                .execute_batch(
+                    "create table sessions(
+                       path text primary key,
+                       kind text not null,
+                       size integer not null,
+                       modified_ns integer not null,
+                       summary_json text not null,
+                       search_text text not null
+                     );
+                     insert into sessions values('/old', 'codex', 1, 1, '{}', '');",
+                )
+                .unwrap();
+        }
+        let connection = open_database(&db_path).unwrap();
+        let count: i64 = connection
+            .query_row("select count(*) from sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+        let version: i32 = connection
+            .query_row("pragma user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, CACHE_VERSION);
+
+        // 版本一致时再次打开不会清空
+        connection
+            .execute(
+                "insert into sessions values('/new', 'codex', 1, 1, '{}', '')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+        let reopened = open_database(&db_path).unwrap();
+        let count: i64 = reopened
+            .query_row("select count(*) from sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
 
     #[test]
     fn rejects_legacy_index_with_stale_mtime() {
@@ -353,11 +419,15 @@ mod tests {
         let source_path = directory.path().join("session.jsonl");
         std::fs::write(&source_path, "{}\n").unwrap();
         let metadata = std::fs::metadata(&source_path).unwrap();
+        let db_path = directory.path().join("session-index.sqlite");
+        // 先以当前版本建立缓存库，旧 JSON 索引之后才出现时才会被搬入；
+        // 版本不匹配的库不会导入旧索引，避免清空后被旧解析器的摘要回填。
+        drop(open_database(&db_path).unwrap());
         let legacy_path = directory.path().join("session-index.json");
         let mut legacy = std::fs::File::create(&legacy_path).unwrap();
         writeln!(legacy, "{{\"version\":7}}").unwrap();
         writeln!(legacy, "{}", json!({ "file_path": source_path, "source_kind": "codex", "size": metadata.len(), "mtime_ms": modified_millis(&metadata).unwrap(), "summary": { "id": "one" }, "index_text": "searchable" })).unwrap();
-        let connection = open_database(&directory.path().join("session-index.sqlite")).unwrap();
+        let connection = open_database(&db_path).unwrap();
         let count: i64 = connection
             .query_row("select count(*) from sessions", [], |row| row.get(0))
             .unwrap();

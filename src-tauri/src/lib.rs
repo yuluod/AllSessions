@@ -95,10 +95,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![request_json])
         .setup(|app| {
             app.manage(BackendState::load().map_err(|error| format!("加载会话失败：{error}"))?);
-            app.manage(
-                watcher::start(app.handle())
-                    .map_err(|error| format!("启动文件监听失败：{error}"))?,
-            );
+            app.manage(watcher::start(app.handle()));
             create_tray(app)?;
             Ok(())
         })

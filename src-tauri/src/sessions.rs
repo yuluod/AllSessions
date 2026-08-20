@@ -22,7 +22,7 @@ const DETAIL_EVENT_LIMIT: usize = 1_200;
 const DETAIL_TEXT_LIMIT: usize = 20_000;
 const DETAIL_CACHE_BYTES: usize = 64 * 1024 * 1024;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Source {
     kind: &'static str,
     display_name: &'static str,
@@ -31,7 +31,7 @@ struct Source {
     archived: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum SourceFormat {
     Codex,
     Claude,
@@ -50,6 +50,7 @@ pub struct SessionStore {
     summaries: Vec<Value>,
     records: HashMap<String, StoredSession>,
     sources: Vec<Source>,
+    sources_config: crate::config::SourceRoots,
     index_cache: IndexCache,
     detail_cache: DetailCache,
 }
@@ -59,7 +60,8 @@ impl SessionStore {
         let mut store = Self {
             summaries: Vec::new(),
             records: HashMap::new(),
-            sources: configured_sources(&config.sources),
+            sources: Vec::new(),
+            sources_config: config.sources.clone(),
             index_cache: IndexCache::open()?,
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
         };
@@ -68,7 +70,7 @@ impl SessionStore {
     }
 
     pub fn reconfigure(&mut self, config: &crate::config::AppConfig) -> Result<(), String> {
-        self.sources = configured_sources(&config.sources);
+        self.sources_config = config.sources.clone();
         self.refresh()
     }
 
@@ -81,15 +83,13 @@ impl SessionStore {
     }
 
     pub fn watch_roots(&self) -> Vec<PathBuf> {
-        self.sources
-            .iter()
-            .filter_map(|source| existing_watch_root(&source.root))
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect()
+        watch_roots_for(&self.sources_config)
     }
 
     pub fn refresh(&mut self) -> Result<(), String> {
+        // 来源目录可能在启动后才被创建（例如首次运行 Codex/Claude/Gemini），
+        // 每次刷新都按当前配置重新解析，而不是沿用启动时的快照。
+        self.resolve_sources();
         let mut next = HashMap::new();
         let mut active_paths = BTreeSet::new();
         for source in &self.sources {
@@ -154,6 +154,13 @@ impl SessionStore {
     }
 
     pub fn refresh_paths(&mut self, paths: &BTreeSet<PathBuf>) -> Result<bool, String> {
+        // 来源集合变化时，事件路径无法可靠匹配新旧来源，继续走增量更新
+        // 会让旧目录的 records 残留（新旧会话混列、已删文件变幽灵会话），
+        // 直接全量重建。
+        if self.resolve_sources() {
+            self.refresh()?;
+            return Ok(true);
+        }
         if paths.iter().any(|path| {
             self.sources.iter().any(|source| {
                 matches!(source.format, SourceFormat::Gemini) && path.starts_with(&source.root)
@@ -213,6 +220,18 @@ impl SessionStore {
             self.rebuild_summaries();
         }
         Ok(changed)
+    }
+
+    /// 按当前配置重新解析来源，返回来源集合是否发生变化
+    /// （例如 Claude 在 projects/sessions 布局间切换、来源目录被删除）。
+    fn resolve_sources(&mut self) -> bool {
+        let sources = configured_sources(&self.sources_config);
+        if sources != self.sources {
+            self.sources = sources;
+            true
+        } else {
+            false
+        }
     }
 
     fn rebuild_summaries(&mut self) {
@@ -309,8 +328,8 @@ impl SessionStore {
             if summary["hidden"].as_bool() == Some(true) {
                 insert_string(&mut hidden_reasons, &summary["hidden_reason"]);
             }
-            if let Some(date) = timestamp_of(summary).get(..10) {
-                dates.insert(date.to_string());
+            if let Some(date) = local_date_key(timestamp_of(summary)) {
+                dates.insert(date);
             }
             if let Some(cwd) = summary["cwd"].as_str().filter(|value| !value.is_empty()) {
                 let project = projects.entry(cwd.into()).or_insert_with(|| ProjectFacet {
@@ -346,6 +365,8 @@ impl SessionStore {
         let sources = self
             .sources
             .iter()
+            // 尚未创建的目录不进入来源筛选，避免展示永远为空的选项
+            .filter(|source| source.root.exists())
             .filter(|source| seen_source_kinds.insert(source.kind))
             .map(|source| json!({ "kind": source.kind, "display_name": source.display_name }))
             .collect::<Vec<_>>();
@@ -361,8 +382,8 @@ impl SessionStore {
         let mut total_events = 0_u64;
         for summary in &filtered {
             total_events += summary["event_count"].as_u64().unwrap_or_default();
-            if let Some(date) = timestamp_of(summary).get(..10) {
-                *by_date.entry(date.to_string()).or_insert(0_u64) += 1;
+            if let Some(date) = local_date_key(timestamp_of(summary)) {
+                *by_date.entry(date).or_insert(0_u64) += 1;
             }
             increment(&mut by_source_kind, &summary["source_kind"]);
             increment(&mut by_provider, &summary["model_provider"]);
@@ -382,6 +403,7 @@ impl SessionStore {
     fn session_roots(&self) -> Vec<String> {
         self.sources
             .iter()
+            .filter(|source| source.root.exists())
             .map(|source| source.root.to_string_lossy().into_owned())
             .collect()
     }
@@ -928,7 +950,8 @@ fn sources_from_paths(
             format: SourceFormat::Gemini,
             archived: false,
         }))
-        .filter(|source| source.root.exists())
+        // 注意：这里不过滤不存在的目录。来源目录可能在应用启动后才被创建，
+        // 保留它们才能在 refresh 时重新发现；不存在的目录由扫描和监听逻辑各自兜底。
         .collect()
 }
 fn split_path_list(value: &OsStr) -> Vec<PathBuf> {
@@ -962,13 +985,29 @@ pub(crate) fn path_identity(path: &Path) -> String {
         .unwrap_or_else(|_| path.to_string_lossy().into_owned())
 }
 fn existing_watch_root(path: &Path) -> Option<PathBuf> {
+    let home = dirs::home_dir();
     let mut current = path;
     loop {
         if current.is_dir() {
+            // 目录不存在时向上回溯到最近的现有父目录（如 ~/.codex/sessions
+            // 尚未创建时监听 ~/.codex），但绝不监听用户主目录或文件系统根，
+            // 递归监听这些目录的代价过高。
+            if current.parent().is_none() || home.as_deref() == Some(current) {
+                return None;
+            }
             return Some(current.into());
         }
         current = current.parent()?;
     }
+}
+
+pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBuf> {
+    configured_sources(config)
+        .iter()
+        .filter_map(|source| existing_watch_root(&source.root))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 fn discover_files(source: &Source) -> Vec<PathBuf> {
     let extension =
@@ -1536,6 +1575,20 @@ fn timestamp_of(summary: &Value) -> &str {
         .or_else(|| summary["last_timestamp"].as_str())
         .unwrap_or_default()
 }
+/// 时间戳的本地日期键（YYYY-MM-DD），与前端 localDateKey 使用同一规则，
+/// 避免带 Z/偏移的 UTC 时间戳在非 UTC 时区被拆到错误的日期。
+/// 无法按 RFC3339 解析时回退到字符串前 10 位。
+fn local_date_key(timestamp: &str) -> Option<String> {
+    chrono::DateTime::parse_from_rfc3339(timestamp)
+        .ok()
+        .map(|parsed| {
+            parsed
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d")
+                .to_string()
+        })
+        .or_else(|| timestamp.get(..10).map(ToOwned::to_owned))
+}
 fn matches_filters(summary: &Value, query: &HashMap<String, String>) -> bool {
     for (name, field) in [
         ("provider", "model_provider"),
@@ -1549,7 +1602,10 @@ fn matches_filters(summary: &Value, query: &HashMap<String, String>) -> bool {
         }
     }
     if let Some(date) = query.get("date").filter(|value| !value.is_empty()) {
-        if !timestamp_of(summary).starts_with(date) {
+        let Some(key) = local_date_key(timestamp_of(summary)) else {
+            return false;
+        };
+        if !key.starts_with(date.as_str()) {
             return false;
         }
     }
@@ -1652,16 +1708,139 @@ mod tests {
     use crate::cache::IndexCache;
 
     use super::{
-        compact, generic_conversation_message, is_synthetic_context, parse_detail, parse_summary,
-        resolve_kind, search_query_matches, sources_from_paths, split_path_list, DetailCache,
-        HeadTail, SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT,
-        DETAIL_MESSAGE_LIMIT,
+        compact, existing_watch_root, generic_conversation_message, is_synthetic_context,
+        local_date_key, parse_detail, parse_summary, resolve_kind, search_query_matches,
+        sources_from_paths, split_path_list, watch_roots_for, DetailCache, HeadTail, SessionStore,
+        Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
+
+    fn codex_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
+        crate::config::SourceRoots {
+            codex: Some(
+                roots
+                    .iter()
+                    .map(|root| root.to_string_lossy().into_owned())
+                    .collect(),
+            ),
+            // 显式停用其余来源：否则会回退到默认目录，把测试机上真实存在的
+            // ~/.claude、~/.gemini 会话扫进测试。
+            codex_archived: Some(Vec::new()),
+            claude: Some(Vec::new()),
+            gemini: Some(Vec::new()),
+        }
+    }
+
     #[test]
     fn summary_text_has_limit() {
         assert_eq!(compact("abcdefgh", 6), "abc...");
+    }
+
+    #[test]
+    fn refresh_discovers_source_directory_created_after_startup() {
+        let base = tempdir().unwrap();
+        let root = base.path().join("sessions");
+        let session = format!(
+            "{}\n{}\n",
+            json!({ "type": "session_meta", "payload": { "id": "late", "model_provider": "custom" } }),
+            json!({ "type": "event_msg", "payload": { "type": "user_message", "message": "created later" } })
+        );
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: codex_roots_config(std::slice::from_ref(&root)),
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        };
+        store.refresh().unwrap();
+        assert!(store.summaries.is_empty());
+
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.jsonl"), session).unwrap();
+        store.refresh().unwrap();
+        assert!(store.records.contains_key("codex:late"));
+    }
+
+    #[test]
+    fn refresh_paths_rebuilds_when_claude_layout_changes() {
+        let base = tempdir().unwrap();
+        let claude_root = base.path().join("claude-home");
+        let projects = claude_root.join("projects");
+        std::fs::create_dir_all(&projects).unwrap();
+        let session_file = projects.join("s1.jsonl");
+        std::fs::write(
+            &session_file,
+            concat!(
+                "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello\"},",
+                "\"timestamp\":\"2026-08-20T01:00:00.000Z\",\"cwd\":\"/proj\",\"sessionId\":\"s1\"}\n"
+            ),
+        )
+        .unwrap();
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: crate::config::SourceRoots {
+                claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
+                codex: Some(Vec::new()),
+                codex_archived: Some(Vec::new()),
+                gemini: Some(Vec::new()),
+            },
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        };
+        store.refresh().unwrap();
+        assert!(store.records.contains_key("claude_code:s1"));
+
+        // projects 目录被删除：来源集合变化，事件路径不再匹配任何来源。
+        // 必须全量重建清掉旧记录，而不是残留成幽灵会话。
+        std::fs::remove_dir_all(&projects).unwrap();
+        let changed = store
+            .refresh_paths(&BTreeSet::from([session_file.clone()]))
+            .unwrap();
+        assert!(changed);
+        assert!(store.records.is_empty());
+    }
+
+    #[test]
+    fn watch_roots_fall_back_to_parent_but_never_home() {
+        let base = tempdir().unwrap();
+        let child = base.path().join("sessions");
+        // 目录不存在时回溯到最近的现有父目录
+        assert_eq!(existing_watch_root(&child), Some(base.path().into()));
+        // 爬到用户主目录或文件系统根仍找不到时就放弃，避免递归监听整个主目录
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(
+            existing_watch_root(&home.join(".never-exists-all-sessions")),
+            None
+        );
+
+        assert_eq!(
+            watch_roots_for(&codex_roots_config(std::slice::from_ref(&child))),
+            vec![base.path()]
+        );
+    }
+
+    #[test]
+    fn local_date_key_converts_to_local_timezone() {
+        // 本地日期键必须来自本地时区换算，而不是直接取 UTC 字符串前缀
+        for timestamp in [
+            "2026-08-20T00:30:00.000Z",
+            "2026-08-20T23:30:00+08:00",
+            "2026-08-19T18:00:00Z",
+        ] {
+            let expected = chrono::DateTime::parse_from_rfc3339(timestamp)
+                .unwrap()
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d")
+                .to_string();
+            assert_eq!(local_date_key(timestamp).as_deref(), Some(expected.as_str()));
+        }
+        // 无法解析时回退到字符串前 10 位
+        assert_eq!(local_date_key("2026-08-19 自定义"), Some("2026-08-19".into()));
+        assert_eq!(local_date_key(""), None);
     }
 
     #[test]
@@ -1872,17 +2051,11 @@ mod tests {
         };
         std::fs::write(&first, session("first", "old first")).unwrap();
         std::fs::write(&second, session("second", "keep second")).unwrap();
-        let source = Source {
-            kind: "codex",
-            display_name: "Codex",
-            root: directory.path().into(),
-            format: SourceFormat::Codex,
-            archived: false,
-        };
         let mut store = SessionStore {
             summaries: Vec::new(),
             records: HashMap::new(),
-            sources: vec![source],
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[directory.path().into()]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
         };
@@ -1937,22 +2110,8 @@ mod tests {
         let mut store = SessionStore {
             summaries: Vec::new(),
             records: HashMap::new(),
-            sources: vec![
-                Source {
-                    kind: "codex",
-                    display_name: "Codex",
-                    root: first.path().into(),
-                    format: SourceFormat::Codex,
-                    archived: false,
-                },
-                Source {
-                    kind: "codex",
-                    display_name: "Codex",
-                    root: alternate,
-                    format: SourceFormat::Codex,
-                    archived: false,
-                },
-            ],
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[first.path().into(), alternate]),
             index_cache: IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
         };
@@ -1968,14 +2127,16 @@ mod tests {
         let second = tempdir().unwrap();
         let missing = first.path().join("missing");
         let sources = sources_from_paths(
-            &[first.path().into(), second.path().into(), missing],
+            &[first.path().into(), second.path().into(), missing.clone()],
             &[],
             &[],
             &[],
         );
-        assert_eq!(sources.len(), 2);
+        // 尚未创建的目录也要保留，等它出现后 refresh 才能重新发现
+        assert_eq!(sources.len(), 3);
         assert_eq!(sources[0].root, first.path());
         assert_eq!(sources[1].root, second.path());
+        assert_eq!(sources[2].root, missing);
         assert!(sources.iter().all(|source| source.kind == "codex"));
         assert!(sources.iter().all(|source| !source.archived));
 
@@ -2024,22 +2185,8 @@ mod tests {
         let mut store = SessionStore {
             summaries: Vec::new(),
             records: HashMap::new(),
-            sources: vec![
-                Source {
-                    kind: "codex",
-                    display_name: "Codex",
-                    root: first.path().into(),
-                    format: SourceFormat::Codex,
-                    archived: false,
-                },
-                Source {
-                    kind: "codex",
-                    display_name: "Codex",
-                    root: second.path().into(),
-                    format: SourceFormat::Codex,
-                    archived: false,
-                },
-            ],
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[first.path().into(), second.path().into()]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
         };
@@ -2065,17 +2212,11 @@ mod tests {
             ),
         )
         .unwrap();
-        let source = |root: std::path::PathBuf| Source {
-            kind: "codex",
-            display_name: "Codex",
-            root,
-            format: SourceFormat::Codex,
-            archived: false,
-        };
         let mut store = SessionStore {
             summaries: Vec::new(),
             records: HashMap::new(),
-            sources: vec![source(outer.path().into()), source(nested)],
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[outer.path().into(), nested]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
         };
@@ -2096,17 +2237,11 @@ mod tests {
         };
         std::fs::write(first.path().join("a.jsonl"), session("a")).unwrap();
         std::fs::write(second.path().join("b.jsonl"), session("b")).unwrap();
-        let source = |root: std::path::PathBuf| Source {
-            kind: "codex",
-            display_name: "Codex",
-            root,
-            format: SourceFormat::Codex,
-            archived: false,
-        };
         let mut store = SessionStore {
             summaries: Vec::new(),
             records: HashMap::new(),
-            sources: vec![source(first.path().into()), source(second.path().into())],
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[first.path().into(), second.path().into()]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
         };
@@ -2132,17 +2267,11 @@ mod tests {
             )
         };
         std::fs::write(&shared, session("before")).unwrap();
-        let source = |root: std::path::PathBuf| Source {
-            kind: "codex",
-            display_name: "Codex",
-            root,
-            format: SourceFormat::Codex,
-            archived: false,
-        };
         let mut store = SessionStore {
             summaries: Vec::new(),
             records: HashMap::new(),
-            sources: vec![source(outer.path().into()), source(nested.clone())],
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[outer.path().into(), nested.clone()]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
         };

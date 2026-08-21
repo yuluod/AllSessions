@@ -200,6 +200,7 @@ const elements = {
   dateFilter: document.querySelector("#date-filter"),
   cwdFilter: document.querySelector("#cwd-filter"),
   searchInput: document.querySelector("#search-input"),
+  searchShortcut: document.querySelector("#search-shortcut"),
   resetFilters: document.querySelector("#reset-filters"),
   refreshBtn: document.querySelector("#refresh-btn"),
   langToggle: document.querySelector("#lang-toggle"),
@@ -614,6 +615,16 @@ function syncLanguageToggle() {
   const label = t(isChinese ? "switchToEnglish" : "switchToChinese");
   elements.langToggle.title = label;
   elements.langToggle.setAttribute("aria-label", label);
+}
+
+function syncSearchShortcut() {
+  if (!elements.searchShortcut) return;
+  const platform = navigator.userAgentData?.platform || navigator.platform || "";
+  elements.searchShortcut.textContent = /^(mac|iphone|ipad|ipod)/i.test(
+    platform
+  )
+    ? "⌘ K"
+    : "Ctrl K";
 }
 
 function buildSessionQuery() {
@@ -2773,6 +2784,7 @@ async function initialize() {
   updateStaticI18n();
   document.documentElement.lang = getLang() === "zh" ? "zh-CN" : "en";
   syncLanguageToggle();
+  syncSearchShortcut();
   configureCodexMaintenanceUi();
 
   if (elements.langToggle) {

@@ -34,7 +34,7 @@ jobs:
         run: corepack enable
 
       - name: 安装 Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.98.0
 
       - name: 安装项目依赖
         run: pnpm install --frozen-lockfile
@@ -108,7 +108,7 @@ jobs:
         run: corepack enable
 
       - name: 安装 Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.98.0
         with:
           targets: ${{ matrix.target }}
 

@@ -31,7 +31,7 @@ fn transparent_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
 }
 
 fn transparentize_tray_background(rgba: &mut [u8]) {
-    for pixel in rgba.chunks_exact_mut(4) {
+    for pixel in rgba.as_chunks_mut::<4>().0 {
         if pixel[3] > 0
             && pixel[..3]
                 .iter()
@@ -132,10 +132,16 @@ mod tests {
         let height = icon.height() as usize;
         let rgba = icon.rgba();
 
-        assert!(rgba.chunks_exact(4).any(|pixel| pixel[3] > 0));
-        assert!(rgba[..width * 4].chunks_exact(4).all(|pixel| pixel[3] == 0));
+        assert!(rgba.as_chunks::<4>().0.iter().any(|pixel| pixel[3] > 0));
+        assert!(rgba[..width * 4]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| pixel[3] == 0));
         assert!(rgba[(height - 1) * width * 4..]
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .all(|pixel| pixel[3] == 0));
     }
 }

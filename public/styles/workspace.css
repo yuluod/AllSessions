@@ -192,10 +192,9 @@
 }
 
 .meta-chip:not(.meta-chip-wide) {
-  display: grid;
-  gap: 0;
-  min-width: 58px;
-  padding-block: 4px;
+  flex: 0 0 auto;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .meta-chip-wide {
@@ -220,7 +219,7 @@
 
 .meta-label {
   color: var(--muted);
-  font-size: 0.64rem;
+  font-size: 0.72rem;
   line-height: 1.15;
 }
 

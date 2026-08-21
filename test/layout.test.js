@@ -537,14 +537,24 @@ test("筛选入口归入左栏且顶部保留全局导航与搜索", async () =>
   assert.doesNotMatch(html, /id="filter-toggle"/);
 });
 
-test("全局搜索支持快捷键并从其他视图返回会话列表", async () => {
+test("全局搜索按平台显示快捷键并从其他视图返回会话列表", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
 
-  assert.match(html, /<kbd class="search-kbd">⌘ K<\/kbd>/);
+  assert.match(html, /id="search-shortcut"[\s\S]*>Ctrl K<\/kbd>/);
   assert.match(
     source,
     /\(event\.metaKey \|\| event\.ctrlKey\) && event\.key\.toLowerCase\(\) === "k"/
+  );
+  assert.match(
+    source,
+    /navigator\.userAgentData\?\.platform \|\| navigator\.platform/
+  );
+  assert.match(source, /\? "⌘ K"[\s\S]*: "Ctrl K"/);
+  assert.match(
+    css,
+    /\.meta-chip:not\(\.meta-chip-wide\)[\s\S]*white-space: nowrap/
   );
   assert.match(source, /const switchedView = state\.activeView !== "list"/);
   assert.match(source, /await activateWorkspaceView\("list"\)/);

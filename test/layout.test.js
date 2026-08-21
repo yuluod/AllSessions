@@ -36,6 +36,16 @@ test("首页具备工作台式布局骨架", async () => {
   assert.match(html, /class="props-panel"/);
 });
 
+test("浏览器预览使用独立且固定端口的开发脚本", async () => {
+  const packageJson = JSON.parse(await readProjectFile("package.json"));
+
+  assert.equal(
+    packageJson.scripts["web:dev"],
+    "vite --host 127.0.0.1 --port 3210 --strictPort"
+  );
+  assert.equal(packageJson.scripts.dev, "tauri dev");
+});
+
 test("全局导航位于顶部并将次要筛选渐进折叠", async () => {
   const html = await readProjectFile("public/index.html");
 

@@ -26,6 +26,7 @@
   ],
   "scripts": {
     "dev": "tauri dev",
+    "web:dev": "vite --host 127.0.0.1 --port 3210 --strictPort",
     "test": "node --test",
     "lint": "eslint public test scripts",
     "lint:fix": "eslint public test scripts --fix",

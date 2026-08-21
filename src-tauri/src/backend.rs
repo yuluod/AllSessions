@@ -17,6 +17,7 @@ use crate::{
     config::{self, AppConfig},
     maintenance,
     sessions::SessionStore,
+    updater,
 };
 
 #[derive(Clone)]
@@ -51,11 +52,30 @@ impl BackendState {
             "version": env!("CARGO_PKG_VERSION"),
             "config_path": self.config_path.as_ref().map(|path| path.to_string_lossy()),
             "sources": serde_json::to_value(&config.sources).map_err(|error| error.to_string())?,
+            "preferences": serde_json::to_value(&config.preferences).map_err(|error| error.to_string())?,
             "resolved": crate::sessions::describe_sources(&config.sources),
             "inherited": crate::sessions::describe_inherited_sources(),
             "protected": crate::sessions::describe_protected_sources(&config.sources),
             "cache": store.cache_storage(),
         }))
+    }
+
+    pub fn keep_running_in_tray(&self) -> Result<bool, String> {
+        Ok(self
+            .config
+            .lock()
+            .map_err(lock_error)?
+            .preferences
+            .keep_running_in_tray)
+    }
+
+    pub fn check_updates_on_startup(&self) -> Result<bool, String> {
+        Ok(self
+            .config
+            .lock()
+            .map_err(lock_error)?
+            .preferences
+            .check_updates_on_startup)
     }
 
     pub fn refresh_and_emit(&self, app: &AppHandle) -> Result<(), String> {
@@ -253,10 +273,12 @@ fn route_request(
                 .config_path
                 .clone()
                 .ok_or_else(|| "无法确定配置文件位置".to_string())?;
-            let mut config = state.config.lock().map_err(lock_error)?.clone();
-            config.sources = sources;
-            config::save(&config_path, &config)?;
-            *state.config.lock().map_err(lock_error)? = config.clone();
+            let config = {
+                let mut config = state.config.lock().map_err(lock_error)?;
+                config.sources = sources;
+                config::save(&config_path, &config)?;
+                config.clone()
+            };
             {
                 let mut store = state.store.lock().map_err(lock_error)?;
                 store.reconfigure(&config)?;
@@ -265,6 +287,23 @@ fn route_request(
             state.sync_watcher_roots(&app);
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
+            state.settings_payload()
+        }
+        ("POST", "/api/settings/preferences") => {
+            let preferences = config::parse_preferences(
+                request
+                    .body
+                    .get("preferences")
+                    .ok_or_else(|| "缺少 preferences 字段".to_string())?,
+            )?;
+            let config_path = state
+                .config_path
+                .clone()
+                .ok_or_else(|| "无法确定配置文件位置".to_string())?;
+            let mut config = state.config.lock().map_err(lock_error)?;
+            config.preferences = preferences;
+            config::save(&config_path, &config)?;
+            drop(config);
             state.settings_payload()
         }
         ("POST", "/api/settings/clear-cache") => {
@@ -276,6 +315,10 @@ fn route_request(
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
             state.settings_payload()
+        }
+        ("POST", "/api/settings/check-update") => {
+            updater::check_for_updates(app);
+            Ok(json!({ "ok": true }))
         }
         ("GET", "/api/facets") => Ok(state.store.lock().map_err(lock_error)?.facets()),
         ("GET", "/api/stats") => Ok(state.store.lock().map_err(lock_error)?.stats(&query)),

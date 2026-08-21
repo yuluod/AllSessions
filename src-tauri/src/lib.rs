@@ -92,15 +92,32 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![request_json])
         .setup(|app| {
-            app.manage(BackendState::load().map_err(|error| format!("加载会话失败：{error}"))?);
+            let backend = BackendState::load().map_err(|error| format!("加载会话失败：{error}"))?;
+            let check_updates_on_startup = backend
+                .check_updates_on_startup()
+                .map_err(|error| format!("读取常规设置失败：{error}"))?;
+            app.manage(backend);
             app.manage(watcher::start(app.handle()));
             create_tray(app)?;
+            if check_updates_on_startup {
+                updater::check_for_updates(app.handle().clone());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                match window.state::<BackendState>().keep_running_in_tray() {
+                    Ok(true) => {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                    Ok(false) => window.app_handle().exit(0),
+                    Err(error) => {
+                        eprintln!("读取关闭窗口设置失败：{error}");
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                }
             }
         })
         .run(tauri::generate_context!())

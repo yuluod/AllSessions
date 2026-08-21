@@ -16,6 +16,23 @@ const SOURCE_KINDS: [&str; 4] = ["codex", "codex_archived", "claude", "gemini"];
 #[serde(default)]
 pub struct AppConfig {
     pub sources: SourceRoots,
+    pub preferences: Preferences,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Preferences {
+    pub keep_running_in_tray: bool,
+    pub check_updates_on_startup: bool,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            keep_running_in_tray: true,
+            check_updates_on_startup: true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -128,18 +145,35 @@ pub fn parse_sources(value: &Value) -> Result<SourceRoots, String> {
     Ok(roots)
 }
 
+pub fn parse_preferences(value: &Value) -> Result<Preferences, String> {
+    serde_json::from_value(value.clone()).map_err(|error| format!("常规设置无效：{error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
-    use super::{load, parse_sources, save, AppConfig, SourceRoots};
+    use super::{
+        load, parse_preferences, parse_sources, save, AppConfig, Preferences, SourceRoots,
+    };
 
     #[test]
     fn 缺失配置文件时返回默认配置() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("config.json");
         assert_eq!(load(&path).unwrap(), AppConfig::default());
+    }
+
+    #[test]
+    fn 旧配置缺少常规设置时使用安全默认值() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("config.json");
+        std::fs::write(&path, r#"{"sources":{}}"#).unwrap();
+        let config = load(&path).unwrap();
+        assert_eq!(config.preferences, Preferences::default());
+        assert!(config.preferences.keep_running_in_tray);
+        assert!(config.preferences.check_updates_on_startup);
     }
 
     #[test]
@@ -195,5 +229,18 @@ mod tests {
     #[test]
     fn 空对象等价于全部跟随默认() {
         assert_eq!(parse_sources(&json!({})).unwrap(), SourceRoots::default());
+    }
+
+    #[test]
+    fn 常规设置要求布尔值且拒绝未知字段() {
+        let preferences = parse_preferences(&json!({
+            "keep_running_in_tray": false,
+            "check_updates_on_startup": true
+        }))
+        .unwrap();
+        assert!(!preferences.keep_running_in_tray);
+        assert!(preferences.check_updates_on_startup);
+        assert!(parse_preferences(&json!({ "keep_running_in_tray": "yes" })).is_err());
+        assert!(parse_preferences(&json!({ "unknown": true })).is_err());
     }
 }

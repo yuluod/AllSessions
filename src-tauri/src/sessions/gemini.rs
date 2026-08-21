@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fmt,
     fs::{self, File},
-    io::{BufReader, Read},
+    io::{BufReader, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -13,9 +13,9 @@ use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use super::{
-    append_limited, error_text, legacy_timestamp, nullable_string, truncate_message, HeadTail,
-    ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT,
-    SEARCH_TEXT_LIMIT,
+    append_limited, attach_message_delete_ref, error_text, json_fingerprint, legacy_timestamp,
+    nullable_string, replace_file_contents, truncate_message, HeadTail, ParseState, Source,
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT,
 };
 use crate::cache::IndexCache;
 
@@ -117,8 +117,8 @@ fn compare_timestamps(left: &str, right: &str) -> Ordering {
 type RecordKey = (i64, String, usize);
 
 struct OrderedRecordWindow {
-    head: BTreeMap<RecordKey, Value>,
-    tail: BTreeMap<RecordKey, Value>,
+    head: BTreeMap<RecordKey, (Value, PathBuf, usize)>,
+    tail: BTreeMap<RecordKey, (Value, PathBuf, usize)>,
     total: usize,
 }
 
@@ -131,21 +131,22 @@ impl OrderedRecordWindow {
         }
     }
 
-    fn push(&mut self, key: RecordKey, record: Value) {
+    fn push(&mut self, key: RecordKey, record: Value, path: PathBuf, record_index: usize) {
         self.total += 1;
         let head_limit = DETAIL_EVENT_LIMIT.div_ceil(2);
         let tail_limit = DETAIL_EVENT_LIMIT / 2;
-        self.head.insert(key.clone(), record.clone());
+        self.head
+            .insert(key.clone(), (record.clone(), path.clone(), record_index));
         if self.head.len() > head_limit {
             self.head.pop_last();
         }
-        self.tail.insert(key, record);
+        self.tail.insert(key, (record, path, record_index));
         if self.tail.len() > tail_limit {
             self.tail.pop_first();
         }
     }
 
-    fn finish(mut self) -> (Vec<Value>, usize) {
+    fn finish(mut self) -> (Vec<(Value, PathBuf, usize)>, usize) {
         self.head.append(&mut self.tail);
         let omitted = self.total.saturating_sub(self.head.len());
         (self.head.into_values().collect(), omitted)
@@ -547,7 +548,10 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
     let mut sequence = 0_usize;
 
     for log_path in &locator.paths {
+        let mut record_index = 0_usize;
         if let Err(error) = visit_log_records(log_path, |record| {
+            let current_record_index = record_index;
+            record_index += 1;
             if record.get("sessionId").and_then(Value::as_str) != Some(locator.session_id.as_str())
             {
                 return;
@@ -561,15 +565,30 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            ordered_records.push((message_id, timestamp, sequence), record);
+            ordered_records.push(
+                (message_id, timestamp, sequence),
+                record,
+                log_path.clone(),
+                current_record_index,
+            );
             sequence += 1;
         }) {
             eprintln!("无法解析 Gemini 日志（{}）：{error}", log_path.display());
         }
     }
     let (ordered_records, omitted_records) = ordered_records.finish();
-    for (index, record) in ordered_records.into_iter().enumerate() {
-        for mut message in state.accept(&record) {
+    for (index, (record, log_path, record_index)) in ordered_records.into_iter().enumerate() {
+        for (message_index, mut message) in state.accept(&record).into_iter().enumerate() {
+            attach_message_delete_ref(
+                &mut message,
+                json!({
+                    "kind": "gemini_log",
+                    "path": log_path.to_string_lossy(),
+                    "record_index": record_index,
+                    "message_index": message_index,
+                    "record_fingerprint": json_fingerprint(&record),
+                }),
+            );
             truncate_message(&mut message);
             messages.push(message);
         }
@@ -592,7 +611,7 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
     visit_brain_messages(
         &source.root,
         &locator.session_id,
-        |role, text, timestamp, subtype| {
+        |role, text, timestamp, subtype, artifact_path| {
             let duplicate_key = DuplicateUserKey::from_text(text);
             if role == "user" && locator.duplicate_user_keys.contains(&duplicate_key) {
                 return;
@@ -606,6 +625,14 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
                 "synthetic_context": false,
             });
             if let Some(mut accepted) = state.accept_message(message) {
+                attach_message_delete_ref(
+                    &mut accepted,
+                    json!({
+                        "kind": "gemini_artifact",
+                        "path": artifact_path.to_string_lossy(),
+                        "content_fingerprint": json_fingerprint(&Value::String(text.to_string())),
+                    }),
+                );
                 truncate_message(&mut accepted);
                 messages.push(accepted);
             }
@@ -706,6 +733,137 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
     }))
 }
 
+fn rewrite_log_file(
+    path: &Path,
+    mut should_remove: impl FnMut(usize, &Value) -> bool,
+) -> Result<usize, String> {
+    let mut removed = 0_usize;
+    replace_file_contents(path, |writer| {
+        writer.write_all(b"[").map_err(error_text)?;
+        let mut first = true;
+        let mut record_index = 0_usize;
+        let mut write_error = None;
+        visit_log_records(path, |record| {
+            let current = record_index;
+            record_index += 1;
+            if should_remove(current, &record) {
+                removed += 1;
+                return;
+            }
+            if write_error.is_some() {
+                return;
+            }
+            let result = (|| {
+                if !first {
+                    writer.write_all(b",")?;
+                }
+                serde_json::to_writer(&mut *writer, &record)?;
+                first = false;
+                Ok::<(), std::io::Error>(())
+            })();
+            if let Err(error) = result {
+                write_error = Some(error.to_string());
+            }
+        })?;
+        if let Some(error) = write_error {
+            return Err(error);
+        }
+        writer.write_all(b"]\n").map_err(error_text)
+    })?;
+    Ok(removed)
+}
+
+fn locator_log_path(locator: &DetailLocator, value: &Value) -> Result<PathBuf, String> {
+    let requested = value
+        .as_str()
+        .map(PathBuf::from)
+        .ok_or_else(|| "Gemini 消息删除标识缺少日志路径".to_string())?;
+    locator
+        .paths
+        .iter()
+        .find(|path| super::path_identity(path) == super::path_identity(&requested))
+        .cloned()
+        .ok_or_else(|| "消息不属于当前 Gemini 会话".to_string())
+}
+
+pub(super) fn delete_session(source: &Source, locator: &DetailLocator) -> Result<usize, String> {
+    let brain_dir = brain_session_dir(source, &locator.session_id)?;
+    let mut deleted_files = 0_usize;
+    for path in &locator.paths {
+        let removed = rewrite_log_file(path, |_, record| {
+            record.get("sessionId").and_then(Value::as_str) == Some(locator.session_id.as_str())
+        })?;
+        if removed > 0 {
+            deleted_files += 1;
+        }
+    }
+    if brain_dir.exists() {
+        let metadata = fs::symlink_metadata(&brain_dir).map_err(error_text)?;
+        if metadata.file_type().is_symlink() {
+            fs::remove_file(&brain_dir).map_err(error_text)?;
+        } else {
+            fs::remove_dir_all(&brain_dir).map_err(error_text)?;
+        }
+        deleted_files += 1;
+    }
+    if deleted_files == 0 {
+        return Err("原始文件已经变化，未找到要删除的 Gemini 会话".into());
+    }
+    Ok(deleted_files)
+}
+
+pub(super) fn delete_message(
+    source: &Source,
+    locator: &DetailLocator,
+    delete_ref: &Value,
+) -> Result<(), String> {
+    let brain_dir = brain_session_dir(source, &locator.session_id)?;
+    match delete_ref["kind"].as_str() {
+        Some("gemini_log") => {
+            let path = locator_log_path(locator, &delete_ref["path"])?;
+            let record_index = delete_ref["record_index"]
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| "Gemini 消息删除标识缺少记录序号".to_string())?;
+            let removed = rewrite_log_file(&path, |index, record| {
+                index == record_index
+                    && record.get("sessionId").and_then(Value::as_str)
+                        == Some(locator.session_id.as_str())
+                    && delete_ref["record_fingerprint"].as_str()
+                        == Some(json_fingerprint(record).as_str())
+            })?;
+            if removed != 1 {
+                return Err("原始文件已经变化，未找到要删除的消息；请刷新后重试".into());
+            }
+            Ok(())
+        }
+        Some("gemini_artifact") => {
+            let path = delete_ref["path"]
+                .as_str()
+                .map(PathBuf::from)
+                .ok_or_else(|| "Gemini artifact 删除标识缺少路径".to_string())?;
+            if !path.starts_with(&brain_dir) || path == brain_dir {
+                return Err("消息不属于当前 Gemini artifact 目录".into());
+            }
+            let metadata = fs::symlink_metadata(&path).map_err(|error| {
+                format!("无法读取 Gemini artifact（{}）：{error}", path.display())
+            })?;
+            if !metadata.file_type().is_file() {
+                return Err("Gemini artifact 已变化或不是普通文件".into());
+            }
+            let current = read_text_limited(&path, DETAIL_TEXT_LIMIT)
+                .ok_or_else(|| "无法读取 Gemini artifact".to_string())?;
+            let fingerprint = json_fingerprint(&Value::String(current.trim().to_string()));
+            if delete_ref["content_fingerprint"].as_str() != Some(fingerprint.as_str()) {
+                return Err("原始文件已经变化；请刷新详情后重试".into());
+            }
+            fs::remove_file(&path)
+                .map_err(|error| format!("无法删除 Gemini artifact（{}）：{error}", path.display()))
+        }
+        _ => Err("消息删除标识与 Gemini 格式不匹配".into()),
+    }
+}
+
 fn collect_brain_messages(root: &Path) -> BTreeMap<String, Vec<BrainMessage>> {
     let brain_root = root.join("antigravity").join("brain");
     let Ok(entries) = fs::read_dir(&brain_root) else {
@@ -721,14 +879,18 @@ fn collect_brain_messages(root: &Path) -> BTreeMap<String, Vec<BrainMessage>> {
     let mut messages_by_session = BTreeMap::new();
     while let Some(session_id) = session_ids.pop_last() {
         let mut messages = Vec::new();
-        visit_brain_messages(root, &session_id, |role, text, timestamp, subtype| {
-            messages.push(BrainMessage {
-                role: role.into(),
-                text: text.into(),
-                timestamp: timestamp.into(),
-                subtype: subtype.into(),
-            });
-        });
+        visit_brain_messages(
+            root,
+            &session_id,
+            |role, text, timestamp, subtype, _artifact_path| {
+                messages.push(BrainMessage {
+                    role: role.into(),
+                    text: text.into(),
+                    timestamp: timestamp.into(),
+                    subtype: subtype.into(),
+                });
+            },
+        );
         if !messages.is_empty() {
             messages_by_session.insert(session_id, messages);
         }
@@ -768,17 +930,31 @@ fn gemini_cache_kind(brain_messages: &BTreeMap<String, Vec<BrainMessage>>) -> St
 }
 
 fn valid_session_id(session_id: &str) -> bool {
+    let mut components = Path::new(session_id).components();
     !session_id.is_empty()
-        && !matches!(session_id, "." | "..")
+        && matches!(components.next(), Some(std::path::Component::Normal(_)))
+        && components.next().is_none()
         && !session_id
             .chars()
             .any(|value| matches!(value, '/' | '\\' | ':'))
 }
 
+fn brain_session_dir(source: &Source, session_id: &str) -> Result<PathBuf, String> {
+    if !valid_session_id(session_id) {
+        return Err("Gemini 会话标识无效，拒绝删除原始数据".into());
+    }
+    let brain_root = source.root.join("antigravity").join("brain");
+    let session_dir = brain_root.join(session_id);
+    if session_dir.parent() != Some(brain_root.as_path()) {
+        return Err("Gemini 会话目录超出允许范围，拒绝删除原始数据".into());
+    }
+    Ok(session_dir)
+}
+
 fn visit_brain_messages(
     root: &Path,
     session_id: &str,
-    mut callback: impl FnMut(&str, &str, &str, &str),
+    mut callback: impl FnMut(&str, &str, &str, &str, &Path),
 ) {
     if !valid_session_id(session_id) {
         return;
@@ -811,7 +987,7 @@ fn visit_brain_messages(
                     .and_then(|content| serde_json::from_str::<Value>(&content).ok())
                     .and_then(|metadata| legacy_timestamp(&metadata, &["updatedAt"]))
                     .unwrap_or_default();
-            callback("user", prompt, &timestamp, "artifact");
+            callback("user", prompt, &timestamp, "artifact", &entry.path());
         }
 
         let resolved_path = brain_dir.join(format!("{name}.resolved"));
@@ -829,14 +1005,14 @@ fn visit_brain_messages(
 fn visit_resolved(
     path: &Path,
     artifact_name: &str,
-    callback: &mut impl FnMut(&str, &str, &str, &str),
+    callback: &mut impl FnMut(&str, &str, &str, &str, &Path),
 ) {
     let Some(text) = read_text_limited(path, DETAIL_TEXT_LIMIT) else {
         return;
     };
     let text = text.trim();
     if !text.is_empty() {
-        callback("assistant", text, "", artifact_name);
+        callback("assistant", text, "", artifact_name, path);
     }
 }
 
@@ -859,10 +1035,10 @@ fn read_text_limited(path: &Path, char_limit: usize) -> Option<String> {
 mod tests {
     use std::{io::Write, path::PathBuf};
 
-    use serde_json::json;
+    use serde_json::{json, Value};
     use tempfile::tempdir;
 
-    use super::{parse_detail, parse_source};
+    use super::{delete_message, delete_session, parse_detail, parse_source};
     use crate::{
         cache::IndexCache,
         sessions::{Source, SourceFormat, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT},
@@ -915,6 +1091,86 @@ mod tests {
         )
         .unwrap();
         assert_eq!(detail["conversation_messages"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn 永久删除消息和会话不会影响共享日志中的其他会话() {
+        let directory = tempdir().unwrap();
+        let log_dir = directory.path().join("tmp").join("queue");
+        std::fs::create_dir_all(&log_dir).unwrap();
+        let log_path = log_dir.join("logs.json");
+        std::fs::write(
+            &log_path,
+            json!([
+                { "sessionId": "g1", "messageId": 1, "type": "user", "message": "删除消息" },
+                { "sessionId": "g1", "messageId": 2, "type": "assistant", "message": "删除会话" },
+                { "sessionId": "g2", "messageId": 1, "type": "user", "message": "必须保留" }
+            ])
+            .to_string(),
+        )
+        .unwrap();
+        let source = source(directory.path());
+        let cache = IndexCache::open_at(&directory.path().join("index.sqlite"));
+        let parsed = parse_source(&source, &cache).unwrap();
+        let session = parsed
+            .sessions
+            .iter()
+            .find(|session| session.summary["id"] == "g1")
+            .unwrap();
+        let detail = parse_detail(&source, &session.detail_locator).unwrap();
+        let delete_ref = detail["conversation_messages"][0]["_delete_ref"].clone();
+
+        delete_message(&source, &session.detail_locator, &delete_ref).unwrap();
+        let after_message: Value =
+            serde_json::from_str(&std::fs::read_to_string(&log_path).unwrap()).unwrap();
+        assert!(!after_message
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["message"] == "删除消息"));
+        assert!(after_message
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["message"] == "必须保留"));
+
+        delete_session(&source, &session.detail_locator).unwrap();
+        let after_session: Value =
+            serde_json::from_str(&std::fs::read_to_string(&log_path).unwrap()).unwrap();
+        assert!(after_session
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["sessionId"] != "g1"));
+        assert!(after_session
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["sessionId"] == "g2"));
+    }
+
+    #[test]
+    fn 永久删除拒绝越出_brain_根目录的会话标识() {
+        let directory = tempdir().unwrap();
+        let gemini_root = directory.path().join("gemini");
+        let log_dir = gemini_root.join("tmp").join("queue");
+        let outside = directory.path().join("outside");
+        std::fs::create_dir_all(&log_dir).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("sentinel.txt"), "必须保留").unwrap();
+        let log_path = log_dir.join("logs.json");
+        let session_id = outside.to_string_lossy().into_owned();
+        std::fs::write(
+            &log_path,
+            json!([{ "sessionId": session_id, "messageId": 1, "type": "user", "message": "问题" }])
+                .to_string(),
+        )
+        .unwrap();
+        let source = source(&gemini_root);
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
+
+        assert!(delete_session(&source, &parsed.sessions[0].detail_locator).is_err());
+        assert!(outside.join("sentinel.txt").is_file());
     }
 
     #[test]

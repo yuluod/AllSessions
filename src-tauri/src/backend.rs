@@ -52,6 +52,8 @@ impl BackendState {
             "config_path": self.config_path.as_ref().map(|path| path.to_string_lossy()),
             "sources": serde_json::to_value(&config.sources).map_err(|error| error.to_string())?,
             "resolved": crate::sessions::describe_sources(&config.sources),
+            "inherited": crate::sessions::describe_inherited_sources(),
+            "protected": crate::sessions::describe_protected_sources(&config.sources),
             "cache": store.cache_storage(),
         }))
     }
@@ -194,6 +196,50 @@ fn route_request(
                 return Err("缺少搜索内容".into());
             }
             Ok(state.store.lock().map_err(lock_error)?.search(&query))
+        }
+        ("POST", "/api/sessions/delete") => {
+            if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {
+                return Err("永久删除需要显式确认".into());
+            }
+            let session_key = request
+                .body
+                .get("sessionKey")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "缺少 sessionKey".to_string())?;
+            let result = state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .delete_session(session_key)?;
+            app.emit("sessions-changed", json!({ "type": "session-deleted" }))
+                .map_err(|error| error.to_string())?;
+            Ok(result)
+        }
+        ("POST", "/api/sessions/delete-message") => {
+            if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {
+                return Err("永久删除需要显式确认".into());
+            }
+            let session_key = request
+                .body
+                .get("sessionKey")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "缺少 sessionKey".to_string())?;
+            let message_key = request
+                .body
+                .get("messageKey")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "缺少 messageKey".to_string())?;
+            let result = state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .delete_message(session_key, message_key)?;
+            app.emit("sessions-changed", json!({ "type": "session-updated" }))
+                .map_err(|error| error.to_string())?;
+            Ok(result)
         }
         ("GET", "/api/settings") => state.settings_payload(),
         ("POST", "/api/settings") => {

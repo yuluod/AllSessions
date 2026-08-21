@@ -41,15 +41,14 @@ fn arm_watcher(
     roots: &[PathBuf],
 ) -> Result<(RecommendedWatcher, Vec<PathBuf>), String> {
     let event_sender = sender.clone();
-    let mut watcher =
-        notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-            if let Ok(event) = event {
-                for path in event.paths {
-                    let _ = event_sender.send(path);
-                }
+    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+        if let Ok(event) = event {
+            for path in event.paths {
+                let _ = event_sender.send(path);
             }
-        })
-        .map_err(|error| error.to_string())?;
+        }
+    })
+    .map_err(|error| error.to_string())?;
     let mut watched = Vec::new();
     for root in roots {
         watcher

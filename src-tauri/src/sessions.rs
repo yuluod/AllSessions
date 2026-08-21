@@ -3,12 +3,14 @@ use std::{
     env,
     ffi::OsStr,
     fs::{self, File},
-    io::{BufRead, BufReader},
-    path::{Path, PathBuf},
+    io::{BufRead, BufReader, BufWriter, Write},
+    path::{Component, Path, PathBuf},
 };
 
 use chrono::{SecondsFormat, TimeZone, Utc};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::cache::IndexCache;
@@ -38,6 +40,7 @@ enum SourceFormat {
     Gemini,
 }
 
+#[derive(Clone)]
 struct StoredSession {
     summary: Value,
     search_text: String,
@@ -284,20 +287,7 @@ impl SessionStore {
     }
 
     pub fn detail(&mut self, key: &str) -> Option<Value> {
-        let resolved = if self.records.contains_key(key) {
-            key.to_string()
-        } else {
-            let matches = self
-                .records
-                .iter()
-                .filter(|(_, record)| record.summary["id"].as_str() == Some(key))
-                .map(|(key, _)| key.clone())
-                .collect::<Vec<_>>();
-            if matches.len() != 1 {
-                return None;
-            }
-            matches[0].clone()
-        };
+        let resolved = self.resolve_record_key(key)?;
         if let Some(detail) = self.detail_cache.get(&resolved) {
             return Some(detail);
         }
@@ -312,6 +302,86 @@ impl SessionStore {
             .unwrap_or_default();
         self.detail_cache.insert(resolved, detail.clone(), size);
         Some(detail)
+    }
+
+    fn resolve_record_key(&self, key: &str) -> Option<String> {
+        if self.records.contains_key(key) {
+            return Some(key.to_string());
+        }
+        let matches = self
+            .records
+            .iter()
+            .filter(|(_, record)| record.summary["id"].as_str() == Some(key))
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        (matches.len() == 1).then(|| matches[0].clone())
+    }
+
+    pub fn delete_session(&mut self, key: &str) -> Result<Value, String> {
+        let resolved = self
+            .resolve_record_key(key)
+            .ok_or_else(|| "会话不存在或标识不唯一".to_string())?;
+        let record = self
+            .records
+            .get(&resolved)
+            .cloned()
+            .ok_or_else(|| "会话不存在".to_string())?;
+        let deleted_files = if let Some(locator) = &record.detail_locator {
+            gemini::delete_session(&record.source, locator)?
+        } else {
+            let (current_summary, _) = parse_summary(&record.path, &record.source)?;
+            if current_summary["_key"].as_str() != Some(resolved.as_str()) {
+                return Err("原始文件已经变化；请刷新列表后重试".into());
+            }
+            if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
+                delete_legacy_session(
+                    &record.path,
+                    current_summary["id"].as_str().unwrap_or_default(),
+                )?
+            } else {
+                fs::remove_file(&record.path).map_err(|error| {
+                    format!("无法删除会话文件（{}）：{error}", record.path.display())
+                })?;
+                1
+            }
+        };
+        self.index_cache.remove(&record.path);
+        self.refresh()?;
+        Ok(json!({ "ok": true, "deleted_files": deleted_files }))
+    }
+
+    pub fn delete_message(&mut self, key: &str, message_key: &str) -> Result<Value, String> {
+        let resolved = self
+            .resolve_record_key(key)
+            .ok_or_else(|| "会话不存在或标识不唯一".to_string())?;
+        let detail = self
+            .detail(&resolved)
+            .ok_or_else(|| "无法读取会话详情".to_string())?;
+        let message = detail["conversation_messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|message| message["_message_key"].as_str() == Some(message_key))
+            .ok_or_else(|| "消息不存在或当前详情未包含该消息".to_string())?;
+        let delete_ref = message
+            .get("_delete_ref")
+            .cloned()
+            .ok_or_else(|| "该消息不支持删除原始数据".to_string())?;
+        let record = self
+            .records
+            .get(&resolved)
+            .cloned()
+            .ok_or_else(|| "会话不存在".to_string())?;
+        if let Some(locator) = &record.detail_locator {
+            gemini::delete_message(&record.source, locator, &delete_ref)?;
+        } else if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
+            delete_legacy_message(&record.path, &delete_ref)?;
+        } else {
+            delete_jsonl_message(&record.path, &delete_ref)?;
+        }
+        self.index_cache.remove(&record.path);
+        self.refresh()?;
+        Ok(json!({ "ok": true }))
     }
 
     pub fn facets(&self) -> Value {
@@ -703,7 +773,16 @@ fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
         }
         match serde_json::from_str::<Value>(&line) {
             Ok(record) => {
-                for mut message in state.accept(&record) {
+                for (message_index, mut message) in state.accept(&record).into_iter().enumerate() {
+                    attach_message_delete_ref(
+                        &mut message,
+                        json!({
+                            "kind": "jsonl_record",
+                            "line_number": index + 1,
+                            "message_index": message_index,
+                            "record_fingerprint": json_fingerprint(&record),
+                        }),
+                    );
                     truncate_message(&mut message);
                     messages.push(message);
                 }
@@ -897,6 +976,64 @@ pub(crate) fn describe_sources(config: &crate::config::SourceRoots) -> Value {
     root_lists(config).1
 }
 
+pub(crate) fn describe_inherited_sources() -> Value {
+    root_lists(&crate::config::SourceRoots::default()).1
+}
+
+fn source_root_identity(path: PathBuf) -> String {
+    let expanded = expand_tilde(path);
+    let absolute = if expanded.is_absolute() {
+        expanded
+    } else {
+        env::current_dir()
+            .map(|current| current.join(&expanded))
+            .unwrap_or(expanded)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() && !normalized.has_root() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+    let identity = path_identity(&normalized);
+    if cfg!(windows) {
+        identity.to_lowercase()
+    } else {
+        identity
+    }
+}
+
+fn describe_protected_source_roots(configured: &[String], inherited: &[PathBuf]) -> Vec<String> {
+    let inherited_identities = inherited
+        .iter()
+        .cloned()
+        .map(source_root_identity)
+        .collect::<BTreeSet<_>>();
+    configured
+        .iter()
+        .filter(|root| {
+            inherited_identities.contains(&source_root_identity(PathBuf::from(root.as_str())))
+        })
+        .cloned()
+        .collect()
+}
+
+pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) -> Value {
+    let inherited = root_lists(&crate::config::SourceRoots::default()).0;
+    json!({
+        "codex": describe_protected_source_roots(config.codex.as_deref().unwrap_or_default(), &inherited.codex),
+        "codex_archived": describe_protected_source_roots(config.codex_archived.as_deref().unwrap_or_default(), &inherited.codex_archived),
+        "claude": describe_protected_source_roots(config.claude.as_deref().unwrap_or_default(), &inherited.claude),
+        "gemini": describe_protected_source_roots(config.gemini.as_deref().unwrap_or_default(), &inherited.gemini),
+    })
+}
+
 fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
     let lists = root_lists(config).0;
     sources_from_paths(
@@ -1061,13 +1198,27 @@ fn parse_legacy_claude_detail(path: &Path, source: &Source, value: Value) -> Opt
     }
 
     let has_entries = value.get("entries").and_then(Value::as_array).is_some();
-    let mut messages = value
+    let mut messages = Vec::new();
+    for (entry_index, record) in value
         .get("entries")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .flat_map(|record| state.accept(record))
-        .collect::<Vec<_>>();
+        .enumerate()
+    {
+        for (message_index, mut message) in state.accept(record).into_iter().enumerate() {
+            attach_message_delete_ref(
+                &mut message,
+                json!({
+                    "kind": "legacy_entry",
+                    "entry_index": entry_index,
+                    "message_index": message_index,
+                    "record_fingerprint": json_fingerprint(record),
+                }),
+            );
+            messages.push(message);
+        }
+    }
     let mut raw_events = vec![json!({
         "line_number": Value::Null,
         "timestamp": nullable_string(&state.timestamp),
@@ -1079,9 +1230,16 @@ fn parse_legacy_claude_detail(path: &Path, source: &Source, value: Value) -> Opt
             string_at(&value, &["prompt"]).or_else(|| string_at(&value, &["message"]))
         {
             let timestamp = state.timestamp.clone();
-            if let Some(message) = state.accept_message(message_value(
+            if let Some(mut message) = state.accept_message(message_value(
                 "user", &text, &timestamp, "legacy", "prompt", false,
             )) {
+                attach_message_delete_ref(
+                    &mut message,
+                    json!({
+                        "kind": "legacy_prompt",
+                        "record_fingerprint": json_fingerprint(&Value::String(text.clone())),
+                    }),
+                );
                 messages.push(message);
             }
             raw_events.push(json!({
@@ -1152,7 +1310,7 @@ fn parse_legacy_claude_detail(path: &Path, source: &Source, value: Value) -> Opt
                         }
                     }));
                     if let Some(display) = record.get("display").and_then(Value::as_str) {
-                        if let Some(message) = state.accept_message(message_value(
+                        if let Some(mut message) = state.accept_message(message_value(
                             "user",
                             display,
                             &record_timestamp,
@@ -1160,6 +1318,14 @@ fn parse_legacy_claude_detail(path: &Path, source: &Source, value: Value) -> Opt
                             "display",
                             false,
                         )) {
+                            attach_message_delete_ref(
+                                &mut message,
+                                json!({
+                                    "kind": "legacy_history",
+                                    "line_number": index + 1,
+                                    "record_fingerprint": json_fingerprint(&record),
+                                }),
+                            );
                             messages.push(message);
                         }
                     }
@@ -1340,6 +1506,297 @@ fn message_value(
     synthetic: bool,
 ) -> Value {
     json!({ "role": role, "text": text.trim(), "timestamp": nullable_string(timestamp), "source_type": source_type, "source_subtype": subtype, "synthetic_context": synthetic || role == "developer" || (role == "user" && is_synthetic_context(text)) })
+}
+
+pub(super) fn attach_message_delete_ref(message: &mut Value, mut delete_ref: Value) {
+    if let Some(tool_call_id) = message["tool_call_id"].as_str() {
+        delete_ref["tool_call_id"] = Value::String(tool_call_id.to_string());
+    }
+    let mut identity_ref = delete_ref.clone();
+    if let Some(object) = identity_ref.as_object_mut() {
+        for field in ["line_number", "record_index", "entry_index"] {
+            object.remove(field);
+        }
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(serde_json::to_vec(&identity_ref).unwrap_or_default());
+    for field in ["role", "text", "timestamp", "source_type", "source_subtype"] {
+        hasher.update([0]);
+        hasher.update(message[field].to_string().as_bytes());
+    }
+    let key = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    message["_message_key"] = Value::String(key);
+    message["_delete_ref"] = delete_ref;
+}
+
+pub(super) fn json_fingerprint(value: &Value) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(serde_json::to_vec(value).unwrap_or_default());
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn replacement_path(path: &Path, suffix: &str) -> Result<PathBuf, String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("文件缺少父目录：{}", path.display()))?;
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| format!("文件名无效：{}", path.display()))?;
+    Ok(parent.join(format!(".{name}.allsessions-{}.{suffix}", Uuid::new_v4())))
+}
+
+pub(super) fn replace_file_contents(
+    path: &Path,
+    write_contents: impl FnOnce(&mut BufWriter<File>) -> Result<(), String>,
+) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path).map_err(error_text)?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!("拒绝修改符号链接文件：{}", path.display()));
+    }
+    let temporary = replacement_path(path, "tmp")?;
+    let result = (|| {
+        let file = File::create(&temporary)
+            .map_err(|error| format!("无法创建临时文件（{}）：{error}", temporary.display()))?;
+        let mut writer = BufWriter::new(file);
+        write_contents(&mut writer)?;
+        writer.flush().map_err(error_text)?;
+        writer.get_ref().sync_all().map_err(error_text)?;
+        fs::set_permissions(&temporary, metadata.permissions()).map_err(error_text)?;
+
+        #[cfg(not(windows))]
+        {
+            fs::rename(&temporary, path).map_err(|error| {
+                format!(
+                    "无法替换原始文件（{} → {}）：{error}",
+                    temporary.display(),
+                    path.display()
+                )
+            })?;
+        }
+        #[cfg(windows)]
+        {
+            let backup = replacement_path(path, "bak")?;
+            fs::rename(path, &backup).map_err(error_text)?;
+            if let Err(error) = fs::rename(&temporary, path) {
+                let restore_error = fs::rename(&backup, path).err();
+                return Err(match restore_error {
+                    Some(restore_error) => {
+                        format!("无法替换原始文件：{error}；恢复备份也失败：{restore_error}")
+                    }
+                    None => format!("无法替换原始文件，已恢复原文件：{error}"),
+                });
+            }
+            fs::remove_file(&backup).map_err(|error| {
+                format!(
+                    "原文件已更新，但无法删除临时备份（{}）：{error}",
+                    backup.display()
+                )
+            })?;
+        }
+        Ok(())
+    })();
+    if result.is_err() && temporary.exists() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn rewrite_jsonl_without_lines(path: &Path, removed_lines: &BTreeSet<usize>) -> Result<(), String> {
+    replace_file_contents(path, |writer| {
+        for (index, line) in BufReader::new(File::open(path).map_err(error_text)?)
+            .lines()
+            .enumerate()
+        {
+            let line = line.map_err(error_text)?;
+            if removed_lines.contains(&(index + 1)) {
+                continue;
+            }
+            writer.write_all(line.as_bytes()).map_err(error_text)?;
+            writer.write_all(b"\n").map_err(error_text)?;
+        }
+        Ok(())
+    })
+}
+
+fn delete_jsonl_message(path: &Path, delete_ref: &Value) -> Result<(), String> {
+    if delete_ref["kind"].as_str() != Some("jsonl_record") {
+        return Err("消息删除标识与会话格式不匹配".into());
+    }
+    let target_line = delete_ref["line_number"]
+        .as_u64()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| "消息删除标识缺少有效行号".to_string())?;
+    let target_index = delete_ref["message_index"]
+        .as_u64()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| "消息删除标识缺少有效消息序号".to_string())?;
+    let mut state = ParseState::new(path);
+    let mut target_found = false;
+    let mut target_tool_calls = BTreeSet::new();
+    let mut tool_lines = HashMap::<String, BTreeSet<usize>>::new();
+    for (index, line) in BufReader::new(File::open(path).map_err(error_text)?)
+        .lines()
+        .enumerate()
+    {
+        let line_number = index + 1;
+        let line = line.map_err(error_text)?;
+        let Ok(record) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let messages = state.accept(&record);
+        let record_tool_calls = messages
+            .iter()
+            .filter(|message| message["role"].as_str() == Some("tool"))
+            .filter_map(|message| message["tool_call_id"].as_str().map(ToOwned::to_owned))
+            .collect::<BTreeSet<_>>();
+        for (message_index, message) in messages.iter().enumerate() {
+            if message["role"].as_str() == Some("tool") {
+                if let Some(tool_call_id) = message["tool_call_id"].as_str() {
+                    tool_lines
+                        .entry(tool_call_id.to_string())
+                        .or_default()
+                        .insert(line_number);
+                }
+            }
+            if line_number == target_line && message_index == target_index {
+                let fingerprint = json_fingerprint(&record);
+                if delete_ref["record_fingerprint"].as_str() != Some(fingerprint.as_str()) {
+                    return Err("原始文件已经变化；请刷新详情后重试".into());
+                }
+                target_found = true;
+                target_tool_calls.extend(record_tool_calls.iter().cloned());
+            }
+        }
+    }
+    if !target_found {
+        return Err("原始文件已经变化，未找到要删除的消息；请刷新后重试".into());
+    }
+    let mut removed_lines = BTreeSet::from([target_line]);
+    for tool_call_id in target_tool_calls {
+        if let Some(lines) = tool_lines.get(&tool_call_id) {
+            removed_lines.extend(lines);
+        }
+    }
+    rewrite_jsonl_without_lines(path, &removed_lines)
+}
+
+fn delete_legacy_message(path: &Path, delete_ref: &Value) -> Result<(), String> {
+    match delete_ref["kind"].as_str() {
+        Some("legacy_entry") => {
+            let entry_index = delete_ref["entry_index"]
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| "消息删除标识缺少有效条目序号".to_string())?;
+            let mut value: Value = serde_json::from_reader(File::open(path).map_err(error_text)?)
+                .map_err(error_text)?;
+            let entries = value["entries"]
+                .as_array_mut()
+                .ok_or_else(|| "旧版 Claude 会话不再包含 entries".to_string())?;
+            if entry_index >= entries.len() {
+                return Err("原始文件已经变化，未找到要删除的消息；请刷新后重试".into());
+            }
+            let fingerprint = json_fingerprint(&entries[entry_index]);
+            if delete_ref["record_fingerprint"].as_str() != Some(fingerprint.as_str()) {
+                return Err("原始文件已经变化；请刷新详情后重试".into());
+            }
+            entries.remove(entry_index);
+            replace_file_contents(path, |writer| {
+                serde_json::to_writer_pretty(&mut *writer, &value).map_err(error_text)?;
+                writer.write_all(b"\n").map_err(error_text)
+            })
+        }
+        Some("legacy_prompt") => {
+            let mut value: Value = serde_json::from_reader(File::open(path).map_err(error_text)?)
+                .map_err(error_text)?;
+            let object = value
+                .as_object_mut()
+                .ok_or_else(|| "旧版 Claude 会话格式无效".to_string())?;
+            let removed = if let Some(value) = object.remove("prompt") {
+                value
+            } else {
+                object.remove("message").unwrap_or(Value::Null)
+            };
+            if removed.is_null() {
+                return Err("原始文件已经变化，未找到要删除的消息；请刷新后重试".into());
+            }
+            let fingerprint = json_fingerprint(&removed);
+            if delete_ref["record_fingerprint"].as_str() != Some(fingerprint.as_str()) {
+                return Err("原始文件已经变化；请刷新详情后重试".into());
+            }
+            replace_file_contents(path, |writer| {
+                serde_json::to_writer_pretty(&mut *writer, &value).map_err(error_text)?;
+                writer.write_all(b"\n").map_err(error_text)
+            })
+        }
+        Some("legacy_history") => {
+            let line_number = delete_ref["line_number"]
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| "消息删除标识缺少有效行号".to_string())?;
+            let history_path = path
+                .parent()
+                .and_then(Path::parent)
+                .map(|root| root.join("history.jsonl"))
+                .ok_or_else(|| "无法确定旧版 Claude history 路径".to_string())?;
+            let current_line = BufReader::new(File::open(&history_path).map_err(error_text)?)
+                .lines()
+                .nth(line_number.saturating_sub(1))
+                .transpose()
+                .map_err(error_text)?
+                .ok_or_else(|| "原始文件已经变化，未找到要删除的消息".to_string())?;
+            let current_record: Value = serde_json::from_str(&current_line).map_err(error_text)?;
+            let fingerprint = json_fingerprint(&current_record);
+            if delete_ref["record_fingerprint"].as_str() != Some(fingerprint.as_str()) {
+                return Err("原始文件已经变化；请刷新详情后重试".into());
+            }
+            rewrite_jsonl_without_lines(&history_path, &BTreeSet::from([line_number]))
+        }
+        _ => Err("消息删除标识与旧版 Claude 格式不匹配".into()),
+    }
+}
+
+fn delete_legacy_session(path: &Path, session_id: &str) -> Result<usize, String> {
+    let history_path = path
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| root.join("history.jsonl"));
+    let mut deleted_files = 1_usize;
+    if let Some(history_path) = history_path.filter(|path| path.is_file()) {
+        let mut removed_lines = BTreeSet::new();
+        for (index, line) in BufReader::new(File::open(&history_path).map_err(error_text)?)
+            .lines()
+            .enumerate()
+        {
+            let line = line.map_err(error_text)?;
+            let Ok(record) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            if record
+                .get("sessionId")
+                .or_else(|| record.get("session_id"))
+                .and_then(Value::as_str)
+                == Some(session_id)
+            {
+                removed_lines.insert(index + 1);
+            }
+        }
+        if !removed_lines.is_empty() {
+            rewrite_jsonl_without_lines(&history_path, &removed_lines)?;
+            deleted_files += 1;
+        }
+    }
+    fs::remove_file(path)
+        .map_err(|error| format!("无法删除会话文件（{}）：{error}", path.display()))?;
+    Ok(deleted_files)
 }
 
 fn generic_conversation_message(
@@ -1701,17 +2158,19 @@ fn error_text(error: impl std::fmt::Display) -> String {
 mod tests {
     use std::io::Write;
 
-    use serde_json::json;
+    use serde_json::{json, Value};
     use tempfile::tempdir;
 
     #[cfg(windows)]
     use crate::cache::IndexCache;
 
     use super::{
-        compact, existing_watch_root, generic_conversation_message, is_synthetic_context,
-        local_date_key, parse_detail, parse_summary, resolve_kind, search_query_matches,
-        sources_from_paths, split_path_list, watch_roots_for, DetailCache, HeadTail, SessionStore,
-        Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+        compact, delete_jsonl_message, delete_legacy_session, describe_inherited_sources,
+        describe_protected_source_roots, describe_sources, existing_watch_root,
+        generic_conversation_message, is_synthetic_context, local_date_key, parse_detail,
+        parse_summary, resolve_kind, search_query_matches, sources_from_paths, split_path_list,
+        watch_roots_for, DetailCache, HeadTail, SessionStore, Source, SourceFormat,
+        DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
@@ -1836,29 +2295,67 @@ mod tests {
                 .with_timezone(&chrono::Local)
                 .format("%Y-%m-%d")
                 .to_string();
-            assert_eq!(local_date_key(timestamp).as_deref(), Some(expected.as_str()));
+            assert_eq!(
+                local_date_key(timestamp).as_deref(),
+                Some(expected.as_str())
+            );
         }
         // 无法解析时回退到字符串前 10 位
-        assert_eq!(local_date_key("2026-08-19 自定义"), Some("2026-08-19".into()));
+        assert_eq!(
+            local_date_key("2026-08-19 自定义"),
+            Some("2026-08-19".into())
+        );
         assert_eq!(local_date_key(""), None);
     }
 
     #[test]
     fn 配置根目录优先于环境变量并展开波浪线() {
         let configured = vec!["~/custom-codex".to_string()];
-        let (roots, origin) =
-            resolve_kind(Some(&configured), "CODEX_SESSIONS_DIR", PathBuf::from("/fallback"));
+        let (roots, origin) = resolve_kind(
+            Some(&configured),
+            "CODEX_SESSIONS_DIR",
+            PathBuf::from("/fallback"),
+        );
         assert_eq!(origin, "config");
+        assert_eq!(roots, vec![dirs::home_dir().unwrap().join("custom-codex")]);
+    }
+
+    #[test]
+    fn 继承来源描述不会采用用户配置() {
+        let mut config = crate::config::SourceRoots::default();
+        config.codex = Some(vec!["/custom-codex".to_string()]);
+
+        assert_eq!(describe_sources(&config)["codex"]["origin"], "config");
+        assert_ne!(describe_inherited_sources()["codex"]["origin"], "config");
+    }
+
+    #[test]
+    fn 受保护来源使用规范化后的路径身份匹配() {
+        let home = dirs::home_dir().unwrap();
+        let inherited = home.join(".codex").join("sessions");
+        let configured = vec!["~/.codex/sessions".to_string(), "/custom-codex".to_string()];
+
         assert_eq!(
-            roots,
-            vec![dirs::home_dir().unwrap().join("custom-codex")]
+            describe_protected_source_roots(&configured, &[inherited]),
+            vec!["~/.codex/sessions".to_string()]
+        );
+
+        let relative_name = "allsessions-protected-root-that-does-not-exist";
+        let relative = vec![format!("./{relative_name}")];
+        let absolute = std::env::current_dir().unwrap().join(relative_name);
+        assert_eq!(
+            describe_protected_source_roots(&relative, &[absolute]),
+            relative
         );
     }
 
     #[test]
     fn 配置空数组会停用对应来源() {
-        let (roots, origin) =
-            resolve_kind(Some(&Vec::new()), "CODEX_SESSIONS_DIR", PathBuf::from("/fallback"));
+        let (roots, origin) = resolve_kind(
+            Some(&Vec::new()),
+            "CODEX_SESSIONS_DIR",
+            PathBuf::from("/fallback"),
+        );
         assert_eq!(origin, "config");
         assert!(roots.is_empty());
     }
@@ -1908,6 +2405,83 @@ mod tests {
     }
 
     #[test]
+    fn 永久删除单条消息只移除对应原始记录() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("session.jsonl");
+        let records = [
+            json!({ "timestamp": "2026-01-01T00:00:00Z", "type": "session_meta", "payload": { "id": "codex-1", "cwd": "/tmp/project" } }),
+            json!({ "timestamp": "2026-01-01T00:00:01Z", "type": "event_msg", "payload": { "type": "user_message", "message": "删除我" } }),
+            json!({ "timestamp": "2026-01-01T00:00:02Z", "type": "event_msg", "payload": { "type": "agent_message", "message": "保留我" } }),
+        ];
+        std::fs::write(
+            &path,
+            records
+                .iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        let source = Source {
+            kind: "codex",
+            display_name: "Codex",
+            root: directory.path().into(),
+            format: SourceFormat::Codex,
+            archived: false,
+        };
+        let detail = parse_detail(&path, &source).unwrap();
+        let delete_ref = detail["conversation_messages"][0]["_delete_ref"].clone();
+        let retained_message_key = detail["conversation_messages"][1]["_message_key"].clone();
+
+        delete_jsonl_message(&path, &delete_ref).unwrap();
+
+        let updated = std::fs::read_to_string(&path).unwrap();
+        assert!(!updated.contains("删除我"));
+        assert!(updated.contains("保留我"));
+        assert!(updated.contains("session_meta"));
+        let reparsed = parse_detail(&path, &source).unwrap();
+        assert_eq!(
+            reparsed["conversation_messages"][0]["_message_key"],
+            retained_message_key
+        );
+    }
+
+    #[test]
+    fn 原始记录变化后拒绝使用旧消息标识删除() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("session.jsonl");
+        let source = Source {
+            kind: "codex",
+            display_name: "Codex",
+            root: directory.path().into(),
+            format: SourceFormat::Codex,
+            archived: false,
+        };
+        std::fs::write(
+            &path,
+            concat!(
+                "{\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-1\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"旧内容\"}}\n"
+            ),
+        )
+        .unwrap();
+        let detail = parse_detail(&path, &source).unwrap();
+        let delete_ref = detail["conversation_messages"][0]["_delete_ref"].clone();
+        std::fs::write(
+            &path,
+            concat!(
+                "{\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-1\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"新内容\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        assert!(delete_jsonl_message(&path, &delete_ref).is_err());
+        assert!(std::fs::read_to_string(&path).unwrap().contains("新内容"));
+    }
+
+    #[test]
     fn claude_tool_blocks_keep_tool_semantics() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("claude.jsonl");
@@ -1934,6 +2508,53 @@ mod tests {
             detail["conversation_messages"][0]["synthetic_context"],
             true
         );
+    }
+
+    #[test]
+    fn 删除混合记录中的文本时同步移除关联工具结果() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("claude.jsonl");
+        let records = [
+            json!({
+                "timestamp": "2026-01-01T00:00:00Z", "type": "assistant", "sessionId": "claude-1",
+                "message": { "role": "assistant", "content": [
+                    { "type": "text", "text": "删除这段说明" },
+                    { "type": "tool_use", "id": "tool-1", "name": "Read", "input": { "path": "a.rs" } }
+                ] }
+            }),
+            json!({
+                "timestamp": "2026-01-01T00:00:01Z", "type": "user", "sessionId": "claude-1",
+                "message": { "role": "user", "content": [
+                    { "type": "tool_result", "tool_use_id": "tool-1", "content": "文件内容" }
+                ] }
+            }),
+        ];
+        std::fs::write(
+            &path,
+            records
+                .iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        let source = Source {
+            kind: "claude_code",
+            display_name: "Claude Code",
+            root: directory.path().into(),
+            format: SourceFormat::Claude,
+            archived: false,
+        };
+        let detail = parse_detail(&path, &source).unwrap();
+        let delete_ref = detail["conversation_messages"][0]["_delete_ref"].clone();
+
+        delete_jsonl_message(&path, &delete_ref).unwrap();
+
+        let updated = std::fs::read_to_string(&path).unwrap();
+        assert!(!updated.contains("删除这段说明"));
+        assert!(!updated.contains("tool-1"));
+        assert!(!updated.contains("文件内容"));
     }
 
     #[test]
@@ -1975,6 +2596,12 @@ mod tests {
         assert_eq!(detail["summary"]["event_count"], 2);
         assert_eq!(detail["conversation_messages"][0]["text"], "legacy prompt");
         assert_eq!(detail["raw_events"].as_array().unwrap().len(), 2);
+
+        assert_eq!(delete_legacy_session(&path, "s1").unwrap(), 2);
+        assert!(!path.exists());
+        let history = std::fs::read_to_string(claude_root.join("history.jsonl")).unwrap();
+        assert!(history.contains("other"));
+        assert!(!history.contains("legacy prompt"));
     }
 
     #[test]

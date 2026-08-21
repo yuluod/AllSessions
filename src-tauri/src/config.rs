@@ -168,7 +168,10 @@ mod tests {
             "gemini": null
         }))
         .unwrap();
-        assert_eq!(parsed.codex, Some(vec!["~/a".to_string(), "~/b".to_string()]));
+        assert_eq!(
+            parsed.codex,
+            Some(vec!["~/a".to_string(), "~/b".to_string()])
+        );
         assert_eq!(parsed.claude, Some(Vec::new()));
         assert_eq!(parsed.gemini, None);
         assert_eq!(parsed.codex_archived, None);

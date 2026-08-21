@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { buildUpdaterManifest } from "../scripts/build-updater-manifest.mjs";
-import { releaseFileName } from "../scripts/collect-tauri-artifact.mjs";
+import { releaseFileName, updaterFileName } from "../scripts/collect-tauri-artifact.mjs";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 
@@ -12,6 +12,13 @@ test("跨平台安装包名称保持稳定且 macOS 使用 mac", () => {
   assert.equal(releaseFileName({ platform: "windows", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-windows-x64-setup.exe");
   assert.equal(releaseFileName({ platform: "mac", arch: "arm64", version: "1.2.3" }), "AllSessions-1.2.3-mac-arm64.dmg");
   assert.equal(releaseFileName({ platform: "linux", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-linux-x64.deb");
+});
+
+test("更新安装包名称包含平台架构且不会在汇总时冲突", () => {
+  assert.equal(updaterFileName({ platform: "windows", arch: "x64", version: "1.2.3" }), "AllSessions_1.2.3_x64-setup.exe");
+  assert.equal(updaterFileName({ platform: "mac", arch: "arm64", version: "1.2.3" }), "AllSessions_1.2.3_aarch64.app.tar.gz");
+  assert.equal(updaterFileName({ platform: "mac", arch: "x64", version: "1.2.3" }), "AllSessions_1.2.3_x64.app.tar.gz");
+  assert.equal(updaterFileName({ platform: "linux", arch: "x64", version: "1.2.3" }), "AllSessions_1.2.3_amd64.deb");
 });
 
 test("更新清单同时包含所有桌面平台及安装器别名", () => {
@@ -150,7 +157,12 @@ test("macOS 构建号独立于显示版本且发布会汇总更新清单", async
 
   assert.equal(config.bundle.macOS.bundleVersion, expectedBuildNumber);
   assert.match(workflow, /bundles: app,dmg/);
-  assert.match(workflow, /actions\/upload-artifact@v4/);
+  assert.match(workflow, /actions\/upload-artifact@v7/);
+  assert.match(workflow, /actions\/download-artifact@v8/);
+  assert.match(workflow, /path: release\/\*/);
+  assert.doesNotMatch(workflow, /path: \|[\s\S]*release\/bundle\/\*\*/);
+  assert.match(workflow, /EXISTING_ASSET_URLS[\s\S]*gh api --method DELETE/);
+  assert.doesNotMatch(workflow, /gh release upload[^\n]*--clobber/);
   assert.match(workflow, /publish:[\s\S]*needs: build-installers/);
   assert.match(workflow, /publish:[\s\S]*build-updater-manifest\.mjs[\s\S]*gh release upload/);
   assert.match(workflow, /gh release create[\s\S]*--draft/);

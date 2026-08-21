@@ -596,7 +596,7 @@ test("语言切换会重渲染动态内容而不是只更新静态文案", async
   );
   assert.match(
     source,
-    /elements\.langToggle\.addEventListener\("click", \(\) => \{[\s\S]*rerenderLocalizedContent\(\);/
+    /createSettingsController\(\{[\s\S]*onLanguageChanged: \(\) => \{[\s\S]*rerenderLocalizedContent\(\);/
   );
 });
 
@@ -702,9 +702,11 @@ test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复�
   assert.doesNotMatch(app, /if \(isTools && isCodexMaintenanceEnabled\(\)/);
 });
 
-test("顶栏提供设置入口且对话框包含常规、来源、存储与关于分区", async () => {
+test("设置对话框使用四个顶部分类并只在来源页显示保存操作", async () => {
   const html = await readProjectFile("public/index.html");
   const css = await readProjectFile("public/styles.css");
+  const settingsCss = await readProjectFile("public/styles/settings.css");
+  const source = await readProjectFile("public/settings-view.js");
 
   assert.match(html, /id="settings-toggle"[\s\S]*aria-haspopup="dialog"/);
   assert.match(html, /<dialog\s+id="settings-dialog"/);
@@ -712,20 +714,76 @@ test("顶栏提供设置入口且对话框包含常规、来源、存储与关�
   assert.match(html, /id="settings-sources"/);
   assert.match(html, /id="settings-clear-cache"/);
   assert.match(html, /id="settings-version"/);
+  assert.match(html, /id="settings-check-update"/);
+  assert.match(html, /class="settings-heading"/);
+  assert.match(html, /class="settings-tabs"[\s\S]*role="tablist"/);
+  assert.equal((html.match(/data-settings-tab=/g) || []).length, 4);
+  assert.equal((html.match(/data-settings-panel=/g) || []).length, 4);
+  assert.match(html, /data-settings-tab="about"/);
+  assert.match(
+    html,
+    /data-settings-panel="general"[\s\S]*id="settings-language-select"[\s\S]*id="settings-keep-running"[\s\S]*id="settings-startup-updates"/
+  );
+  assert.match(
+    html,
+    /data-settings-panel="about"[\s\S]*id="settings-version"[\s\S]*id="settings-check-update"/
+  );
+  assert.doesNotMatch(html, /id="lang-toggle"/);
+  assert.match(html, /class="settings-section-content"/);
   assert.match(html, /id="settings-save-btn"/);
+  assert.match(html, /data-i18n="settingsSaveSources"/);
   assert.match(html, /id="settings-status"[\s\S]*aria-live="polite"/);
   assert.match(css, /\.settings-dialog\s*\{/);
   assert.match(css, /\.settings-dialog::backdrop/);
+  assert.match(settingsCss, /\.settings-tab\.active/);
+  assert.match(
+    settingsCss,
+    /\.settings-dialog\s*\{[\s\S]*height: min\(560px, calc\(100dvh - 32px\)\)/
+  );
+  assert.match(
+    settingsCss,
+    /\.settings-dialog\[open\]\s*\{[\s\S]*display: flex/
+  );
+  assert.match(
+    settingsCss,
+    /\.settings-body\s*\{[\s\S]*flex: 1;[\s\S]*min-height: 0;/
+  );
+  assert.match(
+    settingsCss,
+    /\.settings-dialog:not\(\[data-active-tab="sources"\]\) \.settings-footer/
+  );
+  assert.match(source, /function activateTab\(name, focus = false\)/);
+  assert.match(source, /\["ArrowLeft", "ArrowRight", "Home", "End"\]/);
+  assert.match(source, /fetchJson\("\/api\/settings\/preferences"/);
+  assert.match(source, /document\.documentElement\.classList\.add\("settings-modal-open"\)/);
+  assert.match(source, /addEventListener\("close", unlockPageScroll\)/);
+  assert.match(
+    settingsCss,
+    /html\.settings-modal-open[\s\S]*overflow: hidden/
+  );
 });
 
 test("设置视图通过专用接口读写配置并支持语言切换", async () => {
   const source = await readProjectFile("public/settings-view.js");
   const app = await readProjectFile("public/app.js");
   const i18n = await readProjectFile("public/i18n.js");
+  const backend = await readProjectFile("src-tauri/src/backend.rs");
 
   assert.match(source, /fetchJson\("\/api\/settings"\)/);
   assert.match(source, /fetchJson\("\/api\/settings", \{\s*method: "POST"/);
   assert.match(source, /fetchJson\("\/api\/settings\/clear-cache"/);
+  assert.match(source, /fetchJson\("\/api\/settings\/check-update"/);
+  assert.match(source, /fetchJson\("\/api\/settings\/preferences"/);
+  assert.match(source, /error\.code === DESKTOP_RUNTIME_REQUIRED/);
+  assert.match(source, /settingsDesktopPreview/);
+  assert.match(
+    backend,
+    /\("POST", "\/api\/settings\/check-update"\)[\s\S]*updater::check_for_updates\(app\)/
+  );
+  assert.match(
+    backend,
+    /\("POST", "\/api\/settings\/preferences"\)[\s\S]*config::parse_preferences/
+  );
   assert.match(
     source,
     /setLang\(event\.target\.value === "en" \? "en" : "zh"\)/
@@ -744,6 +802,11 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
     "settingsOrigin_env",
     "settingsOrigin_default",
     "settingsCacheCleared",
+    "settingsCheckUpdate",
+    "settingsKeepRunning",
+    "settingsStartupUpdates",
+    "settingsPreferencesSaved",
+    "settingsLicense",
   ]) {
     assert.match(i18n, new RegExp(`${key}: "`));
   }

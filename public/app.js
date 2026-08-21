@@ -1,4 +1,4 @@
-import { t, setLang, getLang, updateStaticI18n } from "./i18n.js";
+import { t, getLang, updateStaticI18n } from "./i18n.js";
 import {
   DESKTOP_RUNTIME_REQUIRED,
   fetchJson as requestJson,
@@ -203,7 +203,6 @@ const elements = {
   searchShortcut: document.querySelector("#search-shortcut"),
   resetFilters: document.querySelector("#reset-filters"),
   refreshBtn: document.querySelector("#refresh-btn"),
-  langToggle: document.querySelector("#lang-toggle"),
   showArchivedToggle: document.querySelector("#show-archived-toggle"),
   showCodexArchivedToggle: document.querySelector(
     "#show-codex-archived-toggle"
@@ -313,12 +312,19 @@ const elements = {
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsDialog: document.querySelector("#settings-dialog"),
   settingsCloseBtn: document.querySelector("#settings-close-btn"),
+  settingsTabs: Array.from(document.querySelectorAll("[data-settings-tab]")),
+  settingsPanels: Array.from(
+    document.querySelectorAll("[data-settings-panel]")
+  ),
   settingsLanguageSelect: document.querySelector("#settings-language-select"),
+  settingsKeepRunning: document.querySelector("#settings-keep-running"),
+  settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
   settingsSources: document.querySelector("#settings-sources"),
   settingsCachePath: document.querySelector("#settings-cache-path"),
   settingsCacheSize: document.querySelector("#settings-cache-size"),
   settingsClearCache: document.querySelector("#settings-clear-cache"),
   settingsVersion: document.querySelector("#settings-version"),
+  settingsCheckUpdate: document.querySelector("#settings-check-update"),
   settingsSaveBtn: document.querySelector("#settings-save-btn"),
   settingsStatus: document.querySelector("#settings-status"),
   sessionDeleteBtn: document.querySelector("#session-delete-btn"),
@@ -348,7 +354,6 @@ const conversationView = createConversationView({
 const settingsController = createSettingsController({
   elements,
   onLanguageChanged: () => {
-    syncLanguageToggle();
     rerenderLocalizedContent();
   },
   onSaved: () => {
@@ -604,17 +609,6 @@ function rerenderLocalizedContent() {
     resetCodexMigrationMetrics();
   }
   configureCodexMaintenanceUi();
-}
-
-function syncLanguageToggle() {
-  if (!elements.langToggle) return;
-  const isChinese = getLang() === "zh";
-  elements.langToggle.textContent = t(
-    isChinese ? "languageToggleZh" : "languageToggleEn"
-  );
-  const label = t(isChinese ? "switchToEnglish" : "switchToChinese");
-  elements.langToggle.title = label;
-  elements.langToggle.setAttribute("aria-label", label);
 }
 
 function syncSearchShortcut() {
@@ -2783,18 +2777,8 @@ async function initialize() {
 
   updateStaticI18n();
   document.documentElement.lang = getLang() === "zh" ? "zh-CN" : "en";
-  syncLanguageToggle();
   syncSearchShortcut();
   configureCodexMaintenanceUi();
-
-  if (elements.langToggle) {
-    elements.langToggle.addEventListener("click", () => {
-      const next = getLang() === "zh" ? "en" : "zh";
-      setLang(next);
-      syncLanguageToggle();
-      rerenderLocalizedContent();
-    });
-  }
 
   settingsController.bind();
 

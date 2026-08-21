@@ -72,6 +72,32 @@ test("更新清单缺少任一目标平台时拒绝发布", () => {
   );
 });
 
+test("更新清单不会保留 GitHub 草稿资源的临时地址", () => {
+  const names = [
+    "AllSessions_0.0.15_aarch64.app.tar.gz",
+    "AllSessions_0.0.15_x64.app.tar.gz",
+    "AllSessions_0.0.15_amd64.deb",
+    "AllSessions_0.0.15_x64-setup.exe"
+  ];
+  const metadata = {
+    tagName: "v0.0.15",
+    publishedAt: "2026-08-21T00:00:00Z",
+    assets: names.map((name) => ({
+      name,
+      url: `https://github.com/yuluod/AllSessions/releases/download/untagged-draft/${name}`
+    }))
+  };
+  const signatures = Object.fromEntries(names.map((name) => [`${name}.sig`, `signature:${name}`]));
+
+  const manifest = buildUpdaterManifest({ metadata, signatures, version: "0.0.15" });
+
+  assert.equal(
+    manifest.platforms["windows-x86_64"].url,
+    "https://github.com/yuluod/AllSessions/releases/download/v0.0.15/AllSessions_0.0.15_x64-setup.exe"
+  );
+  assert.ok(Object.values(manifest.platforms).every(({ url }) => !url.includes("/untagged-")));
+});
+
 test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   const [config, cargo, rustSource, backend, mainSource, updater, workflow] = await Promise.all([
     readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),

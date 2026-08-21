@@ -4,13 +4,24 @@ import { compactText, formatTimestamp } from "./session-format.js";
 import { displayMessageText } from "./session-export.js";
 import { filterConversationMessages } from "./conversation-filter.js";
 
-export function createConversationView({ state, elements }) {
+export function createConversationView({
+  state,
+  elements,
+  isMessageRemoved,
+  onRequestDelete,
+  onRestoreMessage,
+}) {
   function filtered(messages) {
-    return filterConversationMessages(messages, {
+    const decorated = messages.map((message) => ({
+      ...message,
+      _removed: isMessageRemoved?.(message) === true,
+    }));
+    return filterConversationMessages(decorated, {
       query: state.detailQuery,
       showTools: state.showTools,
       showContext: state.showContext,
-      roleFilter: state.roleFilter
+      showRemoved: state.showRemoved,
+      roleFilter: state.roleFilter,
     });
   }
 
@@ -58,7 +69,10 @@ export function createConversationView({ state, elements }) {
 
       const text = document.createElement("span");
       text.className = "message-nav-text";
-      text.textContent = compactText(markdownToPlainText(displayMessageText(message)), 72);
+      text.textContent = compactText(
+        markdownToPlainText(displayMessageText(message)),
+        72
+      );
 
       button.append(top, text);
       container.append(button);
@@ -82,7 +96,9 @@ export function createConversationView({ state, elements }) {
     if (elements.messageNavInlineList) {
       appendMessageNavItems(elements.messageNavInlineList, visibleMessages);
     }
-    const propsNavList = elements.propsContent?.querySelector(".message-nav-section .message-nav-list");
+    const propsNavList = elements.propsContent?.querySelector(
+      ".message-nav-section .message-nav-list"
+    );
     if (propsNavList) {
       appendMessageNavItems(propsNavList, visibleMessages);
     }
@@ -102,29 +118,37 @@ export function createConversationView({ state, elements }) {
     }
 
     visibleMessages.forEach((message) => {
-      const fragment = elements.conversationItemTemplate.content.cloneNode(true);
+      const fragment =
+        elements.conversationItemTemplate.content.cloneNode(true);
       const card = fragment.querySelector(".message-card");
+      card.classList.toggle("removed", message._removed === true);
       card.id = `message-${message._origIdx + 1}`;
       card.dataset.role = message.role;
-      fragment.querySelector(".message-idx").textContent = `#${message._origIdx + 1}`;
+      fragment.querySelector(".message-idx").textContent =
+        `#${message._origIdx + 1}`;
       fragment.querySelector(".message-role").textContent = message.role;
       const toolElement = fragment.querySelector(".message-tool");
       if (message.synthetic_context) {
         toolElement.textContent = t("systemContext");
         toolElement.classList.remove("hidden");
       } else if (message.tool_kind || message.tool_name) {
-        toolElement.textContent = [message.tool_kind, message.tool_name].filter(Boolean).join(" · ");
+        toolElement.textContent = [message.tool_kind, message.tool_name]
+          .filter(Boolean)
+          .join(" · ");
         toolElement.classList.remove("hidden");
       }
-      fragment.querySelector(".message-time").textContent = formatTimestamp(message.timestamp);
+      fragment.querySelector(".message-time").textContent = formatTimestamp(
+        message.timestamp
+      );
       const messageText = displayMessageText(message);
       const messageContent = fragment.querySelector(".message-text");
       messageContent.id = `message-content-${message._origIdx + 1}`;
       renderMarkdown(messageContent, messageText);
 
-      const shouldCollapse = message.role === "tool"
-        || message.synthetic_context === true
-        || markdownToPlainText(messageText).length > 1800;
+      const shouldCollapse =
+        message.role === "tool" ||
+        message.synthetic_context === true ||
+        markdownToPlainText(messageText).length > 1800;
 
       const toggleButton = fragment.querySelector(".message-toggle");
       toggleButton.setAttribute("aria-controls", messageContent.id);
@@ -138,19 +162,48 @@ export function createConversationView({ state, elements }) {
       });
 
       const copyButton = document.createElement("button");
+      copyButton.type = "button";
       copyButton.className = "message-copy-btn";
       copyButton.title = t("copyMessage");
       copyButton.textContent = t("copy");
       copyButton.addEventListener("click", () => {
-        navigator.clipboard.writeText(messageText).then(() => {
-          copyButton.textContent = "✓";
-          setTimeout(() => { copyButton.textContent = t("copy"); }, 1500);
-        }).catch(() => {
-          copyButton.textContent = t("copyFailed");
-          setTimeout(() => { copyButton.textContent = t("copy"); }, 1500);
-        });
+        navigator.clipboard
+          .writeText(messageText)
+          .then(() => {
+            copyButton.textContent = "✓";
+            setTimeout(() => {
+              copyButton.textContent = t("copy");
+            }, 1500);
+          })
+          .catch(() => {
+            copyButton.textContent = t("copyFailed");
+            setTimeout(() => {
+              copyButton.textContent = t("copy");
+            }, 1500);
+          });
       });
-      fragment.querySelector(".message-card header").append(copyButton);
+      const header = fragment.querySelector(".message-card header");
+      header.append(copyButton);
+      if (message._message_key) {
+        if (message._removed) {
+          const restoreButton = document.createElement("button");
+          restoreButton.type = "button";
+          restoreButton.className = "message-restore-btn";
+          restoreButton.textContent = t("restore");
+          restoreButton.addEventListener("click", () =>
+            onRestoreMessage?.(message)
+          );
+          header.append(restoreButton);
+        }
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "message-delete-btn";
+        deleteButton.textContent = t("deleteMessage");
+        deleteButton.addEventListener("click", () =>
+          onRequestDelete?.(message)
+        );
+        header.append(deleteButton);
+      }
       elements.conversationList.append(fragment);
     });
   }

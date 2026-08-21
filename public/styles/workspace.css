@@ -732,6 +732,11 @@
   opacity: 0.62;
 }
 
+.session-item.removed {
+  border-style: dashed;
+  opacity: 0.68;
+}
+
 .session-primary,
 .session-tertiary {
   display: flex;
@@ -1062,6 +1067,12 @@
   background: var(--info-soft);
 }
 
+.detail-tag.tag-removed {
+  border-color: #f1b8b3;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
 .detail-topbar-right,
 .export-actions {
   display: flex;
@@ -1142,6 +1153,16 @@
 
 .inspector-toggle {
   display: none;
+}
+
+.session-delete-button {
+  min-height: 34px;
+  color: var(--danger);
+}
+
+.session-delete-button:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .tabs,
@@ -1341,6 +1362,146 @@
   background: rgba(255, 255, 255, 0.78);
   cursor: pointer;
   font-size: 0.67rem;
+}
+
+.message-delete-btn,
+.message-restore-btn {
+  min-height: 24px;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--danger);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.67rem;
+}
+
+.message-delete-btn:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.message-restore-btn {
+  color: var(--accent-strong);
+}
+
+.message-restore-btn:hover {
+  border-color: #acd5d1;
+  background: var(--accent-soft);
+}
+
+.message-card.removed {
+  border-style: dashed;
+  opacity: 0.68;
+}
+
+.delete-dialog {
+  width: min(520px, calc(100vw - 28px));
+  max-height: calc(100vh - 40px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 22px 60px rgba(23, 33, 38, 0.22);
+}
+
+.delete-dialog::backdrop {
+  background: rgba(23, 33, 38, 0.42);
+}
+
+.delete-dialog-header,
+.delete-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.delete-dialog-header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+
+.delete-dialog-header h2,
+.delete-dialog-body p {
+  margin: 0;
+}
+
+.delete-dialog-header h2 {
+  font-size: 1rem;
+}
+
+.delete-dialog-close-button {
+  display: inline-grid;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  place-items: center;
+  border-color: transparent;
+  border-radius: 50%;
+  color: var(--muted);
+  background: transparent;
+}
+
+.delete-dialog-close-button:hover {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--surface-muted);
+}
+
+.delete-dialog-close-button svg {
+  display: block;
+}
+
+.delete-dialog-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.delete-dialog-warning {
+  padding: 11px 12px;
+  border: 1px solid #f1b8b3;
+  border-radius: var(--radius-small);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.delete-dialog-warning p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.delete-dialog-status {
+  min-height: 1.3em;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.delete-dialog-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+}
+
+.danger-button {
+  border-color: #f1b8b3;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.danger-button:hover {
+  border-color: var(--danger);
+}
+
+.delete-dialog-actions button:disabled {
+  cursor: wait;
+  opacity: 0.56;
 }
 
 .message-copy-btn:hover {

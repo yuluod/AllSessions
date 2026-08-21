@@ -44,7 +44,14 @@ export function exportSessionMarkdown(detail) {
 
 export function exportSessionJson(detail) {
   downloadBlob(
-    JSON.stringify(detail, null, 2),
+    JSON.stringify(
+      detail,
+      (key, value) =>
+        ["_delete_ref", "_message_key", "_removed", "_origIdx"].includes(key)
+          ? undefined
+          : value,
+      2
+    ),
     `session-${detail.summary.id.slice(0, 12)}.json`,
     "application/json; charset=utf-8"
   );

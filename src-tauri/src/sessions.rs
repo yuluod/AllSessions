@@ -2322,8 +2322,10 @@ mod tests {
 
     #[test]
     fn 继承来源描述不会采用用户配置() {
-        let mut config = crate::config::SourceRoots::default();
-        config.codex = Some(vec!["/custom-codex".to_string()]);
+        let config = crate::config::SourceRoots {
+            codex: Some(vec!["/custom-codex".to_string()]),
+            ..Default::default()
+        };
 
         assert_eq!(describe_sources(&config)["codex"]["origin"], "config");
         assert_ne!(describe_inherited_sources()["codex"]["origin"], "config");

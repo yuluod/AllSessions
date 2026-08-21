@@ -27,6 +27,22 @@ export function updaterPlatformKeys(name) {
   return [];
 }
 
+function publishedAssetUrl(asset, tagName) {
+  let url;
+  try {
+    url = new URL(asset.url);
+  } catch {
+    return asset.url;
+  }
+  const marker = "/releases/download/";
+  const markerIndex = url.pathname.indexOf(marker);
+  if (url.hostname !== "github.com" || markerIndex === -1) return asset.url;
+
+  const repositoryPath = url.pathname.slice(0, markerIndex);
+  url.pathname = `${repositoryPath}${marker}${encodeURIComponent(tagName)}/${encodeURIComponent(asset.name)}`;
+  return url.toString();
+}
+
 export function buildUpdaterManifest({ metadata, signatures, version }) {
   if (metadata.tagName !== `v${version}`) {
     throw new Error(`发布标签 ${metadata.tagName} 与项目版本 v${version} 不一致`);
@@ -44,7 +60,9 @@ export function buildUpdaterManifest({ metadata, signatures, version }) {
       if (platforms[platform]) throw new Error(`平台 ${platform} 匹配到多个更新资源`);
       platforms[platform] = {
         signature: signatures[signatureName].trim(),
-        url: asset.url
+        // 草稿 Release 的 asset.url 使用临时的 untagged-* 路径，发布后会失效。
+        // 清单始终写入由正式 tag 和附件名组成的稳定 GitHub 下载地址。
+        url: publishedAssetUrl(asset, metadata.tagName)
       };
     }
   }

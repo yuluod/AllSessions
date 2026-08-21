@@ -140,19 +140,11 @@ jobs:
           node scripts/collect-tauri-artifact.mjs --target ${{ matrix.target }} --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
 
       - name: 暂存平台安装包
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: error
-          path: |
-            release/*
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe.sig
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz.sig
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb.sig
+          path: release/*
 
   publish:
     name: 完整发布所有平台
@@ -171,7 +163,7 @@ jobs:
           package-manager-cache: false
 
       - name: 下载所有平台安装包
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-assets
@@ -199,6 +191,11 @@ jobs:
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "AllSessions $RELEASE_TAG" --notes-file release-notes.md
           fi
 
+          mapfile -t EXISTING_ASSET_URLS < <(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].apiUrl')
+          for asset_url in "${EXISTING_ASSET_URLS[@]}"; do
+            gh api --method DELETE "$asset_url"
+          done
+
       - name: 上传全部安装包到草稿
         shell: bash
         env:
@@ -210,7 +207,7 @@ jobs:
             echo "::error::没有找到可发布的安装包。"
             exit 1
           fi
-          gh release upload "$RELEASE_TAG" "${RELEASE_FILES[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" "${RELEASE_FILES[@]}" --repo "$GITHUB_REPOSITORY"
 
       - name: 生成并上传完整更新清单
         shell: bash
@@ -223,7 +220,7 @@ jobs:
           mkdir -p release-signatures
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.sig' --dir release-signatures
           node scripts/build-updater-manifest.mjs release-metadata.json release-signatures latest.json
-          gh release upload "$RELEASE_TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" latest.json --repo "$GITHUB_REPOSITORY"
 
       - name: 正式发布完整 Release
         shell: bash

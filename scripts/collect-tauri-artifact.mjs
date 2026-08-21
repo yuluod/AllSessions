@@ -11,6 +11,13 @@ export function releaseFileName({ platform, arch, version }) {
   throw new Error(`不支持的发布平台：${platform}`);
 }
 
+export function updaterFileName({ platform, arch, version }) {
+  if (platform === "windows") return `AllSessions_${version}_${arch}-setup.exe`;
+  if (platform === "mac") return `AllSessions_${version}_${arch === "arm64" ? "aarch64" : arch}.app.tar.gz`;
+  if (platform === "linux") return `AllSessions_${version}_${arch === "x64" ? "amd64" : arch}.deb`;
+  throw new Error(`不支持的发布平台：${platform}`);
+}
+
 async function findFiles(root, extension) {
   const entries = await readdir(root, { withFileTypes: true });
   const matches = [];
@@ -42,10 +49,22 @@ export async function collectArtifact({ target, platform, arch, output = "releas
   const matches = await findFiles(bundleRoot, extension);
   if (matches.length !== 1) throw new Error(`期望找到 1 个 ${extension} 安装包，实际找到 ${matches.length} 个`);
   const outputDir = path.resolve(projectRoot, output);
-  const destination = path.join(outputDir, releaseFileName({ platform, arch, version: packageJson.version }));
   await mkdir(outputDir, { recursive: true });
-  await copyFile(matches[0], destination);
-  return destination;
+
+  const stableDestination = path.join(outputDir, releaseFileName({ platform, arch, version: packageJson.version }));
+  const updaterDestination = path.join(outputDir, updaterFileName({ platform, arch, version: packageJson.version }));
+  const updaterMatches = platform === "mac" ? await findFiles(bundleRoot, ".app.tar.gz") : matches;
+  if (updaterMatches.length !== 1) throw new Error(`期望找到 1 个 ${platform} 更新包，实际找到 ${updaterMatches.length} 个`);
+  const updaterSource = updaterMatches[0];
+  const copies = new Map([
+    [stableDestination, matches[0]],
+    [path.join(outputDir, path.basename(matches[0])), matches[0]],
+    [updaterDestination, updaterSource],
+    [`${updaterDestination}.sig`, `${updaterSource}.sig`]
+  ]);
+
+  await Promise.all([...copies].map(([destination, source]) => copyFile(source, destination)));
+  return [...copies.keys()];
 }
 
 function valueAfter(argv, name) {
@@ -56,10 +75,10 @@ function valueAfter(argv, name) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2);
-  const destination = await collectArtifact({
+  const destinations = await collectArtifact({
     target: valueAfter(argv, "--target"),
     platform: valueAfter(argv, "--platform"),
     arch: valueAfter(argv, "--arch")
   });
-  console.log(`发布安装包已收集：${destination}`);
+  console.log(`发布安装包已收集：${destinations.join(", ")}`);
 }

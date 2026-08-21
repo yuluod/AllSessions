@@ -23,6 +23,8 @@ const PROJECT_PREVIEW_LIMIT = 4;
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const INSPECTOR_DRAWER_QUERY = "(max-width: 1320px)";
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
+const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";
+const REMOVED_MESSAGES_KEY = "allsessions_removed_messages";
 const sessionRequestGate = createLatestRequestGate();
 const detailRequestGate = createLatestRequestGate();
 const statsRequestGate = createLatestRequestGate();
@@ -41,6 +43,7 @@ const state = {
   showArchived: false,
   showCodexArchived: false,
   showHidden: false,
+  showRemoved: false,
   showAllProjects: false,
   codexMigrationPreview: null,
   codexMigrationSelectedProviders: new Set(),
@@ -61,6 +64,8 @@ const state = {
   },
   roleFilter: "",
 };
+
+let pendingDeletion = null;
 
 function getArchivedIds() {
   try {
@@ -84,6 +89,66 @@ function toggleArchive(id) {
   }
   setArchivedIds(ids);
   return archived;
+}
+
+function getRemovedSessionIds() {
+  try {
+    return new Set(
+      JSON.parse(localStorage.getItem(REMOVED_SESSIONS_KEY) || "[]")
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function setSessionRemoved(id, removed) {
+  const ids = getRemovedSessionIds();
+  if (removed) ids.add(id);
+  else ids.delete(id);
+  localStorage.setItem(REMOVED_SESSIONS_KEY, JSON.stringify(Array.from(ids)));
+}
+
+function getRemovedMessages() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(REMOVED_MESSAGES_KEY) || "{}"
+    );
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function isMessageRemoved(message) {
+  const sessionKey =
+    state.currentDetail?.summary?._key || state.selectedSessionKey;
+  if (!sessionKey || !message?._message_key) return false;
+  return (getRemovedMessages()[sessionKey] || []).includes(
+    message._message_key
+  );
+}
+
+function setMessageRemoved(sessionKey, messageKey, removed) {
+  const bySession = getRemovedMessages();
+  const keys = new Set(bySession[sessionKey] || []);
+  if (removed) keys.add(messageKey);
+  else keys.delete(messageKey);
+  if (keys.size) bySession[sessionKey] = Array.from(keys);
+  else delete bySession[sessionKey];
+  localStorage.setItem(REMOVED_MESSAGES_KEY, JSON.stringify(bySession));
+}
+
+function clearRemovedState(sessionKey, messageKey) {
+  if (messageKey) {
+    setMessageRemoved(sessionKey, messageKey, false);
+    return;
+  }
+  setSessionRemoved(sessionKey, false);
+  const bySession = getRemovedMessages();
+  delete bySession[sessionKey];
+  localStorage.setItem(REMOVED_MESSAGES_KEY, JSON.stringify(bySession));
 }
 
 function isCodexArchivedSession(session) {
@@ -143,6 +208,7 @@ const elements = {
     "#show-codex-archived-toggle"
   ),
   showHiddenToggle: document.querySelector("#show-hidden-toggle"),
+  showRemovedToggle: document.querySelector("#show-removed-toggle"),
   projectList: document.querySelector("#project-list"),
   activeFilterBar: document.querySelector("#active-filter-bar"),
   sessionList: document.querySelector("#session-list"),
@@ -254,6 +320,16 @@ const elements = {
   settingsVersion: document.querySelector("#settings-version"),
   settingsSaveBtn: document.querySelector("#settings-save-btn"),
   settingsStatus: document.querySelector("#settings-status"),
+  sessionDeleteBtn: document.querySelector("#session-delete-btn"),
+  deleteDialog: document.querySelector("#delete-dialog"),
+  deleteDialogTitle: document.querySelector("#delete-dialog-title"),
+  deleteDialogDescription: document.querySelector("#delete-dialog-description"),
+  deleteDialogWarning: document.querySelector("#delete-dialog-warning"),
+  deleteDialogStatus: document.querySelector("#delete-dialog-status"),
+  deleteDialogClose: document.querySelector("#delete-dialog-close"),
+  deleteSoftBtn: document.querySelector("#delete-soft-btn"),
+  deletePermanentBtn: document.querySelector("#delete-permanent-btn"),
+  deleteConfirmBtn: document.querySelector("#delete-confirm-btn"),
   sessionItemTemplate: document.querySelector("#session-item-template"),
   conversationItemTemplate: document.querySelector(
     "#conversation-item-template"
@@ -261,7 +337,13 @@ const elements = {
   rawEventTemplate: document.querySelector("#raw-event-template"),
 };
 
-const conversationView = createConversationView({ state, elements });
+const conversationView = createConversationView({
+  state,
+  elements,
+  isMessageRemoved,
+  onRequestDelete: (message) => openDeleteDialog({ kind: "message", message }),
+  onRestoreMessage: (message) => restoreRemovedMessage(message),
+});
 const settingsController = createSettingsController({
   elements,
   onLanguageChanged: () => {
@@ -286,6 +368,7 @@ function syncUrl() {
   if (state.searchQuery) params.set("q", state.searchQuery);
   if (state.showCodexArchived) params.set("show_codex_archived", "1");
   if (state.showHidden) params.set("show_hidden", "1");
+  if (state.showRemoved) params.set("show_removed", "1");
   if (state.selectedSessionKey) params.set("session", state.selectedSessionKey);
   const search = params.toString();
   history.replaceState(null, "", search ? `?${search}` : location.pathname);
@@ -303,6 +386,8 @@ function restoreFromUrl() {
     params.get("show_codex_archived") === "true";
   state.showHidden =
     params.get("show_hidden") === "1" || params.get("show_hidden") === "true";
+  state.showRemoved =
+    params.get("show_removed") === "1" || params.get("show_removed") === "true";
   state.selectedSessionKey = params.get("session") || null;
 }
 
@@ -472,6 +557,9 @@ function syncFilterControls() {
   if (elements.showHiddenToggle) {
     elements.showHiddenToggle.checked = state.showHidden;
   }
+  if (elements.showRemovedToggle) {
+    elements.showRemovedToggle.checked = state.showRemoved;
+  }
   renderProjectNav();
 }
 
@@ -492,6 +580,7 @@ function rerenderLocalizedContent() {
       fullCwd;
     elements.detailTitle.title = fullCwd;
     renderDetailTags(state.currentDetail.summary);
+    syncSessionDeleteButton();
     renderPropsPanel(
       state.currentDetail.summary,
       state.currentDetail.conversation_messages
@@ -567,8 +656,11 @@ async function fetchJson(url, options) {
 
 function visibleSessions() {
   const archivedIds = getArchivedIds();
+  const removedIds = getRemovedSessionIds();
   return state.sessions.filter(
-    (session) => state.showArchived || !archivedIds.has(session._key)
+    (session) =>
+      (state.showArchived || !archivedIds.has(session._key)) &&
+      (state.showRemoved || !removedIds.has(session._key))
   );
 }
 
@@ -586,6 +678,11 @@ async function clearFilterChip(type) {
     state.showCodexArchived = false;
   } else if (type === "showHidden") {
     state.showHidden = false;
+  } else if (type === "showRemoved") {
+    state.showRemoved = false;
+    syncFilterControls();
+    renderSessionList();
+    return;
   }
 
   syncFilterControls();
@@ -654,6 +751,13 @@ function activeFilterEntries() {
       value: t("filterEnabled"),
     });
   }
+  if (state.showRemoved) {
+    entries.push({
+      type: "showRemoved",
+      label: t("showRemoved"),
+      value: t("filterEnabled"),
+    });
+  }
   return entries;
 }
 
@@ -718,8 +822,10 @@ function appendSessionGroupHeader(label, count) {
 
 function appendSessionItems(sessions) {
   const archivedIds = getArchivedIds();
+  const removedIds = getRemovedSessionIds();
   sessions.forEach((session) => {
     const archived = archivedIds.has(session._key);
+    const removed = removedIds.has(session._key);
 
     const fragment = elements.sessionItemTemplate.content.cloneNode(true);
     const row = fragment.querySelector(".session-row");
@@ -779,6 +885,13 @@ function appendSessionItems(sessions) {
     }
     if (archived) {
       button.classList.add("archived");
+    }
+    if (removed) {
+      button.classList.add("removed");
+      const removedBadge = document.createElement("span");
+      removedBadge.className = "session-hidden-reason";
+      removedBadge.textContent = t("removedSession");
+      button.querySelector(".session-tertiary").append(removedBadge);
     }
 
     const archiveBtn = document.createElement("button");
@@ -941,6 +1054,10 @@ function renderDetailTags(summary) {
     },
     { text: hiddenReasonLabel(summary), cls: "tag-hidden" },
     {
+      text: getRemovedSessionIds().has(summary._key) ? t("removedSession") : "",
+      cls: "tag-removed",
+    },
+    {
       text: summary.detail_truncated ? t("partialDetail") : "",
       cls: "tag-hidden",
     },
@@ -958,6 +1075,146 @@ function renderDetailTags(summary) {
     }
     elements.detailTags.append(span);
   });
+}
+
+function syncSessionDeleteButton() {
+  if (!elements.sessionDeleteBtn) return;
+  const key = state.currentDetail?.summary?._key;
+  const removed = key && getRemovedSessionIds().has(key);
+  elements.sessionDeleteBtn.textContent = t(
+    removed ? "manageRemovedSession" : "deleteSession"
+  );
+}
+
+function announce(message) {
+  const ariaLive = document.querySelector("#aria-live");
+  if (ariaLive) ariaLive.textContent = message;
+}
+
+function closeDeleteDialog() {
+  if (elements.deleteConfirmBtn?.disabled) return;
+  elements.deleteDialog?.close();
+  pendingDeletion = null;
+}
+
+function openDeleteDialog({ kind, message = null }) {
+  const sessionKey = state.currentDetail?.summary?._key;
+  if (!sessionKey || !elements.deleteDialog) return;
+  const messageKey = message?._message_key || null;
+  const removed =
+    kind === "session"
+      ? getRemovedSessionIds().has(sessionKey)
+      : isMessageRemoved(message);
+  pendingDeletion = { kind, sessionKey, messageKey, removed };
+  elements.deleteDialogTitle.textContent = t(
+    removed
+      ? "manageRemovedTitle"
+      : kind === "session"
+        ? "removeSessionTitle"
+        : "removeMessageTitle"
+  );
+  elements.deleteDialogDescription.textContent = t(
+    kind === "session" ? "removeSessionDesc" : "removeMessageDesc"
+  );
+  elements.deleteDialogStatus.textContent = "";
+  elements.deleteDialogWarning.classList.add("hidden");
+  elements.deleteConfirmBtn.classList.add("hidden");
+  elements.deletePermanentBtn.classList.remove("hidden");
+  elements.deleteSoftBtn.classList.remove("hidden");
+  elements.deleteSoftBtn.textContent = t(
+    removed ? "restore" : "removeFromAllSessions"
+  );
+  elements.deleteDialog.showModal();
+  elements.deleteSoftBtn.focus();
+}
+
+function refreshDeletionViews() {
+  renderSessionList();
+  if (!state.currentDetail) return;
+  renderDetailTags(state.currentDetail.summary);
+  syncSessionDeleteButton();
+  conversationView.renderConversation(
+    state.currentDetail.conversation_messages || []
+  );
+  renderPropsPanel(
+    state.currentDetail.summary,
+    state.currentDetail.conversation_messages || []
+  );
+}
+
+function restoreRemovedMessage(message) {
+  const sessionKey = state.currentDetail?.summary?._key;
+  if (!sessionKey || !message?._message_key) return;
+  setMessageRemoved(sessionKey, message._message_key, false);
+  refreshDeletionViews();
+  announce(t("contentRestored"));
+}
+
+function applySoftDeletion() {
+  if (!pendingDeletion) return;
+  const { kind, sessionKey, messageKey, removed } = pendingDeletion;
+  if (kind === "session") {
+    setSessionRemoved(sessionKey, !removed);
+    if (!removed && !state.showRemoved) {
+      state.selectedSessionKey = null;
+      state.currentDetail = null;
+      showSelectSessionPlaceholder();
+      syncUrl();
+    }
+  } else if (messageKey) {
+    setMessageRemoved(sessionKey, messageKey, !removed);
+  }
+  closeDeleteDialog();
+  refreshDeletionViews();
+  announce(t(removed ? "contentRestored" : "contentRemoved"));
+}
+
+function showPermanentDeleteConfirmation() {
+  if (!pendingDeletion) return;
+  elements.deleteDialogWarning.classList.remove("hidden");
+  elements.deleteSoftBtn.classList.add("hidden");
+  elements.deletePermanentBtn.classList.add("hidden");
+  elements.deleteConfirmBtn.classList.remove("hidden");
+  elements.deleteConfirmBtn.focus();
+}
+
+async function confirmPermanentDeletion() {
+  if (!pendingDeletion) return;
+  const target = { ...pendingDeletion };
+  elements.deleteConfirmBtn.disabled = true;
+  elements.deleteDialogClose.disabled = true;
+  elements.deleteDialogStatus.textContent = t("deleting");
+  try {
+    const url =
+      target.kind === "session"
+        ? "/api/sessions/delete"
+        : "/api/sessions/delete-message";
+    const body = { sessionKey: target.sessionKey, confirmed: true };
+    if (target.messageKey) body.messageKey = target.messageKey;
+    await fetchJson(url, { method: "POST", body });
+    clearRemovedState(target.sessionKey, target.messageKey);
+    pendingDeletion = null;
+    elements.deleteDialog.close();
+    if (target.kind === "session") {
+      state.selectedSessionKey = null;
+      state.currentDetail = null;
+      showSelectSessionPlaceholder();
+    }
+    await loadFacets();
+    await Promise.all([loadSessions(), loadStats()]);
+    announce(
+      t(
+        target.kind === "session"
+          ? "sessionDeletedPermanently"
+          : "messageDeletedPermanently"
+      )
+    );
+  } catch (error) {
+    elements.deleteDialogStatus.textContent = `${t("deleteFailed")}: ${error.message}`;
+  } finally {
+    elements.deleteConfirmBtn.disabled = false;
+    elements.deleteDialogClose.disabled = false;
+  }
 }
 
 // ── 属性面板 ────────────────────────────────────────────────────────────────────
@@ -1837,6 +2094,7 @@ async function loadSessionDetail(id, { silent = false } = {}) {
       detail.summary.title || fullCwd.split(/[\\/]/).pop() || fullCwd;
     elements.detailTitle.title = fullCwd;
     renderDetailTags(detail.summary);
+    syncSessionDeleteButton();
     renderPropsPanel(detail.summary, detail.conversation_messages);
     conversationView.renderConversation(detail.conversation_messages);
     renderRawEvents(detail.raw_events);
@@ -1895,9 +2153,9 @@ async function loadSessions({ reportError = true, background = false } = {}) {
 
     const selectedMissing = Boolean(
       state.selectedSessionKey &&
-        !visibleSessions().find(
-          (session) => session._key === state.selectedSessionKey
-        )
+      !visibleSessions().find(
+        (session) => session._key === state.selectedSessionKey
+      )
     );
     // 初始化恢复与后台刷新都保留首屏之外的选择（详情接口可按 key 直读）；
     // 只有用户主动改变列表语义（筛选、搜索、设置迁移等）才在当前列表
@@ -1926,7 +2184,7 @@ async function loadSessions({ reportError = true, background = false } = {}) {
       });
       const restoreKey = state.selectedSessionKey;
       const loaded = await loadSessionDetail(restoreKey, {
-        silent: keepingOffscreenSelection
+        silent: keepingOffscreenSelection,
       });
       if (
         keepingOffscreenSelection &&
@@ -1941,9 +2199,14 @@ async function loadSessions({ reportError = true, background = false } = {}) {
           const first = visibleSessions()[0];
           if (first) {
             state.selectedSessionKey = first._key;
-            elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
-              el.classList.toggle("active", el.dataset.sessionKey === first._key);
-            });
+            elements.sessionList
+              .querySelectorAll(".session-item")
+              .forEach((el) => {
+                el.classList.toggle(
+                  "active",
+                  el.dataset.sessionKey === first._key
+                );
+              });
             await loadSessionDetail(first._key);
           }
         } else {
@@ -2130,6 +2393,7 @@ async function returnHome() {
   state.showArchived = false;
   state.showCodexArchived = false;
   state.showHidden = false;
+  state.showRemoved = false;
   state.selectedSessionKey = null;
   state.currentDetail = null;
   state.activeTab = "conversation";
@@ -2246,6 +2510,7 @@ async function initialize() {
     state.showArchived = false;
     state.showCodexArchived = false;
     state.showHidden = false;
+    state.showRemoved = false;
     syncFilterControls();
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
@@ -2291,6 +2556,19 @@ async function initialize() {
     });
   }
 
+  if (elements.showRemovedToggle) {
+    elements.showRemovedToggle.addEventListener("change", () => {
+      state.showRemoved = elements.showRemovedToggle.checked;
+      syncUrl();
+      renderSessionList();
+      if (state.currentDetail) {
+        conversationView.renderConversation(
+          state.currentDetail.conversation_messages || []
+        );
+      }
+    });
+  }
+
   elements.openCodexArchiveBtn?.addEventListener("click", async () => {
     state.showCodexArchived = true;
     if (elements.showCodexArchivedToggle)
@@ -2304,6 +2582,27 @@ async function initialize() {
   elements.mobileBackBtn?.addEventListener("click", () =>
     scrollToWorkspaceSection(elements.sidebarLeft)
   );
+
+  elements.sessionDeleteBtn?.addEventListener("click", () =>
+    openDeleteDialog({ kind: "session" })
+  );
+  elements.deleteDialogClose?.addEventListener("click", closeDeleteDialog);
+  elements.deleteSoftBtn?.addEventListener("click", applySoftDeletion);
+  elements.deletePermanentBtn?.addEventListener(
+    "click",
+    showPermanentDeleteConfirmation
+  );
+  elements.deleteConfirmBtn?.addEventListener(
+    "click",
+    confirmPermanentDeletion
+  );
+  elements.deleteDialog?.addEventListener("click", (event) => {
+    if (event.target === elements.deleteDialog) closeDeleteDialog();
+  });
+  elements.deleteDialog?.addEventListener("cancel", (event) => {
+    if (elements.deleteConfirmBtn?.disabled) event.preventDefault();
+    else pendingDeletion = null;
+  });
 
   elements.sessionInspectorToggle?.addEventListener("click", () => {
     const panel = elements.propsContent?.closest(".props-panel");

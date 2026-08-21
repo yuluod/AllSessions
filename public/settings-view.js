@@ -15,7 +15,11 @@ function formatBytes(bytes) {
   return `${value} B`;
 }
 
-export function createSettingsController({ elements, onLanguageChanged, onSaved }) {
+export function createSettingsController({
+  elements,
+  onLanguageChanged,
+  onSaved,
+}) {
   let draft = null;
 
   function dialog() {
@@ -28,15 +32,44 @@ export function createSettingsController({ elements, onLanguageChanged, onSaved 
     elements.settingsStatus.dataset.state = isError ? "error" : "info";
   }
 
+  function focusLastRootInput(container, key) {
+    const inputs = container.querySelectorAll(
+      `.settings-source[data-kind="${key}"] input`
+    );
+    inputs[inputs.length - 1]?.focus();
+  }
+
   function renderSources(payload) {
     const container = elements.settingsSources;
     if (!container) return;
     container.replaceChildren();
     SOURCE_KINDS.forEach(({ key, label }) => {
-      const resolved = payload?.resolved?.[key] || { roots: [], origin: "default" };
+      const resolved = payload?.resolved?.[key] || {
+        roots: [],
+        origin: "default",
+      };
       const custom = draft?.[key] ?? null;
+      const inheritedRoots = payload?.inherited?.[key]?.roots || [];
+      const inheritedRootSet = new Set([
+        ...inheritedRoots,
+        ...(payload?.protected?.[key] || []),
+      ]);
+      const protectedRoots = new Set(
+        custom?.filter((root) => inheritedRootSet.has(root)) || []
+      );
+      const customRoots =
+        custom?.filter((root) => !protectedRoots.has(root)) || [];
+      const sourceState =
+        custom === null ? "inherited" : custom.length ? "custom" : "disabled";
+      const originKey =
+        sourceState === "inherited"
+          ? resolved.origin
+          : sourceState === "custom"
+            ? "config"
+            : "disabled";
       const block = document.createElement("div");
       block.className = "settings-source";
+      block.dataset.state = sourceState;
 
       const header = document.createElement("div");
       header.className = "settings-source-header";
@@ -44,8 +77,8 @@ export function createSettingsController({ elements, onLanguageChanged, onSaved 
       name.textContent = label;
       const origin = document.createElement("span");
       origin.className = "settings-origin";
-      origin.dataset.origin = resolved.origin;
-      origin.textContent = t(`settingsOrigin_${resolved.origin}`);
+      origin.dataset.origin = originKey;
+      origin.textContent = t(`settingsOrigin_${originKey}`);
       header.append(name, origin);
       block.append(header);
 
@@ -62,40 +95,9 @@ export function createSettingsController({ elements, onLanguageChanged, onSaved 
           item.textContent = t("settingsNoRoots");
           list.append(item);
         }
-        const customize = document.createElement("button");
-        customize.className = "ghost-button settings-source-action";
-        customize.type = "button";
-        customize.textContent = t("settingsCustomize");
-        customize.addEventListener("click", () => {
-          draft[key] = [...resolved.roots];
-          renderSources(payload);
-        });
-        block.append(list, customize);
-      } else {
-        const list = document.createElement("div");
-        list.className = "settings-root-editor";
-        custom.forEach((root, index) => {
-          const row = document.createElement("div");
-          row.className = "settings-root-row";
-          const input = document.createElement("input");
-          input.type = "text";
-          input.value = root;
-          input.spellcheck = false;
-          input.placeholder = t("settingsRootPlaceholder");
-          input.addEventListener("input", () => {
-            draft[key][index] = input.value;
-          });
-          const remove = document.createElement("button");
-          remove.className = "ghost-button settings-root-remove";
-          remove.type = "button";
-          remove.textContent = t("settingsRemoveRoot");
-          remove.addEventListener("click", () => {
-            draft[key].splice(index, 1);
-            renderSources(payload);
-          });
-          row.append(input, remove);
-          list.append(row);
-        });
+        const protection = document.createElement("p");
+        protection.className = "settings-source-note";
+        protection.textContent = t("settingsDefaultRootsProtected");
         const actions = document.createElement("div");
         actions.className = "settings-source-actions";
         const add = document.createElement("button");
@@ -103,13 +105,106 @@ export function createSettingsController({ elements, onLanguageChanged, onSaved 
         add.type = "button";
         add.textContent = t("settingsAddRoot");
         add.addEventListener("click", () => {
-          draft[key].push("");
+          draft[key] = [...resolved.roots, ""];
           renderSources(payload);
-          const inputs = container.querySelectorAll(
-            `.settings-source[data-kind="${key}"] input`
-          );
-          inputs[inputs.length - 1]?.focus();
+          focusLastRootInput(container, key);
         });
+        const disable = document.createElement("button");
+        disable.className = "ghost-button settings-source-action";
+        disable.type = "button";
+        disable.textContent = t("settingsDisableSource");
+        disable.addEventListener("click", () => {
+          draft[key] = [];
+          renderSources(payload);
+        });
+        actions.append(add, disable);
+        block.append(list, protection, actions);
+      } else {
+        if (sourceState === "disabled") {
+          const disabled = document.createElement("p");
+          disabled.className = "settings-source-disabled";
+          disabled.textContent = t("settingsSourceDisabled");
+          block.append(disabled);
+        } else {
+          const hint = document.createElement("p");
+          hint.className = "settings-source-note";
+          hint.textContent = t(
+            protectedRoots.size
+              ? "settingsProtectedRootsRetained"
+              : "settingsCustomRootsHint"
+          );
+          const list = document.createElement("div");
+          list.className = "settings-root-editor";
+          custom.forEach((root, index) => {
+            const row = document.createElement("div");
+            row.className = "settings-root-row";
+            if (protectedRoots.has(root)) {
+              row.classList.add("settings-root-protected");
+              const value = document.createElement("code");
+              value.className = "settings-root-protected-value";
+              value.textContent = root;
+              value.title = root;
+              const protectedLabel = document.createElement("span");
+              protectedLabel.className = "settings-root-protected-label";
+              protectedLabel.textContent = t("settingsProtectedRoot");
+              row.append(value, protectedLabel);
+            } else {
+              const input = document.createElement("input");
+              input.type = "text";
+              input.value = root;
+              input.spellcheck = false;
+              input.placeholder = t("settingsRootPlaceholder");
+              input.addEventListener("input", () => {
+                draft[key][index] = input.value;
+              });
+              row.append(input);
+              if (protectedRoots.size > 0 || customRoots.length > 1) {
+                const remove = document.createElement("button");
+                remove.className = "ghost-button settings-root-remove";
+                remove.type = "button";
+                remove.textContent = t("settingsRemoveRoot");
+                remove.addEventListener("click", () => {
+                  draft[key].splice(index, 1);
+                  renderSources(payload);
+                });
+                row.append(remove);
+              }
+            }
+            list.append(row);
+          });
+          block.append(hint, list);
+        }
+        const actions = document.createElement("div");
+        actions.className = "settings-source-actions";
+        const add = document.createElement("button");
+        add.className = "ghost-button settings-source-action";
+        add.type = "button";
+        add.textContent = t(
+          sourceState === "disabled"
+            ? "settingsEnableSource"
+            : "settingsAddRoot"
+        );
+        add.addEventListener("click", () => {
+          if (sourceState === "disabled") {
+            draft[key] = [""];
+          } else {
+            draft[key].push("");
+          }
+          renderSources(payload);
+          focusLastRootInput(container, key);
+        });
+        actions.append(add);
+        if (sourceState !== "disabled") {
+          const disable = document.createElement("button");
+          disable.className = "ghost-button settings-source-action";
+          disable.type = "button";
+          disable.textContent = t("settingsDisableSource");
+          disable.addEventListener("click", () => {
+            draft[key] = [];
+            renderSources(payload);
+          });
+          actions.append(disable);
+        }
         const restore = document.createElement("button");
         restore.className = "ghost-button settings-source-action";
         restore.type = "button";
@@ -118,8 +213,8 @@ export function createSettingsController({ elements, onLanguageChanged, onSaved 
           draft[key] = null;
           renderSources(payload);
         });
-        actions.append(add, restore);
-        block.append(list, actions);
+        actions.append(restore);
+        block.append(actions);
       }
       block.dataset.kind = key;
       container.append(block);
@@ -188,7 +283,8 @@ export function createSettingsController({ elements, onLanguageChanged, onSaved 
   }
 
   async function clearCache() {
-    if (elements.settingsClearCache) elements.settingsClearCache.disabled = true;
+    if (elements.settingsClearCache)
+      elements.settingsClearCache.disabled = true;
     setStatus(t("settingsCacheClearing"));
     try {
       const payload = await fetchJson("/api/settings/clear-cache", {
@@ -199,13 +295,16 @@ export function createSettingsController({ elements, onLanguageChanged, onSaved 
     } catch (error) {
       setStatus(error.message, true);
     } finally {
-      if (elements.settingsClearCache) elements.settingsClearCache.disabled = false;
+      if (elements.settingsClearCache)
+        elements.settingsClearCache.disabled = false;
     }
   }
 
   function bind() {
     elements.settingsToggle?.addEventListener("click", open);
-    elements.settingsCloseBtn?.addEventListener("click", () => dialog()?.close());
+    elements.settingsCloseBtn?.addEventListener("click", () =>
+      dialog()?.close()
+    );
     dialog()?.addEventListener("click", (event) => {
       if (event.target === dialog()) dialog().close();
     });

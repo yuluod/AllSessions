@@ -201,6 +201,10 @@
                     <input id="show-hidden-toggle" type="checkbox" />
                     <span data-i18n="showHidden">显示隐藏会话</span>
                   </label>
+                  <label class="archive-toggle-label">
+                    <input id="show-removed-toggle" type="checkbox" />
+                    <span data-i18n="showRemoved">显示已移除内容</span>
+                  </label>
                 </div>
               </details>
             </div>
@@ -339,6 +343,14 @@
                       </button>
                     </div>
                   </details>
+                  <button
+                    id="session-delete-btn"
+                    class="ghost-button session-delete-button"
+                    type="button"
+                    data-i18n="deleteSession"
+                  >
+                    删除会话
+                  </button>
                 </div>
               </div>
 
@@ -899,6 +911,78 @@
         </aside>
       </main>
     </div>
+
+    <dialog
+      id="delete-dialog"
+      class="delete-dialog"
+      aria-labelledby="delete-dialog-title"
+      aria-describedby="delete-dialog-description"
+    >
+      <div class="delete-dialog-header">
+        <h2 id="delete-dialog-title">删除内容</h2>
+        <button
+          id="delete-dialog-close"
+          class="ghost-button delete-dialog-close-button"
+          type="button"
+          data-i18n="cancel"
+          data-i18n-attr="aria-label"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+          >
+            <path
+              d="M6 6l12 12M18 6L6 18"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="delete-dialog-body">
+        <p id="delete-dialog-description"></p>
+        <div id="delete-dialog-warning" class="delete-dialog-warning hidden">
+          <strong data-i18n="permanentDeleteWarningTitle">不可恢复</strong>
+          <p data-i18n="permanentDeleteWarning">
+            这会修改 Agent
+            的原始会话数据。关联的工具调用、结果或同一原始记录中的内容也可能一起删除。
+          </p>
+        </div>
+        <p
+          id="delete-dialog-status"
+          class="delete-dialog-status"
+          role="status"
+          aria-live="polite"
+        ></p>
+      </div>
+      <div class="delete-dialog-actions">
+        <button
+          id="delete-soft-btn"
+          class="ghost-button"
+          type="button"
+        ></button>
+        <button
+          id="delete-permanent-btn"
+          class="ghost-button danger-button"
+          type="button"
+          data-i18n="deleteOriginalData"
+        >
+          永久删除原始数据
+        </button>
+        <button
+          id="delete-confirm-btn"
+          class="ghost-button danger-button hidden"
+          type="button"
+          data-i18n="confirmPermanentDelete"
+        >
+          确认永久删除
+        </button>
+      </div>
+    </dialog>
 
     <dialog
       id="settings-dialog"

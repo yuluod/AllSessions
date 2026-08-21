@@ -710,7 +710,8 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
     source,
     /setLang\(event\.target\.value === "en" \? "en" : "zh"\)/
   );
-  assert.match(source, /t\(`settingsOrigin_\$\{resolved\.origin\}`\)/);
+  assert.match(source, /originKey[\s\S]*resolved\.origin/);
+  assert.match(source, /t\(`settingsOrigin_\$\{originKey\}`\)/);
   assert.match(
     app,
     /createSettingsController\(\{[\s\S]*onLanguageChanged[\s\S]*onSaved/
@@ -726,4 +727,85 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
   ]) {
     assert.match(i18n, new RegExp(`${key}: "`));
   }
+});
+
+test("设置将默认路径与新增目录分开，并通过显式操作停用来源", async () => {
+  const source = await readProjectFile("public/settings-view.js");
+  const i18n = await readProjectFile("public/i18n.js");
+  const backend = await readProjectFile("src-tauri/src/backend.rs");
+
+  assert.match(source, /custom === null/);
+  assert.match(source, /payload\?\.inherited\?\.\[key\]\?\.roots/);
+  assert.match(source, /protectedRoots\.has\(root\)/);
+  assert.match(source, /protectedRoots\.size > 0 \|\| customRoots\.length > 1/);
+  assert.match(source, /settingsDefaultRootsProtected/);
+  assert.match(source, /settingsProtectedRootsRetained/);
+  assert.match(source, /settingsProtectedRoot/);
+  assert.match(source, /settingsCustomRootsHint/);
+  assert.match(source, /settingsDisableSource/);
+  assert.match(source, /settingsSourceDisabled/);
+  assert.match(source, /draft\[key\] = \[\.\.\.resolved\.roots, ""\];/);
+  assert.match(source, /draft\[key\] = \[\];/);
+  assert.match(source, /draft\[key\] = \[""\];/);
+  assert.doesNotMatch(source, /settingsCustomize/);
+  assert.match(
+    backend,
+    /"inherited": crate::sessions::describe_inherited_sources\(\)/
+  );
+  assert.match(
+    backend,
+    /"protected": crate::sessions::describe_protected_sources\(&config\.sources\)/
+  );
+  for (const key of [
+    "settingsDefaultRootsProtected",
+    "settingsProtectedRootsRetained",
+    "settingsProtectedRoot",
+    "settingsCustomRootsHint",
+    "settingsDisableSource",
+    "settingsSourceDisabled",
+    "settingsEnableSource",
+    "settingsOrigin_disabled",
+  ]) {
+    assert.match(i18n, new RegExp(`${key}:`));
+  }
+});
+
+test("会话和消息同时支持可恢复移除与二次确认的永久删除", async () => {
+  const html = await readProjectFile("public/index.html");
+  const app = await readProjectFile("public/app.js");
+  const conversation = await readProjectFile("public/conversation-view.js");
+  const i18n = await readProjectFile("public/i18n.js");
+  const backend = await readProjectFile("src-tauri/src/backend.rs");
+  const sessions = await readProjectFile("src-tauri/src/sessions.rs");
+
+  assert.match(html, /id="show-removed-toggle"/);
+  assert.match(html, /id="session-delete-btn"/);
+  assert.match(html, /<dialog\s+id="delete-dialog"/);
+  assert.match(html, /id="delete-confirm-btn"/);
+  assert.match(
+    html,
+    /id="delete-dialog-close"[\s\S]*data-i18n="cancel"[\s\S]*data-i18n-attr="aria-label"[\s\S]*<svg/
+  );
+  assert.match(app, /REMOVED_SESSIONS_KEY/);
+  assert.match(app, /REMOVED_MESSAGES_KEY/);
+  assert.match(app, /showPermanentDeleteConfirmation/);
+  assert.match(app, /\/api\/sessions\/delete-message/);
+  assert.match(app, /confirmed: true/);
+  const clearRemovedState = app.match(
+    /function clearRemovedState\([\s\S]*?\n\}/
+  )?.[0];
+  assert.ok(clearRemovedState);
+  assert.ok(
+    clearRemovedState.indexOf("if (messageKey)") <
+      clearRemovedState.indexOf("setSessionRemoved(sessionKey, false)")
+  );
+  assert.match(conversation, /message\._message_key/);
+  assert.match(conversation, /onRestoreMessage/);
+  assert.match(backend, /\("POST", "\/api\/sessions\/delete"\)/);
+  assert.match(backend, /\("POST", "\/api\/sessions\/delete-message"\)/);
+  assert.match(backend, /永久删除需要显式确认/);
+  assert.match(sessions, /pub fn delete_session/);
+  assert.match(sessions, /pub fn delete_message/);
+  assert.match(i18n, /cancel: "取消"/);
+  assert.match(i18n, /cancel: "Cancel"/);
 });

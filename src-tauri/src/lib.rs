@@ -14,10 +14,8 @@ use tauri::{
 
 use backend::{request_json, BackendState};
 
-/// 托盘图标资产：来源 `icons/128x128.png`，与 `tauri.conf.json` 的窗口图标是两份配置。
-/// 去背景逻辑假设：背景为纯白（所有通道 ≥ TRAY_BACKGROUND_CHANNEL_MIN），
-/// 且字形内部不含近白色细节（否则会被打成透明洞）。更换图标时需同步检查
-/// `cargo test 托盘图标使用透明画布` 仍然通过。
+/// 托盘图标资产由 v3 原图生成，来源 `icons/128x128.png`。
+/// 原图已经使用透明画布；近白背景清理仅作为旧资产兼容保护。
 const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/128x128.png");
 const TRAY_BACKGROUND_CHANNEL_MIN: u8 = 245;
 

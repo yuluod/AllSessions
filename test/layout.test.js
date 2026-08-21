@@ -178,11 +178,11 @@ test("页面复用项目图标作为 favicon 与工具栏标识", async () => {
 
   assert.match(
     html,
-    /<link rel="icon" type="image\/png" href="\/assets\/allsessions-icon-v2\.png"/
+    /<link rel="icon" type="image\/png" href="\/assets\/allsessions-icon-v3\.png"/
   );
   assert.match(
     html,
-    /<a[\s\S]*id="home-link"[\s\S]*class="toolbar-brand"[\s\S]*href="\/"[\s\S]*<img[\s\S]*class="toolbar-logo"[\s\S]*src="\/assets\/allsessions-icon-v2\.png"/
+    /<a[\s\S]*id="home-link"[\s\S]*class="toolbar-brand"[\s\S]*href="\/"[\s\S]*<img[\s\S]*class="toolbar-logo"[\s\S]*src="\/assets\/allsessions-icon-v3\.png"/
   );
   assert.match(source, /async function returnHome\(\)/);
   assert.match(source, /elements\.homeLink\?\.addEventListener\("click"/);

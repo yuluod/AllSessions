@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./public/assets/allsessions-icon-v2.png" alt="AllSessions icon" width="112" height="112" />
+<img src="./public/assets/allsessions-icon-v3.png" alt="AllSessions icon" width="112" height="112" />
 
 # AllSessions
 

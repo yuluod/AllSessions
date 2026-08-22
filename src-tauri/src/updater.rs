@@ -5,6 +5,12 @@ use tauri_plugin_updater::UpdaterExt;
 
 static UPDATE_RUNNING: AtomicBool = AtomicBool::new(false);
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum UpdateCheckMode {
+    Interactive,
+    Silent,
+}
+
 struct UpdateGuard;
 
 impl Drop for UpdateGuard {
@@ -14,12 +20,23 @@ impl Drop for UpdateGuard {
 }
 
 pub fn check_for_updates(app: tauri::AppHandle) {
+    spawn_update_check(app, UpdateCheckMode::Interactive);
+}
+
+pub fn check_for_updates_silently(app: tauri::AppHandle) {
+    spawn_update_check(app, UpdateCheckMode::Silent);
+}
+
+fn spawn_update_check(app: tauri::AppHandle, mode: UpdateCheckMode) {
     if UPDATE_RUNNING.swap(true, Ordering::AcqRel) {
         return;
     }
     tauri::async_runtime::spawn(async move {
         let _guard = UpdateGuard;
-        if let Err(error) = run_update(&app).await {
+        if let Err(error) = run_update(&app, mode).await {
+            if mode == UpdateCheckMode::Silent {
+                return;
+            }
             app.dialog()
                 .message(update_error_message(&error))
                 .title("AllSessions 更新")
@@ -40,7 +57,7 @@ fn update_confirmation_buttons() -> MessageDialogButtons {
     MessageDialogButtons::OkCancelCustom("立即下载并安装".into(), "暂不".into())
 }
 
-async fn run_update(app: &tauri::AppHandle) -> Result<(), String> {
+async fn run_update(app: &tauri::AppHandle, mode: UpdateCheckMode) -> Result<(), String> {
     let update = app
         .updater()
         .map_err(|error| error.to_string())?
@@ -48,14 +65,16 @@ async fn run_update(app: &tauri::AppHandle) -> Result<(), String> {
         .await
         .map_err(|error| error.to_string())?;
     let Some(update) = update else {
-        app.dialog()
-            .message(format!(
-                "当前版本 v{} 已是最新版本。",
-                app.package_info().version
-            ))
-            .title("AllSessions 更新")
-            .kind(MessageDialogKind::Info)
-            .blocking_show();
+        if mode == UpdateCheckMode::Interactive {
+            app.dialog()
+                .message(format!(
+                    "当前版本 v{} 已是最新版本。",
+                    app.package_info().version
+                ))
+                .title("AllSessions 更新")
+                .kind(MessageDialogKind::Info)
+                .blocking_show();
+        }
         return Ok(());
     };
 
@@ -85,7 +104,7 @@ async fn run_update(app: &tauri::AppHandle) -> Result<(), String> {
 mod tests {
     use tauri_plugin_dialog::MessageDialogButtons;
 
-    use super::{update_confirmation_buttons, update_error_message};
+    use super::{update_confirmation_buttons, update_error_message, UpdateCheckMode};
 
     #[test]
     fn 更新确认使用中文操作文案() {
@@ -114,5 +133,10 @@ mod tests {
             update_error_message("network unavailable"),
             "检查或安装更新失败：network unavailable"
         );
+    }
+
+    #[test]
+    fn 启动检查与手动检查使用不同提示模式() {
+        assert_ne!(UpdateCheckMode::Silent, UpdateCheckMode::Interactive);
     }
 }

@@ -123,8 +123,20 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   assert.doesNotMatch(rustSource, /sidecar|TcpListener|ALLSESSIONS_INSTANCE_TOKEN/);
   assert.match(mainSource, /windows_subsystem = "windows"/);
   assert.match(rustSource, /tauri_plugin_updater::Builder/);
+  assert.match(
+    rustSource,
+    /check_updates_on_startup[\s\S]*updater::check_for_updates_silently/
+  );
   assert.match(updater, /检查或安装更新失败/);
   assert.match(updater, /download_and_install/);
+  assert.match(
+    updater,
+    /mode == UpdateCheckMode::Silent[\s\S]*return/
+  );
+  assert.match(
+    updater,
+    /mode == UpdateCheckMode::Interactive[\s\S]*当前版本 v\{\} 已是最新版本/
+  );
   assert.match(config, /"createUpdaterArtifacts": true/);
   assert.match(config, /releases\/latest\/download\/latest\.json/);
   assert.match(workflow, /libwebkit2gtk-4\.1-dev/);

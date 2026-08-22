@@ -773,6 +773,11 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
   assert.match(source, /fetchJson\("\/api\/settings", \{\s*method: "POST"/);
   assert.match(source, /fetchJson\("\/api\/settings\/clear-cache"/);
   assert.match(source, /fetchJson\("\/api\/settings\/check-update"/);
+  const checkForUpdates = source.match(
+    /async function checkForUpdates\(\)[\s\S]*?\n {2}\}/
+  )?.[0];
+  assert.ok(checkForUpdates);
+  assert.doesNotMatch(checkForUpdates, /dialog\(\)\?\.close\(\)/);
   assert.match(source, /fetchJson\("\/api\/settings\/preferences"/);
   assert.match(source, /error\.code === DESKTOP_RUNTIME_REQUIRED/);
   assert.match(source, /settingsDesktopPreview/);
@@ -794,6 +799,11 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
     app,
     /createSettingsController\(\{[\s\S]*onLanguageChanged[\s\S]*onSaved/
   );
+  assert.match(
+    app,
+    /listen\("open-settings",[\s\S]*settingsController\.open\(\)/
+  );
+  assert.match(source, /if \(!target\.open\) target\.showModal\(\)/);
   for (const key of [
     "settingsSources",
     "settingsSave",
@@ -806,10 +816,75 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
     "settingsKeepRunning",
     "settingsStartupUpdates",
     "settingsPreferencesSaved",
+    "settingsAboutDescription",
     "settingsLicense",
   ]) {
     assert.match(i18n, new RegExp(`${key}: "`));
   }
+});
+
+test("关于页使用紧凑的居中应用信息布局", async () => {
+  const html = await readProjectFile("public/index.html");
+  const settingsCss = await readProjectFile("public/styles/settings.css");
+
+  assert.match(
+    html,
+    /class="settings-about-name">AllSessions<[\s\S]*id="settings-version"[\s\S]*data-i18n="settingsAboutDescription"[\s\S]*id="settings-check-update"[\s\S]*class="settings-about-meta"/
+  );
+  assert.match(
+    settingsCss,
+    /\.settings-dialog\[data-active-tab="about"\] \.settings-body\s*\{[\s\S]*place-items: center;/
+  );
+  assert.match(
+    settingsCss,
+    /\.settings-about-summary\s*\{[\s\S]*flex-direction: column;[\s\S]*text-align: center;/
+  );
+  assert.doesNotMatch(
+    settingsCss,
+    /\.settings-about-summary\s*\{[^}]*border: 1px solid var\(--line\)/
+  );
+  assert.match(
+    html,
+    /id="settings-repository-link"[\s\S]*class="settings-about-repository"[\s\S]*href="https:\/\/github\.com\/yuluod\/AllSessions"[\s\S]*target="_blank"[\s\S]*rel="noopener noreferrer"/
+  );
+  assert.doesNotMatch(html, /data-i18n="settingsDescription"/);
+});
+
+test("仓库链接在桌面端通过受限的系统浏览器能力打开", async () => {
+  const app = await readProjectFile("public/app.js");
+  const source = await readProjectFile("public/settings-view.js");
+  const cargo = await readProjectFile("src-tauri/Cargo.toml");
+  const runtime = await readProjectFile("src-tauri/src/lib.rs");
+  const capability = await readProjectFile(
+    "src-tauri/capabilities/default.json"
+  );
+
+  assert.match(app, /settingsRepositoryLink: document\.querySelector/);
+  assert.match(source, /import \{ openUrl \} from "@tauri-apps\/plugin-opener"/);
+  assert.match(source, /await openUrl\(event\.currentTarget\.href\)/);
+  assert.match(cargo, /tauri-plugin-opener = "2\.5"/);
+  assert.match(runtime, /\.plugin\(tauri_plugin_opener::init\(\)\)/);
+  assert.match(capability, /https:\/\/github\.com\/yuluod\/AllSessions/);
+});
+
+test("会话来源与存储使用紧凑的分组设置结构", async () => {
+  const html = await readProjectFile("public/index.html");
+  const settingsCss = await readProjectFile("public/styles/settings.css");
+
+  assert.match(html, /class="settings-storage-card"/);
+  assert.match(html, /class="settings-storage-actions"/);
+  assert.match(
+    settingsCss,
+    /\.settings-source-header\s*\{[\s\S]*display: flex;[\s\S]*justify-content: space-between;/
+  );
+  assert.match(
+    settingsCss,
+    /\.settings-source-actions\s*\{[\s\S]*justify-content: flex-end;/
+  );
+  assert.match(
+    settingsCss,
+    /\.settings-storage-card\s*\{[\s\S]*border: 1px solid var\(--line\);/
+  );
 });
 
 test("设置将默认路径与新增目录分开，并通过显式操作停用来源", async () => {

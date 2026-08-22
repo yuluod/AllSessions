@@ -3,5 +3,11 @@
   "identifier": "default",
   "description": "AllSessions 主窗口的最小权限",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://github.com/yuluod/AllSessions" }]
+    }
+  ]
 }

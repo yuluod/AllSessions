@@ -47,12 +47,6 @@ html.settings-modal-open body {
   font-weight: 750;
 }
 
-.settings-heading p {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-
 .settings-close-btn {
   display: grid;
   width: 34px;
@@ -225,7 +219,8 @@ html.settings-modal-open body {
 }
 
 .settings-hint {
-  margin: 0 0 9px;
+  max-width: 72ch;
+  margin: 0 2px 10px;
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1.55;
@@ -241,9 +236,9 @@ html.settings-modal-open body {
 
 .settings-source {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-  gap: 4px 14px;
-  padding: 11px 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px 14px;
   border: 0;
   border-radius: 0;
   background: var(--surface);
@@ -258,14 +253,17 @@ html.settings-modal-open body {
 }
 
 .settings-source-header {
-  display: grid;
-  grid-row: 1 / span 4;
-  align-content: start;
+  display: flex;
   align-items: center;
-  justify-items: start;
-  gap: 5px;
-  margin: 1px 0 0;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
   font-size: 0.82rem;
+}
+
+.settings-source-header strong {
+  min-width: 0;
+  font-size: 0.84rem;
 }
 
 .settings-origin {
@@ -293,8 +291,10 @@ html.settings-modal-open body {
 }
 
 .settings-root-list {
-  margin: 0 0 4px;
-  padding: 0 0 0 2px;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
   list-style: none;
   color: var(--text-secondary);
   font-family: "SFMono-Regular", Consolas, monospace;
@@ -303,15 +303,21 @@ html.settings-modal-open body {
   word-break: break-all;
 }
 
+.settings-root-list li {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-muted);
+}
+
 .settings-root-editor {
   display: grid;
   gap: 6px;
-  margin-bottom: 4px;
+  margin: 0;
 }
 
 .settings-source-note,
 .settings-source-disabled {
-  margin: 0 0 5px;
+  margin: -1px 0 0;
   color: var(--muted);
   font-size: 0.72rem;
   line-height: 1.45;
@@ -379,7 +385,9 @@ html.settings-modal-open body {
 .settings-source-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 5px;
+  padding-top: 2px;
 }
 
 .settings-source-action {
@@ -388,22 +396,26 @@ html.settings-modal-open body {
   font-size: 0.72rem;
 }
 
+.settings-storage-card {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
 .settings-storage-info {
   display: grid;
   gap: 0;
-  margin: 0 0 9px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-subtle);
-  overflow: hidden;
+  margin: 0;
 }
 
 .settings-storage-info > div {
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
-  gap: 12px;
-  align-items: baseline;
-  padding: 8px 10px;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  min-height: 58px;
+  padding: 10px 14px;
 }
 
 .settings-storage-info > div + div {
@@ -412,49 +424,118 @@ html.settings-modal-open body {
 
 .settings-storage-info dt {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.75rem;
 }
 
 .settings-storage-info dd {
   margin: 0;
   overflow: hidden;
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.settings-storage-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-subtle);
+}
+
+.settings-dialog[data-active-tab="about"] .settings-body {
+  place-items: center;
+}
+
+.settings-section[data-settings-panel="about"] {
+  width: 100%;
+}
+
 .settings-about-summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
+  width: min(100%, 360px);
+  padding: 24px 16px 32px;
+  margin: 0 auto;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  text-align: center;
 }
 
 .settings-about-summary img {
   display: block;
-  border-radius: 12px;
+  margin-bottom: 12px;
+  border-radius: 18px;
 }
 
 .settings-about-copy {
   display: grid;
-  gap: 2px;
+  justify-items: center;
+  gap: 4px;
   min-width: 0;
 }
 
-.settings-about-copy strong {
-  font-size: 0.9rem;
+.settings-about-name {
+  font-size: 1.12rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
 }
 
-.settings-about-copy span {
-  overflow: hidden;
+.settings-about-version,
+.settings-about-description,
+.settings-about-meta {
   color: var(--muted);
-  font-size: 0.72rem;
+}
+
+.settings-about-version {
+  font-size: 0.74rem;
+}
+
+.settings-about-description {
+  margin-top: 3px;
+  font-size: 0.8rem;
+}
+
+.settings-about-summary > button {
+  min-width: 132px;
+  margin-top: 18px;
+}
+
+.settings-about-meta {
+  display: grid;
+  width: min(100%, 280px);
+  gap: 4px;
+  padding-top: 16px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 0.71rem;
+  line-height: 1.45;
+}
+
+.settings-about-repository {
+  display: inline-flex;
+  align-items: center;
+  justify-self: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-about-repository:hover {
+  color: var(--accent-strong);
+}
+
+.settings-about-repository:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-about-repository svg {
+  flex: 0 0 auto;
 }
 
 .settings-footer {
@@ -525,15 +606,6 @@ html.settings-modal-open body {
     width: 100%;
   }
 
-  .settings-about-summary {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .settings-about-summary button {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
-
   .settings-dialog {
     width: calc(100vw - 16px);
     height: calc(100dvh - 16px);
@@ -567,9 +639,10 @@ html.settings-modal-open body {
   }
 
   .settings-source-header {
-    display: flex;
-    grid-row: auto;
     justify-content: space-between;
-    margin-bottom: 5px;
+  }
+
+  .settings-source-actions {
+    justify-content: flex-start;
   }
 }

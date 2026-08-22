@@ -194,6 +194,8 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | inotify | 0.11.4 | ISC |
 | inotify-sys | 0.1.8 | ISC |
 | ipnet | 2.12.1 | MIT OR Apache-2.0 |
+| is-docker | 0.2.0 | MIT |
+| is-wsl | 0.4.0 | MIT |
 | itoa | 1.0.18 | MIT OR Apache-2.0 |
 | javascriptcore-rs | 1.1.2 | MIT |
 | javascriptcore-rs-sys | 1.1.1 | MIT |
@@ -262,6 +264,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | objc2-user-notifications | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-web-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 |
+| open | 5.4.1 | MIT |
 | openssl-probe | 0.2.1 | MIT OR Apache-2.0 |
 | option-ext | 0.2.0 | MPL-2.0 |
 | ordered-stream | 0.2.0 | MIT OR Apache-2.0 |
@@ -383,6 +386,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | tauri-plugin | 2.6.3 | Apache-2.0 OR MIT |
 | tauri-plugin-dialog | 2.7.2 | Apache-2.0 OR MIT |
 | tauri-plugin-fs | 2.5.1 | Apache-2.0 OR MIT |
+| tauri-plugin-opener | 2.5.4 | Apache-2.0 OR MIT |
 | tauri-plugin-single-instance | 2.4.3 | Apache-2.0 OR MIT |
 | tauri-plugin-updater | 2.10.1 | Apache-2.0 OR MIT |
 | tauri-runtime | 2.11.3 | Apache-2.0 OR MIT |

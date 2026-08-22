@@ -363,6 +363,14 @@ const settingsController = createSettingsController({
   },
 });
 
+async function bindTauriSettingsEvent() {
+  const listen = window.__TAURI__?.event?.listen;
+  if (typeof listen !== "function") return;
+  await listen("open-settings", () => {
+    settingsController.open();
+  });
+}
+
 // ── URL 状态同步 ──────────────────────────────────────────────────────────────
 function syncUrl() {
   const params = new URLSearchParams();
@@ -2781,6 +2789,7 @@ async function initialize() {
   configureCodexMaintenanceUi();
 
   settingsController.bind();
+  await bindTauriSettingsEvent();
 
   elements.detailSearchInput?.addEventListener("input", (event) => {
     state.detailQuery = event.target.value.trim();

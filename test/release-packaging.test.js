@@ -125,6 +125,18 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   assert.match(rustSource, /tauri_plugin_updater::Builder/);
   assert.match(
     rustSource,
+    /MenuItem::with_id\(app, "settings", "设置…"/
+  );
+  assert.match(
+    rustSource,
+    /"settings" => show_settings\(app\)/
+  );
+  assert.match(
+    rustSource,
+    /fn show_settings[\s\S]*show_main_window\(app\)[\s\S]*emit\("open-settings"/
+  );
+  assert.match(
+    rustSource,
     /check_updates_on_startup[\s\S]*updater::check_for_updates_silently/
   );
   assert.match(updater, /检查或安装更新失败/);

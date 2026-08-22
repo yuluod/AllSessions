@@ -9,7 +9,7 @@ mod watcher;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 
 use backend::{request_json, BackendState};
@@ -50,12 +50,29 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
+fn show_settings(app: &tauri::AppHandle) {
+    show_main_window(app);
+    if let Err(error) = app.emit("open-settings", ()) {
+        eprintln!("无法打开设置：{error}");
+    }
+}
+
 fn create_tray(app: &tauri::App) -> tauri::Result<()> {
     let open_item = MenuItem::with_id(app, "open", "打开 AllSessions", true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let update_item = MenuItem::with_id(app, "update", "检查更新", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&open_item, &update_item, &separator, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &open_item,
+            &settings_item,
+            &update_item,
+            &separator,
+            &quit_item,
+        ],
+    )?;
 
     TrayIconBuilder::new()
         .icon(transparent_tray_icon()?)
@@ -65,6 +82,7 @@ fn create_tray(app: &tauri::App) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => show_main_window(app),
+            "settings" => show_settings(app),
             "update" => updater::check_for_updates(app.clone()),
             "quit" => app.exit(0),
             _ => {}

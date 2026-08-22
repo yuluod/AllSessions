@@ -100,7 +100,7 @@ pub fn run() {
             app.manage(watcher::start(app.handle()));
             create_tray(app)?;
             if check_updates_on_startup {
-                updater::check_for_updates(app.handle().clone());
+                updater::check_for_updates_silently(app.handle().clone());
             }
             Ok(())
         })

@@ -308,7 +308,7 @@ export function createSettingsController({
     if (elements.settingsLanguageSelect) {
       elements.settingsLanguageSelect.value = getLang();
     }
-    target.showModal();
+    if (!target.open) target.showModal();
     lockPageScroll();
     activateTab(activeTab);
     if (elements.settingsSaveBtn) elements.settingsSaveBtn.disabled = true;
@@ -398,7 +398,6 @@ export function createSettingsController({
     setStatus("");
     try {
       await fetchJson("/api/settings/check-update", { method: "POST" });
-      dialog()?.close();
     } catch (error) {
       setStatus(error.message, true);
     } finally {

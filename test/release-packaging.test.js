@@ -14,19 +14,19 @@ test("跨平台安装包名称保持稳定且 macOS 使用 mac", () => {
   assert.equal(releaseFileName({ platform: "linux", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-linux-x64.deb");
 });
 
-test("更新安装包名称包含平台架构且不会在汇总时冲突", () => {
-  assert.equal(updaterFileName({ platform: "windows", arch: "x64", version: "1.2.3" }), "AllSessions_1.2.3_x64-setup.exe");
-  assert.equal(updaterFileName({ platform: "mac", arch: "arm64", version: "1.2.3" }), "AllSessions_1.2.3_aarch64.app.tar.gz");
-  assert.equal(updaterFileName({ platform: "mac", arch: "x64", version: "1.2.3" }), "AllSessions_1.2.3_x64.app.tar.gz");
-  assert.equal(updaterFileName({ platform: "linux", arch: "x64", version: "1.2.3" }), "AllSessions_1.2.3_amd64.deb");
+test("更新安装包复用公开文件名且 macOS 使用独立更新压缩包", () => {
+  assert.equal(updaterFileName({ platform: "windows", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-windows-x64-setup.exe");
+  assert.equal(updaterFileName({ platform: "mac", arch: "arm64", version: "1.2.3" }), "AllSessions-1.2.3-mac-arm64.app.tar.gz");
+  assert.equal(updaterFileName({ platform: "mac", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-mac-x64.app.tar.gz");
+  assert.equal(updaterFileName({ platform: "linux", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-linux-x64.deb");
 });
 
 test("更新清单同时包含所有桌面平台及安装器别名", () => {
   const names = [
-    "AllSessions_0.0.8_aarch64.app.tar.gz",
-    "AllSessions_0.0.8_x64.app.tar.gz",
-    "AllSessions_0.0.8_amd64.deb",
-    "AllSessions_0.0.8_x64-setup.exe"
+    "AllSessions-0.0.8-mac-arm64.app.tar.gz",
+    "AllSessions-0.0.8-mac-x64.app.tar.gz",
+    "AllSessions-0.0.8-linux-x64.deb",
+    "AllSessions-0.0.8-windows-x64-setup.exe"
   ];
   const metadata = {
     tagName: "v0.0.8",
@@ -53,7 +53,7 @@ test("更新清单同时包含所有桌面平台及安装器别名", () => {
   );
   assert.equal(
     manifest.platforms["darwin-aarch64"].url,
-    "https://example.com/AllSessions_0.0.8_aarch64.app.tar.gz"
+    "https://example.com/AllSessions-0.0.8-mac-arm64.app.tar.gz"
   );
 });
 
@@ -74,10 +74,10 @@ test("更新清单缺少任一目标平台时拒绝发布", () => {
 
 test("更新清单不会保留 GitHub 草稿资源的临时地址", () => {
   const names = [
-    "AllSessions_0.0.15_aarch64.app.tar.gz",
-    "AllSessions_0.0.15_x64.app.tar.gz",
-    "AllSessions_0.0.15_amd64.deb",
-    "AllSessions_0.0.15_x64-setup.exe"
+    "AllSessions-0.0.15-mac-arm64.app.tar.gz",
+    "AllSessions-0.0.15-mac-x64.app.tar.gz",
+    "AllSessions-0.0.15-linux-x64.deb",
+    "AllSessions-0.0.15-windows-x64-setup.exe"
   ];
   const metadata = {
     tagName: "v0.0.15",
@@ -93,7 +93,7 @@ test("更新清单不会保留 GitHub 草稿资源的临时地址", () => {
 
   assert.equal(
     manifest.platforms["windows-x86_64"].url,
-    "https://github.com/yuluod/AllSessions/releases/download/v0.0.15/AllSessions_0.0.15_x64-setup.exe"
+    "https://github.com/yuluod/AllSessions/releases/download/v0.0.15/AllSessions-0.0.15-windows-x64-setup.exe"
   );
   assert.ok(Object.values(manifest.platforms).every(({ url }) => !url.includes("/untagged-")));
 });
@@ -191,6 +191,14 @@ test("macOS 构建号独立于显示版本且发布会汇总更新清单", async
   assert.doesNotMatch(workflow, /gh release upload[^\n]*--clobber/);
   assert.match(workflow, /publish:[\s\S]*needs: build-installers/);
   assert.match(workflow, /publish:[\s\S]*build-updater-manifest\.mjs[\s\S]*gh release upload/);
+  const uploadStep =
+    workflow.match(/- name: 上传全部安装包到草稿[\s\S]*?- name: 生成并上传完整更新清单/)?.[0] ?? "";
+  assert.doesNotMatch(uploadStep, /\.sig/);
+  assert.match(
+    workflow,
+    /build-updater-manifest\.mjs release-metadata\.json release-assets latest\.json/
+  );
+  assert.doesNotMatch(workflow, /gh release download[\s\S]*--pattern '\*\.sig'/);
   assert.match(workflow, /gh release create[\s\S]*--draft/);
   assert.match(workflow, /gh release edit[\s\S]*--draft=false/);
   assert.doesNotMatch(

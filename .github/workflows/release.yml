@@ -133,8 +133,7 @@ jobs:
         with:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
-      # v0.0.6 的旧更新器依赖这些名称；保留它们可完成一次平滑迁移。
-      - name: 收集兼容安装包名称
+      - name: 收集发布与更新安装包
         shell: bash
         run: |
           node scripts/collect-tauri-artifact.mjs --target ${{ matrix.target }} --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
@@ -202,7 +201,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          mapfile -d '' RELEASE_FILES < <(find release-assets -type f \( -name '*.exe' -o -name '*.exe.sig' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o -name '*.deb' -o -name '*.deb.sig' \) -print0)
+          mapfile -d '' RELEASE_FILES < <(find release-assets -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.deb' \) -print0)
           if [[ "${#RELEASE_FILES[@]}" -eq 0 ]]; then
             echo "::error::没有找到可发布的安装包。"
             exit 1
@@ -217,9 +216,7 @@ jobs:
         run: |
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,body,tagName > release-metadata-draft.json
           jq --arg published_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" '. + {publishedAt: $published_at}' release-metadata-draft.json > release-metadata.json
-          mkdir -p release-signatures
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.sig' --dir release-signatures
-          node scripts/build-updater-manifest.mjs release-metadata.json release-signatures latest.json
+          node scripts/build-updater-manifest.mjs release-metadata.json release-assets latest.json
           gh release upload "$RELEASE_TAG" latest.json --repo "$GITHUB_REPOSITORY"
 
       - name: 正式发布完整 Release

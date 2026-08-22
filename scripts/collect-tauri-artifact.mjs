@@ -12,9 +12,9 @@ export function releaseFileName({ platform, arch, version }) {
 }
 
 export function updaterFileName({ platform, arch, version }) {
-  if (platform === "windows") return `AllSessions_${version}_${arch}-setup.exe`;
-  if (platform === "mac") return `AllSessions_${version}_${arch === "arm64" ? "aarch64" : arch}.app.tar.gz`;
-  if (platform === "linux") return `AllSessions_${version}_${arch === "x64" ? "amd64" : arch}.deb`;
+  if (platform === "windows") return releaseFileName({ platform, arch, version });
+  if (platform === "mac") return `AllSessions-${version}-mac-${arch}.app.tar.gz`;
+  if (platform === "linux") return releaseFileName({ platform, arch, version });
   throw new Error(`不支持的发布平台：${platform}`);
 }
 
@@ -58,7 +58,6 @@ export async function collectArtifact({ target, platform, arch, output = "releas
   const updaterSource = updaterMatches[0];
   const copies = new Map([
     [stableDestination, matches[0]],
-    [path.join(outputDir, path.basename(matches[0])), matches[0]],
     [updaterDestination, updaterSource],
     [`${updaterDestination}.sig`, `${updaterSource}.sig`]
   ]);

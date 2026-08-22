@@ -50,7 +50,7 @@
       }
     },
     "macOS": {
-      "bundleVersion": "15"
+      "bundleVersion": "16"
     }
   },
   "plugins": {

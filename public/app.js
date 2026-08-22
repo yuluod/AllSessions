@@ -325,6 +325,9 @@ const elements = {
   settingsClearCache: document.querySelector("#settings-clear-cache"),
   settingsVersion: document.querySelector("#settings-version"),
   settingsCheckUpdate: document.querySelector("#settings-check-update"),
+  settingsRepositoryLink: document.querySelector(
+    "#settings-repository-link"
+  ),
   settingsSaveBtn: document.querySelector("#settings-save-btn"),
   settingsStatus: document.querySelector("#settings-status"),
   sessionDeleteBtn: document.querySelector("#session-delete-btn"),

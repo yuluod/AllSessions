@@ -1,5 +1,6 @@
 import { t, getLang, setLang } from "./i18n.js";
 import { DESKTOP_RUNTIME_REQUIRED, fetchJson } from "./api-client.js";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 const SOURCE_KINDS = [
   { key: "codex", label: "Codex" },
@@ -406,6 +407,16 @@ export function createSettingsController({
     }
   }
 
+  async function openRepository(event) {
+    if (!window.__TAURI__?.core?.invoke) return;
+    event.preventDefault();
+    try {
+      await openUrl(event.currentTarget.href);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), true);
+    }
+  }
+
   function bind() {
     elements.settingsToggle?.addEventListener("click", open);
     elements.settingsCloseBtn?.addEventListener("click", () =>
@@ -418,6 +429,7 @@ export function createSettingsController({
     elements.settingsSaveBtn?.addEventListener("click", save);
     elements.settingsClearCache?.addEventListener("click", clearCache);
     elements.settingsCheckUpdate?.addEventListener("click", checkForUpdates);
+    elements.settingsRepositoryLink?.addEventListener("click", openRepository);
     elements.settingsKeepRunning?.addEventListener("change", savePreferences);
     elements.settingsStartupUpdates?.addEventListener(
       "change",

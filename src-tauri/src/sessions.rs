@@ -164,9 +164,12 @@ impl SessionStore {
             self.refresh()?;
             return Ok(true);
         }
+        // Gemini 会话可能跨文件，Claude 新旧布局也可能包含相同会话 ID。
+        // 单路径更新无法可靠重建聚合结果或来源优先级，因此复用缓存全量刷新。
         if paths.iter().any(|path| {
             self.sources.iter().any(|source| {
-                matches!(source.format, SourceFormat::Gemini) && path.starts_with(&source.root)
+                matches!(source.format, SourceFormat::Gemini | SourceFormat::Claude)
+                    && path.starts_with(&source.root)
             })
         }) {
             self.refresh()?;
@@ -226,7 +229,7 @@ impl SessionStore {
     }
 
     /// 按当前配置重新解析来源，返回来源集合是否发生变化
-    /// （例如 Claude 在 projects/sessions 布局间切换、来源目录被删除）。
+    /// （例如用户在设置中调整来源根目录）。
     fn resolve_sources(&mut self) -> bool {
         let sources = configured_sources(&self.sources_config);
         if sources != self.sources {
@@ -1065,20 +1068,14 @@ fn sources_from_paths(
             format: SourceFormat::Codex,
             archived: true,
         }))
-        .chain(claude_roots.iter().map(|root| {
-            let claude_projects = root.join("projects");
-            let claude_sessions = root.join("sessions");
-            Source {
+        .chain(claude_roots.iter().flat_map(|root| {
+            [root.join("projects"), root.join("sessions")].map(|root| Source {
                 kind: "claude_code",
                 display_name: "Claude Code",
-                root: if claude_projects.is_dir() {
-                    claude_projects
-                } else {
-                    claude_sessions
-                },
+                root,
                 format: SourceFormat::Claude,
                 archived: false,
-            }
+            })
         }))
         .chain(gemini_roots.iter().map(|root| Source {
             kind: "gemini",
@@ -2223,11 +2220,13 @@ mod tests {
     }
 
     #[test]
-    fn refresh_paths_rebuilds_when_claude_layout_changes() {
+    fn refresh_paths_rebuilds_claude_priority_after_layout_change() {
         let base = tempdir().unwrap();
         let claude_root = base.path().join("claude-home");
         let projects = claude_root.join("projects");
+        let sessions = claude_root.join("sessions");
         std::fs::create_dir_all(&projects).unwrap();
+        std::fs::create_dir_all(&sessions).unwrap();
         let session_file = projects.join("s1.jsonl");
         std::fs::write(
             &session_file,
@@ -2235,6 +2234,18 @@ mod tests {
                 "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello\"},",
                 "\"timestamp\":\"2026-08-20T01:00:00.000Z\",\"cwd\":\"/proj\",\"sessionId\":\"s1\"}\n"
             ),
+        )
+        .unwrap();
+        let legacy_file = sessions.join("s1.json");
+        std::fs::write(
+            &legacy_file,
+            json!({
+                "sessionId": "s1",
+                "prompt": "legacy fallback",
+                "cwd": "/legacy",
+                "startedAt": 1_766_016_000_000_i64
+            })
+            .to_string(),
         )
         .unwrap();
         let mut store = SessionStore {
@@ -2252,15 +2263,15 @@ mod tests {
         };
         store.refresh().unwrap();
         assert!(store.records.contains_key("claude_code:s1"));
+        assert_eq!(store.records["claude_code:s1"].path, session_file);
 
-        // projects 目录被删除：来源集合变化，事件路径不再匹配任何来源。
-        // 必须全量重建清掉旧记录，而不是残留成幽灵会话。
+        // projects 目录被删除后，应重新选择旧版记录，而不是残留幽灵会话或丢失回退记录。
         std::fs::remove_dir_all(&projects).unwrap();
         let changed = store
             .refresh_paths(&BTreeSet::from([session_file.clone()]))
             .unwrap();
         assert!(changed);
-        assert!(store.records.is_empty());
+        assert_eq!(store.records["claude_code:s1"].path, legacy_file);
     }
 
     #[test]
@@ -2776,7 +2787,7 @@ mod tests {
     }
 
     #[test]
-    fn sources_from_paths_resolves_each_claude_root_independently() {
+    fn sources_from_paths_registers_both_claude_layouts_per_root() {
         let with_projects = tempdir().unwrap();
         let projects = with_projects.path().join("projects");
         std::fs::create_dir_all(&projects).unwrap();
@@ -2790,12 +2801,77 @@ mod tests {
             &[with_projects.path().into(), legacy.path().into()],
             &[],
         );
-        assert_eq!(sources.len(), 2);
+        assert_eq!(sources.len(), 4);
         assert_eq!(sources[0].root, projects);
-        assert_eq!(sources[1].root, legacy_sessions);
+        assert_eq!(sources[1].root, with_projects.path().join("sessions"));
+        assert_eq!(sources[2].root, legacy.path().join("projects"));
+        assert_eq!(sources[3].root, legacy_sessions);
         assert!(sources.iter().all(|source| {
             source.kind == "claude_code" && matches!(source.format, SourceFormat::Claude)
         }));
+    }
+
+    #[test]
+    fn claude_modern_and_legacy_sessions_are_scanned_together() {
+        let directory = tempdir().unwrap();
+        let claude_root = directory.path().join(".claude");
+        let projects_root = claude_root.join("projects");
+        let sessions_root = claude_root.join("sessions");
+        std::fs::create_dir_all(&projects_root).unwrap();
+        std::fs::create_dir_all(&sessions_root).unwrap();
+        std::fs::write(
+            projects_root.join("modern.jsonl"),
+            concat!(
+                "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"modern\"},",
+                "\"timestamp\":\"2026-08-20T01:00:00.000Z\",\"cwd\":\"/modern\",\"sessionId\":\"modern\"}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            sessions_root.join("legacy.json"),
+            json!({
+                "sessionId": "legacy",
+                "prompt": "legacy",
+                "cwd": "/legacy",
+                "startedAt": 1_766_016_000_000_i64
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            sessions_root.join("modern.json"),
+            json!({
+                "sessionId": "modern",
+                "prompt": "legacy duplicate",
+                "cwd": "/legacy",
+                "startedAt": 1_766_016_000_000_i64
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: crate::config::SourceRoots {
+                claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
+                codex: Some(Vec::new()),
+                codex_archived: Some(Vec::new()),
+                gemini: Some(Vec::new()),
+            },
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        };
+
+        store.refresh().unwrap();
+
+        assert!(store.records.contains_key("claude_code:modern"));
+        assert!(store.records.contains_key("claude_code:legacy"));
+        assert_eq!(store.records.len(), 2);
+        assert_eq!(
+            store.records["claude_code:modern"].path,
+            projects_root.join("modern.jsonl")
+        );
     }
 
     #[test]

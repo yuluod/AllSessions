@@ -33,10 +33,10 @@ const DICT = {
       "默认关闭；显式启用后恢复当前 Provider 的历史可见性。",
     codexProviderMigrationDesc:
       "把明确选择的旧历史重新绑定到当前 Provider。切换 Provider 后可能需要再次执行；不修改 config.toml 或任何第三方工具。",
-    readonlyTool: "只读",
+    readonlyTool: "归档来源",
     codexArchiveViewer: "Codex 归档查看",
     codexArchiveViewerDesc:
-      "只读显示 Codex 自身归档的会话，不移动文件，也不恢复归档状态。",
+      "显示 Codex 自身归档的会话；不会移动文件或恢复归档状态，永久删除仍会修改原始记录。",
     recoveryTool: "恢复工具",
     codexRollbackTitle: "Codex 修复回滚",
     codexRollbackDesc:
@@ -369,10 +369,10 @@ const DICT = {
       "Disabled by default; explicitly enable it to restore history for the active provider.",
     codexProviderMigrationDesc:
       "Rebind only selected history to the active provider. Switching providers may require another repair; config.toml and third-party tools are not modified.",
-    readonlyTool: "Read only",
+    readonlyTool: "Archived source",
     codexArchiveViewer: "Codex Archive Viewer",
     codexArchiveViewerDesc:
-      "Read-only view for sessions archived by Codex itself. It does not move files or restore archive state.",
+      "Shows sessions archived by Codex itself. It does not move files or restore archive state; permanent deletion still modifies the source record.",
     recoveryTool: "Recovery tool",
     codexRollbackTitle: "Codex Repair Rollback",
     codexRollbackDesc:

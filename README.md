@@ -36,8 +36,8 @@ AllSessions combines local Codex, Claude Code, and Gemini CLI history in one Tau
 | Source | Default path | Coverage |
 | --- | --- | --- |
 | Codex | `~/.codex/sessions` | Metadata, messages, tools, raw events, search, live refresh |
-| Codex Archived | `~/.codex/archived_sessions` | Read-only archived sessions |
-| Claude Code | `~/.claude/projects/**/*.jsonl` | Messages, thinking, tools/results, search, and live refresh; falls back to legacy `sessions/*.json` and enriches details from `history.jsonl` when available |
+| Codex Archived | `~/.codex/archived_sessions` | Browse, search, and permanently delete archived sessions; files are not moved and archive state cannot be restored |
+| Claude Code | `~/.claude/{projects,sessions}` | Concurrently scans modern `projects/**/*.jsonl` and legacy `sessions/*.json`; supports messages, thinking, tools/results, search, and live refresh, with `history.jsonl` enrichment for legacy details when available |
 | Gemini CLI | `~/.gemini/tmp/*/logs.json` | Streaming scan, per-file incremental cache, session aggregation, and bounded on-demand details |
 
 ## Install and run
@@ -72,7 +72,7 @@ The four `*_SESSIONS_DIR` variables accept multiple paths separated by the OS pa
 
 ## Privacy and security
 
-Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing is read-only. The only source-data mutation is the explicitly enabled Codex provider maintenance tool.
+Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing, search, and export do not modify source data. Explicitly confirmed permanent deletion modifies the original Codex, Claude Code, or Gemini CLI record; Codex provider maintenance also modifies Codex data after it is enabled and execution is confirmed.
 
 - Review exports, logs, screenshots, and issues before sharing.
 - Treat index caches and maintenance backups as sensitive local data.

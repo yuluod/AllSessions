@@ -328,6 +328,7 @@ const elements = {
   settingsRepositoryLink: document.querySelector(
     "#settings-repository-link"
   ),
+  settingsLicenseLink: document.querySelector("#settings-license-link"),
   settingsSaveBtn: document.querySelector("#settings-save-btn"),
   settingsStatus: document.querySelector("#settings-status"),
   sessionDeleteBtn: document.querySelector("#session-delete-btn"),

@@ -407,7 +407,7 @@ export function createSettingsController({
     }
   }
 
-  async function openRepository(event) {
+  async function openExternalLink(event) {
     if (!window.__TAURI__?.core?.invoke) return;
     event.preventDefault();
     try {
@@ -429,7 +429,8 @@ export function createSettingsController({
     elements.settingsSaveBtn?.addEventListener("click", save);
     elements.settingsClearCache?.addEventListener("click", clearCache);
     elements.settingsCheckUpdate?.addEventListener("click", checkForUpdates);
-    elements.settingsRepositoryLink?.addEventListener("click", openRepository);
+    elements.settingsRepositoryLink?.addEventListener("click", openExternalLink);
+    elements.settingsLicenseLink?.addEventListener("click", openExternalLink);
     elements.settingsKeepRunning?.addEventListener("change", savePreferences);
     elements.settingsStartupUpdates?.addEventListener(
       "change",

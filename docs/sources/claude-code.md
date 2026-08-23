@@ -10,7 +10,7 @@ AllSessions 已支持同时扫描和聚合 Codex、Codex Archived、Claude Code 
 
 ## 数据边界
 
-Claude Code 的 `~/.claude/projects/**/*.jsonl` 转录当前可提供用户与助手消息、Thinking、工具调用与结果、原始事件、搜索和实时刷新。旧环境缺少项目转录时，才回退到 `~/.claude/sessions/*.json` 元数据与用户输入历史。AllSessions 只展示本地文件中实际存在的内容，不通过 Anthropic API 补全云端对话，也不推断缺失内容。
+Claude Code 的 `~/.claude/projects/**/*.jsonl` 转录当前可提供用户与助手消息、Thinking、工具调用与结果、原始事件、搜索和实时刷新；同一根目录下的旧版 `~/.claude/sessions/*.json` 也会同时扫描，并可从 `history.jsonl` 补充用户输入历史。新旧格式出现相同会话 ID 时优先保留现代项目转录，避免重复展示。AllSessions 只展示本地文件中实际存在的内容，不通过 Anthropic API 补全云端对话，也不推断缺失内容。
 
 解析结果使用统一结构：
 
@@ -40,4 +40,4 @@ Claude Code 本地历史可能包含提示词、项目路径和源代码片段�
 - 明确记录不同 Claude Code 版本的已知格式差异。
 - 在不引入云端依赖的前提下，改善工具调用、错误事件和时间戳的展示。
 
-以上方向不承诺具体版本；当前实现仍以本地运行、默认只读和显式维护模式为边界。
+以上方向不承诺具体版本；当前实现仍以本地运行为边界。浏览、搜索和导出不会写入来源数据；永久删除及显式启用的维护操作会在用户确认后修改对应原始记录。

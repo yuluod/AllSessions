@@ -37,8 +37,8 @@ AllSessions 将 Codex、Claude Code 和 Gemini CLI 的本地会话聚合到一�
 | 来源 | 默认本地路径 | 支持范围 |
 | --- | --- | --- |
 | Codex | `~/.codex/sessions` | 元数据、消息、工具调用、原始事件、搜索和实时刷新 |
-| Codex 归档 | `~/.codex/archived_sessions` | 只读浏览归档会话 |
-| Claude Code | `~/.claude/projects/**/*.jsonl` | 对话、Thinking、工具调用/结果、搜索和实时刷新；兼容旧版 `sessions/*.json`，并在可用时从 `history.jsonl` 补充详情 |
+| Codex 归档 | `~/.codex/archived_sessions` | 浏览、搜索和永久删除归档会话；不移动文件或恢复归档状态 |
+| Claude Code | `~/.claude/{projects,sessions}` | 同时扫描现代 `projects/**/*.jsonl` 与旧版 `sessions/*.json`；支持对话、Thinking、工具调用/结果、搜索和实时刷新，并在可用时从 `history.jsonl` 补充旧版详情 |
 | Gemini CLI | `~/.gemini/tmp/*/logs.json` | 流式扫描、按 sessionId 聚合、逐文件增量缓存和按需加载有界详情 |
 
 ## 安装包与运行
@@ -73,7 +73,7 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 
 ## 隐私与安全
 
-本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览不会修改来源数据；唯一写入来源数据的能力是工具页中需显式开启的 Codex Provider 维护模式。
+本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览、搜索和导出不会修改来源数据。显式确认永久删除会修改 Codex、Claude Code 或 Gemini CLI 的原始记录；Codex Provider 维护模式也会在启用并确认执行后修改 Codex 数据。
 
 - 分享导出、日志、截图或 issue 前应人工脱敏。
 - 索引缓存与维护备份均应视为敏感本地数据。

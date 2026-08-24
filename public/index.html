@@ -172,6 +172,12 @@
                     <option value="" data-i18n="all">全部</option>
                   </select>
                 </label>
+                <label class="field">
+                  <span data-i18n="workspaceTagFilter">标签</span>
+                  <select id="workspace-tag-filter">
+                    <option value="" data-i18n="all">全部</option>
+                  </select>
+                </label>
               </div>
               <details class="visibility-panel">
                 <summary>
@@ -199,8 +205,38 @@
                     <input id="show-removed-toggle" type="checkbox" />
                     <span data-i18n="showRemoved">显示已移除内容</span>
                   </label>
+                  <label class="archive-toggle-label">
+                    <input id="favorite-only-toggle" type="checkbox" />
+                    <span data-i18n="favoriteOnly">只看收藏</span>
+                  </label>
                 </div>
               </details>
+              <div class="saved-filter-section">
+                <div class="saved-filter-form">
+                  <input
+                    id="saved-filter-name"
+                    type="text"
+                    maxlength="60"
+                    data-i18n-placeholder="savedFilterNamePlaceholder"
+                    placeholder="为当前筛选命名"
+                  />
+                  <button
+                    id="save-filter-btn"
+                    class="ghost-button"
+                    type="button"
+                    data-i18n="saveCurrentFilter"
+                  >
+                    保存筛选
+                  </button>
+                </div>
+                <div
+                  id="saved-filter-list"
+                  class="saved-filter-list"
+                  aria-label="常用筛选"
+                  data-i18n="savedFilters"
+                  data-i18n-attr="aria-label"
+                ></div>
+              </div>
             </div>
           </details>
 
@@ -215,6 +251,50 @@
               <div id="project-list" class="project-list"></div>
             </details>
             <div class="session-list-shell">
+              <div id="bulk-toolbar" class="bulk-toolbar hidden">
+                <button
+                  id="select-visible-btn"
+                  class="ghost-button"
+                  type="button"
+                  data-i18n="selectLoadedSessions"
+                >
+                  选择当前页
+                </button>
+                <span id="bulk-selection-count" data-i18n="noSessionsSelected"
+                  >未选择会话</span
+                >
+                <div id="bulk-actions" class="bulk-actions hidden">
+                  <select
+                    id="bulk-export-format"
+                    aria-label="批量导出格式"
+                    data-i18n="bulkExportFormat"
+                    data-i18n-attr="aria-label"
+                  >
+                    <option value="json">JSON</option>
+                    <option value="markdown">Markdown</option>
+                  </select>
+                  <label class="bulk-redact-option">
+                    <input id="bulk-redact-toggle" type="checkbox" />
+                    <span data-i18n="redactExport">脱敏</span>
+                  </label>
+                  <button
+                    id="bulk-export-btn"
+                    class="ghost-button"
+                    type="button"
+                    data-i18n="exportSelected"
+                  >
+                    导出所选
+                  </button>
+                  <button
+                    id="clear-selection-btn"
+                    class="ghost-button"
+                    type="button"
+                    data-i18n="clearSelection"
+                  >
+                    取消选择
+                  </button>
+                </div>
+              </div>
               <div
                 id="active-filter-bar"
                 class="active-filter-bar"
@@ -274,6 +354,89 @@
                 </div>
                 <div class="detail-topbar-right">
                   <button
+                    id="session-favorite-btn"
+                    class="ghost-button session-favorite-button"
+                    type="button"
+                    aria-pressed="false"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      width="15"
+                      height="15"
+                    >
+                      <path
+                        d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                    <span data-i18n="favorite">收藏</span>
+                  </button>
+                  <details
+                    id="session-organize-menu"
+                    class="session-organize-menu"
+                  >
+                    <summary data-i18n="organizeSession">整理</summary>
+                    <div class="session-organize-body">
+                      <label>
+                        <span data-i18n="workspaceTags">标签</span>
+                        <input
+                          id="session-tags-input"
+                          type="text"
+                          maxlength="840"
+                          data-i18n-placeholder="workspaceTagsPlaceholder"
+                          placeholder="使用逗号分隔"
+                        />
+                      </label>
+                      <label>
+                        <span data-i18n="workspaceNote">备注</span>
+                        <textarea
+                          id="session-note-input"
+                          maxlength="10000"
+                          rows="4"
+                          data-i18n-placeholder="workspaceNotePlaceholder"
+                          placeholder="仅保存在 AllSessions 中"
+                        ></textarea>
+                      </label>
+                      <p
+                        class="workspace-data-hint"
+                        data-i18n="workspaceDataHint"
+                      >
+                        收藏、标签、备注和移除状态属于 AllSessions
+                        用户数据，不会写入 Agent 原始记录。
+                      </p>
+                      <div class="session-organize-actions">
+                        <button
+                          id="save-session-workspace-btn"
+                          class="ghost-button"
+                          type="button"
+                          data-i18n="saveOrganization"
+                        >
+                          保存整理
+                        </button>
+                        <button
+                          id="reveal-source-btn"
+                          class="ghost-button"
+                          type="button"
+                          data-i18n="revealSourceFile"
+                        >
+                          显示来源文件
+                        </button>
+                        <button
+                          id="reveal-project-btn"
+                          class="ghost-button"
+                          type="button"
+                          data-i18n="revealProjectFolder"
+                        >
+                          显示项目目录
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+                  <button
                     id="session-inspector-toggle"
                     class="ghost-button inspector-toggle"
                     type="button"
@@ -319,6 +482,16 @@
                   <details class="export-menu">
                     <summary data-i18n="export">导出</summary>
                     <div class="export-actions">
+                      <label class="export-redact-option">
+                        <input id="export-redact-toggle" type="checkbox" />
+                        <span data-i18n="redactExport">脱敏导出</span>
+                      </label>
+                      <span
+                        class="export-redact-hint"
+                        data-i18n="redactExportHint"
+                      >
+                        隐藏本地路径和会话标识
+                      </span>
                       <button
                         id="export-md-btn"
                         class="ghost-button"
@@ -939,6 +1112,22 @@
       </div>
       <div class="delete-dialog-body">
         <p id="delete-dialog-description"></p>
+        <div class="data-boundary-note">
+          <div>
+            <strong data-i18n="allSessionsUserData"
+              >AllSessions 用户数据</strong
+            >
+            <span data-i18n="allSessionsUserDataHint"
+              >归档、收藏、标签、备注和移除状态</span
+            >
+          </div>
+          <div>
+            <strong data-i18n="agentSourceData">Agent 原始数据</strong>
+            <span data-i18n="agentSourceDataHint"
+              >会话文件、消息和工具调用记录</span
+            >
+          </div>
+        </div>
         <div id="delete-dialog-warning" class="delete-dialog-warning hidden">
           <strong data-i18n="permanentDeleteWarningTitle">不可恢复</strong>
           <p data-i18n="permanentDeleteWarning">
@@ -1200,7 +1389,21 @@
                   <dt data-i18n="settingsDeletionBackupCount">备份数量</dt>
                   <dd id="settings-deletion-backup-count">-</dd>
                 </div>
+                <div>
+                  <dt data-i18n="settingsWorkspacePath">工作台数据</dt>
+                  <dd id="settings-workspace-path">-</dd>
+                </div>
+                <div>
+                  <dt data-i18n="settingsWorkspaceCount">已整理会话</dt>
+                  <dd id="settings-workspace-count">-</dd>
+                </div>
               </dl>
+              <p
+                class="settings-storage-hint"
+                data-i18n="settingsWorkspaceStorageHint"
+              >
+                索引缓存可以安全重建；工作台数据保存收藏、标签、备注和常用筛选，不会随清理缓存删除。
+              </p>
               <div class="settings-storage-actions">
                 <button
                   id="settings-clear-cache"
@@ -1294,6 +1497,12 @@
 
     <template id="session-item-template">
       <div class="session-row">
+        <label class="session-select-control">
+          <input class="session-select-checkbox" type="checkbox" />
+          <span class="visually-hidden" data-i18n="selectSessionForBulk"
+            >选择会话用于批量操作</span
+          >
+        </label>
         <button class="session-item" type="button">
           <div class="session-primary">
             <span class="session-source-kind"></span>

@@ -338,6 +338,23 @@ export function createSettingsController({
         ? String(backup.count || 0)
         : "—";
     }
+    const workspace = payload?.workspace_storage || { enabled: false };
+    if (elements.settingsWorkspacePath) {
+      elements.settingsWorkspacePath.textContent = workspace.enabled
+        ? workspace.path
+        : t("settingsWorkspaceUnavailable");
+      elements.settingsWorkspacePath.title = workspace.enabled
+        ? workspace.path
+        : "";
+    }
+    if (elements.settingsWorkspaceCount) {
+      elements.settingsWorkspaceCount.textContent = workspace.enabled
+        ? t("settingsWorkspaceSummary", {
+            sessions: workspace.session_count || 0,
+            filters: workspace.saved_filter_count || 0,
+          })
+        : "—";
+    }
   }
 
   function renderPreferences(payload) {

@@ -222,28 +222,37 @@
   }
 
   .conversation-display-options[open],
-  .export-menu[open] {
+  .export-menu[open],
+  .session-organize-menu[open] {
     width: 100%;
   }
 
   .conversation-display-options[open] > summary,
-  .export-menu[open] > summary {
+  .export-menu[open] > summary,
+  .session-organize-menu[open] > summary {
     width: 100%;
   }
 
   .conversation-display-options > summary,
-  .export-menu > summary {
+  .export-menu > summary,
+  .session-organize-menu > summary {
     min-height: 40px;
     justify-content: center;
   }
 
   .conversation-display-options-body,
-  .export-menu .export-actions {
+  .export-menu .export-actions,
+  .session-organize-body {
     position: static;
     width: 100%;
     min-width: 0;
     margin-top: 6px;
     box-shadow: none;
+  }
+
+  .session-organize-body input,
+  .session-organize-body textarea {
+    font-size: 1rem;
   }
 
   .role-filter {
@@ -309,11 +318,26 @@
     display: grid;
   }
 
+  .bulk-actions {
+    flex-wrap: wrap;
+  }
+
   .tabs,
   .export-menu,
+  .session-organize-menu,
   .export-menu > summary,
+  .session-organize-menu > summary,
   .export-menu .export-actions {
     width: 100%;
+  }
+
+  .data-boundary-note {
+    grid-template-columns: 1fr;
+  }
+
+  .data-boundary-note > div + div {
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .tab-button,

@@ -3,7 +3,11 @@ import {
   DESKTOP_RUNTIME_REQUIRED,
   fetchJson as requestJson,
 } from "./api-client.js";
-import { createLatestRequestGate, isAbortError } from "./async-coordinator.js";
+import {
+  createLatestRequestGate,
+  isAbortError,
+  mapWithConcurrency,
+} from "./async-coordinator.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import {
   cwdParts,
@@ -13,12 +17,19 @@ import {
   formatTimestamp,
   sessionTimestamp,
 } from "./session-format.js";
-import { exportSessionJson, exportSessionMarkdown } from "./session-export.js";
+import {
+  exportSessionCollection,
+  exportSessionJson,
+  exportSessionMarkdown,
+} from "./session-export.js";
 import { createConversationView } from "./conversation-view.js";
 import { renderStats } from "./stats-view.js";
 import { createSettingsController } from "./settings-view.js";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 const PAGE_LIMIT = 50;
+const MAX_BULK_EXPORT_SESSIONS = 20;
+const BULK_EXPORT_CONCURRENCY = 4;
 const PROJECT_PREVIEW_LIMIT = 4;
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const INSPECTOR_DRAWER_QUERY = "(max-width: 1320px)";
@@ -44,6 +55,7 @@ const state = {
   showCodexArchived: false,
   showHidden: false,
   showRemoved: false,
+  favoriteOnly: false,
   showAllProjects: false,
   codexMigrationPreview: null,
   codexMigrationSelectedProviders: new Set(),
@@ -62,13 +74,21 @@ const state = {
     source_kind: "",
     date: "",
     cwd: "",
+    tag: "",
   },
   roleFilter: "",
+  workspace: {
+    sessions: {},
+    removed_messages: {},
+    saved_filters: [],
+    storage: null,
+  },
+  selectedSessionKeys: new Set(),
 };
 
 let pendingDeletion = null;
 
-function getArchivedIds() {
+function readLegacyArchivedIds() {
   try {
     return new Set(JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]"));
   } catch {
@@ -76,23 +96,7 @@ function getArchivedIds() {
   }
 }
 
-function setArchivedIds(set) {
-  localStorage.setItem(ARCHIVE_KEY, JSON.stringify(Array.from(set)));
-}
-
-function toggleArchive(id) {
-  const ids = getArchivedIds();
-  const archived = !ids.has(id);
-  if (!archived) {
-    ids.delete(id);
-  } else {
-    ids.add(id);
-  }
-  setArchivedIds(ids);
-  return archived;
-}
-
-function getRemovedSessionIds() {
+function readLegacyRemovedSessionIds() {
   try {
     return new Set(
       JSON.parse(localStorage.getItem(REMOVED_SESSIONS_KEY) || "[]")
@@ -102,14 +106,7 @@ function getRemovedSessionIds() {
   }
 }
 
-function setSessionRemoved(id, removed) {
-  const ids = getRemovedSessionIds();
-  if (removed) ids.add(id);
-  else ids.delete(id);
-  localStorage.setItem(REMOVED_SESSIONS_KEY, JSON.stringify(Array.from(ids)));
-}
-
-function getRemovedMessages() {
+function readLegacyRemovedMessages() {
   try {
     const value = JSON.parse(
       localStorage.getItem(REMOVED_MESSAGES_KEY) || "{}"
@@ -123,33 +120,282 @@ function getRemovedMessages() {
 }
 
 function isMessageRemoved(message) {
-  const sessionKey =
-    state.currentDetail?.summary?._key || state.selectedSessionKey;
-  if (!sessionKey || !message?._message_key) return false;
-  return (getRemovedMessages()[sessionKey] || []).includes(
-    message._message_key
+  return message?._removed === true;
+}
+
+function sessionWorkspace(sessionOrKey) {
+  const key =
+    typeof sessionOrKey === "string" ? sessionOrKey : sessionOrKey?._key;
+  return state.workspace.sessions?.[key] || sessionOrKey?.workspace || {};
+}
+
+async function updateSessionWorkspace(sessionKey, patch) {
+  const result = await fetchJson("/api/workspace/session", {
+    method: "POST",
+    body: { sessionKey, ...patch },
+  });
+  state.workspace.sessions[sessionKey] = result.workspace;
+  const summary = state.sessions.find((item) => item._key === sessionKey);
+  if (summary) summary.workspace = result.workspace;
+  if (state.currentDetail?.summary?._key === sessionKey) {
+    state.currentDetail.summary.workspace = result.workspace;
+  }
+  return result.workspace;
+}
+
+async function updateMessageWorkspace(sessionKey, messageKey, removed) {
+  await fetchJson("/api/workspace/message", {
+    method: "POST",
+    body: { sessionKey, messageKey, removed },
+  });
+  const messages = state.currentDetail?.conversation_messages || [];
+  const message = messages.find((item) => item._message_key === messageKey);
+  if (message) message._removed = removed;
+}
+
+async function migrateLegacyWorkspace() {
+  const archived = Array.from(readLegacyArchivedIds());
+  const removed = Array.from(readLegacyRemovedSessionIds());
+  const removedMessages = readLegacyRemovedMessages();
+  if (
+    !archived.length &&
+    !removed.length &&
+    !Object.keys(removedMessages).length
+  ) {
+    return;
+  }
+  await fetchJson("/api/workspace/migrate-legacy", {
+    method: "POST",
+    body: {
+      archivedSessions: archived,
+      removedSessions: removed,
+      removedMessages,
+    },
+  });
+  localStorage.removeItem(ARCHIVE_KEY);
+  localStorage.removeItem(REMOVED_SESSIONS_KEY);
+  localStorage.removeItem(REMOVED_MESSAGES_KEY);
+}
+
+async function loadWorkspaceState() {
+  await migrateLegacyWorkspace();
+  state.workspace = await fetchJson("/api/workspace");
+  renderSavedFilters();
+  updateBulkToolbar();
+}
+
+function currentFilterValue() {
+  return {
+    ...state.filters,
+    q: state.searchQuery,
+    show_archived: state.showArchived,
+    show_codex_archived: state.showCodexArchived,
+    show_hidden: state.showHidden,
+    show_removed: state.showRemoved,
+    favorite: state.favoriteOnly,
+  };
+}
+
+function applyFilterValue(filter = {}) {
+  state.filters = {
+    provider: filter.provider || "",
+    source_kind: filter.source_kind || "",
+    date: filter.date || "",
+    cwd: filter.cwd || "",
+    tag: filter.tag || "",
+  };
+  state.searchQuery = filter.q || "";
+  state.showArchived = filter.show_archived === true;
+  state.showCodexArchived = filter.show_codex_archived === true;
+  state.showHidden = filter.show_hidden === true;
+  state.showRemoved = filter.show_removed === true;
+  state.favoriteOnly = filter.favorite === true;
+}
+
+function renderSavedFilters() {
+  if (!elements.savedFilterList) return;
+  elements.savedFilterList.replaceChildren();
+  const filters = state.workspace.saved_filters || [];
+  if (!filters.length) {
+    const empty = document.createElement("span");
+    empty.className = "saved-filter-empty";
+    empty.textContent = t("noSavedFilters");
+    elements.savedFilterList.append(empty);
+    return;
+  }
+  filters.forEach((saved) => {
+    const chip = document.createElement("span");
+    chip.className = "saved-filter-chip";
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.textContent = saved.name;
+    apply.title = t("applySavedFilter", { name: saved.name });
+    apply.addEventListener("click", async () => {
+      applyFilterValue(saved.filter);
+      syncFilterControls();
+      syncUrl();
+      await Promise.all([loadSessions(), loadStats()]);
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "saved-filter-delete";
+    remove.textContent = "×";
+    remove.title = t("deleteSavedFilter");
+    remove.setAttribute("aria-label", t("deleteSavedFilter"));
+    remove.addEventListener("click", async () => {
+      try {
+        await fetchJson("/api/workspace/saved-filter/delete", {
+          method: "POST",
+          body: { id: saved.id },
+        });
+        state.workspace.saved_filters = filters.filter(
+          (filter) => filter.id !== saved.id
+        );
+        renderSavedFilters();
+        announce(t("savedFilterDeleted"));
+      } catch (error) {
+        showError(`${t("workspaceSaveFailed")}: ${error.message}`);
+      }
+    });
+    chip.append(apply, remove);
+    elements.savedFilterList.append(chip);
+  });
+}
+
+async function saveCurrentFilter() {
+  const name = elements.savedFilterName?.value.trim();
+  if (!name) {
+    elements.savedFilterName?.focus();
+    return;
+  }
+  elements.saveFilterBtn.disabled = true;
+  try {
+    const saved = await fetchJson("/api/workspace/saved-filter", {
+      method: "POST",
+      body: { name, filter: currentFilterValue() },
+    });
+    state.workspace.saved_filters = [
+      saved,
+      ...(state.workspace.saved_filters || []),
+    ];
+    elements.savedFilterName.value = "";
+    renderSavedFilters();
+    announce(t("savedFilterCreated"));
+  } catch (error) {
+    showError(`${t("workspaceSaveFailed")}: ${error.message}`);
+  } finally {
+    elements.saveFilterBtn.disabled = false;
+  }
+}
+
+function updateBulkToolbar() {
+  const count = state.selectedSessionKeys.size;
+  elements.bulkToolbar?.classList.toggle(
+    "hidden",
+    state.sessions.length === 0 && count === 0
+  );
+  if (elements.selectVisibleBtn) {
+    elements.selectVisibleBtn.disabled = state.sessions.length === 0;
+  }
+  if (elements.bulkSelectionCount) {
+    elements.bulkSelectionCount.textContent = count
+      ? t("selectedSessionsCount", { n: count })
+      : t("noSessionsSelected");
+  }
+  elements.bulkActions?.classList.toggle("hidden", count === 0);
+}
+
+function setSessionSelected(sessionKey, selected) {
+  if (selected) state.selectedSessionKeys.add(sessionKey);
+  else state.selectedSessionKeys.delete(sessionKey);
+  const row = elements.sessionList
+    ?.querySelector(
+      `.session-item[data-session-key="${CSS.escape(sessionKey)}"]`
+    )
+    ?.closest(".session-row");
+  row?.classList.toggle("is-selected", selected);
+  const checkbox = row?.querySelector(".session-select-checkbox");
+  if (checkbox) checkbox.checked = selected;
+  updateBulkToolbar();
+}
+
+async function exportSelectedSessions() {
+  const keys = Array.from(state.selectedSessionKeys);
+  if (!keys.length) return;
+  if (keys.length > MAX_BULK_EXPORT_SESSIONS) {
+    showError(
+      t("bulkExportTooMany", {
+        n: MAX_BULK_EXPORT_SESSIONS,
+      })
+    );
+    return;
+  }
+  elements.bulkExportBtn.disabled = true;
+  const originalLabel = elements.bulkExportBtn.textContent;
+  elements.bulkExportBtn.textContent = t("bulkExporting");
+  try {
+    const details = await mapWithConcurrency(
+      keys,
+      BULK_EXPORT_CONCURRENCY,
+      (key) => fetchJson(`/api/sessions/${encodeURIComponent(key)}`)
+    );
+    exportSessionCollection(
+      details,
+      elements.bulkExportFormat?.value || "json",
+      { redact: elements.bulkRedactToggle?.checked === true }
+    );
+  } catch (error) {
+    showError(`${t("bulkExportFailed")}: ${error.message}`);
+  } finally {
+    elements.bulkExportBtn.disabled = false;
+    elements.bulkExportBtn.textContent = originalLabel;
+  }
+}
+
+function parseWorkspaceTags(value) {
+  return Array.from(
+    new Set(
+      value
+        .split(/[,，]/)
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    )
   );
 }
 
-function setMessageRemoved(sessionKey, messageKey, removed) {
-  const bySession = getRemovedMessages();
-  const keys = new Set(bySession[sessionKey] || []);
-  if (removed) keys.add(messageKey);
-  else keys.delete(messageKey);
-  if (keys.size) bySession[sessionKey] = Array.from(keys);
-  else delete bySession[sessionKey];
-  localStorage.setItem(REMOVED_MESSAGES_KEY, JSON.stringify(bySession));
+function syncSessionWorkspaceControls(summary) {
+  const workspace = sessionWorkspace(summary);
+  const favorite = workspace.favorite === true;
+  elements.sessionFavoriteBtn?.setAttribute(
+    "aria-pressed",
+    favorite ? "true" : "false"
+  );
+  const favoriteLabel = elements.sessionFavoriteBtn?.querySelector("span");
+  if (favoriteLabel)
+    favoriteLabel.textContent = t(favorite ? "unfavorite" : "favorite");
+  if (elements.sessionTagsInput) {
+    elements.sessionTagsInput.value = (workspace.tags || []).join(", ");
+  }
+  if (elements.sessionNoteInput) {
+    elements.sessionNoteInput.value = workspace.note || "";
+  }
+  if (elements.revealSourceBtn) {
+    elements.revealSourceBtn.disabled = !summary.file_path;
+  }
+  if (elements.revealProjectBtn) {
+    elements.revealProjectBtn.disabled = !summary.cwd;
+  }
 }
 
-function clearRemovedState(sessionKey, messageKey) {
-  if (messageKey) {
-    setMessageRemoved(sessionKey, messageKey, false);
-    return;
+async function revealCurrentPath(kind) {
+  const summary = state.currentDetail?.summary;
+  const path = kind === "source" ? summary?.file_path : summary?.cwd;
+  if (!path) return;
+  try {
+    await revealItemInDir(path);
+  } catch (error) {
+    showError(`${t("revealFailed")}: ${error.message || error}`);
   }
-  setSessionRemoved(sessionKey, false);
-  const bySession = getRemovedMessages();
-  delete bySession[sessionKey];
-  localStorage.setItem(REMOVED_MESSAGES_KEY, JSON.stringify(bySession));
 }
 
 function isCodexArchivedSession(session) {
@@ -200,6 +446,11 @@ const elements = {
   providerFilter: document.querySelector("#provider-filter"),
   dateFilter: document.querySelector("#date-filter"),
   cwdFilter: document.querySelector("#cwd-filter"),
+  workspaceTagFilter: document.querySelector("#workspace-tag-filter"),
+  favoriteOnlyToggle: document.querySelector("#favorite-only-toggle"),
+  savedFilterName: document.querySelector("#saved-filter-name"),
+  saveFilterBtn: document.querySelector("#save-filter-btn"),
+  savedFilterList: document.querySelector("#saved-filter-list"),
   searchInput: document.querySelector("#search-input"),
   searchShortcut: document.querySelector("#search-shortcut"),
   resetFilters: document.querySelector("#reset-filters"),
@@ -213,6 +464,14 @@ const elements = {
   projectList: document.querySelector("#project-list"),
   activeFilterBar: document.querySelector("#active-filter-bar"),
   sessionList: document.querySelector("#session-list"),
+  bulkToolbar: document.querySelector("#bulk-toolbar"),
+  selectVisibleBtn: document.querySelector("#select-visible-btn"),
+  bulkSelectionCount: document.querySelector("#bulk-selection-count"),
+  bulkActions: document.querySelector("#bulk-actions"),
+  bulkExportFormat: document.querySelector("#bulk-export-format"),
+  bulkRedactToggle: document.querySelector("#bulk-redact-toggle"),
+  bulkExportBtn: document.querySelector("#bulk-export-btn"),
+  clearSelectionBtn: document.querySelector("#clear-selection-btn"),
   detailEmpty: document.querySelector("#detail-empty"),
   detailView: document.querySelector("#detail-view"),
   detailTitle: document.querySelector("#detail-title"),
@@ -231,6 +490,16 @@ const elements = {
   tabButtons: Array.from(document.querySelectorAll(".tab-button")),
   exportMdBtn: document.querySelector("#export-md-btn"),
   exportJsonBtn: document.querySelector("#export-json-btn"),
+  exportRedactToggle: document.querySelector("#export-redact-toggle"),
+  sessionFavoriteBtn: document.querySelector("#session-favorite-btn"),
+  sessionOrganizeMenu: document.querySelector("#session-organize-menu"),
+  sessionTagsInput: document.querySelector("#session-tags-input"),
+  sessionNoteInput: document.querySelector("#session-note-input"),
+  saveSessionWorkspaceBtn: document.querySelector(
+    "#save-session-workspace-btn"
+  ),
+  revealSourceBtn: document.querySelector("#reveal-source-btn"),
+  revealProjectBtn: document.querySelector("#reveal-project-btn"),
   statsDashboard: document.querySelector("#stats-dashboard"),
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
@@ -333,6 +602,8 @@ const elements = {
   settingsDeletionBackupCount: document.querySelector(
     "#settings-deletion-backup-count"
   ),
+  settingsWorkspacePath: document.querySelector("#settings-workspace-path"),
+  settingsWorkspaceCount: document.querySelector("#settings-workspace-count"),
   settingsClearCache: document.querySelector("#settings-clear-cache"),
   settingsVersion: document.querySelector("#settings-version"),
   settingsCheckUpdate: document.querySelector("#settings-check-update"),
@@ -391,10 +662,13 @@ function syncUrl() {
     params.set("source_kind", state.filters.source_kind);
   if (state.filters.date) params.set("date", state.filters.date);
   if (state.filters.cwd) params.set("cwd", state.filters.cwd);
+  if (state.filters.tag) params.set("tag", state.filters.tag);
   if (state.searchQuery) params.set("q", state.searchQuery);
+  if (state.showArchived) params.set("show_archived", "1");
   if (state.showCodexArchived) params.set("show_codex_archived", "1");
   if (state.showHidden) params.set("show_hidden", "1");
   if (state.showRemoved) params.set("show_removed", "1");
+  if (state.favoriteOnly) params.set("favorite", "1");
   if (state.selectedSessionKey) params.set("session", state.selectedSessionKey);
   const search = params.toString();
   history.replaceState(null, "", search ? `?${search}` : location.pathname);
@@ -406,7 +680,11 @@ function restoreFromUrl() {
   state.filters.source_kind = params.get("source_kind") || "";
   state.filters.date = params.get("date") || "";
   state.filters.cwd = params.get("cwd") || "";
+  state.filters.tag = params.get("tag") || "";
   state.searchQuery = params.get("q") || "";
+  state.showArchived =
+    params.get("show_archived") === "1" ||
+    params.get("show_archived") === "true";
   state.showCodexArchived =
     params.get("show_codex_archived") === "1" ||
     params.get("show_codex_archived") === "true";
@@ -414,6 +692,8 @@ function restoreFromUrl() {
     params.get("show_hidden") === "1" || params.get("show_hidden") === "true";
   state.showRemoved =
     params.get("show_removed") === "1" || params.get("show_removed") === "true";
+  state.favoriteOnly =
+    params.get("favorite") === "1" || params.get("favorite") === "true";
   state.selectedSessionKey = params.get("session") || null;
 }
 
@@ -539,6 +819,7 @@ function updateFacetFilters() {
   fillSelect(elements.providerFilter, state.facets.providers);
   fillSelect(elements.dateFilter, state.facets.dates);
   fillSelect(elements.cwdFilter, state.facets.cwds);
+  fillSelect(elements.workspaceTagFilter, state.facets.workspace_tags || []);
   renderProjectNav();
 }
 
@@ -574,6 +855,8 @@ function syncFilterControls() {
     elements.providerFilter.value = state.filters.provider;
   if (elements.dateFilter) elements.dateFilter.value = state.filters.date;
   if (elements.cwdFilter) elements.cwdFilter.value = state.filters.cwd;
+  if (elements.workspaceTagFilter)
+    elements.workspaceTagFilter.value = state.filters.tag;
   if (elements.searchInput) elements.searchInput.value = state.searchQuery;
   if (elements.showArchivedToggle)
     elements.showArchivedToggle.checked = state.showArchived;
@@ -585,6 +868,9 @@ function syncFilterControls() {
   }
   if (elements.showRemovedToggle) {
     elements.showRemovedToggle.checked = state.showRemoved;
+  }
+  if (elements.favoriteOnlyToggle) {
+    elements.favoriteOnlyToggle.checked = state.favoriteOnly;
   }
   renderProjectNav();
 }
@@ -606,6 +892,7 @@ function rerenderLocalizedContent() {
       fullCwd;
     elements.detailTitle.title = fullCwd;
     renderDetailTags(state.currentDetail.summary);
+    syncSessionWorkspaceControls(state.currentDetail.summary);
     syncSessionDeleteButton();
     renderPropsPanel(
       state.currentDetail.summary,
@@ -620,6 +907,8 @@ function rerenderLocalizedContent() {
     setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
     setPropsPlaceholder(t("selectSession"));
   }
+  renderSavedFilters();
+  updateBulkToolbar();
   if (state.stats) {
     renderStats(state.stats, elements);
   }
@@ -655,6 +944,15 @@ function buildSessionQuery() {
   if (state.showHidden) {
     params.set("show_hidden", "true");
   }
+  if (state.showArchived) {
+    params.set("show_archived", "true");
+  }
+  if (state.showRemoved) {
+    params.set("show_removed", "true");
+  }
+  if (state.favoriteOnly) {
+    params.set("favorite", "true");
+  }
   return params.toString();
 }
 
@@ -681,13 +979,7 @@ async function fetchJson(url, options) {
 }
 
 function visibleSessions() {
-  const archivedIds = getArchivedIds();
-  const removedIds = getRemovedSessionIds();
-  return state.sessions.filter(
-    (session) =>
-      (state.showArchived || !archivedIds.has(session._key)) &&
-      (state.showRemoved || !removedIds.has(session._key))
-  );
+  return state.sessions;
 }
 
 async function clearFilterChip(type) {
@@ -697,18 +989,14 @@ async function clearFilterChip(type) {
     state.searchQuery = "";
   } else if (type === "showArchived") {
     state.showArchived = false;
-    syncFilterControls();
-    renderSessionList();
-    return;
   } else if (type === "showCodexArchived") {
     state.showCodexArchived = false;
   } else if (type === "showHidden") {
     state.showHidden = false;
   } else if (type === "showRemoved") {
     state.showRemoved = false;
-    syncFilterControls();
-    renderSessionList();
-    return;
+  } else if (type === "favorite") {
+    state.favoriteOnly = false;
   }
 
   syncFilterControls();
@@ -756,6 +1044,13 @@ function activeFilterEntries() {
       title: state.filters.cwd,
     });
   }
+  if (state.filters.tag) {
+    entries.push({
+      type: "tag",
+      label: t("workspaceTagFilter"),
+      value: state.filters.tag,
+    });
+  }
   if (state.showArchived) {
     entries.push({
       type: "showArchived",
@@ -781,6 +1076,13 @@ function activeFilterEntries() {
     entries.push({
       type: "showRemoved",
       label: t("showRemoved"),
+      value: t("filterEnabled"),
+    });
+  }
+  if (state.favoriteOnly) {
+    entries.push({
+      type: "favorite",
+      label: t("favoriteOnly"),
       value: t("filterEnabled"),
     });
   }
@@ -847,11 +1149,10 @@ function appendSessionGroupHeader(label, count) {
 }
 
 function appendSessionItems(sessions) {
-  const archivedIds = getArchivedIds();
-  const removedIds = getRemovedSessionIds();
   sessions.forEach((session) => {
-    const archived = archivedIds.has(session._key);
-    const removed = removedIds.has(session._key);
+    const workspace = sessionWorkspace(session);
+    const archived = workspace.archived === true;
+    const removed = workspace.removed === true;
 
     const fragment = elements.sessionItemTemplate.content.cloneNode(true);
     const row = fragment.querySelector(".session-row");
@@ -860,6 +1161,14 @@ function appendSessionItems(sessions) {
     row.dataset.sourceKind = sourceKind;
     button.dataset.sourceKind = sourceKind;
     button.dataset.sessionKey = session._key;
+    const checkbox = fragment.querySelector(".session-select-checkbox");
+    checkbox.checked = state.selectedSessionKeys.has(session._key);
+    checkbox.setAttribute("aria-label", t("selectSessionForBulk"));
+    row.classList.toggle("is-selected", checkbox.checked);
+    checkbox.addEventListener("click", (event) => event.stopPropagation());
+    checkbox.addEventListener("change", () => {
+      setSessionSelected(session._key, checkbox.checked);
+    });
     button.setAttribute("role", "option");
     button.setAttribute(
       "aria-selected",
@@ -906,6 +1215,24 @@ function appendSessionItems(sessions) {
       hiddenBadge.textContent = hiddenReason;
       button.querySelector(".session-tertiary").append(hiddenBadge);
     }
+    if (workspace.favorite === true) {
+      const favoriteBadge = document.createElement("span");
+      favoriteBadge.className = "session-workspace-badge favorite";
+      favoriteBadge.textContent = t("favorite");
+      button.querySelector(".session-tertiary").append(favoriteBadge);
+    }
+    (workspace.tags || []).slice(0, 2).forEach((tag) => {
+      const tagBadge = document.createElement("span");
+      tagBadge.className = "session-workspace-badge";
+      tagBadge.textContent = tag;
+      button.querySelector(".session-tertiary").append(tagBadge);
+    });
+    if ((workspace.tags || []).length > 2) {
+      const moreBadge = document.createElement("span");
+      moreBadge.className = "session-workspace-badge";
+      moreBadge.textContent = `+${workspace.tags.length - 2}`;
+      button.querySelector(".session-tertiary").append(moreBadge);
+    }
     if (session._key === state.selectedSessionKey) {
       button.classList.add("active");
     }
@@ -927,15 +1254,18 @@ function appendSessionItems(sessions) {
     archiveBtn.title = archiveLabel;
     archiveBtn.setAttribute("aria-label", archiveLabel);
     archiveBtn.textContent = archived ? "↩" : "⊗";
-    archiveBtn.addEventListener("click", (e) => {
+    archiveBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const isArchived = toggleArchive(session._key);
-      renderSessionList();
-      const ariaLive = document.querySelector("#aria-live");
-      if (ariaLive) {
-        ariaLive.textContent = t(
-          isArchived ? "sessionArchived" : "sessionUnarchived"
-        );
+      archiveBtn.disabled = true;
+      try {
+        const next = !archived;
+        await updateSessionWorkspace(session._key, { archived: next });
+        await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+        announce(t(next ? "sessionArchived" : "sessionUnarchived"));
+      } catch (error) {
+        showError(`${t("workspaceSaveFailed")}: ${error.message}`);
+      } finally {
+        archiveBtn.disabled = false;
       }
     });
     row.append(archiveBtn);
@@ -1005,6 +1335,7 @@ function renderSessionList() {
     elements.sessionList.append(empty);
     renderLoadMoreButton();
     updateSessionCount();
+    updateBulkToolbar();
     return;
   }
 
@@ -1026,6 +1357,7 @@ function renderSessionList() {
 
   renderLoadMoreButton();
   updateSessionCount();
+  updateBulkToolbar();
 }
 
 // ── 详情标签行 ──────────────────────────────────────────────────────────────────
@@ -1070,6 +1402,7 @@ function createTagIcon(icon) {
 
 function renderDetailTags(summary) {
   elements.detailTags.innerHTML = "";
+  const workspace = sessionWorkspace(summary);
   const tags = [
     { text: formatTimestamp(summary.timestamp), icon: "calendar" },
     { text: summary.model_provider || "unknown", cls: "tag-provider" },
@@ -1080,8 +1413,12 @@ function renderDetailTags(summary) {
     },
     { text: hiddenReasonLabel(summary), cls: "tag-hidden" },
     {
-      text: getRemovedSessionIds().has(summary._key) ? t("removedSession") : "",
+      text: workspace.removed === true ? t("removedSession") : "",
       cls: "tag-removed",
+    },
+    {
+      text: workspace.favorite === true ? t("favorite") : "",
+      cls: "tag-favorite",
     },
     {
       text: summary.detail_truncated ? t("partialDetail") : "",
@@ -1101,12 +1438,24 @@ function renderDetailTags(summary) {
     }
     elements.detailTags.append(span);
   });
+  (workspace.tags || []).slice(0, 3).forEach((tag) => {
+    const span = document.createElement("span");
+    span.className = "detail-tag tag-workspace";
+    span.textContent = tag;
+    elements.detailTags.append(span);
+  });
+  if ((workspace.tags || []).length > 3) {
+    const span = document.createElement("span");
+    span.className = "detail-tag tag-workspace";
+    span.textContent = `+${workspace.tags.length - 3}`;
+    elements.detailTags.append(span);
+  }
 }
 
 function syncSessionDeleteButton() {
   if (!elements.sessionDeleteBtn) return;
   const key = state.currentDetail?.summary?._key;
-  const removed = key && getRemovedSessionIds().has(key);
+  const removed = key && sessionWorkspace(key).removed === true;
   elements.sessionDeleteBtn.textContent = t(
     removed ? "manageRemovedSession" : "deleteSession"
   );
@@ -1129,7 +1478,7 @@ function openDeleteDialog({ kind, message = null }) {
   const messageKey = message?._message_key || null;
   const removed =
     kind === "session"
-      ? getRemovedSessionIds().has(sessionKey)
+      ? sessionWorkspace(sessionKey).removed === true
       : isMessageRemoved(message);
   pendingDeletion = { kind, sessionKey, messageKey, removed };
   elements.deleteDialogTitle.textContent = t(
@@ -1168,31 +1517,44 @@ function refreshDeletionViews() {
   );
 }
 
-function restoreRemovedMessage(message) {
+async function restoreRemovedMessage(message) {
   const sessionKey = state.currentDetail?.summary?._key;
   if (!sessionKey || !message?._message_key) return;
-  setMessageRemoved(sessionKey, message._message_key, false);
-  refreshDeletionViews();
-  announce(t("contentRestored"));
+  try {
+    await updateMessageWorkspace(sessionKey, message._message_key, false);
+    refreshDeletionViews();
+    announce(t("contentRestored"));
+  } catch (error) {
+    showError(`${t("workspaceSaveFailed")}: ${error.message}`);
+  }
 }
 
-function applySoftDeletion() {
+async function applySoftDeletion() {
   if (!pendingDeletion) return;
   const { kind, sessionKey, messageKey, removed } = pendingDeletion;
-  if (kind === "session") {
-    setSessionRemoved(sessionKey, !removed);
-    if (!removed && !state.showRemoved) {
-      state.selectedSessionKey = null;
-      state.currentDetail = null;
-      showSelectSessionPlaceholder();
-      syncUrl();
+  elements.deleteSoftBtn.disabled = true;
+  try {
+    if (kind === "session") {
+      await updateSessionWorkspace(sessionKey, { removed: !removed });
+      if (!removed && !state.showRemoved) {
+        state.selectedSessionKey = null;
+        state.currentDetail = null;
+        showSelectSessionPlaceholder();
+        syncUrl();
+      }
+    } else if (messageKey) {
+      await updateMessageWorkspace(sessionKey, messageKey, !removed);
     }
-  } else if (messageKey) {
-    setMessageRemoved(sessionKey, messageKey, !removed);
+    pendingDeletion = null;
+    elements.deleteDialog.close();
+    await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+    refreshDeletionViews();
+    announce(t(removed ? "contentRestored" : "contentRemoved"));
+  } catch (error) {
+    elements.deleteDialogStatus.textContent = `${t("workspaceSaveFailed")}: ${error.message}`;
+  } finally {
+    elements.deleteSoftBtn.disabled = false;
   }
-  closeDeleteDialog();
-  refreshDeletionViews();
-  announce(t(removed ? "contentRestored" : "contentRemoved"));
 }
 
 function showPermanentDeleteConfirmation() {
@@ -1218,10 +1580,11 @@ async function confirmPermanentDeletion() {
     const body = { sessionKey: target.sessionKey, confirmed: true };
     if (target.messageKey) body.messageKey = target.messageKey;
     const result = await fetchJson(url, { method: "POST", body });
-    clearRemovedState(target.sessionKey, target.messageKey);
     pendingDeletion = null;
     elements.deleteDialog.close();
     if (target.kind === "session") {
+      state.selectedSessionKeys.delete(target.sessionKey);
+      delete state.workspace.sessions[target.sessionKey];
       state.selectedSessionKey = null;
       state.currentDetail = null;
       showSelectSessionPlaceholder();
@@ -2122,6 +2485,7 @@ async function loadSessionDetail(id, { silent = false } = {}) {
       detail.summary.title || fullCwd.split(/[\\/]/).pop() || fullCwd;
     elements.detailTitle.title = fullCwd;
     renderDetailTags(detail.summary);
+    syncSessionWorkspaceControls(detail.summary);
     syncSessionDeleteButton();
     renderPropsPanel(detail.summary, detail.conversation_messages);
     conversationView.renderConversation(detail.conversation_messages);
@@ -2419,6 +2783,7 @@ async function bindTauriSessionEventsOnce() {
 
 async function loadInitialWorkspace() {
   try {
+    await loadWorkspaceState();
     await Promise.all([loadFacets(), loadCapabilities()]);
     resetCodexMigrationMetrics();
     configureCodexMaintenanceUi();
@@ -2443,12 +2808,19 @@ async function loadInitialWorkspace() {
 
 async function returnHome() {
   detailRequestGate.cancel();
-  state.filters = { provider: "", source_kind: "", date: "", cwd: "" };
+  state.filters = {
+    provider: "",
+    source_kind: "",
+    date: "",
+    cwd: "",
+    tag: "",
+  };
   state.searchQuery = "";
   state.showArchived = false;
   state.showCodexArchived = false;
   state.showHidden = false;
   state.showRemoved = false;
+  state.favoriteOnly = false;
   state.selectedSessionKey = null;
   state.currentDetail = null;
   state.activeTab = "conversation";
@@ -2559,13 +2931,26 @@ async function initialize() {
     await setCwdFilter(event.target.value);
   });
 
+  elements.workspaceTagFilter?.addEventListener("change", async (event) => {
+    state.filters.tag = event.target.value;
+    syncUrl();
+    await Promise.all([loadSessions(), loadStats()]);
+  });
+
   elements.resetFilters?.addEventListener("click", async () => {
-    state.filters = { provider: "", source_kind: "", date: "", cwd: "" };
+    state.filters = {
+      provider: "",
+      source_kind: "",
+      date: "",
+      cwd: "",
+      tag: "",
+    };
     state.searchQuery = "";
     state.showArchived = false;
     state.showCodexArchived = false;
     state.showHidden = false;
     state.showRemoved = false;
+    state.favoriteOnly = false;
     syncFilterControls();
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
@@ -2589,9 +2974,10 @@ async function initialize() {
   }
 
   if (elements.showArchivedToggle) {
-    elements.showArchivedToggle.addEventListener("change", () => {
+    elements.showArchivedToggle.addEventListener("change", async () => {
       state.showArchived = elements.showArchivedToggle.checked;
-      renderSessionList();
+      syncUrl();
+      await Promise.all([loadSessions(), loadStats()]);
     });
   }
 
@@ -2612,17 +2998,41 @@ async function initialize() {
   }
 
   if (elements.showRemovedToggle) {
-    elements.showRemovedToggle.addEventListener("change", () => {
+    elements.showRemovedToggle.addEventListener("change", async () => {
       state.showRemoved = elements.showRemovedToggle.checked;
       syncUrl();
-      renderSessionList();
-      if (state.currentDetail) {
-        conversationView.renderConversation(
-          state.currentDetail.conversation_messages || []
-        );
-      }
+      await Promise.all([loadSessions(), loadStats()]);
     });
   }
+
+  elements.favoriteOnlyToggle?.addEventListener("change", async () => {
+    state.favoriteOnly = elements.favoriteOnlyToggle.checked;
+    syncUrl();
+    await Promise.all([loadSessions(), loadStats()]);
+  });
+
+  elements.saveFilterBtn?.addEventListener("click", saveCurrentFilter);
+  elements.savedFilterName?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void saveCurrentFilter();
+    }
+  });
+
+  elements.selectVisibleBtn?.addEventListener("click", () => {
+    const visible = visibleSessions();
+    const allSelected =
+      visible.length > 0 &&
+      visible.every((session) => state.selectedSessionKeys.has(session._key));
+    visible.forEach((session) =>
+      setSessionSelected(session._key, !allSelected)
+    );
+  });
+  elements.clearSelectionBtn?.addEventListener("click", () => {
+    state.selectedSessionKeys.clear();
+    renderSessionList();
+  });
+  elements.bulkExportBtn?.addEventListener("click", exportSelectedSessions);
 
   elements.openCodexArchiveBtn?.addEventListener("click", async () => {
     state.showCodexArchived = true;
@@ -2737,15 +3147,70 @@ async function initialize() {
 
   if (elements.exportMdBtn) {
     elements.exportMdBtn.addEventListener("click", () => {
-      if (state.currentDetail) exportSessionMarkdown(state.currentDetail);
+      if (state.currentDetail) {
+        exportSessionMarkdown(state.currentDetail, {
+          redact: elements.exportRedactToggle?.checked === true,
+        });
+      }
     });
   }
 
   if (elements.exportJsonBtn) {
     elements.exportJsonBtn.addEventListener("click", () => {
-      if (state.currentDetail) exportSessionJson(state.currentDetail);
+      if (state.currentDetail) {
+        exportSessionJson(state.currentDetail, {
+          redact: elements.exportRedactToggle?.checked === true,
+        });
+      }
     });
   }
+
+  elements.sessionFavoriteBtn?.addEventListener("click", async () => {
+    const key = state.currentDetail?.summary?._key;
+    if (!key) return;
+    elements.sessionFavoriteBtn.disabled = true;
+    try {
+      const favorite = sessionWorkspace(key).favorite !== true;
+      await updateSessionWorkspace(key, { favorite });
+      syncSessionWorkspaceControls(state.currentDetail.summary);
+      renderDetailTags(state.currentDetail.summary);
+      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+      announce(t(favorite ? "sessionFavorited" : "sessionUnfavorited"));
+    } catch (error) {
+      showError(`${t("workspaceSaveFailed")}: ${error.message}`);
+    } finally {
+      elements.sessionFavoriteBtn.disabled = false;
+    }
+  });
+
+  elements.saveSessionWorkspaceBtn?.addEventListener("click", async () => {
+    const key = state.currentDetail?.summary?._key;
+    if (!key) return;
+    elements.saveSessionWorkspaceBtn.disabled = true;
+    try {
+      await updateSessionWorkspace(key, {
+        tags: parseWorkspaceTags(elements.sessionTagsInput?.value || ""),
+        note: elements.sessionNoteInput?.value || "",
+      });
+      syncSessionWorkspaceControls(state.currentDetail.summary);
+      renderDetailTags(state.currentDetail.summary);
+      renderSessionList();
+      await loadFacets();
+      announce(t("workspaceSaved"));
+      if (elements.sessionOrganizeMenu)
+        elements.sessionOrganizeMenu.open = false;
+    } catch (error) {
+      showError(`${t("workspaceSaveFailed")}: ${error.message}`);
+    } finally {
+      elements.saveSessionWorkspaceBtn.disabled = false;
+    }
+  });
+  elements.revealSourceBtn?.addEventListener("click", () => {
+    void revealCurrentPath("source");
+  });
+  elements.revealProjectBtn?.addEventListener("click", () => {
+    void revealCurrentPath("project");
+  });
 
   let searchDebounce = null;
   elements.searchInput?.addEventListener("input", (event) => {

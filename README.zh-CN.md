@@ -27,56 +27,59 @@ AllSessions 将 Codex、Claude Code 和 Gemini CLI 的本地会话聚合到一�
 - 按来源、Provider、日期、项目和工作目录筛选并搜索
 - 查看归一化对话、工具调用与原始事件
 - 监听来源文件并通过 Tauri 事件自动刷新
+- 查看各来源扫描健康状态，并复制不含会话内容和本地路径的脱敏诊断信息
 - 默认隐藏 subagent、sidechain、Thinking 和注入的系统上下文
 - 使用流式摘要解析、64KB/会话搜索上限、首尾详情窗口和 64MB LRU 控制大历史内存
 - 使用 SQLite 增量索引缓存，并在首次升级时导入旧版 `session-index.json`
+- 配置损坏时使用安全默认值启动，并引导进入来源设置完成修复
+- 显式确认永久删除前，先备份受影响的本地原始记录
 - 提供默认关闭、带预览指纹和字段级回滚的 Codex Provider 维护工具
 
 ## 支持来源
 
-| 来源 | 默认本地路径 | 支持范围 |
-| --- | --- | --- |
-| Codex | `~/.codex/sessions` | 元数据、消息、工具调用、原始事件、搜索和实时刷新 |
-| Codex 归档 | `~/.codex/archived_sessions` | 浏览、搜索和永久删除归档会话；不移动文件或恢复归档状态 |
+| 来源        | 默认本地路径                    | 支持范围                                                                                                                                                  |
+| ----------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Codex       | `~/.codex/sessions`             | 元数据、消息、工具调用、原始事件、搜索和实时刷新                                                                                                          |
+| Codex 归档  | `~/.codex/archived_sessions`    | 浏览、搜索和永久删除归档会话；不移动文件或恢复归档状态                                                                                                    |
 | Claude Code | `~/.claude/{projects,sessions}` | 同时扫描现代 `projects/**/*.jsonl` 与旧版 `sessions/*.json`；支持对话、Thinking、工具调用/结果、搜索和实时刷新，并在可用时从 `history.jsonl` 补充旧版详情 |
-| Gemini CLI | `~/.gemini/tmp/*/logs.json` | 流式扫描、按 sessionId 聚合、逐文件增量缓存和按需加载有界详情 |
+| Gemini CLI  | `~/.gemini/tmp/*/logs.json`     | 流式扫描、按 sessionId 聚合、逐文件增量缓存和按需加载有界详情                                                                                             |
 
 ## 安装包与运行
 
 从 GitHub Releases 下载当前平台安装包。普通用户不需要安装 Node.js、pnpm 或 Rust。
 
-| 平台 | 发布文件 |
-| --- | --- |
-| Windows x64 | `*-windows-x64-setup.exe` |
-| macOS ARM64 / x64 | `*-mac-<arch>.dmg` |
-| Debian/Ubuntu Linux x64 | `*-linux-x64.deb` |
+| 平台                    | 发布文件                  |
+| ----------------------- | ------------------------- |
+| Windows x64             | `*-windows-x64-setup.exe` |
+| macOS ARM64 / x64       | `*-mac-<arch>.dmg`        |
+| Debian/Ubuntu Linux x64 | `*-linux-x64.deb`         |
 
 Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新流程。部分 GNOME 桌面需要 AppIndicator/KStatusNotifierItem 扩展。macOS 安装包暂未公证，首次打开时可能需要在系统安全设置中手动允许。
 
 ## 配置
 
-顶栏的「设置」按钮打开设置对话框，可直接切换语言、按来源编辑会话根目录列表（支持 `~` 展开）、查看索引缓存位置与大小并清除缓存。根目录配置保存到系统用户配置目录下的 `AllSessions/config.json`（可用 `ALLSESSIONS_CONFIG_PATH` 覆盖），保存后立即生效；设置了配置文件的来源不再读取对应环境变量，「恢复默认」则回到环境变量/系统默认路径。
+顶栏的「设置」按钮打开设置对话框，可直接切换语言、按来源编辑会话根目录列表（支持 `~` 展开）、查看来源健康状态、复制脱敏诊断信息，以及检查索引缓存和永久删除备份位置。根目录配置保存到系统用户配置目录下的 `AllSessions/config.json`（可用 `ALLSESSIONS_CONFIG_PATH` 覆盖），保存后立即生效；设置了配置文件的来源不再读取对应环境变量，「恢复默认」则回到环境变量/系统默认路径。配置文件损坏时，应用会使用安全默认值启动并打开来源设置，无需手工编辑文件即可恢复。
 
 环境变量需在启动桌面应用前设置（启动时读取一次）：
 
-| 变量 | 说明 | 默认值 |
-| --- | --- | --- |
-| `CODEX_HOME` | Codex 数据根目录（单路径） | `~/.codex` |
-| `CODEX_SESSIONS_DIR` | Codex 会话根目录（路径列表） | `$CODEX_HOME/sessions` |
-| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex 归档根目录（路径列表） | `$CODEX_HOME/archived_sessions` |
-| `CLAUDE_SESSIONS_DIR` | Claude Code 根目录（路径列表） | `~/.claude` |
-| `GEMINI_SESSIONS_DIR` | Gemini CLI 根目录（路径列表） | `~/.gemini` |
-| `SESSION_VIEWER_CACHE_DIR` | Rust SQLite 索引缓存目录 | 系统用户缓存目录下的 `AllSessions` |
-| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存 | 未设置 |
+| 变量                           | 说明                           | 默认值                             |
+| ------------------------------ | ------------------------------ | ---------------------------------- |
+| `CODEX_HOME`                   | Codex 数据根目录（单路径）     | `~/.codex`                         |
+| `CODEX_SESSIONS_DIR`           | Codex 会话根目录（路径列表）   | `$CODEX_HOME/sessions`             |
+| `CODEX_ARCHIVED_SESSIONS_DIR`  | Codex 归档根目录（路径列表）   | `$CODEX_HOME/archived_sessions`    |
+| `CLAUDE_SESSIONS_DIR`          | Claude Code 根目录（路径列表） | `~/.claude`                        |
+| `GEMINI_SESSIONS_DIR`          | Gemini CLI 根目录（路径列表）  | `~/.gemini`                        |
+| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录       | 系统用户缓存目录下的 `AllSessions` |
+| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存        | 未设置                             |
 
 四个 `*_SESSIONS_DIR` 变量支持用系统路径分隔符（macOS/Linux 为 `:`，Windows 为 `;`）分隔的多个路径，例如 `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`。路径支持前导 `~` 展开为用户主目录，从 Finder/Dock 启动（无 shell 展开环境变量）时同样生效。不存在的根会被跳过；同一类来源的多个根中出现相同会话 id 时，只保留列表中靠前的根（备份副本只显示一次）。注意：Codex Provider 可见性修复工具只覆盖主 `CODEX_HOME` 下的会话目录，不包含额外列出的根。
 
 ## 隐私与安全
 
-本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览、搜索和导出不会修改来源数据。显式确认永久删除会修改 Codex、Claude Code 或 Gemini CLI 的原始记录；Codex Provider 维护模式也会在启用并确认执行后修改 Codex 数据。
+本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览、搜索和导出不会修改来源数据。显式确认永久删除会在创建本地备份后修改 Codex、Claude Code 或 Gemini CLI 的原始记录；Codex Provider 维护模式也会在启用并确认执行后修改 Codex 数据。
 
 - 分享导出、日志、截图或 issue 前应人工脱敏。
-- 索引缓存与维护备份均应视为敏感本地数据。
+- 索引缓存、删除备份与维护备份均应视为敏感本地数据；备份包含原始记录且未加密。
 - 不要公开真实会话、数据库、缓存、备份、凭据或未经脱敏的路径。
 - 应用没有本地 HTTP 监听端口，前后端只通过 Tauri IPC 与事件通信。
 

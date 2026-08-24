@@ -952,6 +952,13 @@
   margin: 0;
 }
 
+.workspace-load-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
 .workspace-load-state h2 {
   color: var(--text);
   font-size: 0.94rem;

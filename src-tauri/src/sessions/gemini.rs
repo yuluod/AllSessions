@@ -25,6 +25,7 @@ const MIN_DUPLICATE_PREFIX_CHARS: usize = 16;
 pub(super) struct ParsedSource {
     pub sessions: Vec<ParsedSession>,
     pub active_paths: BTreeSet<String>,
+    pub errors: Vec<(PathBuf, String)>,
 }
 
 pub(super) struct ParsedSession {
@@ -460,6 +461,7 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
         .map(|path| path.to_string_lossy().into_owned())
         .collect();
     let mut grouped = HashMap::<String, Vec<Value>>::new();
+    let mut errors = Vec::new();
 
     for path in paths {
         match cached_file_contributions(&path, source, cache, &brain_messages, &cache_kind) {
@@ -473,7 +475,10 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
                     }
                 }
             }
-            Err(error) => eprintln!("无法解析 Gemini 日志（{}）：{error}", path.display()),
+            Err(error) => {
+                eprintln!("无法解析 Gemini 日志（{}）：{error}", path.display());
+                errors.push((path, error));
+            }
         }
     }
 
@@ -525,6 +530,7 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
     Ok(ParsedSource {
         sessions,
         active_paths,
+        errors,
     })
 }
 
@@ -784,6 +790,40 @@ fn locator_log_path(locator: &DetailLocator, value: &Value) -> Result<PathBuf, S
         .find(|path| super::path_identity(path) == super::path_identity(&requested))
         .cloned()
         .ok_or_else(|| "消息不属于当前 Gemini 会话".to_string())
+}
+
+pub(super) fn session_backup_paths(
+    source: &Source,
+    locator: &DetailLocator,
+) -> Result<Vec<PathBuf>, String> {
+    let mut paths = locator.paths.clone();
+    let brain_dir = brain_session_dir(source, &locator.session_id)?;
+    if brain_dir.exists() {
+        paths.push(brain_dir);
+    }
+    Ok(paths)
+}
+
+pub(super) fn message_backup_paths(
+    source: &Source,
+    locator: &DetailLocator,
+    delete_ref: &Value,
+) -> Result<Vec<PathBuf>, String> {
+    match delete_ref["kind"].as_str() {
+        Some("gemini_log") => Ok(vec![locator_log_path(locator, &delete_ref["path"])?]),
+        Some("gemini_artifact") => {
+            let brain_dir = brain_session_dir(source, &locator.session_id)?;
+            let path = delete_ref["path"]
+                .as_str()
+                .map(PathBuf::from)
+                .ok_or_else(|| "Gemini artifact 删除标识缺少路径".to_string())?;
+            if !path.starts_with(&brain_dir) || path == brain_dir {
+                return Err("消息不属于当前 Gemini artifact 目录".into());
+            }
+            Ok(vec![path])
+        }
+        _ => Err("消息删除标识与 Gemini 格式不匹配".into()),
+    }
 }
 
 pub(super) fn delete_session(source: &Source, locator: &DetailLocator) -> Result<usize, String> {
@@ -1349,6 +1389,29 @@ mod tests {
         std::fs::write(brain_dir.join("prompt"), "新的提示").unwrap();
         let second = parse_source(&source(directory.path()), &cache).unwrap();
         assert_eq!(second.sessions[0].summary["message_count"], 2);
+    }
+
+    #[test]
+    fn 损坏的日志会返回来源诊断错误() {
+        let directory = tempdir().unwrap();
+        let valid_dir = directory.path().join("tmp").join("valid");
+        let broken_dir = directory.path().join("tmp").join("broken");
+        std::fs::create_dir_all(&valid_dir).unwrap();
+        std::fs::create_dir_all(&broken_dir).unwrap();
+        std::fs::write(
+            valid_dir.join("logs.json"),
+            json!([{ "sessionId": "g1", "messageId": 1, "type": "user", "message": "hello" }])
+                .to_string(),
+        )
+        .unwrap();
+        std::fs::write(broken_dir.join("logs.json"), "{broken").unwrap();
+
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
+
+        assert_eq!(parsed.sessions.len(), 1);
+        assert_eq!(parsed.active_paths.len(), 2);
+        assert_eq!(parsed.errors.len(), 1);
+        assert_eq!(parsed.errors[0].0, broken_dir.join("logs.json"));
     }
 
     #[test]

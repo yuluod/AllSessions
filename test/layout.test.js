@@ -88,6 +88,9 @@ test("首次数据读取失败会显示可重试状态，静态交互在读取�
   );
   assert.match(source, /retryButton\.textContent = t\("retry"\)/);
   assert.match(source, /await loadInitialWorkspace\(\)/);
+  assert.match(source, /settingsController\.open\("sources"\)/);
+  assert.match(source, /state\.capabilities\?\.recovery_required !== true/);
+  assert.match(source, /state\.recoverySettingsOpened = true/);
   assert.match(
     source,
     /const workspaceTabs = Array\.from\(document\.querySelectorAll\("\.sidebar-tab"\)\)/
@@ -542,7 +545,7 @@ test("全局搜索按平台显示快捷键并从其他视图返回会话列表",
   const source = await readProjectFile("public/app.js");
   const css = await readProjectFile("public/styles.css");
 
-  assert.match(html, /id="search-shortcut"[\s\S]*>Ctrl K<\/kbd>/);
+  assert.match(html, /id="search-shortcut"[\s\S]*>Ctrl K<\/kbd\s*>/);
   assert.match(
     source,
     /\(event\.metaKey \|\| event\.ctrlKey\) && event\.key\.toLowerCase\(\) === "k"/
@@ -712,7 +715,11 @@ test("设置对话框使用四个顶部分类并只在来源页显示保存操�
   assert.match(html, /<dialog\s+id="settings-dialog"/);
   assert.match(html, /id="settings-language-select"/);
   assert.match(html, /id="settings-sources"/);
+  assert.match(html, /id="settings-recovery"/);
+  assert.match(html, /id="settings-copy-diagnostics"/);
   assert.match(html, /id="settings-clear-cache"/);
+  assert.match(html, /id="settings-deletion-backup-path"/);
+  assert.match(html, /id="settings-deletion-backup-count"/);
   assert.match(html, /id="settings-version"/);
   assert.match(html, /id="settings-check-update"/);
   assert.match(html, /class="settings-heading"/);
@@ -736,6 +743,8 @@ test("设置对话框使用四个顶部分类并只在来源页显示保存操�
   assert.match(css, /\.settings-dialog\s*\{/);
   assert.match(css, /\.settings-dialog::backdrop/);
   assert.match(settingsCss, /\.settings-tab\.active/);
+  assert.match(settingsCss, /\.settings-source-health/);
+  assert.match(settingsCss, /\.settings-diagnostics-footer/);
   assert.match(
     settingsCss,
     /\.settings-dialog\s*\{[\s\S]*height: min\(560px, calc\(100dvh - 32px\)\)/
@@ -755,12 +764,24 @@ test("设置对话框使用四个顶部分类并只在来源页显示保存操�
   assert.match(source, /function activateTab\(name, focus = false\)/);
   assert.match(source, /\["ArrowLeft", "ArrowRight", "Home", "End"\]/);
   assert.match(source, /fetchJson\("\/api\/settings\/preferences"/);
-  assert.match(source, /document\.documentElement\.classList\.add\("settings-modal-open"\)/);
-  assert.match(source, /addEventListener\("close", unlockPageScroll\)/);
   assert.match(
-    settingsCss,
-    /html\.settings-modal-open[\s\S]*overflow: hidden/
+    source,
+    /document\.documentElement\.classList\.add\("settings-modal-open"\)/
   );
+  assert.match(source, /addEventListener\("close", unlockPageScroll\)/);
+  assert.match(settingsCss, /html\.settings-modal-open[\s\S]*overflow: hidden/);
+  assert.doesNotMatch(
+    settingsCss,
+    /@media \(max-width: 640px\)[\s\S]*\.settings-section\s*\{\s*display: block;/
+  );
+  assert.match(source, /async function copyDiagnostics\(\)/);
+  assert.match(
+    source,
+    /settingsToggle\?\.addEventListener\("click", \(\) => open\(\)\)/
+  );
+  assert.match(source, /declared_roots: value\.declared_roots/);
+  assert.doesNotMatch(source, /last_error: value\.last_error/);
+  assert.doesNotMatch(source, /resolved: latestPayload\.resolved/);
 });
 
 test("设置视图通过专用接口读写配置并支持语言切换", async () => {
@@ -860,7 +881,10 @@ test("仓库链接在桌面端通过受限的系统浏览器能力打开", async
   );
 
   assert.match(app, /settingsRepositoryLink: document\.querySelector/);
-  assert.match(source, /import \{ openUrl \} from "@tauri-apps\/plugin-opener"/);
+  assert.match(
+    source,
+    /import \{ openUrl \} from "@tauri-apps\/plugin-opener"/
+  );
   assert.match(source, /await openUrl\(event\.currentTarget\.href\)/);
   assert.match(cargo, /tauri-plugin-opener = "2\.5"/);
   assert.match(runtime, /\.plugin\(tauri_plugin_opener::init\(\)\)/);
@@ -948,6 +972,8 @@ test("会话和消息同时支持可恢复移除与二次确认的永久删除",
   assert.match(app, /REMOVED_MESSAGES_KEY/);
   assert.match(app, /showPermanentDeleteConfirmation/);
   assert.match(app, /\/api\/sessions\/delete-message/);
+  assert.match(app, /const result = await fetchJson\(url/);
+  assert.match(app, /result\?\.backup\?\.path/);
   assert.match(app, /confirmed: true/);
   const clearRemovedState = app.match(
     /function clearRemovedState\([\s\S]*?\n\}/
@@ -966,4 +992,6 @@ test("会话和消息同时支持可恢复移除与二次确认的永久删除",
   assert.match(sessions, /pub fn delete_message/);
   assert.match(i18n, /cancel: "取消"/);
   assert.match(i18n, /cancel: "Cancel"/);
+  assert.match(i18n, /sessionDeletedWithBackup:/);
+  assert.match(i18n, /messageDeletedWithBackup:/);
 });

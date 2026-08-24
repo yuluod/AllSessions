@@ -1258,14 +1258,12 @@
   fill: currentColor;
 }
 
-.conversation-display-options,
 .export-menu,
 .session-organize-menu {
   position: relative;
   flex: 0 0 auto;
 }
 
-.conversation-display-options > summary,
 .export-menu > summary,
 .session-organize-menu > summary {
   display: inline-flex;
@@ -1282,13 +1280,11 @@
   list-style: none;
 }
 
-.conversation-display-options > summary::-webkit-details-marker,
 .export-menu > summary::-webkit-details-marker,
 .session-organize-menu > summary::-webkit-details-marker {
   display: none;
 }
 
-.conversation-display-options[open] > summary,
 .export-menu[open] > summary,
 .session-organize-menu[open] > summary {
   border-color: #acd5d1;
@@ -1356,7 +1352,6 @@
   font-size: 0.72rem;
 }
 
-.conversation-display-options-body,
 .export-menu .export-actions {
   position: absolute;
   top: calc(100% + 6px);
@@ -1371,9 +1366,16 @@
 }
 
 .conversation-display-options-body {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  min-width: 242px;
+  min-width: 0;
+}
+
+.conversation-display-options {
+  flex: 1 0 100%;
+  min-width: 0;
 }
 
 .export-menu .export-actions {

@@ -26,6 +26,9 @@ AllSessions 将 Codex、Claude Code 和 Gemini CLI 的本地会话聚合到一�
 - 统一浏览 Codex、Codex 归档、Claude Code 和 Gemini CLI 会话
 - 按来源、Provider、日期、项目和工作目录筛选并搜索
 - 查看归一化对话、工具调用与原始事件
+- 使用收藏、标签、备注、本地归档/移除状态和常用筛选整理会话
+- 批量选择当前已加载会话并导出 JSON 或 Markdown，脱敏作为默认关闭的可选项
+- 在系统文件管理器中显示会话来源文件或项目目录
 - 监听来源文件并通过 Tauri 事件自动刷新
 - 查看各来源扫描健康状态，并复制不含会话内容和本地路径的脱敏诊断信息
 - 默认隐藏 subagent、sidechain、Thinking 和注入的系统上下文
@@ -62,15 +65,16 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 
 环境变量需在启动桌面应用前设置（启动时读取一次）：
 
-| 变量                           | 说明                           | 默认值                             |
-| ------------------------------ | ------------------------------ | ---------------------------------- |
-| `CODEX_HOME`                   | Codex 数据根目录（单路径）     | `~/.codex`                         |
-| `CODEX_SESSIONS_DIR`           | Codex 会话根目录（路径列表）   | `$CODEX_HOME/sessions`             |
-| `CODEX_ARCHIVED_SESSIONS_DIR`  | Codex 归档根目录（路径列表）   | `$CODEX_HOME/archived_sessions`    |
-| `CLAUDE_SESSIONS_DIR`          | Claude Code 根目录（路径列表） | `~/.claude`                        |
-| `GEMINI_SESSIONS_DIR`          | Gemini CLI 根目录（路径列表）  | `~/.gemini`                        |
-| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录       | 系统用户缓存目录下的 `AllSessions` |
-| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存        | 未设置                             |
+| 变量                           | 说明                             | 默认值                             |
+| ------------------------------ | -------------------------------- | ---------------------------------- |
+| `CODEX_HOME`                   | Codex 数据根目录（单路径）       | `~/.codex`                         |
+| `CODEX_SESSIONS_DIR`           | Codex 会话根目录（路径列表）     | `$CODEX_HOME/sessions`             |
+| `CODEX_ARCHIVED_SESSIONS_DIR`  | Codex 归档根目录（路径列表）     | `$CODEX_HOME/archived_sessions`    |
+| `CLAUDE_SESSIONS_DIR`          | Claude Code 根目录（路径列表）   | `~/.claude`                        |
+| `GEMINI_SESSIONS_DIR`          | Gemini CLI 根目录（路径列表）    | `~/.gemini`                        |
+| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录         | 系统用户缓存目录下的 `AllSessions` |
+| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存          | 未设置                             |
+| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径 | 系统应用数据目录                   |
 
 四个 `*_SESSIONS_DIR` 变量支持用系统路径分隔符（macOS/Linux 为 `:`，Windows 为 `;`）分隔的多个路径，例如 `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`。路径支持前导 `~` 展开为用户主目录，从 Finder/Dock 启动（无 shell 展开环境变量）时同样生效。不存在的根会被跳过；同一类来源的多个根中出现相同会话 id 时，只保留列表中靠前的根（备份副本只显示一次）。注意：Codex Provider 可见性修复工具只覆盖主 `CODEX_HOME` 下的会话目录，不包含额外列出的根。
 
@@ -78,8 +82,10 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 
 本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览、搜索和导出不会修改来源数据。显式确认永久删除会在创建本地备份后修改 Codex、Claude Code 或 Gemini CLI 的原始记录；Codex Provider 维护模式也会在启用并确认执行后修改 Codex 数据。
 
+收藏、标签、备注、常用筛选和本地归档/移除状态属于 AllSessions 用户数据，独立保存在 `workspace.sqlite` 中；它们不会修改 Agent 原始记录，也不会随可重建的索引缓存一起清除。导出脱敏默认关闭；开启后会移除已知会话标识和常见本地路径模式，但分享前仍应人工检查导出内容。
+
 - 分享导出、日志、截图或 issue 前应人工脱敏。
-- 索引缓存、删除备份与维护备份均应视为敏感本地数据；备份包含原始记录且未加密。
+- `workspace.sqlite`、索引缓存、删除备份与维护备份均应视为敏感本地数据；备份包含原始记录且未加密。
 - 不要公开真实会话、数据库、缓存、备份、凭据或未经脱敏的路径。
 - 应用没有本地 HTTP 监听端口，前后端只通过 Tauri IPC 与事件通信。
 

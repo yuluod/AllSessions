@@ -25,6 +25,9 @@ AllSessions combines local Codex, Claude Code, and Gemini CLI history in one Tau
 - Browse Codex, archived Codex, Claude Code, and Gemini CLI sessions together
 - Filter and search by source, provider, date, project, and working directory
 - Inspect normalized conversations, tool activity, and raw events
+- Organize sessions with favorites, tags, notes, local archive/removal state, and reusable filters
+- Select loaded sessions for JSON or Markdown export, with optional path and session-ID redaction
+- Reveal a session source file or project directory in the system file manager
 - Refresh through native filesystem watching and Tauri events
 - Inspect per-source scan health and copy sanitized diagnostics without session content or local paths
 - Hide subagents, sidechains, thinking, and injected context by default
@@ -70,6 +73,7 @@ Set these before starting the desktop app (values are read once at startup):
 | `GEMINI_SESSIONS_DIR`          | Gemini CLI roots (path list)             | `~/.gemini`                                  |
 | `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite index directory              | Platform cache directory under `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset                                        |
+| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions user-data SQLite path        | Platform app-data directory                  |
 
 The four `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator (`:` on macOS/Linux, `;` on Windows), e.g. `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`. A leading `~` expands to the home directory, so lists also work when the app is launched from Finder/Dock. Non-existent roots are skipped. If the same session id appears in several roots of one kind, only the first-listed root is kept (a backup copy shows once). Note: the Codex provider maintenance tool only covers the primary `CODEX_HOME` session directories, not additional listed roots.
 
@@ -77,8 +81,10 @@ The four `*_SESSIONS_DIR` variables accept multiple paths separated by the OS pa
 
 Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing, search, and export do not modify source data. Explicitly confirmed permanent deletion modifies the original Codex, Claude Code, or Gemini CLI record after creating a local backup; Codex provider maintenance also modifies Codex data after it is enabled and execution is confirmed.
 
+Favorites, tags, notes, reusable filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`; they never modify Agent source records and are not deleted when the rebuildable index cache is cleared. Export redaction is optional and off by default. When enabled, it removes known session identifiers and common local-path patterns, but exports should still be reviewed before sharing.
+
 - Review exports, logs, screenshots, and issues before sharing.
-- Treat index caches, deletion backups, and maintenance backups as sensitive local data. Backups contain original records and are not encrypted.
+- Treat `workspace.sqlite`, index caches, deletion backups, and maintenance backups as sensitive local data. Backups contain original records and are not encrypted.
 - Never publish real sessions, databases, credentials, or unsanitized paths.
 - The app has no local listening port; UI/backend communication uses Tauri IPC and events only.
 

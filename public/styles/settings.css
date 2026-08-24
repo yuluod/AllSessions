@@ -527,6 +527,16 @@ html.settings-modal-open body {
   background: var(--surface-subtle);
 }
 
+.settings-storage-hint {
+  margin: 0;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface-subtle);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
 .settings-dialog[data-active-tab="about"] .settings-body {
   place-items: center;
 }

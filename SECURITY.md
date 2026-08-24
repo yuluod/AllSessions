@@ -2,26 +2,25 @@
 
 ## Supported versions
 
-This project is maintained as a personal open-source project. Security fixes are applied to the latest version on the default branch; older revisions are not supported separately.
+This repository is maintained as a personal open-source project. Security fixes are applied to the latest version on the default branch; older releases are not supported separately.
 
 ## Reporting a vulnerability
 
-Please do not publish vulnerabilities, real session content, credentials, local paths, database files, or migration backups in a public issue.
+Do not publish vulnerabilities, real session content, credentials, local paths, databases, caches, or backups in a public issue.
 
-Use GitHub's private vulnerability reporting for this repository when available. If private reporting is unavailable, open a minimal public issue asking for a private contact channel without including exploit details or sensitive artifacts.
+Use [GitHub private vulnerability reporting](https://github.com/yuluod/AllSessions/security/advisories/new). If private reporting is unavailable, open a minimal public issue asking for a private contact channel without including exploit details or sensitive artifacts.
 
-Include only the minimum information needed to reproduce the issue. Replace real prompts, provider identifiers, usernames, home directories, access tokens, and service URLs with neutral placeholders.
+Include only the minimum information needed to reproduce the issue. Replace prompts, provider identifiers, usernames, home directories, tokens, and service URLs with neutral placeholders. For ordinary bugs, prefer the **Copy sanitized diagnostics** action in Settings instead of attaching local files.
 
 ## Security boundary
 
-- AllSessions has no login or remote authentication and only permits loopback bind addresses.
-- The desktop shell starts its bundled service on a dynamically selected loopback port with a per-process random token and verifies the service identity before navigating to it.
-- The local HTTP interface sends a restrictive Content Security Policy and common browser hardening headers. These controls reduce browser-side attack surface but do not turn the loopback service into a multi-user authenticated service.
-- Normal startup begins in read-only mode. Provider repair remains blocked until the local user enables maintenance mode in the Tools page.
-- Maintenance mode is explicitly enabled and can modify Codex state databases and JSONL metadata after preview and confirmation.
-- Session content, the private index cache, and provider-repair backups may contain sensitive local information. Do not publish or share them without reviewing and redacting their contents.
-- Browser extensions and other software running as the same local user may be able to access content displayed by the local web interface.
+- AllSessions is a local Tauri desktop application. It does not open an HTTP listening port or bundle a Node.js runtime; the WebView communicates with Rust through Tauri IPC and events.
+- The WebView uses a restrictive Content Security Policy, including `connect-src 'none'`. Tauri IPC is an application boundary, not authentication between users or protection from software already running as the same local user.
+- Browsing, search, filtering, statistics, and export do not modify Agent source data.
+- Explicitly confirmed permanent deletion modifies Codex, Claude Code, or Gemini CLI source data. A local backup is created before the write; these backups contain the original sensitive data, are not encrypted, and currently require manual inspection for recovery.
+- Codex Provider maintenance is disabled by default. It can modify Codex databases and JSONL metadata only after maintenance mode is enabled and a preview and confirmation are completed; its own backup and rollback rules are documented separately.
+- Session content, index caches, configuration paths, deletion backups, and maintenance backups may reveal sensitive local information. Review and redact them before sharing.
 
 ## Scope
 
-Security reports are especially useful for unintended remote exposure, path traversal, cross-origin mutation, unsafe backup or rollback behavior, sensitive cache permissions, and parsing behavior that can overwrite or disclose local data.
+Reports are especially useful for unintended remote exposure, unsafe Tauri command access, path traversal, symlink handling, parsing or deletion that affects data outside the selected record, unsafe backup or rollback behavior, sensitive file permissions, and updater integrity failures.

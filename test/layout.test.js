@@ -968,21 +968,16 @@ test("会话和消息同时支持可恢复移除与二次确认的永久删除",
     html,
     /id="delete-dialog-close"[\s\S]*data-i18n="cancel"[\s\S]*data-i18n-attr="aria-label"[\s\S]*<svg/
   );
-  assert.match(app, /REMOVED_SESSIONS_KEY/);
-  assert.match(app, /REMOVED_MESSAGES_KEY/);
+  assert.match(app, new RegExp("/api/workspace/session"));
+  assert.match(app, new RegExp("/api/workspace/message"));
+  assert.match(app, new RegExp("/api/workspace/migrate-legacy"));
+  assert.match(app, /localStorage\.removeItem\(REMOVED_SESSIONS_KEY\)/);
+  assert.match(app, /localStorage\.removeItem\(REMOVED_MESSAGES_KEY\)/);
   assert.match(app, /showPermanentDeleteConfirmation/);
   assert.match(app, /\/api\/sessions\/delete-message/);
   assert.match(app, /const result = await fetchJson\(url/);
   assert.match(app, /result\?\.backup\?\.path/);
   assert.match(app, /confirmed: true/);
-  const clearRemovedState = app.match(
-    /function clearRemovedState\([\s\S]*?\n\}/
-  )?.[0];
-  assert.ok(clearRemovedState);
-  assert.ok(
-    clearRemovedState.indexOf("if (messageKey)") <
-      clearRemovedState.indexOf("setSessionRemoved(sessionKey, false)")
-  );
   assert.match(conversation, /message\._message_key/);
   assert.match(conversation, /onRestoreMessage/);
   assert.match(backend, /\("POST", "\/api\/sessions\/delete"\)/);
@@ -994,4 +989,40 @@ test("会话和消息同时支持可恢复移除与二次确认的永久删除",
   assert.match(i18n, /cancel: "Cancel"/);
   assert.match(i18n, /sessionDeletedWithBackup:/);
   assert.match(i18n, /messageDeletedWithBackup:/);
+});
+
+test("个人工作台数据独立持久化并提供整理与可选脱敏导出", async () => {
+  const html = await readProjectFile("public/index.html");
+  const app = await readProjectFile("public/app.js");
+  const backend = await readProjectFile("src-tauri/src/backend.rs");
+  const workspace = await readProjectFile("src-tauri/src/workspace.rs");
+  const capability = await readProjectFile(
+    "src-tauri/capabilities/default.json"
+  );
+
+  for (const id of [
+    "workspace-tag-filter",
+    "favorite-only-toggle",
+    "saved-filter-list",
+    "bulk-toolbar",
+    "bulk-redact-toggle",
+    "session-favorite-btn",
+    "session-tags-input",
+    "session-note-input",
+    "export-redact-toggle",
+    "reveal-source-btn",
+    "settings-workspace-path",
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(app, /exportSessionCollection/);
+  assert.match(app, /const MAX_BULK_EXPORT_SESSIONS = 20/);
+  assert.match(app, /mapWithConcurrency\(\s*keys,\s*BULK_EXPORT_CONCURRENCY/);
+  assert.match(app, /redact: elements\.exportRedactToggle/);
+  assert.match(app, /revealItemInDir/);
+  assert.match(backend, /\("GET", "\/api\/workspace"\)/);
+  assert.match(backend, /workspace_storage/);
+  assert.match(workspace, /create table if not exists session_workspace/);
+  assert.match(workspace, /create table if not exists saved_filters/);
+  assert.match(capability, /opener:allow-reveal-item-in-dir/);
 });

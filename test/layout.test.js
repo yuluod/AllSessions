@@ -258,18 +258,14 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   assert.match(css, /\.message-nav-list\b/);
 });
 
-test("详情将显示选项和导出收进按需展开的控件", async () => {
+test("详情筛选直接显示，导出保留按需展开", async () => {
   const html = await readProjectFile("public/index.html");
-  const css = await readProjectFile("public/styles.css");
 
-  assert.match(html, /<details class="conversation-display-options">/);
-  assert.match(html, /<summary data-i18n="displayOptions">/);
+  assert.match(html, /<div class="conversation-display-options">/);
+  assert.doesNotMatch(html, /<details class="conversation-display-options">/);
+  assert.doesNotMatch(html, /<summary data-i18n="displayOptions">/);
   assert.match(html, /<details class="export-menu">/);
   assert.match(html, /<summary data-i18n="export">/);
-  assert.match(
-    css,
-    /\.conversation-display-options-body,[\s\S]*\.export-menu \.export-actions\s*\{[\s\S]*position: absolute/
-  );
 });
 
 test("会话搜索工具区随内容流排列，不会覆盖消息", async () => {

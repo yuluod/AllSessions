@@ -221,26 +221,22 @@
     justify-content: space-between;
   }
 
-  .conversation-display-options[open],
   .export-menu[open],
   .session-organize-menu[open] {
     width: 100%;
   }
 
-  .conversation-display-options[open] > summary,
   .export-menu[open] > summary,
   .session-organize-menu[open] > summary {
     width: 100%;
   }
 
-  .conversation-display-options > summary,
   .export-menu > summary,
   .session-organize-menu > summary {
     min-height: 40px;
     justify-content: center;
   }
 
-  .conversation-display-options-body,
   .export-menu .export-actions,
   .session-organize-body {
     position: static;
@@ -345,8 +341,7 @@
     flex: 1;
   }
 
-  .detail-search-box,
-  .tool-toggle-label {
+  .detail-search-box {
     width: 100%;
   }
 

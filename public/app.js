@@ -608,6 +608,7 @@ const elements = {
   settingsVersion: document.querySelector("#settings-version"),
   settingsCheckUpdate: document.querySelector("#settings-check-update"),
   settingsRepositoryLink: document.querySelector("#settings-repository-link"),
+  settingsLicenseLink: document.querySelector("#settings-license-link"),
   settingsSaveBtn: document.querySelector("#settings-save-btn"),
   settingsStatus: document.querySelector("#settings-status"),
   sessionDeleteBtn: document.querySelector("#session-delete-btn"),

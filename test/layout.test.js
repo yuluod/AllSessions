@@ -868,6 +868,11 @@ test("关于页使用紧凑的居中应用信息布局", async () => {
     html,
     /id="settings-repository-link"[\s\S]*class="settings-about-repository"[\s\S]*href="https:\/\/github\.com\/yuluod\/AllSessions"[\s\S]*target="_blank"[\s\S]*rel="noopener noreferrer"/
   );
+  assert.match(
+    html,
+    /id="settings-license-link"[\s\S]*class="settings-about-repository"[\s\S]*href="https:\/\/github\.com\/yuluod\/AllSessions\/blob\/main\/LICENSE"[\s\S]*target="_blank"[\s\S]*rel="noopener noreferrer"/
+  );
+  assert.match(html, /data-i18n="settingsLicense">Apache License 2\.0</);
   assert.doesNotMatch(html, /data-i18n="settingsDescription"/);
 });
 
@@ -881,14 +886,23 @@ test("仓库链接在桌面端通过受限的系统浏览器能力打开", async
   );
 
   assert.match(app, /settingsRepositoryLink: document\.querySelector/);
+  assert.match(app, /settingsLicenseLink: document\.querySelector/);
   assert.match(
     source,
     /import \{ openUrl \} from "@tauri-apps\/plugin-opener"/
   );
   assert.match(source, /await openUrl\(event\.currentTarget\.href\)/);
+  assert.match(
+    source,
+    /settingsLicenseLink\?\.addEventListener\("click", openExternalLink\)/
+  );
   assert.match(cargo, /tauri-plugin-opener = "2\.5"/);
   assert.match(runtime, /\.plugin\(tauri_plugin_opener::init\(\)\)/);
   assert.match(capability, /https:\/\/github\.com\/yuluod\/AllSessions/);
+  assert.match(
+    capability,
+    /https:\/\/github\.com\/yuluod\/AllSessions\/blob\/main\/LICENSE/
+  );
 });
 
 test("会话来源与存储使用紧凑的分组设置结构", async () => {

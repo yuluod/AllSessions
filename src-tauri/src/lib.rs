@@ -6,6 +6,7 @@ mod maintenance;
 mod sessions;
 mod updater;
 mod watcher;
+mod workspace;
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},

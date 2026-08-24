@@ -425,21 +425,29 @@ impl SessionStore {
         json!({ "service": { "name": "AllSessions", "protocol_version": 2 }, "codex_maintenance": { "enabled": maintenance_enabled } })
     }
 
-    pub fn list(&self, query: &HashMap<String, String>) -> Value {
+    pub fn list(
+        &self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Value {
         paginate(
-            self.filtered(query),
+            self.filtered(query, workspace),
             query,
             json!({ "session_roots": self.session_roots() }),
         )
     }
 
-    pub fn search(&self, query: &HashMap<String, String>) -> Value {
+    pub fn search(
+        &self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Value {
         let needle = query
             .get("q")
             .map(|value| value.to_lowercase())
             .unwrap_or_default();
         let filtered = self
-            .filtered(query)
+            .filtered(query, workspace)
             .into_iter()
             .filter_map(|summary| {
                 let record = self.records.get(summary["_key"].as_str()?)?;
@@ -648,8 +656,12 @@ impl SessionStore {
         json!({ "session_roots": self.session_roots(), "sources": sources, "providers": providers, "source_kinds": source_kinds, "dates": date_values, "cwds": cwds, "hidden_reasons": hidden_reasons, "projects": project_values })
     }
 
-    pub fn stats(&self, query: &HashMap<String, String>) -> Value {
-        let filtered = self.filtered(query);
+    pub fn stats(
+        &self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Value {
+        let filtered = self.filtered(query, workspace);
         let mut by_date = BTreeMap::new();
         let mut by_source_kind = HashMap::new();
         let mut by_provider = HashMap::new();
@@ -668,11 +680,19 @@ impl SessionStore {
         json!({ "total": filtered.len(), "total_events": total_events, "active_days": active_days, "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) }, "by_date": by_date.into_iter().map(|(label, count)| json!({ "label": label, "count": count })).collect::<Vec<_>>(), "by_source_kind": count_values(by_source_kind, usize::MAX), "by_provider": count_values(by_provider, usize::MAX), "by_cwd": count_values(by_cwd, 16) })
     }
 
-    fn filtered(&self, query: &HashMap<String, String>) -> Vec<Value> {
+    fn filtered(
+        &self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Vec<Value> {
         self.summaries
             .iter()
-            .filter(|summary| matches_filters(summary, query))
             .cloned()
+            .map(|mut summary| {
+                workspace.decorate_summary(&mut summary);
+                summary
+            })
+            .filter(|summary| matches_filters(summary, query))
             .collect()
     }
     fn session_roots(&self) -> Vec<String> {
@@ -2291,6 +2311,23 @@ fn matches_filters(summary: &Value, query: &HashMap<String, String>) -> bool {
     if summary["archived"] == true && !bool_query(query, "show_codex_archived") {
         return false;
     }
+    if summary["workspace"]["archived"] == true && !bool_query(query, "show_archived") {
+        return false;
+    }
+    if summary["workspace"]["removed"] == true && !bool_query(query, "show_removed") {
+        return false;
+    }
+    if bool_query(query, "favorite") && summary["workspace"]["favorite"] != true {
+        return false;
+    }
+    if let Some(tag) = query.get("tag").filter(|value| !value.is_empty()) {
+        let matches = summary["workspace"]["tags"]
+            .as_array()
+            .is_some_and(|tags| tags.iter().any(|value| value.as_str() == Some(tag)));
+        if !matches {
+            return false;
+        }
+    }
     if summary["hidden"] == true && !bool_query(query, "show_hidden") {
         return false;
     }
@@ -2398,10 +2435,10 @@ mod tests {
     use super::{
         compact, delete_jsonl_message, delete_legacy_session, describe_inherited_sources,
         describe_protected_source_roots, describe_sources, existing_watch_root,
-        generic_conversation_message, is_synthetic_context, local_date_key, parse_detail,
-        parse_summary, resolve_kind, search_query_matches, sources_from_paths, split_path_list,
-        watch_roots_for, DetailCache, HeadTail, ScanDiagnostics, SessionStore, Source,
-        SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+        generic_conversation_message, is_synthetic_context, local_date_key, matches_filters,
+        parse_detail, parse_summary, resolve_kind, search_query_matches, sources_from_paths,
+        split_path_list, watch_roots_for, DetailCache, HeadTail, ScanDiagnostics, SessionStore,
+        Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
@@ -2425,6 +2462,29 @@ mod tests {
     #[test]
     fn summary_text_has_limit() {
         assert_eq!(compact("abcdefgh", 6), "abc...");
+    }
+
+    #[test]
+    fn 工作台筛选默认隐藏归档移除并支持收藏标签() {
+        let summary = json!({
+            "workspace": {
+                "archived": true,
+                "removed": true,
+                "favorite": true,
+                "tags": ["重要", "工作"]
+            }
+        });
+        assert!(!matches_filters(&summary, &HashMap::new()));
+
+        let mut query = HashMap::from([
+            ("show_archived".to_string(), "true".to_string()),
+            ("show_removed".to_string(), "true".to_string()),
+            ("favorite".to_string(), "true".to_string()),
+            ("tag".to_string(), "重要".to_string()),
+        ]);
+        assert!(matches_filters(&summary, &query));
+        query.insert("tag".to_string(), "不存在".to_string());
+        assert!(!matches_filters(&summary, &query));
     }
 
     #[test]

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-i18n-page-title="title">AllSessions</title>
     <link rel="icon" type="image/png" href="/assets/allsessions-icon-v3.png" />
-    <link rel="stylesheet" href="/styles.css?v=20260819-three-column" />
+    <link rel="stylesheet" href="/styles.css?v=20260824-reliability" />
   </head>
   <body>
     <div class="page-shell">
@@ -72,7 +72,9 @@
               placeholder="搜索会话内容 / 路径 / 关键词..."
               data-i18n-placeholder="searchPlaceholder"
             />
-            <kbd id="search-shortcut" class="search-kbd" aria-hidden="true">Ctrl K</kbd>
+            <kbd id="search-shortcut" class="search-kbd" aria-hidden="true"
+              >Ctrl K</kbd
+            >
           </div>
         </div>
         <div class="toolbar-right">
@@ -1142,10 +1144,32 @@
             会话来源
           </h3>
           <div class="settings-section-content">
+            <div
+              id="settings-recovery"
+              class="settings-recovery hidden"
+              role="alert"
+            >
+              <strong data-i18n="settingsRecoveryTitle">配置需要修复</strong>
+              <p id="settings-recovery-message"></p>
+              <span data-i18n="settingsRecoveryHint">
+                当前已使用安全默认值启动。检查来源后保存，即可替换损坏的配置。
+              </span>
+            </div>
             <p class="settings-hint" data-i18n="settingsSourcesHint">
               自定义每类会话的根目录列表；不自定义时跟随对应环境变量或系统默认路径。保存后立即重建索引并更新监听。
             </p>
             <div id="settings-sources" class="settings-sources"></div>
+            <div class="settings-diagnostics-footer">
+              <span id="settings-diagnostics-meta">-</span>
+              <button
+                id="settings-copy-diagnostics"
+                class="ghost-button"
+                type="button"
+                data-i18n="settingsCopyDiagnostics"
+              >
+                复制脱敏诊断信息
+              </button>
+            </div>
           </div>
         </section>
         <section
@@ -1167,6 +1191,14 @@
                 <div>
                   <dt data-i18n="settingsCacheSize">缓存大小</dt>
                   <dd id="settings-cache-size">-</dd>
+                </div>
+                <div>
+                  <dt data-i18n="settingsDeletionBackupPath">永久删除备份</dt>
+                  <dd id="settings-deletion-backup-path">-</dd>
+                </div>
+                <div>
+                  <dt data-i18n="settingsDeletionBackupCount">备份数量</dt>
+                  <dd id="settings-deletion-backup-count">-</dd>
                 </div>
               </dl>
               <div class="settings-storage-actions">
@@ -1241,8 +1273,7 @@
                       stroke-linejoin="round"
                     />
                   </svg>
-                </a
-                >
+                </a>
                 <span data-i18n="settingsLicense">Apache-2.0 开源许可</span>
               </div>
             </div>
@@ -1318,6 +1349,6 @@
       aria-live="polite"
       role="status"
     ></div>
-    <script type="module" src="/app.js?v=20260819-three-column"></script>
+    <script type="module" src="/app.js?v=20260824-reliability"></script>
   </body>
 </html>

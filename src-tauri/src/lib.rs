@@ -1,6 +1,7 @@
 mod backend;
 mod cache;
 mod config;
+mod deletion_backup;
 mod maintenance;
 mod sessions;
 mod updater;

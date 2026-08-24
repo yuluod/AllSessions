@@ -24,6 +24,7 @@ export function createSettingsController({
   let draft = null;
   let activeTab = "general";
   let savedPreferences = null;
+  let latestPayload = null;
 
   function dialog() {
     return elements.settingsDialog;
@@ -63,6 +64,37 @@ export function createSettingsController({
       `.settings-source[data-kind="${key}"] input`
     );
     inputs[inputs.length - 1]?.focus();
+  }
+
+  function sourceHealthState(diagnostic) {
+    if (!diagnostic?.enabled) return "disabled";
+    if ((diagnostic.error_count || 0) > 0) return "warning";
+    if ((diagnostic.available_roots || 0) === 0) return "missing";
+    return "ready";
+  }
+
+  function appendSourceHealth(block, diagnostic) {
+    const state = sourceHealthState(diagnostic);
+    const health = document.createElement("div");
+    health.className = "settings-source-health";
+    health.dataset.state = state;
+    const badge = document.createElement("span");
+    badge.className = "settings-health-badge";
+    badge.textContent = t(`settingsSourceHealth_${state}`);
+    const summary = document.createElement("span");
+    summary.textContent = t("settingsSourceHealthSummary", {
+      sessions: diagnostic?.indexed_sessions || 0,
+      files: diagnostic?.discovered_files || 0,
+    });
+    health.append(badge, summary);
+    if (diagnostic?.last_error) {
+      const error = document.createElement("span");
+      error.className = "settings-source-error";
+      error.textContent = diagnostic.last_error;
+      error.title = diagnostic.last_error;
+      health.append(error);
+    }
+    block.append(health);
   }
 
   function renderSources(payload) {
@@ -242,9 +274,38 @@ export function createSettingsController({
         actions.append(restore);
         block.append(actions);
       }
+      appendSourceHealth(block, payload?.diagnostics?.sources?.[key]);
       block.dataset.kind = key;
       container.append(block);
     });
+  }
+
+  function formatDiagnosticTime(value) {
+    if (!value) return t("settingsNeverScanned");
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return t("settingsNeverScanned");
+    return new Intl.DateTimeFormat(getLang() === "zh" ? "zh-CN" : "en", {
+      dateStyle: "medium",
+      timeStyle: "medium",
+    }).format(date);
+  }
+
+  function renderDiagnostics(payload) {
+    const recovery = payload?.recovery || { required: false };
+    if (elements.settingsRecovery) {
+      elements.settingsRecovery.classList.toggle("hidden", !recovery.required);
+    }
+    if (elements.settingsRecoveryMessage) {
+      elements.settingsRecoveryMessage.textContent = recovery.message || "";
+    }
+    const watcher = payload?.watcher || { active: false, root_count: 0 };
+    if (elements.settingsDiagnosticsMeta) {
+      const watcherLabel = watcher.active
+        ? t("settingsWatcherActive", { n: watcher.root_count || 0 })
+        : t("settingsWatcherInactive");
+      elements.settingsDiagnosticsMeta.textContent = `${t("settingsLastScan")}: ${formatDiagnosticTime(payload?.diagnostics?.last_scan_at)} · ${watcherLabel}`;
+      elements.settingsDiagnosticsMeta.title = watcher.last_error || "";
+    }
   }
 
   function renderStorage(payload) {
@@ -263,6 +324,20 @@ export function createSettingsController({
     if (elements.settingsClearCache) {
       elements.settingsClearCache.disabled = !cache.enabled;
     }
+    const backup = payload?.deletion_backup || { enabled: false };
+    if (elements.settingsDeletionBackupPath) {
+      elements.settingsDeletionBackupPath.textContent = backup.enabled
+        ? backup.path
+        : t("settingsBackupUnavailable");
+      elements.settingsDeletionBackupPath.title = backup.enabled
+        ? backup.path
+        : "";
+    }
+    if (elements.settingsDeletionBackupCount) {
+      elements.settingsDeletionBackupCount.textContent = backup.enabled
+        ? String(backup.count || 0)
+        : "—";
+    }
   }
 
   function renderPreferences(payload) {
@@ -270,8 +345,7 @@ export function createSettingsController({
     if (!preferences) return;
     savedPreferences = {
       keep_running_in_tray: preferences.keep_running_in_tray !== false,
-      check_updates_on_startup:
-        preferences.check_updates_on_startup !== false,
+      check_updates_on_startup: preferences.check_updates_on_startup !== false,
     };
     if (elements.settingsKeepRunning) {
       elements.settingsKeepRunning.checked =
@@ -293,18 +367,22 @@ export function createSettingsController({
   }
 
   function applyPayload(payload) {
+    latestPayload = payload;
     draft = { ...(payload?.sources || {}) };
     renderSources(payload);
     renderStorage(payload);
     renderPreferences(payload);
+    renderDiagnostics(payload);
     if (elements.settingsVersion) {
       elements.settingsVersion.textContent = payload?.version || "-";
     }
+    if (payload?.recovery?.required) activateTab("sources");
   }
 
-  async function open() {
+  async function open(tab = null) {
     const target = dialog();
     if (!target) return;
+    if (tab) activeTab = tab;
     setStatus("");
     if (elements.settingsLanguageSelect) {
       elements.settingsLanguageSelect.value = getLang();
@@ -329,6 +407,45 @@ export function createSettingsController({
           : error.message,
         error.code !== DESKTOP_RUNTIME_REQUIRED
       );
+    }
+  }
+
+  async function copyDiagnostics() {
+    if (!latestPayload) return;
+    const sources = Object.fromEntries(
+      Object.entries(latestPayload.diagnostics?.sources || {}).map(
+        ([key, value]) => [
+          key,
+          {
+            enabled: value.enabled,
+            declared_roots: value.declared_roots,
+            available_roots: value.available_roots,
+            discovered_files: value.discovered_files,
+            indexed_sessions: value.indexed_sessions,
+            error_count: value.error_count,
+          },
+        ]
+      )
+    );
+    const diagnostic = {
+      app: "AllSessions",
+      version: latestPayload.version,
+      platform: navigator.platform || "unknown",
+      language: getLang(),
+      recovery_required: latestPayload.recovery?.required === true,
+      last_scan_at: latestPayload.diagnostics?.last_scan_at || null,
+      watcher: {
+        active: latestPayload.watcher?.active === true,
+        root_count: latestPayload.watcher?.root_count || 0,
+        has_error: Boolean(latestPayload.watcher?.last_error),
+      },
+      sources,
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(diagnostic, null, 2));
+      setStatus(t("settingsDiagnosticsCopied"));
+    } catch {
+      setStatus(t("settingsDiagnosticsCopyFailed"), true);
     }
   }
 
@@ -418,7 +535,7 @@ export function createSettingsController({
   }
 
   function bind() {
-    elements.settingsToggle?.addEventListener("click", open);
+    elements.settingsToggle?.addEventListener("click", () => open());
     elements.settingsCloseBtn?.addEventListener("click", () =>
       dialog()?.close()
     );
@@ -428,6 +545,10 @@ export function createSettingsController({
     });
     elements.settingsSaveBtn?.addEventListener("click", save);
     elements.settingsClearCache?.addEventListener("click", clearCache);
+    elements.settingsCopyDiagnostics?.addEventListener(
+      "click",
+      copyDiagnostics
+    );
     elements.settingsCheckUpdate?.addEventListener("click", checkForUpdates);
     elements.settingsRepositoryLink?.addEventListener("click", openRepository);
     elements.settingsKeepRunning?.addEventListener("change", savePreferences);
@@ -457,6 +578,11 @@ export function createSettingsController({
     elements.settingsLanguageSelect?.addEventListener("change", (event) => {
       setLang(event.target.value === "en" ? "en" : "zh");
       onLanguageChanged?.();
+      if (latestPayload) {
+        renderSources(latestPayload);
+        renderStorage(latestPayload);
+        renderDiagnostics(latestPayload);
+      }
     });
   }
 

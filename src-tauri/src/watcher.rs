@@ -7,6 +7,7 @@ use std::{
 };
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use crate::backend::BackendState;
@@ -14,6 +15,7 @@ use crate::backend::BackendState;
 pub struct WatcherState {
     sender: mpsc::Sender<PathBuf>,
     watcher: Mutex<Option<(RecommendedWatcher, Vec<PathBuf>)>>,
+    last_error: Mutex<Option<String>>,
 }
 
 impl WatcherState {
@@ -27,12 +29,45 @@ impl WatcherState {
             .map_err(|_| "文件监听状态已损坏".to_string())?;
         if let Some((_, watched)) = guard.as_ref() {
             if watched.as_slice() == roots {
+                *self
+                    .last_error
+                    .lock()
+                    .map_err(|_| "文件监听错误状态已损坏".to_string())? = None;
                 return Ok(());
             }
         }
-        let next = arm_watcher(&self.sender, roots)?;
-        *guard = Some(next);
-        Ok(())
+        match arm_watcher(&self.sender, roots) {
+            Ok(next) => {
+                *guard = Some(next);
+                *self
+                    .last_error
+                    .lock()
+                    .map_err(|_| "文件监听错误状态已损坏".to_string())? = None;
+                Ok(())
+            }
+            Err(error) => {
+                *self
+                    .last_error
+                    .lock()
+                    .map_err(|_| "文件监听错误状态已损坏".to_string())? = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    pub fn status(&self) -> Value {
+        let (active, root_count) = self
+            .watcher
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|(_, roots)| (true, roots.len())))
+            .unwrap_or((false, 0));
+        let last_error = self.last_error.lock().ok().and_then(|value| value.clone());
+        json!({
+            "active": active,
+            "root_count": root_count,
+            "last_error": last_error,
+        })
     }
 }
 
@@ -70,11 +105,11 @@ pub fn start(app: &AppHandle) -> WatcherState {
             Vec::new()
         });
     let (sender, receiver) = mpsc::channel();
-    let watcher = match arm_watcher(&sender, &roots) {
-        Ok(watcher) => Some(watcher),
+    let (watcher, last_error) = match arm_watcher(&sender, &roots) {
+        Ok(watcher) => (Some(watcher), None),
         Err(error) => {
             eprintln!("启动文件监听失败（会话变更将不会自动刷新）：{error}");
-            None
+            (None, Some(error))
         }
     };
 
@@ -96,5 +131,6 @@ pub fn start(app: &AppHandle) -> WatcherState {
     WatcherState {
         sender,
         watcher: Mutex::new(watcher),
+        last_error: Mutex::new(last_error),
     }
 }

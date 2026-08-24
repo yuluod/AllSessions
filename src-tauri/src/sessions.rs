@@ -49,6 +49,74 @@ struct StoredSession {
     detail_locator: Option<gemini::DetailLocator>,
 }
 
+#[derive(Default)]
+struct SourceScanDiagnostic {
+    discovered_paths: BTreeSet<PathBuf>,
+    errors: BTreeMap<PathBuf, String>,
+    last_error: Option<String>,
+}
+
+#[derive(Default)]
+struct ScanDiagnostics {
+    last_scan_at: String,
+    sources: BTreeMap<String, SourceScanDiagnostic>,
+}
+
+impl ScanDiagnostics {
+    fn started() -> Self {
+        Self {
+            last_scan_at: scan_timestamp(),
+            sources: BTreeMap::new(),
+        }
+    }
+
+    fn touch(&mut self) {
+        self.last_scan_at = scan_timestamp();
+    }
+
+    fn discover(&mut self, kind: &str, path: &Path) {
+        self.sources
+            .entry(kind.to_string())
+            .or_default()
+            .discovered_paths
+            .insert(path.to_path_buf());
+    }
+
+    fn record_error(&mut self, kind: &str, path: &Path, error: &str) {
+        let diagnostic = self.sources.entry(kind.to_string()).or_default();
+        diagnostic
+            .errors
+            .insert(path.to_path_buf(), error.to_string());
+        diagnostic.last_error = Some(error.to_string());
+    }
+
+    fn clear_error(&mut self, kind: &str, path: &Path) {
+        let Some(diagnostic) = self.sources.get_mut(kind) else {
+            return;
+        };
+        if diagnostic.errors.remove(path).is_some() {
+            diagnostic.last_error = diagnostic.errors.values().next_back().cloned();
+        }
+    }
+
+    fn remove_path(&mut self, kind: &str, path: &Path, include_descendants: bool) {
+        let Some(diagnostic) = self.sources.get_mut(kind) else {
+            return;
+        };
+        let matches = |candidate: &PathBuf| {
+            candidate == path || (include_descendants && candidate.starts_with(path))
+        };
+        diagnostic
+            .discovered_paths
+            .retain(|candidate| !matches(candidate));
+        let removed_error = diagnostic.errors.keys().any(&matches);
+        diagnostic.errors.retain(|candidate, _| !matches(candidate));
+        if removed_error {
+            diagnostic.last_error = diagnostic.errors.values().next_back().cloned();
+        }
+    }
+}
+
 pub struct SessionStore {
     summaries: Vec<Value>,
     records: HashMap<String, StoredSession>,
@@ -56,6 +124,7 @@ pub struct SessionStore {
     sources_config: crate::config::SourceRoots,
     index_cache: IndexCache,
     detail_cache: DetailCache,
+    scan_diagnostics: ScanDiagnostics,
 }
 
 impl SessionStore {
@@ -67,6 +136,7 @@ impl SessionStore {
             sources_config: config.sources.clone(),
             index_cache: IndexCache::open()?,
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
         store.refresh()?;
         Ok(store)
@@ -85,6 +155,64 @@ impl SessionStore {
         self.index_cache.storage_info()
     }
 
+    pub fn diagnostics(&self) -> Value {
+        let mut sources = BTreeMap::<String, Value>::new();
+        for kind in ["codex", "codex_archived", "claude", "gemini"] {
+            let enabled = self
+                .sources_config
+                .get(kind)
+                .is_none_or(|roots| !roots.is_empty());
+            sources.insert(
+                kind.to_string(),
+                json!({
+                    "enabled": enabled,
+                    "declared_roots": 0,
+                    "available_roots": 0,
+                    "discovered_files": 0,
+                    "indexed_sessions": 0,
+                    "error_count": 0,
+                    "last_error": Value::Null,
+                }),
+            );
+        }
+        let lists = root_lists(&self.sources_config).0;
+        for (kind, roots) in [
+            ("codex", lists.codex.as_slice()),
+            ("codex_archived", lists.codex_archived.as_slice()),
+            ("claude", lists.claude.as_slice()),
+            ("gemini", lists.gemini.as_slice()),
+        ] {
+            let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
+            entry["declared_roots"] = json!(roots.len());
+            entry["available_roots"] = json!(roots.iter().filter(|root| root.is_dir()).count());
+        }
+        for record in self.records.values() {
+            let kind = diagnostic_source_kind(record.source.kind);
+            if let Some(entry) = sources.get_mut(kind) {
+                entry["indexed_sessions"] =
+                    json!(entry["indexed_sessions"].as_u64().unwrap_or(0) + 1);
+            }
+        }
+        for (kind, diagnostic) in &self.scan_diagnostics.sources {
+            if let Some(entry) = sources.get_mut(kind) {
+                entry["discovered_files"] = json!(diagnostic.discovered_paths.len());
+                entry["error_count"] = json!(diagnostic.errors.len());
+                entry["last_error"] = diagnostic
+                    .last_error
+                    .as_ref()
+                    .map_or(Value::Null, |value| Value::String(value.clone()));
+            }
+        }
+        json!({
+            "last_scan_at": if self.scan_diagnostics.last_scan_at.is_empty() {
+                Value::Null
+            } else {
+                Value::String(self.scan_diagnostics.last_scan_at.clone())
+            },
+            "sources": sources,
+        })
+    }
+
     pub fn watch_roots(&self) -> Vec<PathBuf> {
         watch_roots_for(&self.sources_config)
     }
@@ -93,14 +221,27 @@ impl SessionStore {
         // 来源目录可能在启动后才被创建（例如首次运行 Codex/Claude/Gemini），
         // 每次刷新都按当前配置重新解析，而不是沿用启动时的快照。
         self.resolve_sources();
+        let mut diagnostics = ScanDiagnostics::started();
         let mut next = HashMap::new();
         let mut active_paths = BTreeSet::new();
         for source in &self.sources {
+            let diagnostic_kind = diagnostic_source_kind(source.kind).to_string();
             if matches!(source.format, SourceFormat::Gemini) {
-                let parsed = gemini::parse_source(source, &self.index_cache)?;
+                let parsed = match gemini::parse_source(source, &self.index_cache) {
+                    Ok(parsed) => parsed,
+                    Err(error) => {
+                        diagnostics.record_error(&diagnostic_kind, &source.root, &error);
+                        eprintln!("无法解析 Gemini 来源：{error}");
+                        continue;
+                    }
+                };
                 for path in &parsed.active_paths {
+                    diagnostics.discover(&diagnostic_kind, Path::new(path));
                     active_paths.insert(path.clone());
                     active_paths.insert(path_identity(Path::new(path)));
+                }
+                for (path, error) in &parsed.errors {
+                    diagnostics.record_error(&diagnostic_kind, path, error);
                 }
                 for session in parsed.sessions {
                     let key = session.summary["_key"]
@@ -118,6 +259,7 @@ impl SessionStore {
                 continue;
             }
             for path in discover_files(source) {
+                diagnostics.discover(&diagnostic_kind, &path);
                 let path_key = path_identity(&path);
                 if !active_paths.insert(path_key) {
                     continue;
@@ -125,7 +267,14 @@ impl SessionStore {
                 active_paths.insert(path.to_string_lossy().into_owned());
                 let metadata = match fs::metadata(&path) {
                     Ok(value) => value,
-                    Err(_) => continue,
+                    Err(error) => {
+                        diagnostics.record_error(
+                            &diagnostic_kind,
+                            &path,
+                            &format!("无法读取文件元数据：{error}"),
+                        );
+                        continue;
+                    }
                 };
                 let parsed = self
                     .index_cache
@@ -146,12 +295,16 @@ impl SessionStore {
                             detail_locator: None,
                         });
                     }
-                    Err(error) => eprintln!("无法解析会话摘要（{}）：{error}", path.display()),
+                    Err(error) => {
+                        diagnostics.record_error(&diagnostic_kind, &path, &error);
+                        eprintln!("无法解析会话摘要（{}）：{error}", path.display());
+                    }
                 }
             }
         }
         self.index_cache.prune(&active_paths);
         self.records = next;
+        self.scan_diagnostics = diagnostics;
         self.rebuild_summaries();
         Ok(())
     }
@@ -176,6 +329,7 @@ impl SessionStore {
             return Ok(true);
         }
 
+        self.scan_diagnostics.touch();
         let mut changed = false;
         for path in paths {
             let Some(source) = self
@@ -188,6 +342,7 @@ impl SessionStore {
             else {
                 continue;
             };
+            let diagnostic_kind = diagnostic_source_kind(source.kind);
             let affected = self
                 .records
                 .iter()
@@ -197,6 +352,8 @@ impl SessionStore {
                 .map(|(key, record)| (key.clone(), record.path.clone()))
                 .collect::<Vec<_>>();
             if !path.is_file() || !source_matches_path(&source, path) {
+                self.scan_diagnostics
+                    .remove_path(diagnostic_kind, path, !path.exists());
                 for (key, record_path) in affected {
                     self.records.remove(&key);
                     self.index_cache.remove(&record_path);
@@ -204,8 +361,21 @@ impl SessionStore {
                 }
                 continue;
             }
-            let metadata = fs::metadata(path).map_err(error_text)?;
-            let (summary, search_text) = parse_summary(path, &source)?;
+            self.scan_diagnostics.discover(diagnostic_kind, path);
+            let metadata = fs::metadata(path).map_err(|error| {
+                let error = error_text(error);
+                self.scan_diagnostics.record_error(
+                    diagnostic_kind,
+                    path,
+                    &format!("无法读取文件元数据：{error}"),
+                );
+                error
+            })?;
+            let (summary, search_text) = parse_summary(path, &source).inspect_err(|error| {
+                self.scan_diagnostics
+                    .record_error(diagnostic_kind, path, error);
+            })?;
+            self.scan_diagnostics.clear_error(diagnostic_kind, path);
             for (key, record_path) in affected {
                 self.records.remove(&key);
                 self.index_cache.remove(&record_path);
@@ -329,17 +499,37 @@ impl SessionStore {
             .get(&resolved)
             .cloned()
             .ok_or_else(|| "会话不存在".to_string())?;
+        let current_summary = if record.detail_locator.is_none() {
+            let (summary, _) = parse_summary(&record.path, &record.source)?;
+            if summary["_key"].as_str() != Some(resolved.as_str()) {
+                return Err("原始文件已经变化；请刷新列表后重试".into());
+            }
+            Some(summary)
+        } else {
+            None
+        };
+        let backup_paths = if let Some(locator) = &record.detail_locator {
+            gemini::session_backup_paths(&record.source, locator)?
+        } else {
+            session_backup_paths(&record.path)
+        };
+        let session_id = record.summary["id"].as_str().unwrap_or_default();
+        let backup = crate::deletion_backup::create(
+            "delete_session",
+            record.source.kind,
+            session_id,
+            &backup_paths,
+        )?;
         let deleted_files = if let Some(locator) = &record.detail_locator {
             gemini::delete_session(&record.source, locator)?
         } else {
-            let (current_summary, _) = parse_summary(&record.path, &record.source)?;
-            if current_summary["_key"].as_str() != Some(resolved.as_str()) {
-                return Err("原始文件已经变化；请刷新列表后重试".into());
-            }
             if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
                 delete_legacy_session(
                     &record.path,
-                    current_summary["id"].as_str().unwrap_or_default(),
+                    current_summary
+                        .as_ref()
+                        .and_then(|summary| summary["id"].as_str())
+                        .unwrap_or_default(),
                 )?
             } else {
                 fs::remove_file(&record.path).map_err(|error| {
@@ -350,7 +540,7 @@ impl SessionStore {
         };
         self.index_cache.remove(&record.path);
         self.refresh()?;
-        Ok(json!({ "ok": true, "deleted_files": deleted_files }))
+        Ok(json!({ "ok": true, "deleted_files": deleted_files, "backup": backup }))
     }
 
     pub fn delete_message(&mut self, key: &str, message_key: &str) -> Result<Value, String> {
@@ -375,6 +565,18 @@ impl SessionStore {
             .get(&resolved)
             .cloned()
             .ok_or_else(|| "会话不存在".to_string())?;
+        let backup_paths = if let Some(locator) = &record.detail_locator {
+            gemini::message_backup_paths(&record.source, locator, &delete_ref)?
+        } else {
+            message_backup_paths(&record.path, &delete_ref)?
+        };
+        let session_id = record.summary["id"].as_str().unwrap_or_default();
+        let backup = crate::deletion_backup::create(
+            "delete_message",
+            record.source.kind,
+            session_id,
+            &backup_paths,
+        )?;
         if let Some(locator) = &record.detail_locator {
             gemini::delete_message(&record.source, locator, &delete_ref)?;
         } else if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -384,7 +586,7 @@ impl SessionStore {
         }
         self.index_cache.remove(&record.path);
         self.refresh()?;
-        Ok(json!({ "ok": true }))
+        Ok(json!({ "ok": true, "backup": backup }))
     }
 
     pub fn facets(&self) -> Value {
@@ -1761,11 +1963,34 @@ fn delete_legacy_message(path: &Path, delete_ref: &Value) -> Result<(), String> 
     }
 }
 
-fn delete_legacy_session(path: &Path, session_id: &str) -> Result<usize, String> {
-    let history_path = path
-        .parent()
+fn legacy_history_path(path: &Path) -> Option<PathBuf> {
+    path.parent()
         .and_then(Path::parent)
-        .map(|root| root.join("history.jsonl"));
+        .map(|root| root.join("history.jsonl"))
+}
+
+fn session_backup_paths(path: &Path) -> Vec<PathBuf> {
+    let mut paths = vec![path.to_path_buf()];
+    if path.extension().and_then(|value| value.to_str()) == Some("json") {
+        if let Some(history) = legacy_history_path(path).filter(|value| value.is_file()) {
+            paths.push(history);
+        }
+    }
+    paths
+}
+
+fn message_backup_paths(path: &Path, delete_ref: &Value) -> Result<Vec<PathBuf>, String> {
+    if delete_ref["kind"].as_str() == Some("legacy_history") {
+        return legacy_history_path(path)
+            .filter(|value| value.is_file())
+            .map(|value| vec![value])
+            .ok_or_else(|| "无法确定旧版 Claude history 路径".to_string());
+    }
+    Ok(vec![path.to_path_buf()])
+}
+
+fn delete_legacy_session(path: &Path, session_id: &str) -> Result<usize, String> {
+    let history_path = legacy_history_path(path);
     let mut deleted_files = 1_usize;
     if let Some(history_path) = history_path.filter(|path| path.is_file()) {
         let mut removed_lines = BTreeSet::new();
@@ -2147,6 +2372,15 @@ fn count_values(values: HashMap<String, u64>, limit: usize) -> Vec<Value> {
         .map(|(label, count)| json!({ "label": label, "count": count }))
         .collect()
 }
+fn diagnostic_source_kind(kind: &str) -> &str {
+    match kind {
+        "claude_code" => "claude",
+        value => value,
+    }
+}
+fn scan_timestamp() -> String {
+    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
 fn error_text(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
@@ -2166,8 +2400,8 @@ mod tests {
         describe_protected_source_roots, describe_sources, existing_watch_root,
         generic_conversation_message, is_synthetic_context, local_date_key, parse_detail,
         parse_summary, resolve_kind, search_query_matches, sources_from_paths, split_path_list,
-        watch_roots_for, DetailCache, HeadTail, SessionStore, Source, SourceFormat,
-        DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+        watch_roots_for, DetailCache, HeadTail, ScanDiagnostics, SessionStore, Source,
+        SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
@@ -2209,6 +2443,7 @@ mod tests {
             sources_config: codex_roots_config(std::slice::from_ref(&root)),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
         store.refresh().unwrap();
         assert!(store.summaries.is_empty());
@@ -2217,6 +2452,47 @@ mod tests {
         std::fs::write(root.join("a.jsonl"), session).unwrap();
         store.refresh().unwrap();
         assert!(store.records.contains_key("codex:late"));
+    }
+
+    #[test]
+    fn refresh_records_source_errors_without_blocking_valid_sessions() {
+        let base = tempdir().unwrap();
+        let codex_root = base.path().join("codex");
+        let claude_root = base.path().join("claude");
+        std::fs::create_dir_all(&codex_root).unwrap();
+        std::fs::create_dir_all(claude_root.join("sessions")).unwrap();
+        std::fs::write(
+            codex_root.join("valid.jsonl"),
+            format!(
+                "{}\n",
+                json!({ "type": "session_meta", "payload": { "id": "valid" } })
+            ),
+        )
+        .unwrap();
+        std::fs::write(claude_root.join("sessions/broken.json"), "{broken").unwrap();
+
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: crate::config::SourceRoots {
+                codex: Some(vec![codex_root.to_string_lossy().into_owned()]),
+                codex_archived: Some(Vec::new()),
+                claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
+                gemini: Some(Vec::new()),
+            },
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+
+        store.refresh().unwrap();
+
+        assert!(store.records.contains_key("codex:valid"));
+        let diagnostics = store.diagnostics();
+        assert_eq!(diagnostics["sources"]["codex"]["indexed_sessions"], 1);
+        assert_eq!(diagnostics["sources"]["claude"]["error_count"], 1);
+        assert!(diagnostics["sources"]["claude"]["last_error"].is_string());
     }
 
     #[test]
@@ -2260,6 +2536,7 @@ mod tests {
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
         store.refresh().unwrap();
         assert!(store.records.contains_key("claude_code:s1"));
@@ -2698,6 +2975,7 @@ mod tests {
             sources_config: codex_roots_config(&[directory.path().into()]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
         store.refresh().unwrap();
         std::fs::write(&second, "not valid json\n").unwrap();
@@ -2711,6 +2989,59 @@ mod tests {
         assert!(store.records["codex:first"]
             .search_text
             .contains("new first"));
+    }
+
+    #[test]
+    fn incremental_refresh_keeps_source_diagnostics_current() {
+        let directory = tempdir().unwrap();
+        let first = directory.path().join("first.jsonl");
+        let second = directory.path().join("second.jsonl");
+        let session = |id: &str| {
+            format!(
+                "{}\n",
+                json!({ "type": "session_meta", "payload": { "id": id } })
+            )
+        };
+        std::fs::write(&first, session("first")).unwrap();
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[directory.path().into()]),
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+        store.refresh().unwrap();
+        assert_eq!(
+            store.diagnostics()["sources"]["codex"]["discovered_files"],
+            1
+        );
+
+        std::fs::write(&second, session("second")).unwrap();
+        store
+            .refresh_paths(&BTreeSet::from([second.clone()]))
+            .unwrap();
+        assert_eq!(
+            store.diagnostics()["sources"]["codex"]["discovered_files"],
+            2
+        );
+
+        std::fs::remove_file(&first).unwrap();
+        store
+            .refresh_paths(&BTreeSet::from([first.clone()]))
+            .unwrap();
+        let diagnostics = store.diagnostics();
+        assert_eq!(diagnostics["sources"]["codex"]["discovered_files"], 1);
+        assert_eq!(diagnostics["sources"]["codex"]["error_count"], 0);
+
+        store
+            .refresh_paths(&BTreeSet::from([directory.path().to_path_buf()]))
+            .unwrap();
+        assert_eq!(
+            store.diagnostics()["sources"]["codex"]["discovered_files"],
+            1
+        );
     }
 
     #[test]
@@ -2754,6 +3085,7 @@ mod tests {
             sources_config: codex_roots_config(&[first.path().into(), alternate]),
             index_cache: IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
 
         store.refresh().unwrap();
@@ -2861,6 +3193,7 @@ mod tests {
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
 
         store.refresh().unwrap();
@@ -2894,6 +3227,7 @@ mod tests {
             sources_config: codex_roots_config(&[first.path().into(), second.path().into()]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
         store.refresh().unwrap();
         assert_eq!(store.records.len(), 1);
@@ -2924,6 +3258,7 @@ mod tests {
             sources_config: codex_roots_config(&[outer.path().into(), nested]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
         store.refresh().unwrap();
         assert_eq!(store.records.len(), 1);
@@ -2949,6 +3284,7 @@ mod tests {
             sources_config: codex_roots_config(&[first.path().into(), second.path().into()]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
         store.refresh().unwrap();
         let facets = store.facets();
@@ -2979,6 +3315,7 @@ mod tests {
             sources_config: codex_roots_config(&[outer.path().into(), nested.clone()]),
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
         };
         store.refresh().unwrap();
         std::fs::write(&shared, session("after")).unwrap();

@@ -55,6 +55,7 @@ const state = {
   activeView: "list",
   lastSessionError: null,
   workspaceLoadError: null,
+  recoverySettingsOpened: false,
   tauriEventsBound: false,
   filters: {
     provider: "",
@@ -320,14 +321,22 @@ const elements = {
   settingsKeepRunning: document.querySelector("#settings-keep-running"),
   settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
   settingsSources: document.querySelector("#settings-sources"),
+  settingsRecovery: document.querySelector("#settings-recovery"),
+  settingsRecoveryMessage: document.querySelector("#settings-recovery-message"),
+  settingsDiagnosticsMeta: document.querySelector("#settings-diagnostics-meta"),
+  settingsCopyDiagnostics: document.querySelector("#settings-copy-diagnostics"),
   settingsCachePath: document.querySelector("#settings-cache-path"),
   settingsCacheSize: document.querySelector("#settings-cache-size"),
+  settingsDeletionBackupPath: document.querySelector(
+    "#settings-deletion-backup-path"
+  ),
+  settingsDeletionBackupCount: document.querySelector(
+    "#settings-deletion-backup-count"
+  ),
   settingsClearCache: document.querySelector("#settings-clear-cache"),
   settingsVersion: document.querySelector("#settings-version"),
   settingsCheckUpdate: document.querySelector("#settings-check-update"),
-  settingsRepositoryLink: document.querySelector(
-    "#settings-repository-link"
-  ),
+  settingsRepositoryLink: document.querySelector("#settings-repository-link"),
   settingsSaveBtn: document.querySelector("#settings-save-btn"),
   settingsStatus: document.querySelector("#settings-status"),
   sessionDeleteBtn: document.querySelector("#session-delete-btn"),
@@ -624,7 +633,8 @@ function rerenderLocalizedContent() {
 
 function syncSearchShortcut() {
   if (!elements.searchShortcut) return;
-  const platform = navigator.userAgentData?.platform || navigator.platform || "";
+  const platform =
+    navigator.userAgentData?.platform || navigator.platform || "";
   elements.searchShortcut.textContent = /^(mac|iphone|ipad|ipod)/i.test(
     platform
   )
@@ -1207,7 +1217,7 @@ async function confirmPermanentDeletion() {
         : "/api/sessions/delete-message";
     const body = { sessionKey: target.sessionKey, confirmed: true };
     if (target.messageKey) body.messageKey = target.messageKey;
-    await fetchJson(url, { method: "POST", body });
+    const result = await fetchJson(url, { method: "POST", body });
     clearRemovedState(target.sessionKey, target.messageKey);
     pendingDeletion = null;
     elements.deleteDialog.close();
@@ -1218,13 +1228,15 @@ async function confirmPermanentDeletion() {
     }
     await loadFacets();
     await Promise.all([loadSessions(), loadStats()]);
-    announce(
-      t(
-        target.kind === "session"
-          ? "sessionDeletedPermanently"
-          : "messageDeletedPermanently"
-      )
-    );
+    const backupPath = result?.backup?.path;
+    const messageKey = backupPath
+      ? target.kind === "session"
+        ? "sessionDeletedWithBackup"
+        : "messageDeletedWithBackup"
+      : target.kind === "session"
+        ? "sessionDeletedPermanently"
+        : "messageDeletedPermanently";
+    announce(t(messageKey, { path: backupPath || "" }));
   } catch (error) {
     elements.deleteDialogStatus.textContent = `${t("deleteFailed")}: ${error.message}`;
   } finally {
@@ -2336,6 +2348,20 @@ function renderWorkspaceLoadFailure(error) {
     await loadInitialWorkspace();
   });
 
+  const actions = document.createElement("div");
+  actions.className = "workspace-load-actions";
+  actions.append(retryButton);
+  if (!isDesktopRuntimeUnavailable(error)) {
+    const settingsButton = document.createElement("button");
+    settingsButton.className = "ghost-button";
+    settingsButton.type = "button";
+    settingsButton.textContent = t("openSettingsForRecovery");
+    settingsButton.addEventListener("click", () => {
+      void settingsController.open("sources");
+    });
+    actions.append(settingsButton);
+  }
+
   stateCard.append(heading, copy);
   if (!isDesktopRuntimeUnavailable(error)) {
     const detail = document.createElement("p");
@@ -2343,12 +2369,23 @@ function renderWorkspaceLoadFailure(error) {
     detail.textContent = message;
     stateCard.append(detail);
   }
-  stateCard.append(retryButton);
+  stateCard.append(actions);
   elements.sessionList.replaceChildren(stateCard);
   elements.activeFilterBar?.replaceChildren();
   elements.sessionCount.textContent = "-";
   elements.sessionRoot.textContent = t("workspaceUnavailable");
   elements.sessionRoot.removeAttribute("title");
+}
+
+function openRecoverySettingsOnce() {
+  if (
+    state.capabilities?.recovery_required !== true ||
+    state.recoverySettingsOpened
+  ) {
+    return;
+  }
+  state.recoverySettingsOpened = true;
+  void settingsController.open("sources");
 }
 
 async function bindTauriSessionEventsOnce() {
@@ -2393,11 +2430,13 @@ async function loadInitialWorkspace() {
     state.workspaceLoadError = null;
     void loadStats();
     await bindTauriSessionEventsOnce();
+    openRecoverySettingsOnce();
     return true;
   } catch (error) {
     console.error(error);
     state._initialized = false;
     renderWorkspaceLoadFailure(error);
+    openRecoverySettingsOnce();
     return false;
   }
 }

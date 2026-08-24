@@ -25,6 +25,7 @@ pub struct BackendState {
     store: Arc<Mutex<SessionStore>>,
     config: Arc<Mutex<AppConfig>>,
     config_path: Option<PathBuf>,
+    startup_error: Arc<Mutex<Option<String>>>,
     maintenance_enabled: Arc<AtomicBool>,
     maintenance_lock: Arc<Mutex<()>>,
 }
@@ -32,22 +33,36 @@ pub struct BackendState {
 impl BackendState {
     pub fn load() -> Result<Self, String> {
         let config_path = config::config_path();
-        let config = match &config_path {
-            Some(path) => config::load(path)?,
-            None => AppConfig::default(),
+        let (config, startup_error) = match &config_path {
+            Some(path) => match config::load(path) {
+                Ok(config) => (config, None),
+                Err(error) => {
+                    eprintln!("读取配置失败，已使用安全默认值启动：{error}");
+                    (AppConfig::default(), Some(error))
+                }
+            },
+            None => (AppConfig::default(), None),
         };
         Ok(Self {
             store: Arc::new(Mutex::new(SessionStore::load(&config)?)),
             config: Arc::new(Mutex::new(config)),
             config_path,
+            startup_error: Arc::new(Mutex::new(startup_error)),
             maintenance_enabled: Arc::new(AtomicBool::new(false)),
             maintenance_lock: Arc::new(Mutex::new(())),
         })
     }
 
-    fn settings_payload(&self) -> Result<Value, String> {
+    fn settings_payload(&self, app: &AppHandle) -> Result<Value, String> {
         let config = self.config.lock().map_err(lock_error)?.clone();
         let store = self.store.lock().map_err(lock_error)?;
+        let recovery_error = self.startup_error.lock().map_err(lock_error)?.clone();
+        let watcher = app
+            .try_state::<crate::watcher::WatcherState>()
+            .map(|state| state.status())
+            .unwrap_or_else(
+                || json!({ "active": false, "root_count": 0, "last_error": "监听器尚未初始化" }),
+            );
         Ok(json!({
             "version": env!("CARGO_PKG_VERSION"),
             "config_path": self.config_path.as_ref().map(|path| path.to_string_lossy()),
@@ -57,7 +72,19 @@ impl BackendState {
             "inherited": crate::sessions::describe_inherited_sources(),
             "protected": crate::sessions::describe_protected_sources(&config.sources),
             "cache": store.cache_storage(),
+            "diagnostics": store.diagnostics(),
+            "watcher": watcher,
+            "recovery": {
+                "required": recovery_error.is_some(),
+                "message": recovery_error,
+            },
+            "deletion_backup": crate::deletion_backup::storage_info(),
         }))
+    }
+
+    fn clear_startup_error(&self) -> Result<(), String> {
+        *self.startup_error.lock().map_err(lock_error)? = None;
+        Ok(())
     }
 
     pub fn keep_running_in_tray(&self) -> Result<bool, String> {
@@ -164,11 +191,14 @@ fn route_request(
     match (method.as_str(), path) {
         ("GET", "/api/capabilities") => {
             let enabled = state.maintenance_enabled.load(Ordering::SeqCst);
-            Ok(state
+            let mut capabilities = state
                 .store
                 .lock()
                 .map_err(lock_error)?
-                .capabilities(enabled))
+                .capabilities(enabled);
+            capabilities["recovery_required"] =
+                json!(state.startup_error.lock().map_err(lock_error)?.is_some());
+            Ok(capabilities)
         }
         ("POST", "/api/codex-maintenance") => {
             let enabled = request
@@ -261,7 +291,7 @@ fn route_request(
                 .map_err(|error| error.to_string())?;
             Ok(result)
         }
-        ("GET", "/api/settings") => state.settings_payload(),
+        ("GET", "/api/settings") => state.settings_payload(&app),
         ("POST", "/api/settings") => {
             let sources = config::parse_sources(
                 request
@@ -283,11 +313,12 @@ fn route_request(
                 let mut store = state.store.lock().map_err(lock_error)?;
                 store.reconfigure(&config)?;
             }
+            state.clear_startup_error()?;
             // 监听只是自动刷新的辅助能力；失败时保留旧监听，后续刷新会重试。
             state.sync_watcher_roots(&app);
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
-            state.settings_payload()
+            state.settings_payload(&app)
         }
         ("POST", "/api/settings/preferences") => {
             let preferences = config::parse_preferences(
@@ -304,7 +335,8 @@ fn route_request(
             config.preferences = preferences;
             config::save(&config_path, &config)?;
             drop(config);
-            state.settings_payload()
+            state.clear_startup_error()?;
+            state.settings_payload(&app)
         }
         ("POST", "/api/settings/clear-cache") => {
             {
@@ -314,7 +346,7 @@ fn route_request(
             }
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
-            state.settings_payload()
+            state.settings_payload(&app)
         }
         ("POST", "/api/settings/check-update") => {
             updater::check_for_updates(app);

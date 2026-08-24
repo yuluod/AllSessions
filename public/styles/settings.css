@@ -226,6 +226,28 @@ html.settings-modal-open body {
   line-height: 1.55;
 }
 
+.settings-recovery {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--danger-soft);
+}
+
+.settings-recovery strong {
+  font-size: 0.8rem;
+}
+
+.settings-recovery p,
+.settings-recovery span {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .settings-sources {
   display: grid;
   gap: 0;
@@ -393,6 +415,67 @@ html.settings-modal-open body {
 .settings-source-action {
   min-height: 28px;
   padding: 3px 8px;
+  font-size: 0.72rem;
+}
+
+.settings-source-health {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.settings-health-badge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  background: var(--surface-muted);
+}
+
+.settings-source-health[data-state="ready"] .settings-health-badge {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.settings-source-health[data-state="warning"] .settings-health-badge,
+.settings-source-health[data-state="missing"] .settings-health-badge {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.settings-source-error {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--danger);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-diagnostics-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.settings-diagnostics-footer > span {
+  flex: 1 1 240px;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.settings-diagnostics-footer button {
+  flex: 0 0 auto;
+  min-height: 30px;
   font-size: 0.72rem;
 }
 
@@ -628,10 +711,6 @@ html.settings-modal-open body {
 
   .settings-body {
     padding-inline: 14px;
-  }
-
-  .settings-section {
-    display: block;
   }
 
   .settings-source {

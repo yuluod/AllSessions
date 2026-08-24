@@ -2269,9 +2269,9 @@ fn nullable_string(value: &str) -> Value {
     }
 }
 fn timestamp_of(summary: &Value) -> &str {
-    summary["timestamp"]
+    summary["last_timestamp"]
         .as_str()
-        .or_else(|| summary["last_timestamp"].as_str())
+        .or_else(|| summary["timestamp"].as_str())
         .unwrap_or_default()
 }
 /// 时间戳的本地日期键（YYYY-MM-DD），与前端 localDateKey 使用同一规则，
@@ -2437,8 +2437,9 @@ mod tests {
         describe_protected_source_roots, describe_sources, existing_watch_root,
         generic_conversation_message, is_synthetic_context, local_date_key, matches_filters,
         parse_detail, parse_summary, resolve_kind, search_query_matches, sources_from_paths,
-        split_path_list, watch_roots_for, DetailCache, HeadTail, ScanDiagnostics, SessionStore,
-        Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+        split_path_list, timestamp_of, watch_roots_for, DetailCache, HeadTail, ScanDiagnostics,
+        SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT,
+        DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
@@ -2654,6 +2655,18 @@ mod tests {
             Some("2026-08-19".into())
         );
         assert_eq!(local_date_key(""), None);
+    }
+
+    #[test]
+    fn session_ordering_uses_latest_activity_timestamp() {
+        let summary = json!({
+            "timestamp": "2026-08-20T12:53:50Z",
+            "last_timestamp": "2026-08-24T14:51:00Z"
+        });
+        assert_eq!(timestamp_of(&summary), "2026-08-24T14:51:00Z");
+
+        let legacy = json!({ "timestamp": "2026-08-20T12:53:50Z" });
+        assert_eq!(timestamp_of(&legacy), "2026-08-20T12:53:50Z");
     }
 
     #[test]

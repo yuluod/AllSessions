@@ -21,7 +21,7 @@ export function formatTimestamp(value) {
 }
 
 export function sessionTimestamp(session) {
-  return session.timestamp || session.last_timestamp || "";
+  return session.last_timestamp || session.timestamp || "";
 }
 
 function localDateKey(date) {

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/yuluod/AllSessions/security/advisories/new
+    about: Report vulnerabilities privately without including sensitive local data in a public issue.

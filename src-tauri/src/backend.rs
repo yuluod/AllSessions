@@ -18,11 +18,13 @@ use crate::{
     maintenance,
     sessions::SessionStore,
     updater,
+    workspace::{WorkspaceSnapshot, WorkspaceStore},
 };
 
 #[derive(Clone)]
 pub struct BackendState {
     store: Arc<Mutex<SessionStore>>,
+    workspace: Arc<Mutex<WorkspaceStore>>,
     config: Arc<Mutex<AppConfig>>,
     config_path: Option<PathBuf>,
     startup_error: Arc<Mutex<Option<String>>>,
@@ -45,6 +47,7 @@ impl BackendState {
         };
         Ok(Self {
             store: Arc::new(Mutex::new(SessionStore::load(&config)?)),
+            workspace: Arc::new(Mutex::new(WorkspaceStore::open()?)),
             config: Arc::new(Mutex::new(config)),
             config_path,
             startup_error: Arc::new(Mutex::new(startup_error)),
@@ -55,8 +58,9 @@ impl BackendState {
 
     fn settings_payload(&self, app: &AppHandle) -> Result<Value, String> {
         let config = self.config.lock().map_err(lock_error)?.clone();
-        let store = self.store.lock().map_err(lock_error)?;
         let recovery_error = self.startup_error.lock().map_err(lock_error)?.clone();
+        let workspace = self.workspace_snapshot()?;
+        let store = self.store.lock().map_err(lock_error)?;
         let watcher = app
             .try_state::<crate::watcher::WatcherState>()
             .map(|state| state.status())
@@ -79,7 +83,12 @@ impl BackendState {
                 "message": recovery_error,
             },
             "deletion_backup": crate::deletion_backup::storage_info(),
+            "workspace_storage": workspace.value()["storage"].clone(),
         }))
+    }
+
+    fn workspace_snapshot(&self) -> Result<WorkspaceSnapshot, String> {
+        self.workspace.lock().map_err(lock_error)?.snapshot()
     }
 
     fn clear_startup_error(&self) -> Result<(), String> {
@@ -240,12 +249,24 @@ fn route_request(
             }
             Ok(result)
         }
-        ("GET", "/api/sessions") => Ok(state.store.lock().map_err(lock_error)?.list(&query)),
+        ("GET", "/api/sessions") => {
+            let workspace = state.workspace_snapshot()?;
+            Ok(state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .list(&query, &workspace))
+        }
         ("GET", "/api/search") => {
             if query.get("q").is_none_or(|value| value.trim().is_empty()) {
                 return Err("缺少搜索内容".into());
             }
-            Ok(state.store.lock().map_err(lock_error)?.search(&query))
+            let workspace = state.workspace_snapshot()?;
+            Ok(state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .search(&query, &workspace))
         }
         ("POST", "/api/sessions/delete") => {
             if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {
@@ -262,6 +283,14 @@ fn route_request(
                 .lock()
                 .map_err(lock_error)?
                 .delete_session(session_key)?;
+            if let Err(error) = state
+                .workspace
+                .lock()
+                .map_err(lock_error)?
+                .clear_session(session_key)
+            {
+                eprintln!("清理已删除会话的工作台数据失败：{error}");
+            }
             app.emit("sessions-changed", json!({ "type": "session-deleted" }))
                 .map_err(|error| error.to_string())?;
             Ok(result)
@@ -287,11 +316,45 @@ fn route_request(
                 .lock()
                 .map_err(lock_error)?
                 .delete_message(session_key, message_key)?;
+            if let Err(error) = state
+                .workspace
+                .lock()
+                .map_err(lock_error)?
+                .clear_message(session_key, message_key)
+            {
+                eprintln!("清理已删除消息的工作台数据失败：{error}");
+            }
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
             Ok(result)
         }
         ("GET", "/api/settings") => state.settings_payload(&app),
+        ("GET", "/api/workspace") => Ok(state.workspace_snapshot()?.value()),
+        ("POST", "/api/workspace/session") => state
+            .workspace
+            .lock()
+            .map_err(lock_error)?
+            .update_session(&request.body),
+        ("POST", "/api/workspace/message") => state
+            .workspace
+            .lock()
+            .map_err(lock_error)?
+            .update_message(&request.body),
+        ("POST", "/api/workspace/saved-filter") => state
+            .workspace
+            .lock()
+            .map_err(lock_error)?
+            .save_filter(&request.body),
+        ("POST", "/api/workspace/saved-filter/delete") => state
+            .workspace
+            .lock()
+            .map_err(lock_error)?
+            .delete_filter(&request.body),
+        ("POST", "/api/workspace/migrate-legacy") => state
+            .workspace
+            .lock()
+            .map_err(lock_error)?
+            .migrate_legacy(&request.body),
         ("POST", "/api/settings") => {
             let sources = config::parse_sources(
                 request
@@ -352,8 +415,20 @@ fn route_request(
             updater::check_for_updates(app);
             Ok(json!({ "ok": true }))
         }
-        ("GET", "/api/facets") => Ok(state.store.lock().map_err(lock_error)?.facets()),
-        ("GET", "/api/stats") => Ok(state.store.lock().map_err(lock_error)?.stats(&query)),
+        ("GET", "/api/facets") => {
+            let workspace = state.workspace_snapshot()?;
+            let mut facets = state.store.lock().map_err(lock_error)?.facets();
+            facets["workspace_tags"] = json!(workspace.tags());
+            Ok(facets)
+        }
+        ("GET", "/api/stats") => {
+            let workspace = state.workspace_snapshot()?;
+            Ok(state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .stats(&query, &workspace))
+        }
         ("GET", "/api/refresh") => {
             state.refresh_and_emit(&app)?;
             Ok(json!({ "ok": true }))
@@ -362,12 +437,14 @@ fn route_request(
             let key = percent_decode_str(path.trim_start_matches("/api/sessions/"))
                 .decode_utf8()
                 .map_err(|_| "会话 ID 编码无效".to_string())?;
-            state
+            let mut detail = state
                 .store
                 .lock()
                 .map_err(lock_error)?
                 .detail(&key)
-                .ok_or_else(|| "会话不存在".into())
+                .ok_or_else(|| "会话不存在".to_string())?;
+            state.workspace_snapshot()?.decorate_detail(&mut detail);
+            Ok(detail)
         }
         _ => Err(format!("不支持的请求：{method} {path}")),
     }

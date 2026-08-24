@@ -13,7 +13,6 @@ import {
   cwdParts,
   fillSelect,
   formatDateGroup,
-  formatCount,
   formatTimestamp,
   sessionTimestamp,
 } from "./session-format.js";
@@ -23,6 +22,7 @@ import {
   exportSessionMarkdown,
 } from "./session-export.js";
 import { createConversationView } from "./conversation-view.js";
+import { createMaintenanceController } from "./maintenance-view.js";
 import { renderStats } from "./stats-view.js";
 import { createSettingsController } from "./settings-view.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -39,7 +39,6 @@ const REMOVED_MESSAGES_KEY = "allsessions_removed_messages";
 const sessionRequestGate = createLatestRequestGate();
 const detailRequestGate = createLatestRequestGate();
 const statsRequestGate = createLatestRequestGate();
-const codexMigrationPreviewRequestGate = createLatestRequestGate();
 
 const state = {
   capabilities: null,
@@ -57,9 +56,6 @@ const state = {
   showRemoved: false,
   favoriteOnly: false,
   showAllProjects: false,
-  codexMigrationPreview: null,
-  codexMigrationSelectedProviders: new Set(),
-  codexMigrationApplied: false,
   currentDetail: null,
   detailQuery: "",
   showTools: true,
@@ -506,77 +502,6 @@ const elements = {
   trendChartBody: document.querySelector("#trend-chart-body"),
   donutChartBody: document.querySelector("#donut-chart-body"),
   toolsDashboard: document.querySelector("#tools-dashboard"),
-  codexRollbackDashboard: document.querySelector("#codex-rollback-dashboard"),
-  openCodexRollbackBtn: document.querySelector("#open-codex-rollback-btn"),
-  codexRollbackBackBtn: document.querySelector("#codex-rollback-back-btn"),
-  codexRollbackCard: document.querySelector(".codex-rollback-card"),
-  codexRollbackMaintenanceToggle: document.querySelector(
-    "#codex-rollback-maintenance-toggle"
-  ),
-  codexRollbackStatus: document.querySelector("#codex-rollback-status"),
-  codexMigrationCard: document.querySelector("#codex-migration-card"),
-  codexMaintenanceToggle: document.querySelector("#codex-maintenance-toggle"),
-  codexMigrationPreviewBtn: document.querySelector(
-    "#codex-migration-preview-btn"
-  ),
-  codexMigrationApplyBtn: document.querySelector("#codex-migration-apply-btn"),
-  codexMigrationRollbackBtn: document.querySelector(
-    "#codex-migration-rollback-btn"
-  ),
-  codexMigrationConfirm: document.querySelector("#codex-migration-confirm"),
-  codexMigrationStatus: document.querySelector("#codex-migration-status"),
-  codexMigrationThreadCount: document.querySelector(
-    "#codex-migration-thread-count"
-  ),
-  codexMigrationJsonlCount: document.querySelector(
-    "#codex-migration-jsonl-count"
-  ),
-  codexMigrationReplacementCount: document.querySelector(
-    "#codex-migration-replacement-count"
-  ),
-  codexMigrationDiagnostics: document.querySelector(
-    "#codex-migration-diagnostics"
-  ),
-  codexMigrationMetrics: document.querySelector("#codex-migration-metrics"),
-  codexMigrationNextStep: document.querySelector("#codex-migration-next-step"),
-  codexMigrationWorkflow: document.querySelector("#codex-migration-workflow"),
-  codexMigrationSteps: Array.from(
-    document.querySelectorAll("#codex-migration-workflow .maintenance-step")
-  ),
-  codexMigrationComplete: document.querySelector("#codex-migration-complete"),
-  codexMigrationFinishBtn: document.querySelector(
-    "#codex-migration-finish-btn"
-  ),
-  codexMigrationPlanStaleNotice: document.querySelector(
-    "#codex-migration-plan-stale"
-  ),
-  codexMigrationCurrentProvider: document.querySelector(
-    "#codex-migration-current-provider"
-  ),
-  codexMigrationTargetProvider: document.querySelector(
-    "#codex-migration-target-provider"
-  ),
-  codexMigrationDiagnosticList: document.querySelector(
-    "#codex-migration-diagnostic-list"
-  ),
-  codexMigrationProviderList: document.querySelector(
-    "#codex-migration-provider-list"
-  ),
-  codexMigrationRollbackDir: document.querySelector(
-    "#codex-migration-rollback-dir"
-  ),
-  codexMigrationRollbackConfirm: document.querySelector(
-    "#codex-migration-rollback-confirm"
-  ),
-  codexMigrationBackupNotice: document.querySelector(
-    "#codex-migration-backup-notice"
-  ),
-  codexMigrationBackupLabel: document.querySelector(
-    "#codex-migration-backup-label"
-  ),
-  codexMigrationBackupPath: document.querySelector(
-    "#codex-migration-backup-path"
-  ),
   openCodexArchiveBtn: document.querySelector("#open-codex-archive-btn"),
   mobileBackBtn: document.querySelector("#mobile-back-btn"),
   settingsToggle: document.querySelector("#settings-toggle"),
@@ -644,6 +569,13 @@ const settingsController = createSettingsController({
     loadFacets()
       .then(() => Promise.all([loadSessions(), loadStats()]))
       .catch((error) => showError(error.message));
+  },
+});
+const maintenanceController = createMaintenanceController({
+  requestJson: fetchJson,
+  refreshData: async () => {
+    await loadFacets();
+    await Promise.all([loadSessions(), loadStats()]);
   },
 });
 
@@ -913,12 +845,7 @@ function rerenderLocalizedContent() {
   if (state.stats) {
     renderStats(state.stats, elements);
   }
-  if (state.codexMigrationPreview) {
-    renderCodexMigrationPreview(state.codexMigrationPreview);
-  } else {
-    resetCodexMigrationMetrics();
-  }
-  configureCodexMaintenanceUi();
+  maintenanceController.renderLocalized();
 }
 
 function syncSearchShortcut() {
@@ -1798,667 +1725,6 @@ function setDetailPlaceholder(title, description = "") {
   elements.detailEmpty.replaceChildren(heading, copy);
 }
 
-function setCodexMigrationStatus(message, kind = "") {
-  if (!elements.codexMigrationStatus) return;
-  elements.codexMigrationStatus.textContent = message;
-  elements.codexMigrationStatus.dataset.kind = kind;
-}
-
-function setCodexRollbackStatus(message, kind = "") {
-  if (!elements.codexRollbackStatus) return;
-  elements.codexRollbackStatus.textContent = message;
-  elements.codexRollbackStatus.dataset.kind = kind;
-}
-
-function isCodexMaintenanceEnabled() {
-  return state.capabilities?.codex_maintenance?.enabled === true;
-}
-
-function selectedCodexMigrationProviders() {
-  return Array.from(state.codexMigrationSelectedProviders).sort();
-}
-
-function sameProviderSelection(left, right) {
-  const first = Array.isArray(left) ? [...left].sort() : [];
-  const second = Array.isArray(right) ? [...right].sort() : [];
-  return (
-    first.length === second.length &&
-    first.every((provider, index) => provider === second[index])
-  );
-}
-
-function isCodexMigrationPlanStale() {
-  return (
-    state.codexMigrationPreview !== null &&
-    !sameProviderSelection(
-      selectedCodexMigrationProviders(),
-      state.codexMigrationPreview.providers
-    )
-  );
-}
-
-function updateCodexMigrationPreviewButton() {
-  if (!elements.codexMigrationPreviewBtn) return;
-  if (state.codexMigrationApplied) {
-    elements.codexMigrationPreviewBtn.textContent = t("migrationCompleteTitle");
-    return;
-  }
-  const preview = state.codexMigrationPreview;
-  const selectedProviders = selectedCodexMigrationProviders();
-  const hasCandidates =
-    (preview?.candidateMappings || preview?.mappings || []).length > 0;
-  let key = "scanHistoricalProviders";
-  if (preview && selectedProviders.length > 0) {
-    key = "rebuildRepairPlan";
-  } else if (preview && hasCandidates) {
-    key = "buildExactRepairPlan";
-  } else if (preview) {
-    key = "rebuildRepairPlan";
-  }
-  elements.codexMigrationPreviewBtn.textContent = t(key);
-}
-
-function updateCodexMigrationStepStates() {
-  const preview = state.codexMigrationPreview;
-  const selectedProviders = selectedCodexMigrationProviders();
-  let phase = "disabled";
-  let activeStep = 1;
-  if (state.codexMigrationApplied) {
-    phase = "complete";
-    activeStep = 5;
-  } else if (isCodexMaintenanceEnabled()) {
-    if (!preview || !selectedProviders.length || isCodexMigrationPlanStale()) {
-      phase = preview ? "select" : "scan";
-      activeStep = 2;
-    } else if (!preview.canApply || !preview.hasChanges) {
-      phase = "review";
-      activeStep = 3;
-    } else {
-      phase = "execute";
-      activeStep = 4;
-    }
-  }
-
-  if (elements.codexMigrationWorkflow) {
-    elements.codexMigrationWorkflow.dataset.phase = phase;
-  }
-  elements.codexMigrationSteps.forEach((step, index) => {
-    const stepNumber = index + 1;
-    step.dataset.state =
-      stepNumber < activeStep
-        ? "complete"
-        : stepNumber === activeStep
-          ? "active"
-          : "pending";
-  });
-  elements.codexMigrationComplete?.classList.toggle(
-    "hidden",
-    !state.codexMigrationApplied
-  );
-  elements.codexMigrationPreviewBtn?.classList.toggle(
-    "hidden",
-    state.codexMigrationApplied
-  );
-  elements.codexMigrationConfirm
-    ?.closest(".migration-actions")
-    ?.classList.toggle("hidden", state.codexMigrationApplied);
-}
-
-function updateCodexMigrationNextStep() {
-  if (!elements.codexMigrationNextStep) return;
-  const preview = state.codexMigrationPreview;
-  const selectedProviders = selectedCodexMigrationProviders();
-  let key = "nextStepEnableMaintenance";
-  if (isCodexMaintenanceEnabled()) {
-    if (state.codexMigrationApplied) {
-      key = "nextStepRepairDone";
-    } else if (!preview) {
-      key = "nextStepScanProviders";
-    } else if (
-      !selectedProviders.length &&
-      (preview.candidateMappings || preview.mappings || []).length > 0
-    ) {
-      key = "nextStepSelectProviders";
-    } else if (isCodexMigrationPlanStale()) {
-      key = "nextStepRebuildPlan";
-    } else if (!preview.canApply) {
-      key = "nextStepResolveBlockers";
-    } else if (!preview.hasChanges) {
-      key = "nextStepNoChanges";
-    } else if (elements.codexMigrationConfirm?.checked !== true) {
-      key = "nextStepConfirmClosed";
-    } else {
-      key = "nextStepApplyPlan";
-    }
-  }
-  elements.codexMigrationNextStep.textContent = t(key);
-}
-
-function syncCodexMigrationFlowState() {
-  const stale = isCodexMigrationPlanStale();
-  if (elements.codexMigrationMetrics) {
-    elements.codexMigrationMetrics.dataset.stale = String(stale);
-  }
-  if (elements.codexMigrationDiagnostics) {
-    elements.codexMigrationDiagnostics.dataset.stale = String(stale);
-  }
-  elements.codexMigrationPlanStaleNotice?.classList.toggle("hidden", !stale);
-  updateCodexMigrationStepStates();
-  updateCodexMigrationPreviewButton();
-  updateCodexMigrationNextStep();
-  updateCodexMigrationApplyState();
-}
-
-function configureCodexMaintenanceUi() {
-  const enabled = isCodexMaintenanceEnabled();
-  if (elements.codexMigrationCard) {
-    elements.codexMigrationCard.dataset.enabled = enabled ? "true" : "false";
-  }
-  if (elements.codexRollbackCard) {
-    elements.codexRollbackCard.dataset.enabled = enabled ? "true" : "false";
-  }
-  if (elements.codexMaintenanceToggle) {
-    elements.codexMaintenanceToggle.checked = enabled;
-  }
-  if (elements.codexRollbackMaintenanceToggle) {
-    elements.codexRollbackMaintenanceToggle.checked = enabled;
-  }
-  [
-    elements.codexMigrationPreviewBtn,
-    elements.codexMigrationRollbackBtn,
-    elements.codexMigrationConfirm,
-    elements.codexMigrationRollbackConfirm,
-    elements.codexMigrationRollbackDir,
-    elements.codexMigrationFinishBtn,
-  ].forEach((control) => {
-    if (control) control.disabled = !enabled;
-  });
-  if (!enabled) {
-    if (elements.codexMigrationApplyBtn)
-      elements.codexMigrationApplyBtn.disabled = true;
-    if (elements.codexMigrationProviderList) {
-      elements.codexMigrationProviderList.textContent = t(
-        "maintenanceDisabledHint"
-      );
-    }
-    setCodexMigrationStatus(t("maintenanceDisabled"), "warning");
-    setCodexRollbackStatus(t("rollbackMaintenanceDisabled"), "warning");
-  } else {
-    if (!state.codexMigrationPreview) {
-      setCodexMigrationStatus(t("migrationNotPreviewed"));
-    }
-    setCodexRollbackStatus(t("rollbackReady"));
-  }
-  syncCodexMigrationFlowState();
-}
-
-async function toggleCodexMaintenance(event) {
-  const enabled =
-    event?.currentTarget?.checked ??
-    elements.codexMaintenanceToggle?.checked === true;
-  if (!enabled) {
-    codexMigrationPreviewRequestGate.cancel();
-  }
-  [
-    elements.codexMaintenanceToggle,
-    elements.codexRollbackMaintenanceToggle,
-  ].forEach((toggle) => {
-    if (toggle) toggle.disabled = true;
-  });
-  try {
-    const result = await fetchJson("/api/codex-maintenance", {
-      method: "POST",
-      mutation: true,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    });
-    state.capabilities.codex_maintenance.enabled = result.enabled === true;
-    state.codexMigrationPreview = null;
-    state.codexMigrationSelectedProviders.clear();
-    state.codexMigrationApplied = false;
-    if (elements.codexMigrationConfirm)
-      elements.codexMigrationConfirm.checked = false;
-    if (elements.codexMigrationRollbackConfirm)
-      elements.codexMigrationRollbackConfirm.checked = false;
-    resetCodexMigrationMetrics();
-    configureCodexMaintenanceUi();
-  } catch (error) {
-    console.error(error);
-    setCodexMigrationBusy(false);
-    configureCodexMaintenanceUi();
-    const message = `${t("maintenanceToggleFailed")}: ${error.message}`;
-    setCodexMigrationStatus(message, "error");
-    setCodexRollbackStatus(message, "error");
-  } finally {
-    [
-      elements.codexMaintenanceToggle,
-      elements.codexRollbackMaintenanceToggle,
-    ].forEach((toggle) => {
-      if (toggle) toggle.disabled = false;
-    });
-  }
-}
-
-function updateCodexMigrationApplyState() {
-  const preview = state.codexMigrationPreview;
-  const confirmed = elements.codexMigrationConfirm?.checked === true;
-  const selectedProviders = selectedCodexMigrationProviders();
-  const selectionMatchesPlan = sameProviderSelection(
-    selectedProviders,
-    preview?.providers
-  );
-  if (elements.codexMigrationApplyBtn) {
-    elements.codexMigrationApplyBtn.disabled =
-      !isCodexMaintenanceEnabled() ||
-      !confirmed ||
-      selectedProviders.length === 0 ||
-      !selectionMatchesPlan ||
-      !preview?.canApply ||
-      !preview?.hasChanges ||
-      !preview?.planId;
-  }
-}
-
-function setCodexMigrationBusy(
-  isBusy,
-  { allowMaintenanceToggle = false } = {}
-) {
-  const maintenanceDisabled = !isCodexMaintenanceEnabled();
-  if (elements.codexMaintenanceToggle) {
-    elements.codexMaintenanceToggle.disabled =
-      isBusy && !allowMaintenanceToggle;
-  }
-  if (elements.codexRollbackMaintenanceToggle) {
-    elements.codexRollbackMaintenanceToggle.disabled =
-      isBusy && !allowMaintenanceToggle;
-  }
-  [
-    elements.codexMigrationPreviewBtn,
-    elements.codexMigrationRollbackBtn,
-  ].forEach((button) => {
-    if (button) button.disabled = isBusy || maintenanceDisabled;
-  });
-  if (elements.codexMigrationConfirm) {
-    elements.codexMigrationConfirm.disabled =
-      isBusy || maintenanceDisabled || state.codexMigrationApplied;
-  }
-  if (elements.codexMigrationRollbackConfirm) {
-    elements.codexMigrationRollbackConfirm.disabled =
-      isBusy || maintenanceDisabled;
-  }
-  if (elements.codexMigrationRollbackDir) {
-    elements.codexMigrationRollbackDir.disabled = isBusy || maintenanceDisabled;
-  }
-  if (elements.codexMigrationFinishBtn) {
-    elements.codexMigrationFinishBtn.disabled =
-      isBusy || maintenanceDisabled || !state.codexMigrationApplied;
-  }
-  if (elements.codexMigrationApplyBtn) {
-    elements.codexMigrationApplyBtn.disabled = true;
-  }
-  if (!isBusy) {
-    syncCodexMigrationFlowState();
-  }
-}
-
-function resetCodexMigrationMetrics() {
-  if (elements.codexMigrationThreadCount)
-    elements.codexMigrationThreadCount.textContent = "-";
-  if (elements.codexMigrationJsonlCount)
-    elements.codexMigrationJsonlCount.textContent = "-";
-  if (elements.codexMigrationReplacementCount)
-    elements.codexMigrationReplacementCount.textContent = "-";
-  if (elements.codexMigrationCurrentProvider)
-    elements.codexMigrationCurrentProvider.textContent = "-";
-  if (elements.codexMigrationTargetProvider)
-    elements.codexMigrationTargetProvider.textContent = "-";
-  if (elements.codexMigrationDiagnosticList)
-    elements.codexMigrationDiagnosticList.innerHTML = "";
-  if (elements.codexMigrationDiagnostics)
-    elements.codexMigrationDiagnostics.dataset.kind = "neutral";
-  if (elements.codexMigrationBackupNotice)
-    elements.codexMigrationBackupNotice.classList.add("hidden");
-  if (elements.codexMigrationProviderList) {
-    elements.codexMigrationProviderList.textContent = t("migrationNoPreview");
-  }
-  syncCodexMigrationFlowState();
-}
-
-function renderCodexMigrationDiagnostics(summary) {
-  if (elements.codexMigrationCurrentProvider) {
-    elements.codexMigrationCurrentProvider.textContent =
-      summary.codexConfig?.activeProvider || "-";
-  }
-  if (elements.codexMigrationTargetProvider) {
-    elements.codexMigrationTargetProvider.textContent =
-      summary.targetProvider || "-";
-  }
-  if (
-    !elements.codexMigrationDiagnosticList ||
-    !elements.codexMigrationDiagnostics
-  )
-    return;
-
-  const list = elements.codexMigrationDiagnosticList;
-  list.innerHTML = "";
-  const blockers = summary.blockers || [];
-  const warnings = summary.warnings || [];
-  if (blockers.length) {
-    const selectionOnly = blockers.every(
-      (item) => item.code === "source_provider_selection_required"
-    );
-    elements.codexMigrationDiagnostics.dataset.kind = selectionOnly
-      ? "warning"
-      : "error";
-    blockers.forEach((item) => {
-      const row = document.createElement("li");
-      row.textContent = selectionOnly
-        ? t("migrationSelectProviders")
-        : t("migrationBlocker", { message: item.message });
-      list.append(row);
-    });
-    return;
-  }
-  elements.codexMigrationDiagnostics.dataset.kind = warnings.length
-    ? "warning"
-    : "ok";
-  if (!warnings.length) {
-    const row = document.createElement("li");
-    row.textContent = t("migrationReady");
-    list.append(row);
-    return;
-  }
-  warnings.forEach((item) => {
-    const row = document.createElement("li");
-    const message =
-      item.code === "current_provider_only"
-        ? t("migrationCurrentProviderOnly", {
-            target: summary.targetProvider || "-",
-          })
-        : item.message;
-    row.textContent = t("migrationWarning", { message });
-    list.append(row);
-  });
-}
-
-function renderCodexMigrationPreview(summary) {
-  state.codexMigrationPreview = summary;
-  if (!summary) {
-    resetCodexMigrationMetrics();
-    updateCodexMigrationApplyState();
-    return;
-  }
-
-  if (elements.codexMigrationThreadCount) {
-    elements.codexMigrationThreadCount.textContent = formatCount(
-      summary.threadMatches
-    );
-  }
-  if (elements.codexMigrationJsonlCount) {
-    elements.codexMigrationJsonlCount.textContent = formatCount(
-      summary.jsonlFilesToChange
-    );
-  }
-  if (elements.codexMigrationReplacementCount) {
-    elements.codexMigrationReplacementCount.textContent = formatCount(
-      summary.jsonlSessionMetaReplacements
-    );
-  }
-  renderCodexMigrationDiagnostics(summary);
-
-  if (elements.codexMigrationProviderList) {
-    elements.codexMigrationProviderList.innerHTML = "";
-    const mappings = summary.candidateMappings || summary.mappings || [];
-    const candidateProviders = new Set(
-      mappings.map((mapping) => mapping.source)
-    );
-    for (const provider of selectedCodexMigrationProviders()) {
-      if (!candidateProviders.has(provider)) {
-        state.codexMigrationSelectedProviders.delete(provider);
-      }
-    }
-    if (!mappings.length) {
-      elements.codexMigrationProviderList.textContent = t(
-        "migrationNoProviders"
-      );
-    } else {
-      mappings.forEach((mapping) => {
-        const item = document.createElement("label");
-        item.className = "migration-provider-item";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = state.codexMigrationSelectedProviders.has(
-          mapping.source
-        );
-        checkbox.disabled =
-          !isCodexMaintenanceEnabled() || state.codexMigrationApplied;
-        checkbox.addEventListener("change", () => {
-          if (checkbox.checked) {
-            state.codexMigrationSelectedProviders.add(mapping.source);
-          } else {
-            state.codexMigrationSelectedProviders.delete(mapping.source);
-          }
-          state.codexMigrationApplied = false;
-          if (elements.codexMigrationConfirm) {
-            elements.codexMigrationConfirm.checked = false;
-          }
-          const count = state.codexMigrationSelectedProviders.size;
-          setCodexMigrationStatus(
-            count > 0
-              ? t("migrationSelectionChanged")
-              : t("migrationSelectProviders"),
-            "warning"
-          );
-          syncCodexMigrationFlowState();
-        });
-        const name = document.createElement("span");
-        name.textContent = `${mapping.source} → ${mapping.target}`;
-        const count = document.createElement("strong");
-        count.textContent = t("migrationMappingCounts", {
-          threads: formatCount(mapping.threads),
-          jsonl: formatCount(mapping.jsonl),
-        });
-        item.append(checkbox, name, count);
-        elements.codexMigrationProviderList.append(item);
-      });
-    }
-  }
-
-  if (summary.backupDir && elements.codexMigrationRollbackDir) {
-    elements.codexMigrationRollbackDir.value = summary.backupDir;
-  }
-
-  if (elements.codexMigrationBackupNotice) {
-    const notice = elements.codexMigrationBackupNotice;
-    const label = elements.codexMigrationBackupLabel;
-    const pathEl = elements.codexMigrationBackupPath;
-    if (summary.backupDir) {
-      if (label) label.textContent = t("backupSavedAt");
-      if (pathEl) pathEl.textContent = summary.backupDir;
-      notice.classList.remove("hidden");
-      notice.dataset.done = "true";
-    } else if (summary.backupRoot) {
-      if (label) label.textContent = t("backupWillSaveTo");
-      if (pathEl) {
-        pathEl.textContent = `${summary.backupRoot}/${summary.migration || "codex-history-provider-rebucket-v2"}/`;
-      }
-      notice.classList.remove("hidden");
-      notice.dataset.done = "false";
-    } else {
-      notice.classList.add("hidden");
-    }
-  }
-
-  syncCodexMigrationFlowState();
-}
-
-async function loadCodexMigrationPreview() {
-  if (!isCodexMaintenanceEnabled()) {
-    configureCodexMaintenanceUi();
-    return;
-  }
-  if (state.codexMigrationApplied) return;
-  const request = codexMigrationPreviewRequestGate.begin();
-  setCodexMigrationBusy(true, { allowMaintenanceToggle: true });
-  setCodexMigrationStatus(t("migrationPreviewing"));
-  try {
-    const providers = selectedCodexMigrationProviders();
-    const params = new URLSearchParams();
-    if (providers.length > 0) params.set("providers", providers.join(","));
-    const query = params.toString();
-    const summary = await fetchJson(
-      `/api/codex-provider-migration/preview${query ? `?${query}` : ""}`,
-      {
-        signal: request.signal,
-      }
-    );
-    if (!request.isCurrent() || !isCodexMaintenanceEnabled()) return;
-    state.codexMigrationApplied = false;
-    renderCodexMigrationPreview(summary);
-    if (summary.selectionRequired) {
-      setCodexMigrationStatus(t("migrationSelectProviders"), "warning");
-    } else if (!summary.canApply) {
-      setCodexMigrationStatus(
-        t("migrationPreviewBlocked", { n: summary.blockers?.length || 0 }),
-        "error"
-      );
-    } else if (!summary.hasChanges) {
-      setCodexMigrationStatus(t("migrationNoChanges"), "ok");
-    } else {
-      setCodexMigrationStatus(
-        t("migrationPreviewReady", {
-          n: summary.providers?.length || 0,
-          target: summary.targetProvider || "-",
-        }),
-        "ok"
-      );
-    }
-  } catch (error) {
-    if (isAbortError(error) || !request.isCurrent()) return;
-    console.error(error);
-    setCodexMigrationStatus(
-      `${t("migrationPreviewFailed")}: ${error.message}`,
-      "error"
-    );
-  } finally {
-    if (request.isCurrent()) {
-      setCodexMigrationBusy(false);
-    }
-  }
-}
-
-async function applyCodexMigration() {
-  if (!isCodexMaintenanceEnabled()) {
-    configureCodexMaintenanceUi();
-    return;
-  }
-  if (elements.codexMigrationConfirm?.checked !== true) {
-    setCodexMigrationStatus(t("migrationNeedConfirm"), "error");
-    updateCodexMigrationApplyState();
-    return;
-  }
-
-  setCodexMigrationBusy(true);
-  state.codexMigrationApplied = false;
-  setCodexMigrationStatus(t("migrationApplying"));
-  try {
-    const preview = state.codexMigrationPreview;
-    if (!preview?.planId) {
-      setCodexMigrationStatus(t("migrationNoPreview"), "error");
-      return;
-    }
-    const summary = await fetchJson("/api/codex-provider-migration/apply", {
-      method: "POST",
-      mutation: true,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        confirmedCodexAppClosed: true,
-        planId: preview.planId,
-        providers: preview.providers,
-      }),
-    });
-    state.codexMigrationApplied = true;
-    state.codexMigrationSelectedProviders.clear();
-    renderCodexMigrationPreview(summary);
-    state.codexMigrationPreview = null;
-    if (elements.codexMigrationProviderList) {
-      elements.codexMigrationProviderList.textContent = t(
-        "migrationCompletedSources"
-      );
-    }
-    if (elements.codexMigrationConfirm) {
-      elements.codexMigrationConfirm.checked = false;
-    }
-    setCodexMigrationStatus(
-      summary.backupDir
-        ? t("migrationAppliedWithBackup", { path: summary.backupDir })
-        : t("migrationApplied"),
-      "ok"
-    );
-    await loadFacets();
-    await Promise.all([loadSessions(), loadStats()]);
-  } catch (error) {
-    console.error(error);
-    renderCodexMigrationPreview(null);
-    setCodexMigrationStatus(
-      `${t("migrationApplyFailed")}: ${error.message}`,
-      "error"
-    );
-  } finally {
-    setCodexMigrationBusy(false);
-  }
-}
-
-async function rollbackCodexMigration() {
-  if (!isCodexMaintenanceEnabled()) {
-    configureCodexMaintenanceUi();
-    return;
-  }
-  const backupDir = elements.codexMigrationRollbackDir?.value.trim();
-  if (!backupDir) {
-    setCodexRollbackStatus(t("migrationNeedBackupDir"), "error");
-    return;
-  }
-  if (elements.codexMigrationRollbackConfirm?.checked !== true) {
-    setCodexRollbackStatus(t("migrationNeedConfirm"), "error");
-    return;
-  }
-
-  setCodexMigrationBusy(true);
-  setCodexRollbackStatus(t("migrationRollbacking"));
-  try {
-    const result = await fetchJson("/api/codex-provider-migration/rollback", {
-      method: "POST",
-      mutation: true,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ backupDir, confirmedCodexAppClosed: true }),
-    });
-    if (elements.codexMigrationRollbackConfirm) {
-      elements.codexMigrationRollbackConfirm.checked = false;
-    }
-    state.codexMigrationApplied = false;
-    state.codexMigrationSelectedProviders.clear();
-    await loadFacets();
-    await Promise.all([loadSessions(), loadStats()]);
-    await loadCodexMigrationPreview();
-    setCodexRollbackStatus(
-      t("migrationRollbackDone", {
-        sqlite: result.restoredSqlite,
-        jsonl: result.restoredJsonl,
-      }),
-      "ok"
-    );
-  } catch (error) {
-    console.error(error);
-    setCodexRollbackStatus(
-      `${t("migrationRollbackFailed")}: ${error.message}`,
-      "error"
-    );
-  } finally {
-    setCodexMigrationBusy(false);
-  }
-}
-
 async function loadSessionDetail(id, { silent = false } = {}) {
   const request = detailRequestGate.begin();
   try {
@@ -2681,6 +1947,7 @@ async function loadCapabilities() {
     console.error(error);
     state.capabilities = { codex_maintenance: { enabled: false } };
   }
+  maintenanceController.setCapabilities(state.capabilities);
 }
 
 function isDesktopRuntimeUnavailable(error) {
@@ -2786,8 +2053,6 @@ async function loadInitialWorkspace() {
   try {
     await loadWorkspaceState();
     await Promise.all([loadFacets(), loadCapabilities()]);
-    resetCodexMigrationMetrics();
-    configureCodexMaintenanceUi();
     const sessionsLoaded = await loadSessions({ reportError: false });
     if (!sessionsLoaded) {
       throw state.lastSessionError || new Error(t("loadListFailed"));
@@ -2838,18 +2103,6 @@ async function returnHome() {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-function openCodexRollbackView() {
-  elements.toolsDashboard?.classList.add("hidden");
-  elements.codexRollbackDashboard?.classList.remove("hidden");
-  window.scrollTo({ top: 0, behavior: "auto" });
-}
-
-function closeCodexRollbackView() {
-  elements.codexRollbackDashboard?.classList.add("hidden");
-  elements.toolsDashboard?.classList.remove("hidden");
-  window.scrollTo({ top: 0, behavior: "auto" });
-}
-
 async function activateWorkspaceView(panel) {
   state.activeView = panel;
   document.body.dataset.view = panel;
@@ -2889,8 +2142,7 @@ async function activateWorkspaceView(panel) {
 
 async function initialize() {
   restoreFromUrl();
-  resetCodexMigrationMetrics();
-  configureCodexMaintenanceUi();
+  maintenanceController.bind();
   syncInspectorLayout();
   window
     .matchMedia(INSPECTOR_DRAWER_QUERY)
@@ -3083,44 +2335,6 @@ async function initialize() {
     elements.projectNav.open = false;
   }
 
-  elements.codexMigrationPreviewBtn?.addEventListener(
-    "click",
-    loadCodexMigrationPreview
-  );
-  elements.codexMaintenanceToggle?.addEventListener(
-    "change",
-    toggleCodexMaintenance
-  );
-  elements.codexRollbackMaintenanceToggle?.addEventListener(
-    "change",
-    toggleCodexMaintenance
-  );
-  elements.openCodexRollbackBtn?.addEventListener(
-    "click",
-    openCodexRollbackView
-  );
-  elements.codexRollbackBackBtn?.addEventListener(
-    "click",
-    closeCodexRollbackView
-  );
-  elements.codexMigrationFinishBtn?.addEventListener("click", async () => {
-    if (!elements.codexMaintenanceToggle) return;
-    elements.codexMaintenanceToggle.checked = false;
-    await toggleCodexMaintenance();
-  });
-  elements.codexMigrationConfirm?.addEventListener(
-    "change",
-    syncCodexMigrationFlowState
-  );
-  elements.codexMigrationApplyBtn?.addEventListener(
-    "click",
-    applyCodexMigration
-  );
-  elements.codexMigrationRollbackBtn?.addEventListener(
-    "click",
-    rollbackCodexMigration
-  );
-
   const workspaceTabs = Array.from(document.querySelectorAll(".sidebar-tab"));
   workspaceTabs.forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -3294,7 +2508,7 @@ async function initialize() {
   updateStaticI18n();
   document.documentElement.lang = getLang() === "zh" ? "zh-CN" : "en";
   syncSearchShortcut();
-  configureCodexMaintenanceUi();
+  maintenanceController.renderLocalized();
 
   settingsController.bind();
   await bindTauriSettingsEvent();

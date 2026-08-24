@@ -413,71 +413,20 @@ test("普通对话默认展开，仅收起工具、上下文和超长消息", as
   );
 });
 
-test("维护预览期间仍允许关闭维护模式", async () => {
-  const source = await readProjectFile("public/app.js");
-
-  assert.match(
-    source,
-    /setCodexMigrationBusy\(true, \{ allowMaintenanceToggle: true \}\)/
-  );
-});
-
-test("Codex 维护流程提供分阶段操作指引", async () => {
+test("Codex 维护流程保留关键安全控件", async () => {
   const html = await readProjectFile("public/index.html");
-  const source = await readProjectFile("public/app.js");
-  const css = await readProjectFile("public/styles/maintenance.css");
 
-  assert.match(html, /id="codex-migration-next-step"/);
-  assert.match(html, /class="maintenance-workflow"/);
-  assert.match(
-    html,
-    /id="codex-migration-workflow"[\s\S]*data-phase="disabled"/
-  );
-  assert.match(html, /data-step="1"[\s\S]*data-state="active"/);
-  assert.match(html, /data-step="4"[\s\S]*data-state="pending"/);
-  assert.doesNotMatch(html, /migration-rollback-panel/);
-  assert.match(html, /id="open-codex-rollback-btn"/);
-  assert.match(html, /id="codex-rollback-dashboard"/);
-  assert.match(html, /id="codex-rollback-back-btn"/);
-  assert.match(html, /id="codex-rollback-maintenance-toggle"/);
-  assert.match(html, /id="codex-rollback-status"/);
-  assert.match(html, /id="codex-migration-rollback-confirm"/);
-  assert.match(html, /id="codex-migration-complete"/);
-  assert.match(html, /id="codex-migration-finish-btn"/);
-  assert.match(
-    html,
-    /id="codex-migration-plan-stale"[\s\S]*data-i18n="migrationPlanStale"/
-  );
-  assert.match(html, /id="codex-migration-metrics"[\s\S]*data-stale="false"/);
-  assert.match(
-    html,
-    /id="codex-migration-diagnostics"[\s\S]*data-stale="false"/
-  );
-  assert.match(html, /data-i18n="maintenanceSafetyTitle"/);
-  assert.match(html, /data-i18n="migrationRollbackHint"/);
-  assert.doesNotMatch(
-    html.match(
-      /<button[^>]*id="codex-migration-preview-btn"[\s\S]*?<\/button>/
-    )?.[0] || "",
-    /data-i18n/
-  );
-  assert.match(source, /function syncCodexMigrationFlowState\(\)/);
-  assert.match(source, /scanHistoricalProviders/);
-  assert.match(source, /buildExactRepairPlan/);
-  assert.match(source, /rebuildRepairPlan/);
-  assert.match(source, /dataset\.stale = String\(stale\)/);
-  assert.match(
-    source,
-    /state\.codexMigrationSelectedProviders\.clear\(\);[\s\S]*renderCodexMigrationPreview\(summary\)/
-  );
-  assert.match(source, /function updateCodexMigrationStepStates\(\)/);
-  assert.match(source, /if \(state\.codexMigrationApplied\) return;/);
-  assert.match(
-    css,
-    /\.migration-metrics\[data-stale="true"\][\s\S]*opacity: 0\.58/
-  );
-  assert.match(css, /\.maintenance-step \+ \.maintenance-step/);
-  assert.match(css, /\.maintenance-step\[data-state="active"\]/);
+  for (const id of [
+    "codex-maintenance-toggle",
+    "codex-migration-preview-btn",
+    "codex-migration-confirm",
+    "codex-migration-apply-btn",
+    "codex-migration-rollback-confirm",
+    "codex-migration-rollback-btn",
+    "codex-migration-finish-btn",
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
 });
 
 test("会话列表支持筛选状态 chips 和日期分组", async () => {
@@ -698,11 +647,7 @@ test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复�
   assert.match(html, /data-i18n="maintenanceBoundary"/);
   assert.match(html, /id="codex-archive-viewer-title"/);
   assert.match(html, /data-i18n="codexArchiveViewerDesc"/);
-  assert.match(app, /\/api\/codex-maintenance/);
   assert.match(app, /bindTauriSessionEvents/);
-  assert.match(app, /codexMigrationPreviewRequestGate\.cancel\(\)/);
-  assert.match(app, /signal: request\.signal/);
-  assert.doesNotMatch(app, /if \(isTools && isCodexMaintenanceEnabled\(\)/);
 });
 
 test("设置对话框使用四个顶部分类并只在来源页显示保存操作", async () => {

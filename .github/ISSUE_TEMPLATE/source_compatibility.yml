@@ -1,0 +1,59 @@
+name: Source compatibility
+description: Report an existing Codex, Claude Code, or Gemini CLI record that AllSessions cannot read correctly
+title: "[Source] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form only for currently supported sources. Do not upload the original session, cache, database, backup, credential, or real local path. Reduce the problem to a synthetic sample if maintainers request one.
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      options:
+        - Codex
+        - Codex Archived
+        - Claude Code
+        - Gemini CLI
+    validations:
+      required: true
+  - type: input
+    id: source_version
+    attributes:
+      label: Source application or CLI version
+      placeholder: e.g. Claude Code 1.x
+  - type: input
+    id: version
+    attributes:
+      label: AllSessions version
+      placeholder: e.g. 0.0.16
+    validations:
+      required: true
+  - type: dropdown
+    id: behavior
+    attributes:
+      label: What is incorrect?
+      options:
+        - Session is missing
+        - Messages or tools are missing
+        - Metadata is incorrect
+        - Search or live refresh is incorrect
+        - Deletion behavior is incorrect
+        - Source reports a scan warning
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Reproduction and expected result
+      description: Describe structure and behavior with neutral placeholders; do not paste real content or paths.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste the output of Settings → Session Sources → Copy sanitized diagnostics.
+      render: json
+    validations:
+      required: true

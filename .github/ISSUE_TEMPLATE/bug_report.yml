@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible problem in AllSessions
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not upload real sessions, caches, databases, backups, credentials, or unsanitized local paths. Prefer **Settings → Session Sources → Copy sanitized diagnostics**.
+  - type: input
+    id: version
+    attributes:
+      label: AllSessions version
+      placeholder: e.g. 0.0.16
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS Apple Silicon
+        - macOS Intel
+        - Windows x64
+        - Debian/Ubuntu Linux x64
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Use placeholders for prompts, usernames, paths, providers, and project names.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste the output of Copy sanitized diagnostics. Do not attach local data files.
+      render: json
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Redacted screenshots are welcome when they help explain the UI state.

@@ -120,7 +120,7 @@ pub fn run() {
             app.manage(backend);
             app.manage(watcher::start(app.handle()));
             create_tray(app)?;
-            if check_updates_on_startup {
+            if !cfg!(debug_assertions) && check_updates_on_startup {
                 updater::check_for_updates_silently(app.handle().clone());
             }
             Ok(())

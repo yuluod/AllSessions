@@ -846,6 +846,15 @@ test("仓库链接在桌面端通过受限的系统浏览器能力打开", async
   );
 });
 
+test("开发构建不会在启动时连接正式更新通道", async () => {
+  const runtime = await readProjectFile("src-tauri/src/lib.rs");
+
+  assert.match(
+    runtime,
+    /if !cfg!\(debug_assertions\) && check_updates_on_startup \{[\s\S]*check_for_updates_silently/
+  );
+});
+
 test("会话来源与存储使用紧凑的分组设置结构", async () => {
   const html = await readProjectFile("public/index.html");
   const settingsCss = await readProjectFile("public/styles/settings.css");

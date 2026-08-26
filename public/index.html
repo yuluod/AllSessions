@@ -1,15 +1,48 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="greenbar" data-scheme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (() => {
+        const themes = ["greenbar", "tui", "standard", "hdweb", "blind"];
+        const schemes = ["light", "dark", "system"];
+        let theme = "greenbar";
+        let scheme = "system";
+        try {
+          const savedTheme = localStorage.getItem("allsessions_theme");
+          const savedScheme = localStorage.getItem("allsessions_scheme");
+          if (themes.includes(savedTheme)) theme = savedTheme;
+          if (schemes.includes(savedScheme)) scheme = savedScheme;
+        } catch {
+          // 本地存储不可用时保留默认主题。
+        }
+        const resolved =
+          scheme === "system"
+            ? matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light"
+            : scheme;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.scheme = resolved;
+        document.documentElement.style.colorScheme = resolved;
+      })();
+    </script>
     <title data-i18n-page-title="title">AllSessions</title>
     <link rel="icon" type="image/png" href="/assets/allsessions-icon-v3.png" />
-    <link rel="stylesheet" href="/styles.css?v=20260824-reliability" />
+    <link rel="stylesheet" href="/styles.css?v=20260826-workspace-r1-3" />
   </head>
   <body>
+    <!--
+    THESIS: AllSessions 是本机 AI 会话的检索工作台，信息密度服务于快速定位、核对与整理，而不是装饰。
+    OWN-WORLD: 默认界面属于连续报表纸的世界；结构、字体和反馈都像一份可追溯的本地作业记录。
+    STORY: 用户从来源与过滤器缩小范围，沿对齐的会话行进入详情，再在同一工作台完成查看、导出与维护。
+    FIRST VIEWPORT: 首屏必须同时交代当前来源、可用过滤器、会话列表、详情入口、扫描状态和主要键位。
+    FORM: 统一作业头、索引栏、对齐列表、详情面板与状态栏；方向 seed key 5d8dd611。
+    FINISH: "unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance"
+  -->
     <div class="page-shell">
-      <header class="toolbar">
+      <header class="job-header toolbar">
         <a
           id="home-link"
           class="toolbar-brand"
@@ -65,6 +98,29 @@
           </button>
         </nav>
         <div class="toolbar-center">
+          <button
+            id="rail-toggle"
+            class="ghost-button rail-toggle"
+            type="button"
+            aria-controls="source-rail"
+            aria-expanded="true"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M9 4v16M6 8h.01M6 12h.01M6 16h.01" />
+            </svg>
+            <span data-i18n="sourceRailShort">来源</span>
+          </button>
           <div class="search-box">
             <input
               id="search-input"
@@ -90,6 +146,46 @@
               >加载中...</span
             >
           </div>
+          <button
+            id="scheme-toggle"
+            class="ghost-button scheme-toggle"
+            type="button"
+            aria-label="切换至深色模式"
+            title="切换至深色模式"
+          >
+            <svg
+              class="scheme-icon scheme-icon-sun"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3.5" />
+              <path
+                d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"
+              />
+            </svg>
+            <svg
+              class="scheme-icon scheme-icon-moon"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M20.5 15.1A8.5 8.5 0 0 1 8.9 3.5a8.5 8.5 0 1 0 11.6 11.6Z"
+              />
+            </svg>
+          </button>
           <button
             id="settings-toggle"
             class="ghost-button settings-toggle"
@@ -120,7 +216,112 @@
       </header>
 
       <main class="app-layout" data-view="list">
-        <aside class="sidebar-left" data-active-panel="list">
+        <aside
+          id="source-rail"
+          class="rail sidebar-left"
+          data-active-panel="list"
+        >
+          <nav
+            class="rail__group rail__sources"
+            aria-label="会话来源"
+            data-i18n="sourceRail"
+            data-i18n-attr="aria-label"
+          >
+            <div class="rail__group-header">
+              <strong data-i18n="sourceRail">会话来源</strong>
+              <span data-i18n="sourceRailHint">按 Agent 筛选</span>
+            </div>
+            <div id="source-rail-list" class="source-tree">
+              <button
+                class="source-tree__item active"
+                type="button"
+                data-source-kind=""
+                data-source-agent="all"
+                aria-pressed="true"
+              >
+                <span class="source-tree__dot" aria-hidden="true"></span>
+                <span data-i18n="allAgents">全部 Agent</span>
+                <strong data-source-count="all">-</strong>
+              </button>
+              <button
+                class="source-tree__item"
+                type="button"
+                data-source-kind="codex"
+                data-source-agent="codex"
+                aria-pressed="false"
+              >
+                <span class="source-tree__dot" aria-hidden="true"></span>
+                <span>Codex</span>
+                <strong data-source-count="codex">-</strong>
+              </button>
+              <button
+                class="source-tree__item"
+                type="button"
+                data-source-kind="claude_code"
+                data-source-agent="claude"
+                aria-pressed="false"
+              >
+                <span class="source-tree__dot" aria-hidden="true"></span>
+                <span>Claude Code</span>
+                <strong data-source-count="claude">-</strong>
+              </button>
+              <button
+                class="source-tree__item"
+                type="button"
+                data-source-kind="gemini"
+                data-source-agent="gemini"
+                aria-pressed="false"
+              >
+                <span class="source-tree__dot" aria-hidden="true"></span>
+                <span>Gemini CLI</span>
+                <strong data-source-count="gemini">-</strong>
+              </button>
+              <button
+                class="source-tree__item"
+                type="button"
+                data-source-kind="pi"
+                data-source-agent="pi"
+                aria-pressed="false"
+              >
+                <span class="source-tree__dot" aria-hidden="true"></span>
+                <span>Pi</span>
+                <strong data-source-count="pi">-</strong>
+              </button>
+              <button
+                class="source-tree__item"
+                type="button"
+                data-source-kind="kimi"
+                data-source-agent="kimi"
+                aria-pressed="false"
+              >
+                <span class="source-tree__dot" aria-hidden="true"></span>
+                <span>Kimi Code CLI</span>
+                <strong data-source-count="kimi">-</strong>
+              </button>
+              <button
+                class="source-tree__item"
+                type="button"
+                data-source-kind="opencode"
+                data-source-agent="opencode"
+                aria-pressed="false"
+              >
+                <span class="source-tree__dot" aria-hidden="true"></span>
+                <span>OpenCode</span>
+                <strong data-source-count="opencode">-</strong>
+              </button>
+            </div>
+          </nav>
+
+          <details class="project-nav rail__group">
+            <summary id="project-nav-title">
+              <span data-i18n="projects">项目</span>
+              <span class="summary-hint" data-i18n="recentProjects"
+                >最近使用</span
+              >
+            </summary>
+            <div id="project-list" class="project-list"></div>
+          </details>
+
           <details id="sidebar-filters" class="sidebar-filters">
             <summary>
               <span data-i18n="filterOptions">筛选条件</span>
@@ -239,98 +440,96 @@
               </div>
             </div>
           </details>
-
-          <div class="sidebar-body" data-sidebar-panel="list">
-            <details class="project-nav">
-              <summary id="project-nav-title">
-                <span data-i18n="projects">项目</span>
-                <span class="summary-hint" data-i18n="recentProjects"
-                  >最近使用</span
-                >
-              </summary>
-              <div id="project-list" class="project-list"></div>
-            </details>
-            <div class="session-list-shell">
-              <div id="bulk-toolbar" class="bulk-toolbar hidden">
-                <button
-                  id="select-visible-btn"
-                  class="ghost-button"
-                  type="button"
-                  data-i18n="selectLoadedSessions"
-                >
-                  选择当前页
-                </button>
-                <span id="bulk-selection-count" data-i18n="noSessionsSelected"
-                  >未选择会话</span
-                >
-                <div id="bulk-actions" class="bulk-actions hidden">
-                  <select
-                    id="bulk-export-format"
-                    aria-label="批量导出格式"
-                    data-i18n="bulkExportFormat"
-                    data-i18n-attr="aria-label"
-                  >
-                    <option value="json">JSON</option>
-                    <option value="markdown">Markdown</option>
-                  </select>
-                  <label class="bulk-redact-option">
-                    <input id="bulk-redact-toggle" type="checkbox" />
-                    <span data-i18n="redactExport">脱敏</span>
-                  </label>
-                  <button
-                    id="bulk-export-btn"
-                    class="ghost-button"
-                    type="button"
-                    data-i18n="exportSelected"
-                  >
-                    导出所选
-                  </button>
-                  <button
-                    id="clear-selection-btn"
-                    class="ghost-button"
-                    type="button"
-                    data-i18n="clearSelection"
-                  >
-                    取消选择
-                  </button>
-                </div>
-              </div>
-              <div
-                id="active-filter-bar"
-                class="active-filter-bar"
-                aria-live="polite"
-              ></div>
-              <div class="session-list-header">
-                <span data-i18n="sortDesc">按时间倒序</span>
-                <span class="session-list-hint" data-i18n="listHint"
-                  >选择一条会话查看详情</span
-                >
-              </div>
-              <div
-                id="session-list"
-                class="session-list"
-                role="listbox"
-                aria-label="会话列表"
-                data-i18n="listAriaLabel"
-                data-i18n-attr="aria-label"
-              ></div>
-            </div>
-          </div>
-
-          <div class="sidebar-body hidden" data-sidebar-panel="tools">
-            <div class="tool-sidebar-copy">
-              <strong data-i18n="codexProviderMigration"
-                >Codex Provider 可见性修复</strong
-              >
-              <span data-i18n="codexProviderMigrationShort"
-                >默认关闭；显式启用后恢复当前 Provider 的历史可见性。</span
-              >
-            </div>
-          </div>
         </aside>
 
-        <section class="content-main">
-          <div class="detail-shell" id="detail-panel">
+        <section
+          class="session-pane sidebar-body"
+          data-sidebar-panel="list"
+          data-view-panel="list"
+          aria-label="会话列表"
+          data-i18n="listAriaLabel"
+          data-i18n-attr="aria-label"
+        >
+          <div class="session-list-shell">
+            <div id="bulk-toolbar" class="bulk-toolbar hidden">
+              <button
+                id="select-visible-btn"
+                class="ghost-button"
+                type="button"
+                data-i18n="selectLoadedSessions"
+              >
+                选择当前页
+              </button>
+              <span id="bulk-selection-count" data-i18n="noSessionsSelected"
+                >未选择会话</span
+              >
+              <div id="bulk-actions" class="bulk-actions hidden">
+                <select
+                  id="bulk-export-format"
+                  aria-label="批量导出格式"
+                  data-i18n="bulkExportFormat"
+                  data-i18n-attr="aria-label"
+                >
+                  <option value="json">JSON</option>
+                  <option value="markdown">Markdown</option>
+                </select>
+                <label class="bulk-redact-option">
+                  <input id="bulk-redact-toggle" type="checkbox" />
+                  <span data-i18n="redactExport">脱敏</span>
+                </label>
+                <button
+                  id="bulk-export-btn"
+                  class="ghost-button"
+                  type="button"
+                  data-i18n="exportSelected"
+                >
+                  导出所选
+                </button>
+                <button
+                  id="clear-selection-btn"
+                  class="ghost-button"
+                  type="button"
+                  data-i18n="clearSelection"
+                >
+                  取消选择
+                </button>
+              </div>
+            </div>
+            <div
+              id="active-filter-bar"
+              class="active-filter-bar"
+              aria-live="polite"
+            ></div>
+            <div class="session-list-header">
+              <span data-i18n="sortDesc">按时间倒序</span>
+              <span class="session-list-hint" data-i18n="listHint"
+                >选择一条会话查看详情</span
+              >
+            </div>
+            <div class="session-list-columns" aria-hidden="true">
+              <span data-i18n="listColumnTime">时间</span>
+              <span data-i18n="sourceKind">来源</span>
+              <span data-i18n="listColumnTitle">标题</span>
+              <span data-i18n="messages">消息</span>
+              <span data-i18n="cwd">工作目录</span>
+            </div>
+            <div
+              id="session-list"
+              class="session-list"
+              role="listbox"
+              aria-label="会话列表"
+              data-i18n="listAriaLabel"
+              data-i18n-attr="aria-label"
+            ></div>
+          </div>
+        </section>
+
+        <section class="content-main workspace-main">
+          <div
+            class="detail-shell detail-pane"
+            id="detail-panel"
+            data-view-panel="list"
+          >
             <div id="detail-empty" class="empty-state">
               <h2 data-i18n="selectSession">选择一个会话</h2>
               <p data-i18n="selectSessionDesc">
@@ -624,7 +823,11 @@
             </div>
           </div>
 
-          <div class="stats-dashboard hidden" id="stats-dashboard">
+          <div
+            class="stats-dashboard hidden"
+            id="stats-dashboard"
+            data-view-panel="stats"
+          >
             <div class="stats-metrics" id="stats-metrics"></div>
             <div class="stats-charts" id="stats-charts">
               <div class="chart-card">
@@ -632,14 +835,18 @@
                 <div class="chart-body" id="trend-chart-body"></div>
               </div>
               <div class="chart-card">
-                <h3 data-i18n="statsProviderDist">按 Provider 分布</h3>
-                <div class="chart-body" id="donut-chart-body"></div>
+                <h3 data-i18n="statsAgentDist">按 Agent 分布</h3>
+                <div class="chart-body" id="agent-chart-body"></div>
               </div>
             </div>
             <div class="stats-grid" id="stats-grid"></div>
           </div>
 
-          <div class="tools-dashboard hidden" id="tools-dashboard">
+          <div
+            class="tools-dashboard hidden"
+            id="tools-dashboard"
+            data-view-panel="tools"
+          >
             <section
               class="tool-card readonly-tool-card tool-card-compact"
               aria-labelledby="codex-archive-viewer-title"
@@ -1057,7 +1264,12 @@
           </div>
         </section>
 
-        <aside class="props-panel" id="props-panel" aria-hidden="false">
+        <aside
+          class="props-panel inspector-pane"
+          id="props-panel"
+          aria-hidden="false"
+          data-view-panel="list"
+        >
           <div class="props-header">
             <h2 id="props-eyebrow" data-i18n="sessionInspector">会话信息</h2>
             <button
@@ -1076,6 +1288,46 @@
           </div>
         </aside>
       </main>
+
+      <footer
+        class="status-bar"
+        aria-label="工作区状态"
+        data-i18n="workspaceStatus"
+        data-i18n-attr="aria-label"
+      >
+        <button
+          id="status-health-button"
+          class="status-bar__health"
+          type="button"
+          data-state="loading"
+        >
+          <span class="status-bar__indicator" aria-hidden="true"></span>
+          <span id="status-health-text" data-i18n="scanHealthLoading"
+            >正在读取扫描状态</span
+          >
+        </button>
+        <div class="status-bar__filter">
+          <span data-i18n="statusFilterLabel">当前过滤</span>
+          <strong id="status-filter-text" data-i18n="statusFilterNone"
+            >全部会话</strong
+          >
+        </div>
+        <div
+          class="status-bar__keys"
+          aria-label="键盘快捷键"
+          data-i18n="keyboardShortcuts"
+          data-i18n-attr="aria-label"
+        >
+          <span
+            ><kbd>⌘/Ctrl K</kbd> <span data-i18n="keySearch">搜索</span></span
+          >
+          <span><kbd>j/k</kbd> <span data-i18n="keyMove">移动</span></span>
+          <span
+            ><kbd>1/2/3</kbd> <span data-i18n="keyViews">切换视图</span></span
+          >
+        </div>
+        <span id="status-language" class="status-bar__language">中文</span>
+      </footer>
     </div>
 
     <dialog
@@ -1270,6 +1522,130 @@
         >
           <h3 id="settings-general-title" data-i18n="settingsGeneral">常规</h3>
           <div class="settings-section-content">
+            <section
+              class="settings-appearance"
+              aria-labelledby="settings-appearance-title"
+            >
+              <div class="settings-appearance-heading">
+                <h4 id="settings-appearance-title" data-i18n="appearance">
+                  外观
+                </h4>
+                <p data-i18n="appearanceHint">
+                  选择界面主题与明暗模式，修改会立即生效。
+                </p>
+              </div>
+              <fieldset class="settings-appearance-fieldset">
+                <legend data-i18n="theme">主题</legend>
+                <div class="settings-theme-options">
+                  <label
+                    class="settings-theme-option"
+                    data-preview-theme="greenbar"
+                  >
+                    <input
+                      id="settings-theme-greenbar"
+                      class="visually-hidden"
+                      type="radio"
+                      name="settings-theme"
+                      value="greenbar"
+                    />
+                    <span class="settings-theme-card">
+                      <span class="settings-theme-preview" aria-hidden="true">
+                        <i></i><i></i><i></i>
+                      </span>
+                      <strong data-i18n="themeGreenbar">连续报表纸</strong>
+                    </span>
+                  </label>
+                  <label class="settings-theme-option" data-preview-theme="tui">
+                    <input
+                      id="settings-theme-tui"
+                      class="visually-hidden"
+                      type="radio"
+                      name="settings-theme"
+                      value="tui"
+                    />
+                    <span class="settings-theme-card">
+                      <span class="settings-theme-preview" aria-hidden="true">
+                        <i></i><i></i><i></i>
+                      </span>
+                      <strong data-i18n="themeTui">现代 TUI</strong>
+                    </span>
+                  </label>
+                  <label
+                    class="settings-theme-option"
+                    data-preview-theme="standard"
+                  >
+                    <input
+                      id="settings-theme-standard"
+                      class="visually-hidden"
+                      type="radio"
+                      name="settings-theme"
+                      value="standard"
+                    />
+                    <span class="settings-theme-card">
+                      <span class="settings-theme-preview" aria-hidden="true">
+                        <i></i><i></i><i></i>
+                      </span>
+                      <strong data-i18n="themeStandard">品类标准</strong>
+                    </span>
+                  </label>
+                  <label
+                    class="settings-theme-option"
+                    data-preview-theme="hdweb"
+                  >
+                    <input
+                      id="settings-theme-hdweb"
+                      class="visually-hidden"
+                      type="radio"
+                      name="settings-theme"
+                      value="hdweb"
+                    />
+                    <span class="settings-theme-card">
+                      <span class="settings-theme-preview" aria-hidden="true">
+                        <i></i><i></i><i></i>
+                      </span>
+                      <strong data-i18n="themeHdweb">日式高密度</strong>
+                    </span>
+                  </label>
+                  <label
+                    class="settings-theme-option"
+                    data-preview-theme="blind"
+                  >
+                    <input
+                      id="settings-theme-blind"
+                      class="visually-hidden"
+                      type="radio"
+                      name="settings-theme"
+                      value="blind"
+                    />
+                    <span class="settings-theme-card">
+                      <span class="settings-theme-preview" aria-hidden="true">
+                        <i></i><i></i><i></i>
+                      </span>
+                      <strong data-i18n="themeBlind">车库布帘</strong>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset
+                class="settings-appearance-fieldset settings-scheme-fieldset"
+              >
+                <legend data-i18n="scheme">明暗模式</legend>
+                <div class="settings-scheme-options">
+                  <label>
+                    <input type="radio" name="settings-scheme" value="light" />
+                    <span data-i18n="schemeLight">浅色</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="settings-scheme" value="dark" />
+                    <span data-i18n="schemeDark">深色</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="settings-scheme" value="system" />
+                    <span data-i18n="schemeSystem">跟随系统</span>
+                  </label>
+                </div>
+              </fieldset>
+            </section>
             <div class="settings-general-list">
               <div class="settings-general-row">
                 <div class="settings-general-copy">
@@ -1346,6 +1722,12 @@
             <p class="settings-hint" data-i18n="settingsSourcesHint">
               自定义每类会话的根目录列表；不自定义时跟随对应环境变量或系统默认路径。保存后立即重建索引并更新监听。
             </p>
+            <div
+              id="settings-source-overview"
+              class="settings-source-overview hidden"
+              role="status"
+              aria-live="polite"
+            ></div>
             <div id="settings-sources" class="settings-sources"></div>
             <div class="settings-diagnostics-footer">
               <span id="settings-diagnostics-meta">-</span>
@@ -1526,20 +1908,21 @@
           >
         </label>
         <button class="session-item" type="button">
-          <div class="session-primary">
-            <span class="session-source-kind"></span>
+          <span class="session-time session-row__time"></span>
+          <span class="session-source-kind session-row__source"></span>
+          <span class="session-title-cell session-row__title">
             <strong class="session-title"></strong>
-            <span class="session-time"></span>
-          </div>
-          <div class="session-secondary">
             <span class="session-preview"></span>
+            <span class="session-tertiary">
+              <strong class="session-provider"></strong>
+              <span class="session-source"></span>
+            </span>
+          </span>
+          <span class="session-message-count session-row__messages"></span>
+          <span class="session-directory-cell session-row__directory">
             <span class="session-cwd session-cwd-main"></span>
             <span class="session-cwd-path"></span>
-          </div>
-          <div class="session-tertiary">
-            <strong class="session-provider"></strong>
-            <span class="session-source"></span>
-          </div>
+          </span>
         </button>
       </div>
     </template>
@@ -1580,6 +1963,6 @@
       aria-live="polite"
       role="status"
     ></div>
-    <script type="module" src="/app.js?v=20260824-reliability"></script>
+    <script type="module" src="/app.js?v=20260826-workspace-r1-3"></script>
   </body>
 </html>

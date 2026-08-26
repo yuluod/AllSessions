@@ -7,7 +7,7 @@
   width: min(560px, calc(100vw - 24px));
   padding: 10px 13px;
   transform: translateX(-50%);
-  border: 1px solid #f0c2bd;
+  border: 1px solid color-mix(in srgb, var(--signal) 42%, var(--surface));
   border-radius: var(--radius-small);
   color: var(--danger);
   background: var(--danger-soft);
@@ -22,17 +22,22 @@
 }
 
 /* 中等宽度：保留双栏浏览 */
-@media (max-width: 1320px) {
-  :root {
-    --sidebar-w: 310px;
+@media (max-width: 1640px) {
+  .app-layout {
+    grid-template-columns: var(--rail-w) var(--list-w) minmax(0, 1fr);
   }
 
-  .app-layout {
-    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  .app-layout.rail-collapsed {
+    grid-template-columns: var(--list-w) minmax(0, 1fr);
   }
 
   .app-layout[data-view="stats"],
   .app-layout[data-view="tools"] {
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  }
+
+  .app-layout.rail-collapsed[data-view="stats"],
+  .app-layout.rail-collapsed[data-view="tools"] {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -44,7 +49,7 @@
     display: none;
     width: min(360px, calc(100vw - 24px));
     min-height: 320px;
-    box-shadow: 0 18px 48px rgba(27, 42, 52, 0.18);
+    box-shadow: var(--shadow-raised);
   }
 
   .props-panel.is-open {
@@ -76,6 +81,8 @@
 
 @media (max-width: 1040px) {
   :root {
+    --rail-w: 220px;
+    --list-w: 330px;
     --header-h: 114px;
   }
 
@@ -104,9 +111,22 @@
   }
 
   .sidebar-left,
+  .session-pane,
   .props-panel {
     top: calc(var(--header-h) + 12px);
-    max-height: calc(100dvh - var(--header-h) - 24px);
+    height: calc(100dvh - var(--header-h) - var(--status-h) - 34px);
+    max-height: calc(100dvh - var(--header-h) - var(--status-h) - 34px);
+  }
+
+  .detail-shell,
+  .stats-dashboard,
+  .tools-dashboard,
+  #codex-rollback-dashboard {
+    height: calc(100dvh - var(--header-h) - var(--status-h) - 34px);
+  }
+
+  .status-bar__keys > span:nth-child(2) {
+    display: none;
   }
 
   .stats-charts {
@@ -124,14 +144,14 @@
   }
 
   .page-shell {
-    padding: 7px;
+    display: block;
+    padding: 7px 7px 92px;
   }
 
   .toolbar {
     top: 5px;
     grid-template-areas:
       "brand right"
-      "views views"
       "search search";
     grid-template-columns: minmax(0, 1fr) auto;
     padding: 9px;
@@ -147,7 +167,13 @@
   }
 
   .workspace-tabs {
-    width: 100%;
+    position: fixed;
+    right: 7px;
+    bottom: calc(var(--status-h) + 14px);
+    left: 7px;
+    z-index: calc(var(--z-sticky) + 2);
+    width: auto;
+    box-shadow: var(--shadow-raised);
   }
 
   .sidebar-tab {
@@ -163,14 +189,28 @@
   }
 
   .app-layout,
-  .app-layout[data-view="stats"] {
+  .app-layout[data-view="stats"],
+  .app-layout[data-view="tools"],
+  .app-layout.rail-collapsed,
+  .app-layout.rail-collapsed[data-view="stats"],
+  .app-layout.rail-collapsed[data-view="tools"] {
     grid-template-columns: 1fr;
     margin-top: 7px;
   }
 
+  .app-layout.rail-collapsed .sidebar-left {
+    display: flex;
+  }
+
+  .rail-toggle {
+    display: none;
+  }
+
   .sidebar-left,
+  .session-pane,
   .props-panel {
     position: static;
+    height: auto;
     max-height: none;
   }
 
@@ -198,14 +238,30 @@
   }
 
   .detail-shell,
-  .stats-dashboard {
+  .stats-dashboard,
+  .tools-dashboard,
+  #codex-rollback-dashboard {
+    height: auto;
     min-height: 0;
     padding: 12px;
   }
 
   .sidebar-left,
+  .session-pane,
   .detail-shell {
-    scroll-margin-top: 158px;
+    scroll-margin-top: 124px;
+  }
+
+  .status-bar {
+    position: fixed;
+    right: 7px;
+    bottom: 7px;
+    left: 7px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .status-bar__keys {
+    display: none;
   }
 
   .mobile-back-button {
@@ -260,7 +316,11 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .metric-card:nth-child(3) {
+  .metric-card + .metric-card {
+    border-left: 1px solid var(--line);
+  }
+
+  .metric-card:nth-child(2n + 1) {
     border-left: 0;
   }
 
@@ -299,12 +359,18 @@
     grid-template-columns: 1fr;
   }
 
-  .session-primary {
-    align-items: flex-start;
+  .session-list-columns,
+  .session-item {
+    grid-template-columns: 54px 58px minmax(0, 1fr) 30px;
+  }
+
+  .session-list-columns > :nth-child(5),
+  .session-directory-cell {
+    display: none;
   }
 
   .session-time {
-    max-width: 96px;
+    max-width: 54px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -370,6 +436,14 @@
   .migration-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .status-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .status-bar__filter {
+    display: none;
   }
 }
 

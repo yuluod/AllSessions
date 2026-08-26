@@ -1,0 +1,85 @@
+[data-theme="tui"] {
+  --font-ui:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --font-display: "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --radius: 4px;
+  --radius-small: 3px;
+  --density: 1;
+}
+
+.settings-theme-option[data-preview-theme="tui"] {
+  --preview-bg: #0d1117;
+  --preview-surface: #30363d;
+  --preview-accent: #58a6ff;
+}
+
+[data-theme="tui"][data-scheme="light"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-raised: #f6f8fa;
+  --surface-sunken: #eef1f4;
+  --stripe-a: #ffffff;
+  --stripe-b: #ffffff;
+  --line: #d0d7de;
+  --line-strong: #8c959f;
+  --line-accent: #0969da;
+  --text: #1f2328;
+  --text-secondary: #424a53;
+  --muted: #59636e;
+  --text-inverse: #ffffff;
+  --accent: #0969da;
+  --accent-strong: #0550ae;
+  --accent-soft: #ddf4ff;
+  --signal: #cf222e;
+  --signal-soft: #ffebe9;
+  --info: #0969da;
+  --info-soft: #ddf4ff;
+  --warning: #7d4e00;
+  --warning-soft: #fff8c5;
+  --success: #1a7f37;
+  --success-soft: #dafbe1;
+  --src-codex: #1a7f37;
+  --src-claude: #9a6700;
+  --src-gemini: #8250df;
+  --src-pi: #bf3989;
+  --src-kimi: #0969da;
+  --src-opencode: #cf222e;
+  --shadow-raised: 0 3px 12px rgb(31 35 40 / 12%);
+  --focus-ring: #0969da;
+}
+
+[data-theme="tui"][data-scheme="dark"] {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-raised: #21262d;
+  --surface-sunken: #0d1117;
+  --stripe-a: #161b22;
+  --stripe-b: #161b22;
+  --line: #30363d;
+  --line-strong: #6e7681;
+  --line-accent: #58a6ff;
+  --text: #e6edf3;
+  --text-secondary: #b1bac4;
+  --muted: #8b949e;
+  --text-inverse: #0d1117;
+  --accent: #58a6ff;
+  --accent-strong: #79c0ff;
+  --accent-soft: #1d3049;
+  --signal: #f85149;
+  --signal-soft: #462326;
+  --info: #58a6ff;
+  --info-soft: #1d3049;
+  --warning: #d29922;
+  --warning-soft: #3d321c;
+  --success: #3fb950;
+  --success-soft: #1b3a25;
+  --src-codex: #3fb950;
+  --src-claude: #d29922;
+  --src-gemini: #bc8cff;
+  --src-pi: #f778ba;
+  --src-kimi: #39c5cf;
+  --src-opencode: #f85149;
+  --shadow-raised: 0 3px 16px rgb(0 0 0 / 38%);
+  --focus-ring: #79c0ff;
+}

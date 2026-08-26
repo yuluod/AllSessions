@@ -19,7 +19,7 @@ html.settings-modal-open body {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
-  box-shadow: 0 24px 64px rgba(27, 42, 52, 0.24);
+  box-shadow: var(--shadow-raised);
 }
 
 .settings-dialog[open] {
@@ -28,7 +28,7 @@ html.settings-modal-open body {
 }
 
 .settings-dialog::backdrop {
-  background: rgba(23, 33, 38, 0.32);
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
 }
 
 .settings-header {
@@ -93,7 +93,7 @@ html.settings-modal-open body {
   border-color: var(--line);
   color: var(--text);
   background: var(--surface-subtle);
-  box-shadow: 0 1px 2px rgba(27, 42, 52, 0.08);
+  box-shadow: var(--shadow-raised);
 }
 
 .settings-tab:focus-visible {
@@ -126,6 +126,157 @@ html.settings-modal-open body {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
+}
+
+.settings-appearance {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.settings-appearance-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.settings-appearance-heading h4,
+.settings-appearance-heading p {
+  margin: 0;
+}
+
+.settings-appearance-heading h4 {
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.settings-appearance-heading p {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.settings-appearance-fieldset {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-appearance-fieldset legend {
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.settings-theme-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.settings-theme-option {
+  min-width: 0;
+  cursor: pointer;
+}
+
+.settings-theme-card {
+  display: grid;
+  gap: 7px;
+  min-height: 66px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  transition:
+    border-color 140ms var(--ease-out),
+    background-color 140ms var(--ease-out);
+}
+
+.settings-theme-option:hover .settings-theme-card {
+  border-color: var(--line-strong);
+}
+
+.settings-theme-option input:checked + .settings-theme-card {
+  border-color: var(--line-accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.settings-theme-option input:focus-visible + .settings-theme-card {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-theme-preview {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 0.55fr;
+  height: 24px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: max(1px, calc(var(--radius-small) - 2px));
+}
+
+.settings-theme-preview i:nth-child(1) {
+  background: var(--preview-bg);
+}
+
+.settings-theme-preview i:nth-child(2) {
+  background: var(--preview-surface);
+}
+
+.settings-theme-preview i:nth-child(3) {
+  background: var(--preview-accent);
+}
+
+.settings-theme-card strong {
+  overflow: hidden;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-scheme-options {
+  display: inline-grid;
+  grid-template-columns: repeat(3, auto);
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+}
+
+.settings-scheme-options label {
+  cursor: pointer;
+}
+
+.settings-scheme-options input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-scheme-options span {
+  display: block;
+  min-height: 30px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: max(1px, calc(var(--radius-small) - 2px));
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.settings-scheme-options input:checked + span {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-raised);
+}
+
+.settings-scheme-options input:focus-visible + span {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .settings-general-row {
@@ -248,6 +399,31 @@ html.settings-modal-open body {
   line-height: 1.45;
 }
 
+.settings-source-overview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  margin-bottom: 8px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  background: var(--surface-subtle);
+}
+
+.settings-source-overview strong {
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.settings-source-overview span {
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+
 .settings-sources {
   display: grid;
   gap: 0;
@@ -319,7 +495,7 @@ html.settings-modal-open body {
   padding: 0;
   list-style: none;
   color: var(--text-secondary);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.74rem;
   line-height: 1.55;
   word-break: break-all;
@@ -361,13 +537,13 @@ html.settings-modal-open body {
   padding: 5px 9px;
   border: 1px solid var(--line);
   border-radius: var(--radius-small);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.76rem;
   background: var(--surface);
 }
 
 .settings-root-row input:focus {
-  border-color: rgba(15, 118, 110, 0.52);
+  border-color: var(--line-accent);
   outline: none;
 }
 
@@ -383,7 +559,7 @@ html.settings-modal-open body {
   border: 1px solid var(--line);
   border-radius: var(--radius-small);
   color: var(--text-secondary);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.76rem;
   line-height: 1.35;
   background: var(--surface-muted);
@@ -442,8 +618,7 @@ html.settings-modal-open body {
   background: var(--accent-soft);
 }
 
-.settings-source-health[data-state="warning"] .settings-health-badge,
-.settings-source-health[data-state="missing"] .settings-health-badge {
+.settings-source-health[data-state="warning"] .settings-health-badge {
   color: var(--danger);
   background: var(--danger-soft);
 }
@@ -513,7 +688,7 @@ html.settings-modal-open body {
 .settings-storage-info dd {
   margin: 0;
   overflow: hidden;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.76rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -666,9 +841,9 @@ html.settings-modal-open body {
 
 .settings-save-btn {
   flex: 0 0 auto;
-  border-color: var(--accent);
-  color: #fff;
-  background: var(--accent);
+  border-color: var(--accent-strong);
+  color: var(--text-inverse);
+  background: var(--accent-strong);
 }
 
 .settings-save-btn:disabled {
@@ -697,6 +872,10 @@ html.settings-modal-open body {
 
   .settings-general-row select {
     width: 100%;
+  }
+
+  .settings-theme-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-dialog {

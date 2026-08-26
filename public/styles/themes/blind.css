@@ -1,0 +1,87 @@
+[data-theme="blind"] {
+  --font-ui:
+    "Avenir Next Condensed", "Arial Narrow", -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  --font-mono: "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --font-display:
+    "Avenir Next Condensed", "Arial Narrow", -apple-system, sans-serif;
+  --radius: 3px;
+  --radius-small: 2px;
+  --density: 1;
+}
+
+.settings-theme-option[data-preview-theme="blind"] {
+  --preview-bg: #1d4a2f;
+  --preview-surface: #14100c;
+  --preview-accent: #f4c400;
+}
+
+[data-theme="blind"][data-scheme="light"] {
+  --bg: #efe8d8;
+  --surface: #e3dbc6;
+  --surface-raised: #f7f0df;
+  --surface-sunken: #d2c8b0;
+  --stripe-a: #e8e0cd;
+  --stripe-b: #ddd3bc;
+  --line: #9d947e;
+  --line-strong: #625b4c;
+  --line-accent: #756000;
+  --text: #1d3a28;
+  --text-secondary: #344b3c;
+  --muted: #566052;
+  --text-inverse: #fff8e8;
+  --accent: #756000;
+  --accent-strong: #564600;
+  --accent-soft: #d9ce9b;
+  --signal: #b84a00;
+  --signal-soft: #f1d4bf;
+  --info: #285a7a;
+  --info-soft: #d5e3e7;
+  --warning: #745300;
+  --warning-soft: #e8ddb2;
+  --success: #245c3c;
+  --success-soft: #cfe0d1;
+  --src-codex: #245c3c;
+  --src-claude: #8a4d16;
+  --src-gemini: #584e91;
+  --src-pi: #8a456e;
+  --src-kimi: #17616a;
+  --src-opencode: #a14324;
+  --shadow-raised: 0 3px 12px rgb(48 39 25 / 16%);
+  --focus-ring: #1d3a28;
+}
+
+[data-theme="blind"][data-scheme="dark"] {
+  --bg: #14100c;
+  --surface: #1d4a2f;
+  --surface-raised: #25583a;
+  --surface-sunken: #10291b;
+  --stripe-a: #1d4a2f;
+  --stripe-b: #1a4229;
+  --line: #0e2a1a;
+  --line-strong: #75846f;
+  --line-accent: #f4c400;
+  --text: #f4c400;
+  --text-secondary: #e1dcc7;
+  --muted: #b9b6a8;
+  --text-inverse: #162719;
+  --accent: #f4c400;
+  --accent-strong: #ffdc3d;
+  --accent-soft: #4a4b1d;
+  --signal: #ff7b1c;
+  --signal-soft: #56331b;
+  --info: #8dc9eb;
+  --info-soft: #204154;
+  --warning: #ffd04d;
+  --warning-soft: #4b421f;
+  --success: #a6df9a;
+  --success-soft: #244a2b;
+  --src-codex: #a6df9a;
+  --src-claude: #f0ae64;
+  --src-gemini: #c3b5ff;
+  --src-pi: #f2a5cf;
+  --src-kimi: #8dd7dd;
+  --src-opencode: #ff9b67;
+  --shadow-raised: 0 4px 18px rgb(0 0 0 / 42%);
+  --focus-ring: #ffdc3d;
+}

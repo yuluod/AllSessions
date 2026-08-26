@@ -1,0 +1,84 @@
+[data-theme="greenbar"] {
+  --font-ui: "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --font-mono: "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --font-display: "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --radius: 2px;
+  --radius-small: 2px;
+  --density: 1;
+}
+
+.settings-theme-option[data-preview-theme="greenbar"] {
+  --preview-bg: #f7f5ec;
+  --preview-surface: #e6efe3;
+  --preview-accent: #2f6b4f;
+}
+
+[data-theme="greenbar"][data-scheme="light"] {
+  --bg: #f7f5ec;
+  --surface: #fbfaf2;
+  --surface-raised: #fffef8;
+  --surface-sunken: #e8eee3;
+  --stripe-a: #f7f5ec;
+  --stripe-b: #edf1e6;
+  --line: #c2cbc0;
+  --line-strong: #8f9c92;
+  --line-accent: #4e8064;
+  --text: #1c2420;
+  --text-secondary: #3d4c44;
+  --muted: #59675f;
+  --text-inverse: #fffef8;
+  --accent: #2f6b4f;
+  --accent-strong: #1f513a;
+  --accent-soft: #dcebe0;
+  --signal: #c8361f;
+  --signal-soft: #f9e1db;
+  --info: #285b8c;
+  --info-soft: #e4eef7;
+  --warning: #825608;
+  --warning-soft: #f7ecd2;
+  --success: #246842;
+  --success-soft: #dceee2;
+  --src-codex: #2f6b4f;
+  --src-claude: #9a5314;
+  --src-gemini: #4c55a5;
+  --src-pi: #7a4b85;
+  --src-kimi: #176b72;
+  --src-opencode: #8a3d38;
+  --shadow-raised: 0 2px 10px rgb(36 54 43 / 8%);
+  --focus-ring: #2f6b4f;
+}
+
+[data-theme="greenbar"][data-scheme="dark"] {
+  --bg: #11151a;
+  --surface: #151b21;
+  --surface-raised: #1b232b;
+  --surface-sunken: #0d1115;
+  --stripe-a: #11151a;
+  --stripe-b: #161c23;
+  --line: #33413a;
+  --line-strong: #617269;
+  --line-accent: #6fbf94;
+  --text: #cfe0d5;
+  --text-secondary: #adbbb2;
+  --muted: #8c9b92;
+  --text-inverse: #101510;
+  --accent: #6fbf94;
+  --accent-strong: #97d5b3;
+  --accent-soft: #1d3a2c;
+  --signal: #ff5a3c;
+  --signal-soft: #49241e;
+  --info: #79b8ff;
+  --info-soft: #1d3248;
+  --warning: #e7b34c;
+  --warning-soft: #40351f;
+  --success: #75cc9b;
+  --success-soft: #1d3d2c;
+  --src-codex: #6fbf94;
+  --src-claude: #e2a15f;
+  --src-gemini: #aab4ff;
+  --src-pi: #d0a4dc;
+  --src-kimi: #70c4cc;
+  --src-opencode: #ef8f88;
+  --shadow-raised: 0 3px 14px rgb(0 0 0 / 30%);
+  --focus-ring: #97d5b3;
+}

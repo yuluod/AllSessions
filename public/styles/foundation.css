@@ -1,33 +1,21 @@
 :root {
-  --bg: #f2f5f7;
-  --surface: #ffffff;
-  --surface-subtle: #f8fafb;
-  --surface-muted: #edf2f4;
-  --line: #d6e0e5;
-  --line-strong: #aebdc6;
-  --text: #172126;
-  --text-secondary: #34434b;
-  --muted: #52636d;
-  --accent: #0f766e;
-  --accent-strong: #0b5f59;
-  --accent-soft: #e6f4f2;
-  --info: #2563eb;
-  --info-soft: #edf4ff;
-  --warning: #985b0b;
-  --warning-soft: #fff7e8;
-  --danger: #b42318;
-  --danger-soft: #fff1f0;
-  --success: #16794f;
-  --success-soft: #edf8f2;
-  --radius: 10px;
-  --radius-small: 7px;
-  --sidebar-w: 320px;
-  --inspector-w: 320px;
+  --rail-w: 220px;
+  --list-w: clamp(400px, 29vw, 520px);
+  --sidebar-w: var(--list-w);
+  --inspector-w: 280px;
   --header-h: 66px;
-  --shadow-header: 0 2px 8px rgba(27, 42, 52, 0.07);
+  --status-h: 34px;
+  --density: 1;
   --z-sticky: 20;
   --z-toast: 60;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Phase 1 重写组件前保留旧 token 的语义映射。 */
+  --surface-subtle: var(--surface-raised);
+  --surface-muted: var(--surface-sunken);
+  --danger: var(--signal);
+  --danger-soft: var(--signal-soft);
+  --shadow-header: var(--shadow-raised);
 }
 
 * {
@@ -36,6 +24,7 @@
 
 html {
   min-height: 100%;
+  color-scheme: light dark;
   scroll-behavior: smooth;
 }
 
@@ -45,27 +34,23 @@ body {
   margin: 0;
   color: var(--text);
   background: var(--bg);
-  font-family:
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    "SF Pro Text",
-    "Segoe UI",
-    sans-serif;
-  font-size: 14px;
+  font-family: var(--font-ui);
+  font-size: calc(14px * var(--density));
   line-height: 1.45;
 }
 
 button,
 select,
-input {
+input,
+textarea {
   font: inherit;
 }
 
 button,
 summary,
 select,
-input[type="checkbox"] {
+input[type="checkbox"],
+input[type="radio"] {
   accent-color: var(--accent);
 }
 
@@ -76,17 +61,21 @@ button {
 code,
 pre,
 kbd {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 :focus-visible {
-  outline: 2px solid rgba(15, 118, 110, 0.55);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
 ::selection {
-  color: #fff;
-  background: var(--accent);
+  color: var(--text-inverse);
+  background: var(--accent-strong);
+}
+
+* {
+  scrollbar-color: var(--line-strong) var(--surface-sunken);
 }
 
 .hidden {
@@ -107,7 +96,11 @@ kbd {
 }
 
 .page-shell {
+  display: grid;
   width: min(2240px, 100%);
+  min-height: 100dvh;
   margin: 0 auto;
   padding: 12px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
 }

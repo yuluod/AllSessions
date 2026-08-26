@@ -20,6 +20,20 @@ export function formatTimestamp(value) {
   }).format(date);
 }
 
+export function formatListTimestamp(value) {
+  if (!value) return t("unknownTime");
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const day = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  if (date.getFullYear() !== new Date().getFullYear()) {
+    return `${date.getFullYear()}-${day}`;
+  }
+  return `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function sessionTimestamp(session) {
   return session.last_timestamp || session.timestamp || "";
 }

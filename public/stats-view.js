@@ -1,6 +1,15 @@
 import { t } from "./i18n.js";
 import { formatCount } from "./session-format.js";
 
+const AGENT_PRESENTATION = {
+  codex: { label: "Codex", color: "#0f766e" },
+  claude: { label: "Claude Code", color: "#a15c07" },
+  gemini: { label: "Gemini CLI", color: "#4f46e5" },
+  pi: { label: "Pi", color: "#2563eb" },
+  kimi: { label: "Kimi Code CLI", color: "#b42318" },
+  opencode: { label: "OpenCode", color: "#16794f" },
+};
+
 function renderBar(label, count, max, displayLabel = label) {
   const row = document.createElement("div");
   row.className = "stats-bar-row";
@@ -32,14 +41,18 @@ function renderEmpty(container) {
 function renderMetrics(stats, container) {
   container.replaceChildren();
   const byDate = stats.by_date || [];
-  const total = stats.total ?? byDate.reduce((sum, item) => sum + (item.count || 0), 0);
+  const total =
+    stats.total ?? byDate.reduce((sum, item) => sum + (item.count || 0), 0);
   const activeDays = stats.active_days ?? byDate.length;
-  const average = stats.avg_daily ?? (activeDays > 0 ? (total / activeDays).toFixed(1) : "0");
+  const average =
+    stats.avg_daily ?? (activeDays > 0 ? (total / activeDays).toFixed(1) : "0");
   const cards = [
     { label: t("statsTotalSessions"), value: String(total) },
+    { label: t("statsMessages"), value: formatCount(stats.total_messages) },
+    { label: t("statsTools"), value: formatCount(stats.total_tools) },
+    { label: t("statsEvents"), value: formatCount(stats.total_events) },
     { label: t("statsActiveDays"), value: String(activeDays) },
     { label: t("statsAvgDaily"), value: String(average) },
-    { label: t("statsEvents"), value: formatCount(stats.total_events) }
   ];
   cards.forEach(({ label, value }, index) => {
     const card = document.createElement("div");
@@ -96,39 +109,47 @@ function renderTrend(stats, container) {
   container.append(wrap);
 }
 
-function renderProviders(stats, container) {
+function renderAgents(stats, container) {
   container.replaceChildren();
-  const items = (stats.by_provider || []).slice(0, 6);
+  const items = (stats.by_agent || []).slice(0, 6);
   if (!items.length) {
     renderEmpty(container);
     return;
   }
+  const presentations = items.map(
+    (item) =>
+      AGENT_PRESENTATION[item.label] || {
+        label: item.label,
+        color: "#59656d",
+      }
+  );
   const total = items.reduce((sum, item) => sum + item.count, 0);
-  const colors = ["#0f766e", "#2563eb", "#a15c07", "#b42318", "#16794f", "#7c3aed"];
   let accumulated = 0;
   const stops = items.map((item, index) => {
     const percent = (item.count / total) * 100;
     const start = accumulated;
     accumulated += percent;
-    return `${colors[index % colors.length]} ${start.toFixed(2)}% ${accumulated.toFixed(2)}%`;
+    return `${presentations[index].color} ${start.toFixed(2)}% ${accumulated.toFixed(2)}%`;
   });
   const wrap = document.createElement("div");
   wrap.className = "donut-wrap";
   const donut = document.createElement("div");
   donut.className = "donut-chart";
+  donut.setAttribute("aria-hidden", "true");
   donut.style.background = `conic-gradient(${stops.join(", ")})`;
   donut.style.mask = "radial-gradient(transparent 55%, black 56%)";
   donut.style.webkitMask = "radial-gradient(transparent 55%, black 56%)";
   const legend = document.createElement("div");
   legend.className = "donut-legend";
   items.forEach((item, index) => {
+    const presentation = presentations[index];
     const row = document.createElement("div");
     row.className = "donut-legend-item";
     const dot = document.createElement("span");
     dot.className = "donut-dot";
-    dot.style.background = colors[index % colors.length];
+    dot.style.background = presentation.color;
     const name = document.createElement("span");
-    name.textContent = item.label;
+    name.textContent = presentation.label;
     const count = document.createElement("span");
     count.textContent = String(item.count);
     count.style.textAlign = "right";
@@ -146,9 +167,12 @@ function renderRankings(stats, container) {
   container.replaceChildren();
   const sections = [
     { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(-14) },
-    { title: t("statsCommonSourceKind"), items: stats.by_source_kind || [] },
     { title: t("statsCommonProvider"), items: stats.by_provider || [] },
-    { title: t("statsCommonCwd"), items: (stats.by_cwd || []).slice(0, 8), isPath: true }
+    {
+      title: t("statsCommonCwd"),
+      items: (stats.by_cwd || []).slice(0, 8),
+      isPath: true,
+    },
   ];
   sections.forEach(({ title, items, isPath }) => {
     if (!items.length) return;
@@ -170,6 +194,6 @@ export function renderStats(stats, elements) {
   if (!elements.statsDashboard) return;
   if (elements.statsMetrics) renderMetrics(stats, elements.statsMetrics);
   if (elements.trendChartBody) renderTrend(stats, elements.trendChartBody);
-  if (elements.donutChartBody) renderProviders(stats, elements.donutChartBody);
+  if (elements.agentChartBody) renderAgents(stats, elements.agentChartBody);
   if (elements.statsGrid) renderRankings(stats, elements.statsGrid);
 }

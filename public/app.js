@@ -13,6 +13,7 @@ import {
   cwdParts,
   fillSelect,
   formatDateGroup,
+  formatListTimestamp,
   formatTimestamp,
   sessionTimestamp,
 } from "./session-format.js";
@@ -25,14 +26,28 @@ import { createConversationView } from "./conversation-view.js";
 import { createMaintenanceController } from "./maintenance-view.js";
 import { renderStats } from "./stats-view.js";
 import { createSettingsController } from "./settings-view.js";
+import { getThemeState, initTheme, toggleScheme } from "./theme-manager.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
+initTheme();
 
 const PAGE_LIMIT = 50;
 const MAX_BULK_EXPORT_SESSIONS = 20;
 const BULK_EXPORT_CONCURRENCY = 4;
 const PROJECT_PREVIEW_LIMIT = 4;
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
-const INSPECTOR_DRAWER_QUERY = "(max-width: 1320px)";
+const INSPECTOR_DRAWER_QUERY = "(max-width: 1640px)";
+const COMPACT_WORKSPACE_QUERY =
+  "(min-width: 761px) and (max-width: 1640px)";
+const SOURCE_RAIL_COLLAPSED_KEY = "allsessions_source_rail_collapsed";
+const SOURCE_RAIL_AGENTS = [
+  { agent: "codex", kinds: ["codex", "codex_archived"] },
+  { agent: "claude", kinds: ["claude"] },
+  { agent: "gemini", kinds: ["gemini"] },
+  { agent: "pi", kinds: ["pi"] },
+  { agent: "kimi", kinds: ["kimi"] },
+  { agent: "opencode", kinds: ["opencode"] },
+];
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";
 const REMOVED_MESSAGES_KEY = "allsessions_removed_messages";
@@ -42,6 +57,7 @@ const statsRequestGate = createLatestRequestGate();
 
 const state = {
   capabilities: null,
+  diagnostics: null,
   facets: null,
   stats: null,
   sessions: [],
@@ -433,12 +449,16 @@ function visibilityLabel(session) {
 const elements = {
   appLayout: document.querySelector(".app-layout"),
   homeLink: document.querySelector("#home-link"),
+  railToggle: document.querySelector("#rail-toggle"),
   sidebarLeft: document.querySelector(".sidebar-left"),
   sidebarFilters: document.querySelector("#sidebar-filters"),
   projectNav: document.querySelector(".project-nav"),
   sessionRoot: document.querySelector("#session-root"),
   sessionCount: document.querySelector("#session-count"),
   sourceKindFilter: document.querySelector("#source-kind-filter"),
+  sourceRailItems: Array.from(
+    document.querySelectorAll("#source-rail-list [data-source-kind]")
+  ),
   providerFilter: document.querySelector("#provider-filter"),
   dateFilter: document.querySelector("#date-filter"),
   cwdFilter: document.querySelector("#cwd-filter"),
@@ -468,6 +488,10 @@ const elements = {
   bulkRedactToggle: document.querySelector("#bulk-redact-toggle"),
   bulkExportBtn: document.querySelector("#bulk-export-btn"),
   clearSelectionBtn: document.querySelector("#clear-selection-btn"),
+  statusHealthButton: document.querySelector("#status-health-button"),
+  statusHealthText: document.querySelector("#status-health-text"),
+  statusFilterText: document.querySelector("#status-filter-text"),
+  statusLanguage: document.querySelector("#status-language"),
   detailEmpty: document.querySelector("#detail-empty"),
   detailView: document.querySelector("#detail-view"),
   detailTitle: document.querySelector("#detail-title"),
@@ -500,10 +524,11 @@ const elements = {
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
   trendChartBody: document.querySelector("#trend-chart-body"),
-  donutChartBody: document.querySelector("#donut-chart-body"),
+  agentChartBody: document.querySelector("#agent-chart-body"),
   toolsDashboard: document.querySelector("#tools-dashboard"),
   openCodexArchiveBtn: document.querySelector("#open-codex-archive-btn"),
   mobileBackBtn: document.querySelector("#mobile-back-btn"),
+  schemeToggle: document.querySelector("#scheme-toggle"),
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsDialog: document.querySelector("#settings-dialog"),
   settingsCloseBtn: document.querySelector("#settings-close-btn"),
@@ -512,8 +537,15 @@ const elements = {
     document.querySelectorAll("[data-settings-panel]")
   ),
   settingsLanguageSelect: document.querySelector("#settings-language-select"),
+  settingsThemeInputs: Array.from(
+    document.querySelectorAll('[name="settings-theme"]')
+  ),
+  settingsSchemeInputs: Array.from(
+    document.querySelectorAll('[name="settings-scheme"]')
+  ),
   settingsKeepRunning: document.querySelector("#settings-keep-running"),
   settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
+  settingsSourceOverview: document.querySelector("#settings-source-overview"),
   settingsSources: document.querySelector("#settings-sources"),
   settingsRecovery: document.querySelector("#settings-recovery"),
   settingsRecoveryMessage: document.querySelector("#settings-recovery-message"),
@@ -566,7 +598,7 @@ const settingsController = createSettingsController({
     rerenderLocalizedContent();
   },
   onSaved: () => {
-    loadFacets()
+    Promise.all([loadFacets(), loadWorkspaceDiagnostics()])
       .then(() => Promise.all([loadSessions(), loadStats()]))
       .catch((error) => showError(error.message));
   },
@@ -574,7 +606,7 @@ const settingsController = createSettingsController({
 const maintenanceController = createMaintenanceController({
   requestJson: fetchJson,
   refreshData: async () => {
-    await loadFacets();
+    await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
     await Promise.all([loadSessions(), loadStats()]);
   },
 });
@@ -642,12 +674,106 @@ function sourceKindValue(summary) {
   return summary?.source_kind || "unknown";
 }
 
+function compactSourceLabel(label) {
+  const compact = String(label)
+    .replace(/\s*\b(Code CLI|Code|CLI)\b\s*$/i, "")
+    .trim();
+  return compact || label;
+}
+
 function sourceKindLabel(sourceKind) {
   if (sourceKind === "codex_archived") return t("codexArchived");
   const source = state.facets?.sources?.find(
     (candidate) => candidate.kind === sourceKind
   );
   return source?.display_name || sourceKind;
+}
+
+function sourceAgentForKind(sourceKind) {
+  if (sourceKind === "claude_code") return "claude";
+  if (sourceKind === "codex_archived") return "codex";
+  return sourceKind || "all";
+}
+
+function sourceDiagnosticCount(kinds) {
+  const diagnostics = state.diagnostics?.sources || {};
+  return kinds.reduce(
+    (total, kind) => total + Number(diagnostics[kind]?.indexed_sessions || 0),
+    0
+  );
+}
+
+function renderSourceRail() {
+  const activeAgent = sourceAgentForKind(state.filters.source_kind);
+  const counts = new Map(
+    SOURCE_RAIL_AGENTS.map(({ agent, kinds }) => [
+      agent,
+      sourceDiagnosticCount(kinds),
+    ])
+  );
+  const total = Array.from(counts.values()).reduce(
+    (sum, count) => sum + count,
+    0
+  );
+
+  elements.sourceRailItems.forEach((button) => {
+    const agent = button.dataset.sourceAgent;
+    const active = agent === activeAgent;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+    const count = button.querySelector("[data-source-count]");
+    if (count) {
+      count.textContent = state.diagnostics
+        ? String(agent === "all" ? total : counts.get(agent) || 0)
+        : "-";
+    }
+  });
+}
+
+function renderWorkspaceStatus() {
+  renderSourceRail();
+
+  if (elements.statusHealthButton && elements.statusHealthText) {
+    const diagnostics = state.diagnostics?.sources;
+    if (!diagnostics) {
+      elements.statusHealthButton.dataset.state = "unavailable";
+      elements.statusHealthText.textContent = t("scanHealthUnavailable");
+    } else {
+      const sourceCount = SOURCE_RAIL_AGENTS.filter(({ kinds }) =>
+        kinds.some((kind) => diagnostics[kind]?.enabled)
+      ).length;
+      const indexedSessions = SOURCE_RAIL_AGENTS.reduce(
+        (total, { kinds }) => total + sourceDiagnosticCount(kinds),
+        0
+      );
+      const errorCount = Object.values(diagnostics).reduce(
+        (total, diagnostic) => total + Number(diagnostic?.error_count || 0),
+        0
+      );
+      const warning = errorCount > 0;
+      elements.statusHealthButton.dataset.state = warning ? "warning" : "ready";
+      elements.statusHealthText.textContent = t(
+        warning ? "scanHealthWarning" : "scanHealthReady",
+        {
+          sources: sourceCount,
+          sessions: indexedSessions,
+          errors: errorCount,
+        }
+      );
+    }
+  }
+
+  if (elements.statusFilterText) {
+    const count = activeFilterEntries().length;
+    elements.statusFilterText.textContent = count
+      ? t("statusFilterCount", { n: count })
+      : t("statusFilterNone");
+  }
+  if (elements.statusLanguage) {
+    elements.statusLanguage.textContent = t(
+      getLang() === "zh" ? "statusLanguageChinese" : "statusLanguageEnglish"
+    );
+  }
 }
 
 async function setSourceKindFilter(sourceKind) {
@@ -806,9 +932,12 @@ function syncFilterControls() {
     elements.favoriteOnlyToggle.checked = state.favoriteOnly;
   }
   renderProjectNav();
+  renderWorkspaceStatus();
 }
 
 function rerenderLocalizedContent() {
+  syncSchemeToggle();
+  syncSourceRailToggle();
   syncSessionRoot();
   updateFacetFilters();
   syncFilterControls();
@@ -845,6 +974,7 @@ function rerenderLocalizedContent() {
   if (state.stats) {
     renderStats(state.stats, elements);
   }
+  renderWorkspaceStatus();
   maintenanceController.renderLocalized();
 }
 
@@ -857,6 +987,40 @@ function syncSearchShortcut() {
   )
     ? "⌘ K"
     : "Ctrl K";
+}
+
+function syncSchemeToggle() {
+  if (!elements.schemeToggle) return;
+  const key =
+    getThemeState().resolvedScheme === "dark"
+      ? "schemeToggleToLight"
+      : "schemeToggleToDark";
+  elements.schemeToggle.setAttribute("aria-label", t(key));
+  elements.schemeToggle.title = t(key);
+}
+
+function defaultSourceRailCollapsed() {
+  const stored = localStorage.getItem(SOURCE_RAIL_COLLAPSED_KEY);
+  if (stored !== null) return stored === "true";
+  return window.matchMedia(COMPACT_WORKSPACE_QUERY).matches;
+}
+
+function syncSourceRailToggle() {
+  if (!elements.railToggle || !elements.appLayout) return;
+  const expanded = !elements.appLayout.classList.contains("rail-collapsed");
+  const label = t(expanded ? "hideSourceRail" : "showSourceRail");
+  elements.railToggle.setAttribute("aria-expanded", String(expanded));
+  elements.railToggle.setAttribute("aria-label", label);
+  elements.railToggle.title = label;
+}
+
+function setSourceRailCollapsed(collapsed, { persist = false } = {}) {
+  const compact = collapsed && !window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
+  elements.appLayout?.classList.toggle("rail-collapsed", compact);
+  if (persist) {
+    localStorage.setItem(SOURCE_RAIL_COLLAPSED_KEY, String(collapsed));
+  }
+  syncSourceRailToggle();
 }
 
 function buildSessionQuery() {
@@ -1109,9 +1273,9 @@ function appendSessionItems(sessions) {
     const titleEl = button.querySelector(".session-title");
     titleEl.textContent = title;
     titleEl.title = title;
-    button.querySelector(".session-time").textContent = formatTimestamp(
-      sessionTimestamp(session)
-    );
+    const timeEl = button.querySelector(".session-time");
+    timeEl.textContent = formatListTimestamp(sessionTimestamp(session));
+    timeEl.title = formatTimestamp(sessionTimestamp(session));
     button.querySelector(".session-provider").textContent =
       session.model_provider || "unknown";
     const pathParts = cwdParts(session.cwd);
@@ -1120,7 +1284,9 @@ function appendSessionItems(sessions) {
     cwdMain.textContent = pathParts.main;
     cwdMain.title = session.cwd || "";
     if (cwdPath) {
-      cwdPath.textContent = pathParts.path;
+      const bdi = document.createElement("bdi");
+      bdi.textContent = pathParts.path;
+      cwdPath.replaceChildren(bdi);
       cwdPath.title = session.cwd || "";
       cwdPath.classList.toggle("hidden", !pathParts.path);
     }
@@ -1128,14 +1294,23 @@ function appendSessionItems(sessions) {
     previewEl.textContent = preview;
     previewEl.title = preview;
     previewEl.classList.toggle("hidden", !preview);
-    cwdMain.classList.toggle("hidden", Boolean(preview));
-    if (cwdPath)
-      cwdPath.classList.toggle("hidden", Boolean(preview) || !pathParts.path);
+    cwdMain.classList.remove("hidden");
+    if (cwdPath) cwdPath.classList.toggle("hidden", !pathParts.path);
     button.querySelector(".session-source").textContent =
       session.source || session.originator || t("unknownSource");
     const sourceKindEl = button.querySelector(".session-source-kind");
-    sourceKindEl.textContent = displaySourceLabel(session);
+    const sourceLabel = displaySourceLabel(session);
+    sourceKindEl.textContent = compactSourceLabel(sourceLabel);
+    sourceKindEl.title = sourceLabel;
     sourceKindEl.dataset.sourceKind = sourceKind;
+    const messageCount = Number(session.message_count || 0);
+    const messageCountEl = button.querySelector(".session-message-count");
+    messageCountEl.textContent = String(messageCount);
+    messageCountEl.title = t("sessionMessageCount", { n: messageCount });
+    messageCountEl.setAttribute(
+      "aria-label",
+      t("sessionMessageCount", { n: messageCount })
+    );
     const hiddenReason = hiddenReasonLabel(session);
     if (hiddenReason) {
       const hiddenBadge = document.createElement("span");
@@ -1332,7 +1507,7 @@ function renderDetailTags(summary) {
   elements.detailTags.innerHTML = "";
   const workspace = sessionWorkspace(summary);
   const tags = [
-    { text: formatTimestamp(summary.timestamp), icon: "calendar" },
+    { text: formatTimestamp(summary.timestamp), icon: "calendar", cls: "tag-time" },
     { text: summary.model_provider || "unknown", cls: "tag-provider" },
     {
       text: displaySourceLabel(summary),
@@ -1943,6 +2118,12 @@ async function loadFacets() {
   syncFilterControls();
 }
 
+async function loadWorkspaceDiagnostics() {
+  const payload = await fetchJson("/api/settings");
+  state.diagnostics = payload?.diagnostics || null;
+  renderWorkspaceStatus();
+}
+
 async function loadCapabilities() {
   try {
     state.capabilities = await fetchJson("/api/capabilities");
@@ -2010,6 +2191,7 @@ function renderWorkspaceLoadFailure(error) {
   elements.sessionCount.textContent = "-";
   elements.sessionRoot.textContent = t("workspaceUnavailable");
   elements.sessionRoot.removeAttribute("title");
+  renderWorkspaceStatus();
 }
 
 function openRecoverySettingsOnce() {
@@ -2028,7 +2210,7 @@ async function bindTauriSessionEventsOnce() {
   try {
     await bindTauriSessionEvents({
       refresh: async () => {
-        await loadFacets();
+        await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
         await Promise.all([loadSessions({ background: true }), loadStats()]);
       },
       onSessionAdded: (summary) => {
@@ -2055,7 +2237,11 @@ async function bindTauriSessionEventsOnce() {
 async function loadInitialWorkspace() {
   try {
     await loadWorkspaceState();
-    await Promise.all([loadFacets(), loadCapabilities()]);
+    await Promise.all([
+      loadFacets(),
+      loadCapabilities(),
+      loadWorkspaceDiagnostics(),
+    ]);
     const sessionsLoaded = await loadSessions({ reportError: false });
     if (!sessionsLoaded) {
       throw state.lastSessionError || new Error(t("loadListFailed"));
@@ -2121,32 +2307,89 @@ async function activateWorkspaceView(panel) {
       tab.removeAttribute("aria-current");
     }
   });
-  document.querySelectorAll(".sidebar-body").forEach((body) => {
-    body.classList.toggle("hidden", body.dataset.sidebarPanel !== panel);
+  document.querySelectorAll("[data-view-panel]").forEach((viewPanel) => {
+    const active = viewPanel.dataset.viewPanel === panel;
+    viewPanel.classList.toggle("hidden", !active);
+    viewPanel.setAttribute("aria-hidden", active ? "false" : "true");
   });
 
-  const detailPanel = document.querySelector("#detail-panel");
-  const propsPanel = document.querySelector("#props-panel");
-  const statsDashboard = document.querySelector("#stats-dashboard");
-  const toolsDashboard = document.querySelector("#tools-dashboard");
   const codexRollbackDashboard = document.querySelector(
     "#codex-rollback-dashboard"
   );
   const isList = panel === "list";
-  const isStats = panel === "stats";
-  const isTools = panel === "tools";
   if (!isList) setInspectorOpen(false);
-  detailPanel?.classList.toggle("hidden", !isList);
-  propsPanel?.classList.toggle("hidden", !isList);
-  statsDashboard?.classList.toggle("hidden", !isStats);
-  toolsDashboard?.classList.toggle("hidden", !isTools);
   codexRollbackDashboard?.classList.add("hidden");
+  renderWorkspaceStatus();
+}
+
+function isEditableShortcutTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest("input, textarea, select, [contenteditable='true']")
+  );
+}
+
+function sessionKeyboardItems() {
+  return Array.from(elements.sessionList.querySelectorAll(".session-item"));
+}
+
+function moveSessionSelection(direction) {
+  const items = sessionKeyboardItems();
+  if (!items.length) return;
+  const focused = document.activeElement?.closest?.(".session-item");
+  const selected = items.find((item) => item.classList.contains("active"));
+  const current = focused || selected;
+  const index = items.indexOf(current);
+  const nextIndex =
+    direction > 0
+      ? index < items.length - 1
+        ? index + 1
+        : 0
+      : index > 0
+        ? index - 1
+        : items.length - 1;
+  const next = items[nextIndex];
+  next.focus();
+  next.scrollIntoView({ block: "nearest" });
+  const sessionKey = next.dataset.sessionKey;
+  if (sessionKey) selectSession(sessionKey, next);
+}
+
+function closeTopDialogFromKeyboard() {
+  const dialogs = Array.from(document.querySelectorAll("dialog[open]"));
+  const dialog = dialogs.at(-1);
+  if (!dialog) return false;
+  const cancelEvent = new Event("cancel", { cancelable: true });
+  if (dialog.dispatchEvent(cancelEvent)) dialog.close();
+  return true;
+}
+
+function openFocusedSession() {
+  const item = document.activeElement?.closest?.(".session-item");
+  const sessionKey = item?.dataset.sessionKey;
+  if (!item || !sessionKey) return false;
+  selectSession(sessionKey, item);
+  if (window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {
+    scrollToWorkspaceSection(document.querySelector("#detail-panel"));
+  }
+  return true;
 }
 
 async function initialize() {
   restoreFromUrl();
   maintenanceController.bind();
+  setSourceRailCollapsed(defaultSourceRailCollapsed());
   syncInspectorLayout();
+  syncSchemeToggle();
+  elements.schemeToggle?.addEventListener("click", toggleScheme);
+  document.addEventListener("allsessions:themechange", syncSchemeToggle);
+  elements.railToggle?.addEventListener("click", () => {
+    const collapsed = !elements.appLayout?.classList.contains("rail-collapsed");
+    setSourceRailCollapsed(collapsed, { persist: true });
+  });
+  window.matchMedia(MOBILE_LAYOUT_QUERY).addEventListener("change", () => {
+    setSourceRailCollapsed(defaultSourceRailCollapsed());
+  });
   window
     .matchMedia(INSPECTOR_DRAWER_QUERY)
     .addEventListener("change", syncInspectorLayout);
@@ -2169,6 +2412,17 @@ async function initialize() {
 
   elements.sourceKindFilter?.addEventListener("change", async (event) => {
     await setSourceKindFilter(event.target.value);
+  });
+  elements.sourceRailItems.forEach((button) => {
+    button.addEventListener("click", () => {
+      setSourceKindFilter(button.dataset.sourceKind || "").catch((error) => {
+        console.error(error);
+        showError(`${t("loadListFailed")}: ${error.message}`);
+      });
+    });
+  });
+  elements.statusHealthButton?.addEventListener("click", () => {
+    void settingsController.open("sources");
   });
 
   elements.providerFilter?.addEventListener("change", async (event) => {
@@ -2218,7 +2472,7 @@ async function initialize() {
       elements.refreshBtn.textContent = t("refreshing");
       try {
         await fetchJson("/api/refresh");
-        await loadFacets();
+        await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
         await Promise.all([loadSessions({ background: true }), loadStats()]);
       } catch (error) {
         showError(`${t("refreshFailed")}: ${error.message}`);
@@ -2448,20 +2702,67 @@ async function initialize() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (
-      event.key === "Escape" &&
-      elements.propsContent
-        ?.closest(".props-panel")
-        ?.classList.contains("is-open")
-    ) {
-      setInspectorOpen(false);
-      elements.sessionInspectorToggle?.focus();
+    if (event.key === "Escape") {
+      if (closeTopDialogFromKeyboard()) {
+        event.preventDefault();
+        return;
+      }
+      if (
+        elements.propsContent
+          ?.closest(".props-panel")
+          ?.classList.contains("is-open")
+      ) {
+        event.preventDefault();
+        setInspectorOpen(false);
+        elements.sessionInspectorToggle?.focus();
+      }
       return;
     }
+
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       elements.searchInput?.focus();
       elements.searchInput?.select();
+      return;
+    }
+
+    if (
+      isEditableShortcutTarget(event.target) ||
+      document.querySelector("dialog[open]")
+    ) {
+      return;
+    }
+
+    const view = { 1: "list", 2: "stats", 3: "tools" }[event.key];
+    if (view && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      activateWorkspaceView(view).catch((error) => {
+        console.error(error);
+        showError(error.message);
+      });
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    const arrowFromList =
+      elements.sessionList.contains(activeElement) ||
+      activeElement === document.body;
+    const moveDown = event.key === "j" || event.key === "ArrowDown";
+    const moveUp = event.key === "k" || event.key === "ArrowUp";
+    if (
+      (moveDown || moveUp) &&
+      (!event.key.startsWith("Arrow") || arrowFromList)
+    ) {
+      event.preventDefault();
+      if (state.activeView !== "list") {
+        void activateWorkspaceView("list");
+      }
+      moveSessionSelection(moveDown ? 1 : -1);
+      return;
+    }
+
+    if (event.key === "Enter" && openFocusedSession()) {
+      event.preventDefault();
     }
   });
 
@@ -2483,29 +2784,6 @@ async function initialize() {
       tabs[next].focus();
       tabs[next].click();
     });
-  });
-
-  elements.sessionList.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const items = Array.from(
-      elements.sessionList.querySelectorAll(".session-item")
-    );
-    if (!items.length) return;
-    const focused = document.activeElement;
-    const focusedItem = focused?.classList.contains("session-item")
-      ? focused
-      : focused?.closest(".session-row")?.querySelector(".session-item");
-    const idx = items.indexOf(focusedItem);
-    let next;
-    if (e.key === "ArrowDown") {
-      next = idx < items.length - 1 ? idx + 1 : 0;
-    } else {
-      next = idx > 0 ? idx - 1 : items.length - 1;
-    }
-    items[next].focus();
-    const skey = items[next].dataset.sessionKey;
-    if (skey) selectSession(skey, items[next]);
   });
 
   updateStaticI18n();

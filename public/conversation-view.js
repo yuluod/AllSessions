@@ -4,6 +4,21 @@ import { compactText, formatTimestamp } from "./session-format.js";
 import { displayMessageText } from "./session-export.js";
 import { filterConversationMessages } from "./conversation-filter.js";
 
+const ROLE_LABELS = {
+  user: "user",
+  assistant: "assistant",
+  tool: "tool",
+  system: "system",
+  developer: "developer",
+};
+
+function displayRoleLabel(role) {
+  const normalized = String(role || "").toLowerCase();
+  if (ROLE_LABELS[normalized]) return ROLE_LABELS[normalized];
+  if (!normalized) return "system";
+  return "system";
+}
+
 export function createConversationView({
   state,
   elements,
@@ -65,7 +80,7 @@ export function createConversationView({
 
       const top = document.createElement("span");
       top.className = "message-nav-top";
-      top.textContent = `#${message._origIdx + 1} · ${message.tool_kind || message.role}`;
+      top.textContent = `#${message._origIdx + 1} · ${message.tool_kind || displayRoleLabel(message.role)}`;
 
       const text = document.createElement("span");
       text.className = "message-nav-text";
@@ -126,7 +141,7 @@ export function createConversationView({
       card.dataset.role = message.role;
       fragment.querySelector(".message-idx").textContent =
         `#${message._origIdx + 1}`;
-      fragment.querySelector(".message-role").textContent = message.role;
+      fragment.querySelector(".message-role").textContent = displayRoleLabel(message.role);
       const toolElement = fragment.querySelector(".message-tool");
       if (message.synthetic_context) {
         toolElement.textContent = t("systemContext");

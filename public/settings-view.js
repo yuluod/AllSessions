@@ -1,15 +1,32 @@
 import { t, getLang, setLang } from "./i18n.js";
 import { DESKTOP_RUNTIME_REQUIRED, fetchJson } from "./api-client.js";
+import { getThemeState, setScheme, setTheme } from "./theme-manager.js";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 const SOURCE_KINDS = [
-  { key: "codex", label: "Codex" },
-  { key: "codex_archived", label: "Codex Archived" },
-  { key: "claude", label: "Claude Code" },
-  { key: "gemini", label: "Gemini CLI" },
-  { key: "pi", label: "Pi" },
-  { key: "kimi", label: "Kimi Code CLI" },
+  { key: "codex", agent: "codex", label: "Codex" },
+  { key: "codex_archived", agent: "codex", label: "Codex Archived" },
+  { key: "claude", agent: "claude", label: "Claude Code" },
+  { key: "gemini", agent: "gemini", label: "Gemini CLI" },
+  { key: "pi", agent: "pi", label: "Pi" },
+  { key: "kimi", agent: "kimi", label: "Kimi Code CLI" },
+  { key: "opencode", agent: "opencode", label: "OpenCode" },
 ];
+
+export function summarizeSourceSupport(payload) {
+  const supported = new Set(SOURCE_KINDS.map(({ agent }) => agent)).size;
+  const detected = new Set(
+    SOURCE_KINDS.filter(({ key }) => {
+      const diagnostic = payload?.diagnostics?.sources?.[key];
+      return diagnostic?.enabled && (diagnostic.available_roots || 0) > 0;
+    }).map(({ agent }) => agent)
+  ).size;
+  return { supported, detected };
+}
+
+function sourceText(key, directoryKey, databaseKey) {
+  return t(key === "opencode" ? databaseKey : directoryKey);
+}
 
 function formatBytes(bytes) {
   const value = Number(bytes || 0);
@@ -46,6 +63,16 @@ export function createSettingsController({
     elements.settingsStatus.dataset.state = isError ? "error" : "info";
   }
 
+  function syncAppearance() {
+    const state = getThemeState();
+    elements.settingsThemeInputs?.forEach((input) => {
+      input.checked = input.value === state.theme;
+    });
+    elements.settingsSchemeInputs?.forEach((input) => {
+      input.checked = input.value === state.scheme;
+    });
+  }
+
   function activateTab(name, focus = false) {
     activeTab = name;
     elements.settingsTabs?.forEach((tab) => {
@@ -75,14 +102,22 @@ export function createSettingsController({
     return "ready";
   }
 
-  function appendSourceHealth(block, diagnostic) {
+  function sourceHealthLabel(state) {
+    return t(`settingsSourceHealth_${state}`);
+  }
+
+  function sourceErrorText(key, error) {
+    return key === "opencode" ? t("settingsOpenCodeReadFailed") : error;
+  }
+
+  function appendSourceHealth(block, key, diagnostic) {
     const state = sourceHealthState(diagnostic);
     const health = document.createElement("div");
     health.className = "settings-source-health";
     health.dataset.state = state;
     const badge = document.createElement("span");
     badge.className = "settings-health-badge";
-    badge.textContent = t(`settingsSourceHealth_${state}`);
+    badge.textContent = sourceHealthLabel(state);
     const summary = document.createElement("span");
     summary.textContent = t("settingsSourceHealthSummary", {
       sessions: diagnostic?.indexed_sessions || 0,
@@ -92,7 +127,7 @@ export function createSettingsController({
     if (diagnostic?.last_error) {
       const error = document.createElement("span");
       error.className = "settings-source-error";
-      error.textContent = diagnostic.last_error;
+      error.textContent = sourceErrorText(key, diagnostic.last_error);
       error.title = diagnostic.last_error;
       health.append(error);
     }
@@ -100,6 +135,19 @@ export function createSettingsController({
   }
 
   function renderSources(payload) {
+    const overview = summarizeSourceSupport(payload);
+    if (elements.settingsSourceOverview) {
+      const supported = document.createElement("strong");
+      supported.textContent = t("settingsSupportedAgents", {
+        n: overview.supported,
+      });
+      const detected = document.createElement("span");
+      detected.textContent = t("settingsDetectedAgents", {
+        n: overview.detected,
+      });
+      elements.settingsSourceOverview.replaceChildren(supported, detected);
+      elements.settingsSourceOverview.classList.remove("hidden");
+    }
     const container = elements.settingsSources;
     if (!container) return;
     container.replaceChildren();
@@ -163,7 +211,11 @@ export function createSettingsController({
         const add = document.createElement("button");
         add.className = "ghost-button settings-source-action";
         add.type = "button";
-        add.textContent = t("settingsAddRoot");
+        add.textContent = sourceText(
+          key,
+          "settingsAddRoot",
+          "settingsAddDatabase"
+        );
         add.addEventListener("click", () => {
           draft[key] = [...resolved.roots, ""];
           renderSources(payload);
@@ -188,11 +240,13 @@ export function createSettingsController({
         } else {
           const hint = document.createElement("p");
           hint.className = "settings-source-note";
-          hint.textContent = t(
-            protectedRoots.size
-              ? "settingsProtectedRootsRetained"
-              : "settingsCustomRootsHint"
-          );
+          hint.textContent = protectedRoots.size
+            ? t("settingsProtectedRootsRetained")
+            : sourceText(
+                key,
+                "settingsCustomRootsHint",
+                "settingsCustomDatabaseHint"
+              );
           const list = document.createElement("div");
           list.className = "settings-root-editor";
           custom.forEach((root, index) => {
@@ -213,7 +267,11 @@ export function createSettingsController({
               input.type = "text";
               input.value = root;
               input.spellcheck = false;
-              input.placeholder = t("settingsRootPlaceholder");
+              input.placeholder = sourceText(
+                key,
+                "settingsRootPlaceholder",
+                "settingsDatabasePlaceholder"
+              );
               input.addEventListener("input", () => {
                 draft[key][index] = input.value;
               });
@@ -222,7 +280,11 @@ export function createSettingsController({
                 const remove = document.createElement("button");
                 remove.className = "ghost-button settings-root-remove";
                 remove.type = "button";
-                remove.textContent = t("settingsRemoveRoot");
+                remove.textContent = sourceText(
+                  key,
+                  "settingsRemoveRoot",
+                  "settingsRemoveDatabase"
+                );
                 remove.addEventListener("click", () => {
                   draft[key].splice(index, 1);
                   renderSources(payload);
@@ -239,11 +301,10 @@ export function createSettingsController({
         const add = document.createElement("button");
         add.className = "ghost-button settings-source-action";
         add.type = "button";
-        add.textContent = t(
+        add.textContent =
           sourceState === "disabled"
-            ? "settingsEnableSource"
-            : "settingsAddRoot"
-        );
+            ? sourceText(key, "settingsEnableSource", "settingsEnableDatabase")
+            : sourceText(key, "settingsAddRoot", "settingsAddDatabase");
         add.addEventListener("click", () => {
           if (sourceState === "disabled") {
             draft[key] = [""];
@@ -276,7 +337,7 @@ export function createSettingsController({
         actions.append(restore);
         block.append(actions);
       }
-      appendSourceHealth(block, payload?.diagnostics?.sources?.[key]);
+      appendSourceHealth(block, key, payload?.diagnostics?.sources?.[key]);
       block.dataset.kind = key;
       container.append(block);
     });
@@ -406,6 +467,7 @@ export function createSettingsController({
     if (elements.settingsLanguageSelect) {
       elements.settingsLanguageSelect.value = getLang();
     }
+    syncAppearance();
     if (!target.open) target.showModal();
     lockPageScroll();
     activateTab(activeTab);
@@ -579,6 +641,17 @@ export function createSettingsController({
       "change",
       savePreferences
     );
+    elements.settingsThemeInputs?.forEach((input) => {
+      input.addEventListener("change", (event) => {
+        if (event.target.checked) setTheme(event.target.value);
+      });
+    });
+    elements.settingsSchemeInputs?.forEach((input) => {
+      input.addEventListener("change", (event) => {
+        if (event.target.checked) setScheme(event.target.value);
+      });
+    });
+    document.addEventListener("allsessions:themechange", syncAppearance);
     elements.settingsTabs?.forEach((tab, index) => {
       tab.addEventListener("click", () => activateTab(tab.dataset.settingsTab));
       tab.addEventListener("keydown", (event) => {

@@ -19,7 +19,7 @@
 }
 
 .tool-card[data-enabled="false"] {
-  background: #fcfcfc;
+  background: var(--surface-raised);
 }
 
 .tool-card-header {
@@ -131,9 +131,9 @@
 .migration-backup-notice {
   margin: 0;
   padding: 10px 11px;
-  border: 1px solid #e4c99f;
+  border: 1px solid color-mix(in srgb, var(--warning) 42%, var(--surface));
   border-radius: var(--radius-small);
-  color: #74480d;
+  color: var(--warning);
   background: var(--warning-soft);
   font-size: 0.76rem;
   line-height: 1.5;
@@ -162,7 +162,7 @@
 }
 
 .maintenance-step[data-state="active"] {
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 1px 0 0 var(--accent);
 }
 
 .maintenance-step[data-state="active"] .maintenance-step-number {
@@ -172,7 +172,7 @@
 }
 
 .maintenance-step[data-state="complete"] .maintenance-step-number {
-  border-color: #badfc9;
+  border-color: color-mix(in srgb, var(--success) 42%, var(--surface));
   color: var(--success);
   background: var(--success-soft);
 }
@@ -238,19 +238,19 @@
 }
 
 .tool-status[data-kind="ok"] {
-  border-color: #badfc9;
+  border-color: color-mix(in srgb, var(--success) 42%, var(--surface));
   color: var(--success);
   background: var(--success-soft);
 }
 
 .tool-status[data-kind="warning"] {
-  border-color: #e4c99f;
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--surface));
   color: var(--warning);
   background: var(--warning-soft);
 }
 
 .tool-status[data-kind="error"] {
-  border-color: #f0c2bd;
+  border-color: color-mix(in srgb, var(--signal) 42%, var(--surface));
   color: var(--danger);
   background: var(--danger-soft);
 }
@@ -265,7 +265,7 @@
 
 .maintenance-next-step {
   padding: 10px 12px;
-  border-left: 3px solid var(--accent);
+  border-left: 1px solid var(--accent);
   color: var(--text);
   background: var(--surface-subtle);
   font-weight: 650;
@@ -273,7 +273,7 @@
 
 .migration-stale-notice {
   padding: 8px 10px;
-  border: 1px solid #e4c99f;
+  border: 1px solid color-mix(in srgb, var(--warning) 42%, var(--surface));
   border-radius: var(--radius-small);
   color: var(--warning);
   background: var(--warning-soft);
@@ -347,17 +347,17 @@
 }
 
 .migration-diagnostics[data-kind="ok"] {
-  border-color: #badfc9;
+  border-color: color-mix(in srgb, var(--success) 42%, var(--surface));
   background: var(--success-soft);
 }
 
 .migration-diagnostics[data-kind="warning"] {
-  border-color: #e4c99f;
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--surface));
   background: var(--warning-soft);
 }
 
 .migration-diagnostics[data-kind="error"] {
-  border-color: #f0c2bd;
+  border-color: color-mix(in srgb, var(--signal) 42%, var(--surface));
   background: var(--danger-soft);
 }
 
@@ -415,7 +415,7 @@
 }
 
 .migration-backup-notice[data-done="true"] {
-  border-color: #badfc9;
+  border-color: color-mix(in srgb, var(--success) 42%, var(--surface));
   color: var(--success);
   background: var(--success-soft);
 }
@@ -502,7 +502,7 @@
   gap: 4px;
   margin-left: 34px;
   padding: 11px 12px;
-  border: 1px solid #badfc9;
+  border: 1px solid color-mix(in srgb, var(--success) 42%, var(--surface));
   border-radius: var(--radius-small);
   color: var(--success);
   background: var(--success-soft);

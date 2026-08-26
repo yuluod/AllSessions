@@ -8,7 +8,7 @@
 
 .stats-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-subtle);
@@ -22,6 +22,14 @@
 
 .metric-card + .metric-card {
   border-left: 1px solid var(--line);
+}
+
+.metric-card:nth-child(3n + 1) {
+  border-left: 0;
+}
+
+.metric-card:nth-child(n + 4) {
+  border-top: 1px solid var(--line);
 }
 
 .metric-value {

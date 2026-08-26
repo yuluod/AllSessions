@@ -8,6 +8,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/gemini.rs`：Gemini 日志流式扫描、逐文件摘要缓存、跨文件会话合并和按需详情解析。
 - `sessions/pi.rs`：Pi JSONL 树的活动分支重建，以及消息、工具与扩展上下文归一化。
 - `sessions/kimi.rs`：Kimi `wire.jsonl` 解析、流式内容合并、工作目录/标题关联和子 Agent 识别。
+- `sessions/opencode.rs`：OpenCode 最新正式版 SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新。
 - `cache.rs`：以路径、文件大小和修改时间为指纹的 SQLite 摘要/搜索缓存；负责导入旧版 JSON 索引。
 - `config.rs`：设置对话框持久化的应用配置（`AllSessions/config.json`），按来源覆盖根目录列表，优先级高于环境变量。
 - `watcher.rs`：监听来源目录，去抖后刷新索引并发送 Tauri 事件；设置保存后通过 `rewatch` 重挂监听。
@@ -25,9 +26,11 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - 单个损坏文件不能阻止其他来源启动。
 - 使用 `${source_kind}:${id}` 组合键避免跨来源 ID 冲突。
 
-Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合。每个日志文件只缓存有界摘要贡献，完整消息和原始事件在用户打开会话时重新流式读取，并应用与其他来源相同的首尾窗口。Kimi 以 `wire.jsonl` 作为会话事件流，但工作目录和标题分别来自根目录 `kimi.json` 与相邻 `state.json`；这两个元数据文件变化时必须重新解析摘要，不能只依赖 `wire.jsonl` 指纹缓存。
+Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合。每个日志文件只缓存有界摘要贡献，完整消息和原始事件在用户打开会话时重新流式读取，并应用与其他来源相同的首尾窗口。Kimi 以 `wire.jsonl` 作为会话事件流，但工作目录和标题分别来自根目录 `kimi.json` 与相邻 `state.json`；这两个元数据文件变化时必须重新解析摘要，不能只依赖 `wire.jsonl` 指纹缓存。OpenCode 的一份 `opencode.db` 包含多条会话，摘要通过批量查询聚合，详情按会话 ID 查询；`opencode.db`、`-wal` 或 `-shm` 变化时均全量刷新该聚合来源。
 
-Pi 和 Kimi Code CLI 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。
+Pi、Kimi Code CLI 和 OpenCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。
+
+OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 存储，也不读取开发频道的带频道名数据库。详细边界见 [OpenCode 来源说明](./sources/opencode.md)。
 
 来源列表会保留尚不存在的声明目录，以便后续刷新发现新创建的数据；监听器会回溯到最近的现有父目录，但不会监听用户主目录或文件系统根。设置对话框保存根目录后会重建来源并重挂监听，无需重启。每个 Claude 根目录会同时注册 `projects` 与 `sessions` 布局；旧版 `history.jsonl` 只会在解析对应旧版会话详情时作为补充数据读取，它本身不是独立监听目标。
 

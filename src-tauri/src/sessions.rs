@@ -17,6 +17,7 @@ use crate::cache::IndexCache;
 
 mod gemini;
 mod kimi;
+mod opencode;
 mod pi;
 
 const PAGE_LIMIT: usize = 50;
@@ -42,6 +43,13 @@ enum SourceFormat {
     Gemini,
     Pi,
     Kimi,
+    OpenCode,
+}
+
+#[derive(Clone)]
+enum DetailLocator {
+    Gemini(gemini::DetailLocator),
+    OpenCode(opencode::DetailLocator),
 }
 
 #[derive(Clone)]
@@ -50,7 +58,7 @@ struct StoredSession {
     search_text: String,
     source: Source,
     path: PathBuf,
-    detail_locator: Option<gemini::DetailLocator>,
+    detail_locator: Option<DetailLocator>,
 }
 
 #[derive(Default)]
@@ -161,7 +169,15 @@ impl SessionStore {
 
     pub fn diagnostics(&self) -> Value {
         let mut sources = BTreeMap::<String, Value>::new();
-        for kind in ["codex", "codex_archived", "claude", "gemini", "pi", "kimi"] {
+        for kind in [
+            "codex",
+            "codex_archived",
+            "claude",
+            "gemini",
+            "pi",
+            "kimi",
+            "opencode",
+        ] {
             let enabled = self
                 .sources_config
                 .get(kind)
@@ -187,10 +203,18 @@ impl SessionStore {
             ("gemini", lists.gemini.as_slice()),
             ("pi", lists.pi.as_slice()),
             ("kimi", lists.kimi.as_slice()),
+            ("opencode", lists.opencode.as_slice()),
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());
-            entry["available_roots"] = json!(roots.iter().filter(|root| root.is_dir()).count());
+            entry["available_roots"] = json!(roots
+                .iter()
+                .filter(|root| if kind == "opencode" {
+                    root.is_file()
+                } else {
+                    root.is_dir()
+                })
+                .count());
         }
         for record in self.records.values() {
             let kind = diagnostic_source_kind(record.source.kind);
@@ -259,7 +283,39 @@ impl SessionStore {
                         summary: session.summary,
                         source: source.clone(),
                         path: session.path,
-                        detail_locator: Some(session.detail_locator),
+                        detail_locator: Some(DetailLocator::Gemini(session.detail_locator)),
+                    });
+                }
+                continue;
+            }
+            if matches!(source.format, SourceFormat::OpenCode) {
+                if !source.root.exists() {
+                    continue;
+                }
+                let parsed = match opencode::parse_source(source) {
+                    Ok(parsed) => parsed,
+                    Err(error) => {
+                        diagnostics.record_error(&diagnostic_kind, &source.root, &error);
+                        eprintln!("无法解析 OpenCode 来源：{error}");
+                        continue;
+                    }
+                };
+                for path in &parsed.active_paths {
+                    diagnostics.discover(&diagnostic_kind, Path::new(path));
+                    active_paths.insert(path.clone());
+                    active_paths.insert(path_identity(Path::new(path)));
+                }
+                for session in parsed.sessions {
+                    let key = session.summary["_key"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string();
+                    next.entry(key).or_insert_with(|| StoredSession {
+                        search_text: session.search_text,
+                        summary: session.summary,
+                        source: source.clone(),
+                        path: session.path,
+                        detail_locator: Some(DetailLocator::OpenCode(session.detail_locator)),
                     });
                 }
                 continue;
@@ -332,10 +388,17 @@ impl SessionStore {
         // 单路径更新无法可靠重建聚合结果或来源优先级，因此复用缓存全量刷新。
         if paths.iter().any(|path| {
             self.sources.iter().any(|source| {
-                (matches!(source.format, SourceFormat::Gemini | SourceFormat::Claude)
-                    || matches!(source.format, SourceFormat::Kimi)
-                        && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl"))
-                    && path.starts_with(&source.root)
+                let belongs_to_source = if matches!(source.format, SourceFormat::OpenCode) {
+                    opencode_event_matches(&source.root, path)
+                } else {
+                    path.starts_with(&source.root)
+                };
+                (matches!(
+                    source.format,
+                    SourceFormat::Gemini | SourceFormat::Claude | SourceFormat::OpenCode
+                ) || matches!(source.format, SourceFormat::Kimi)
+                    && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl"))
+                    && belongs_to_source
             })
         }) {
             self.refresh()?;
@@ -349,7 +412,8 @@ impl SessionStore {
                 .sources
                 .iter()
                 .find(|source| {
-                    !matches!(source.format, SourceFormat::Gemini) && path.starts_with(&source.root)
+                    !matches!(source.format, SourceFormat::Gemini | SourceFormat::OpenCode)
+                        && path.starts_with(&source.root)
                 })
                 .cloned()
             else {
@@ -487,7 +551,14 @@ impl SessionStore {
         }
         let record = self.records.get(&resolved)?;
         let detail = if let Some(locator) = &record.detail_locator {
-            gemini::parse_detail(&record.source, locator).ok()
+            match locator {
+                DetailLocator::Gemini(locator) => {
+                    gemini::parse_detail(&record.source, locator).ok()
+                }
+                DetailLocator::OpenCode(locator) => {
+                    opencode::parse_detail(&record.source, locator).ok()
+                }
+            }
         } else {
             parse_detail(&record.path, &record.source).ok()
         }?;
@@ -520,7 +591,10 @@ impl SessionStore {
             .get(&resolved)
             .cloned()
             .ok_or_else(|| "会话不存在".to_string())?;
-        if matches!(record.source.format, SourceFormat::Pi | SourceFormat::Kimi) {
+        if matches!(
+            record.source.format,
+            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode
+        ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除会话".into());
         }
         let current_summary = if record.detail_locator.is_none() {
@@ -533,7 +607,12 @@ impl SessionStore {
             None
         };
         let backup_paths = if let Some(locator) = &record.detail_locator {
-            gemini::session_backup_paths(&record.source, locator)?
+            match locator {
+                DetailLocator::Gemini(locator) => {
+                    gemini::session_backup_paths(&record.source, locator)?
+                }
+                DetailLocator::OpenCode(_) => return Err("OpenCode 来源当前为只读模式".into()),
+            }
         } else {
             session_backup_paths(&record.path)
         };
@@ -545,7 +624,10 @@ impl SessionStore {
             &backup_paths,
         )?;
         let deleted_files = if let Some(locator) = &record.detail_locator {
-            gemini::delete_session(&record.source, locator)?
+            match locator {
+                DetailLocator::Gemini(locator) => gemini::delete_session(&record.source, locator)?,
+                DetailLocator::OpenCode(_) => return Err("OpenCode 来源当前为只读模式".into()),
+            }
         } else {
             if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
                 delete_legacy_session(
@@ -576,7 +658,10 @@ impl SessionStore {
             .get(&resolved)
             .cloned()
             .ok_or_else(|| "会话不存在".to_string())?;
-        if matches!(record.source.format, SourceFormat::Pi | SourceFormat::Kimi) {
+        if matches!(
+            record.source.format,
+            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode
+        ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
         }
         let detail = self
@@ -593,7 +678,12 @@ impl SessionStore {
             .cloned()
             .ok_or_else(|| "该消息不支持删除原始数据".to_string())?;
         let backup_paths = if let Some(locator) = &record.detail_locator {
-            gemini::message_backup_paths(&record.source, locator, &delete_ref)?
+            match locator {
+                DetailLocator::Gemini(locator) => {
+                    gemini::message_backup_paths(&record.source, locator, &delete_ref)?
+                }
+                DetailLocator::OpenCode(_) => return Err("OpenCode 来源当前为只读模式".into()),
+            }
         } else {
             message_backup_paths(&record.path, &delete_ref)?
         };
@@ -605,7 +695,12 @@ impl SessionStore {
             &backup_paths,
         )?;
         if let Some(locator) = &record.detail_locator {
-            gemini::delete_message(&record.source, locator, &delete_ref)?;
+            match locator {
+                DetailLocator::Gemini(locator) => {
+                    gemini::delete_message(&record.source, locator, &delete_ref)?;
+                }
+                DetailLocator::OpenCode(_) => return Err("OpenCode 来源当前为只读模式".into()),
+            }
         } else if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
             delete_legacy_message(&record.path, &delete_ref)?;
         } else {
@@ -682,21 +777,29 @@ impl SessionStore {
     ) -> Value {
         let filtered = self.filtered(query, workspace);
         let mut by_date = BTreeMap::new();
+        let mut by_agent = HashMap::new();
         let mut by_source_kind = HashMap::new();
         let mut by_provider = HashMap::new();
         let mut by_cwd = HashMap::new();
         let mut total_events = 0_u64;
+        let mut total_messages = 0_u64;
+        let mut total_tools = 0_u64;
         for summary in &filtered {
             total_events += summary["event_count"].as_u64().unwrap_or_default();
+            total_messages += summary["message_count"].as_u64().unwrap_or_default();
+            total_tools += summary["tool_count"].as_u64().unwrap_or_default();
             if let Some(date) = local_date_key(timestamp_of(summary)) {
                 *by_date.entry(date).or_insert(0_u64) += 1;
+            }
+            if let Some(agent) = agent_kind(&summary["source_kind"]) {
+                *by_agent.entry(agent.into()).or_default() += 1;
             }
             increment(&mut by_source_kind, &summary["source_kind"]);
             increment(&mut by_provider, &summary["model_provider"]);
             increment(&mut by_cwd, &summary["cwd"]);
         }
         let active_days = by_date.len();
-        json!({ "total": filtered.len(), "total_events": total_events, "active_days": active_days, "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) }, "by_date": by_date.into_iter().map(|(label, count)| json!({ "label": label, "count": count })).collect::<Vec<_>>(), "by_source_kind": count_values(by_source_kind, usize::MAX), "by_provider": count_values(by_provider, usize::MAX), "by_cwd": count_values(by_cwd, 16) })
+        json!({ "total": filtered.len(), "total_events": total_events, "total_messages": total_messages, "total_tools": total_tools, "active_days": active_days, "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) }, "by_date": by_date.into_iter().map(|(label, count)| json!({ "label": label, "count": count })).collect::<Vec<_>>(), "by_agent": count_values(by_agent, usize::MAX), "by_source_kind": count_values(by_source_kind, usize::MAX), "by_provider": count_values(by_provider, usize::MAX), "by_cwd": count_values(by_cwd, 16) })
     }
 
     fn filtered(
@@ -963,6 +1066,7 @@ impl ParseState {
                 SourceFormat::Pi => "unknown",
                 // Kimi Code CLI 可配置不同模型 Provider；wire.jsonl 未记录时不做推断。
                 SourceFormat::Kimi => "unknown",
+                SourceFormat::OpenCode => "unknown",
             }
         } else {
             &self.provider
@@ -974,6 +1078,7 @@ impl ParseState {
                 SourceFormat::Codex => "",
                 SourceFormat::Pi => "pi",
                 SourceFormat::Kimi => "kimi_code_cli",
+                SourceFormat::OpenCode => "opencode",
             }
         } else {
             &self.originator
@@ -986,6 +1091,7 @@ fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String
     match source.format {
         SourceFormat::Pi => return pi::parse_summary(path, source),
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
+        SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过聚合来源解析".into()),
         _ => {}
     }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -1011,6 +1117,7 @@ fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
     match source.format {
         SourceFormat::Pi => return pi::parse_detail(path, source),
         SourceFormat::Kimi => return kimi::parse_detail(path, source),
+        SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过详情定位器解析".into()),
         _ => {}
     }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -1167,6 +1274,7 @@ pub(crate) struct RootLists {
     pub gemini: Vec<PathBuf>,
     pub pi: Vec<PathBuf>,
     pub kimi: Vec<PathBuf>,
+    pub opencode: Vec<PathBuf>,
 }
 
 fn resolve_kind(
@@ -1238,6 +1346,33 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         &["KIMI_SESSIONS_DIR", "KIMI_SHARE_DIR"],
         home.join(".kimi"),
     );
+    let opencode_data = env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .map(expand_tilde)
+        .unwrap_or_else(|| home.join(".local").join("share"))
+        .join("opencode");
+    let (opencode, opencode_origin) = if let Some(roots) = config.get("opencode") {
+        (
+            roots
+                .iter()
+                .map(|raw| expand_tilde(PathBuf::from(raw)))
+                .filter(|path| !path.as_os_str().is_empty())
+                .collect(),
+            "config",
+        )
+    } else if let Some(value) = env::var_os("OPENCODE_DB") {
+        let path = expand_tilde(PathBuf::from(value));
+        (
+            vec![if path.is_absolute() {
+                path
+            } else {
+                opencode_data.join(path)
+            }],
+            "env",
+        )
+    } else {
+        (vec![opencode_data.join("opencode.db")], "default")
+    };
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -1245,6 +1380,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         "gemini": { "roots": gemini.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": gemini_origin },
         "pi": { "roots": pi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": pi_origin },
         "kimi": { "roots": kimi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kimi_origin },
+        "opencode": { "roots": opencode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": opencode_origin },
     });
     (
         RootLists {
@@ -1254,6 +1390,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             gemini,
             pi,
             kimi,
+            opencode,
         },
         description,
     )
@@ -1320,6 +1457,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "gemini": describe_protected_source_roots(config.gemini.as_deref().unwrap_or_default(), &inherited.gemini),
         "pi": describe_protected_source_roots(config.pi.as_deref().unwrap_or_default(), &inherited.pi),
         "kimi": describe_protected_source_roots(config.kimi.as_deref().unwrap_or_default(), &inherited.kimi),
+        "opencode": describe_protected_source_roots(config.opencode.as_deref().unwrap_or_default(), &inherited.opencode),
     })
 }
 
@@ -1343,6 +1481,13 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
         display_name: "Kimi Code CLI",
         root: root.clone(),
         format: SourceFormat::Kimi,
+        archived: false,
+    }));
+    sources.extend(lists.opencode.iter().map(|root| Source {
+        kind: "opencode",
+        display_name: "OpenCode",
+        root: root.clone(),
+        format: SourceFormat::OpenCode,
         archived: false,
     }));
     sources
@@ -1445,6 +1590,14 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
         .collect()
 }
 fn discover_files(source: &Source) -> Vec<PathBuf> {
+    if matches!(source.format, SourceFormat::OpenCode) {
+        return source
+            .root
+            .exists()
+            .then(|| source.root.clone())
+            .into_iter()
+            .collect();
+    }
     if matches!(source.format, SourceFormat::Kimi) {
         return kimi::discover_files(source);
     }
@@ -1468,6 +1621,9 @@ fn discover_files(source: &Source) -> Vec<PathBuf> {
 }
 
 fn source_matches_path(source: &Source, path: &Path) -> bool {
+    if matches!(source.format, SourceFormat::OpenCode) {
+        return opencode_event_matches(&source.root, path);
+    }
     if matches!(source.format, SourceFormat::Kimi) {
         return kimi::matches_path(path);
     }
@@ -1478,6 +1634,20 @@ fn source_matches_path(source: &Source, path: &Path) -> bool {
             "jsonl"
         };
     path.extension().and_then(|value| value.to_str()) == Some(extension)
+}
+
+fn opencode_event_matches(database: &Path, path: &Path) -> bool {
+    if path == database {
+        return true;
+    }
+    let Some(database_name) = database.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    path.parent() == database.parent()
+        && matches!(
+            path.file_name().and_then(|value| value.to_str()),
+            Some(name) if name == format!("{database_name}-wal") || name == format!("{database_name}-shm")
+        )
 }
 
 fn parse_legacy_claude_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
@@ -2500,6 +2670,13 @@ fn count_values(values: HashMap<String, u64>, limit: usize) -> Vec<Value> {
         .map(|(label, count)| json!({ "label": label, "count": count }))
         .collect()
 }
+fn agent_kind(source_kind: &Value) -> Option<&str> {
+    match source_kind.as_str()? {
+        "codex_archived" => Some("codex"),
+        "claude_code" => Some("claude"),
+        value => Some(value),
+    }
+}
 fn diagnostic_source_kind(kind: &str) -> &str {
     match kind {
         "claude_code" => "claude",
@@ -2527,10 +2704,10 @@ mod tests {
         compact, delete_jsonl_message, delete_legacy_session, describe_inherited_sources,
         describe_protected_source_roots, describe_sources, existing_watch_root,
         generic_conversation_message, is_synthetic_context, local_date_key, matches_filters,
-        parse_detail, parse_summary, resolve_kind, search_query_matches, sources_from_paths,
-        split_path_list, timestamp_of, watch_roots_for, DetailCache, HeadTail, ScanDiagnostics,
-        SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT,
-        DETAIL_MESSAGE_LIMIT,
+        opencode_event_matches, parse_detail, parse_summary, resolve_kind, search_query_matches,
+        sources_from_paths, split_path_list, timestamp_of, watch_roots_for, DetailCache, HeadTail,
+        ScanDiagnostics, SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES,
+        DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
@@ -2550,6 +2727,7 @@ mod tests {
             gemini: Some(Vec::new()),
             pi: Some(Vec::new()),
             kimi: Some(Vec::new()),
+            opencode: Some(Vec::new()),
         }
     }
 
@@ -2579,6 +2757,38 @@ mod tests {
         assert!(matches_filters(&summary, &query));
         query.insert("tag".to_string(), "不存在".to_string());
         assert!(!matches_filters(&summary, &query));
+    }
+
+    #[test]
+    fn 统计按_agent_归并归档和兼容来源() {
+        let store = SessionStore {
+            summaries: vec![
+                json!({ "source_kind": "codex", "archived": false, "message_count": 8, "tool_count": 3 }),
+                json!({ "source_kind": "codex_archived", "archived": true, "message_count": 5, "tool_count": 2 }),
+                json!({ "source_kind": "claude_code", "archived": false, "message_count": 4, "tool_count": 1 }),
+                json!({ "source_kind": "opencode", "archived": false, "message_count": 7, "tool_count": 4 }),
+            ],
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[]),
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+        let query = HashMap::from([("show_codex_archived".into(), "true".into())]);
+
+        let stats = store.stats(&query, &crate::workspace::WorkspaceSnapshot::default());
+
+        assert_eq!(
+            stats["by_agent"],
+            json!([
+                { "label": "codex", "count": 2 },
+                { "label": "claude", "count": 1 },
+                { "label": "opencode", "count": 1 }
+            ])
+        );
+        assert_eq!(stats["total_messages"], 24);
+        assert_eq!(stats["total_tools"], 10);
     }
 
     #[test]
@@ -2636,6 +2846,7 @@ mod tests {
                 gemini: Some(Vec::new()),
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
+                opencode: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -2649,6 +2860,36 @@ mod tests {
         assert_eq!(diagnostics["sources"]["codex"]["indexed_sessions"], 1);
         assert_eq!(diagnostics["sources"]["claude"]["error_count"], 1);
         assert!(diagnostics["sources"]["claude"]["last_error"].is_string());
+    }
+
+    #[test]
+    fn 缺失的_opencode_数据库属于不可用而不是扫描错误() {
+        let directory = tempdir().unwrap();
+        let database = directory.path().join("opencode.db");
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: crate::config::SourceRoots {
+                codex: Some(Vec::new()),
+                codex_archived: Some(Vec::new()),
+                claude: Some(Vec::new()),
+                gemini: Some(Vec::new()),
+                pi: Some(Vec::new()),
+                kimi: Some(Vec::new()),
+                opencode: Some(vec![database.to_string_lossy().into_owned()]),
+            },
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+
+        store.refresh().unwrap();
+
+        let diagnostic = &store.diagnostics()["sources"]["opencode"];
+        assert_eq!(diagnostic["available_roots"], 0);
+        assert_eq!(diagnostic["error_count"], 0);
+        assert!(diagnostic["last_error"].is_null());
     }
 
     #[test]
@@ -2691,6 +2932,7 @@ mod tests {
                 gemini: Some(Vec::new()),
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
+                opencode: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -2726,6 +2968,25 @@ mod tests {
             watch_roots_for(&codex_roots_config(std::slice::from_ref(&child))),
             vec![base.path()]
         );
+    }
+
+    #[test]
+    fn opencode_数据库及_wal_变化都会匹配来源() {
+        let directory = tempdir().unwrap();
+        let database = directory.path().join("opencode.db");
+        assert!(opencode_event_matches(&database, &database));
+        assert!(opencode_event_matches(
+            &database,
+            &directory.path().join("opencode.db-wal")
+        ));
+        assert!(opencode_event_matches(
+            &database,
+            &directory.path().join("opencode.db-shm")
+        ));
+        assert!(!opencode_event_matches(
+            &database,
+            &directory.path().join("other.db-wal")
+        ));
     }
 
     #[test]
@@ -3362,6 +3623,7 @@ mod tests {
                 gemini: Some(Vec::new()),
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
+                opencode: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

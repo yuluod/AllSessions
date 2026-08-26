@@ -1422,7 +1422,10 @@ function openDeleteDialog({ kind, message = null }) {
   elements.deleteDialogStatus.textContent = "";
   elements.deleteDialogWarning.classList.add("hidden");
   elements.deleteConfirmBtn.classList.add("hidden");
-  elements.deletePermanentBtn.classList.remove("hidden");
+  elements.deletePermanentBtn.classList.toggle(
+    "hidden",
+    state.currentDetail?.summary?.source_read_only === true
+  );
   elements.deleteSoftBtn.classList.remove("hidden");
   elements.deleteSoftBtn.textContent = t(
     removed ? "restore" : "removeFromAllSessions"

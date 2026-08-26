@@ -1,7 +1,7 @@
 {
   "name": "allsessions",
   "version": "0.0.18",
-  "description": "A local-first Tauri desktop app for browsing Codex, Claude Code, and Gemini CLI session history.",
+  "description": "A local-first Tauri desktop app for browsing Codex, Claude Code, Gemini CLI, Pi, and Kimi Code CLI session history.",
   "type": "module",
   "license": "Apache-2.0",
   "author": "yuluo",
@@ -22,7 +22,9 @@
     "local",
     "cli",
     "claude",
-    "gemini"
+    "gemini",
+    "pi",
+    "kimi"
   ],
   "scripts": {
     "dev": "tauri dev",

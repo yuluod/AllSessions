@@ -10,7 +10,7 @@ use serde_json::Value;
 
 const ROOT_LIMIT_PER_KIND: usize = 16;
 const ROOT_TEXT_LIMIT: usize = 1024;
-const SOURCE_KINDS: [&str; 4] = ["codex", "codex_archived", "claude", "gemini"];
+const SOURCE_KINDS: [&str; 6] = ["codex", "codex_archived", "claude", "gemini", "pi", "kimi"];
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -46,6 +46,10 @@ pub struct SourceRoots {
     pub claude: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gemini: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pi: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kimi: Option<Vec<String>>,
 }
 
 impl SourceRoots {
@@ -55,6 +59,8 @@ impl SourceRoots {
             "codex_archived" => self.codex_archived.as_ref(),
             "claude" => self.claude.as_ref(),
             "gemini" => self.gemini.as_ref(),
+            "pi" => self.pi.as_ref(),
+            "kimi" => self.kimi.as_ref(),
             _ => None,
         }
     }
@@ -65,6 +71,8 @@ impl SourceRoots {
             "codex_archived" => self.codex_archived = roots,
             "claude" => self.claude = roots,
             "gemini" => self.gemini = roots,
+            "pi" => self.pi = roots,
+            "kimi" => self.kimi = roots,
             _ => {}
         }
     }
@@ -209,6 +217,8 @@ mod tests {
         assert_eq!(parsed.claude, Some(Vec::new()));
         assert_eq!(parsed.gemini, None);
         assert_eq!(parsed.codex_archived, None);
+        assert_eq!(parsed.pi, None);
+        assert_eq!(parsed.kimi, None);
     }
 
     #[test]

@@ -17,13 +17,13 @@
 
 </div>
 
-AllSessions 将 Codex、Claude Code 和 Gemini CLI 的本地会话聚合到一个 Tauri 桌面应用中。会话发现、解析、搜索、缓存、文件监听和维护操作均由 Rust 实现；前端 WebView 只负责展示，不启动 HTTP 服务，也不捆绑 Node.js 运行时。
+AllSessions 将 Codex、Claude Code、Gemini CLI、Pi 和 Kimi Code CLI 的本地会话聚合到一个 Tauri 桌面应用中。会话发现、解析、搜索、缓存、文件监听和维护操作均由 Rust 实现；前端 WebView 只负责展示，不启动 HTTP 服务，也不捆绑 Node.js 运行时。
 
-> AllSessions 是独立的社区项目，与 OpenAI、Anthropic、Google 不存在隶属、赞助或官方认可关系。产品及公司名称仅用于说明兼容的本地会话来源。
+> AllSessions 是独立的社区项目，与所支持 Agent 的维护者或厂商不存在隶属、赞助或官方认可关系。产品及公司名称仅用于说明兼容的本地会话来源。
 
 ## 功能
 
-- 统一浏览 Codex、Codex 归档、Claude Code 和 Gemini CLI 会话
+- 统一浏览 Codex、Codex 归档、Claude Code、Gemini CLI、Pi 和 Kimi Code CLI 会话
 - 按来源、Provider、日期、项目和工作目录筛选并搜索
 - 查看归一化对话、工具调用与原始事件
 - 使用收藏、标签、备注、本地归档/移除状态和常用筛选整理会话
@@ -40,12 +40,14 @@ AllSessions 将 Codex、Claude Code 和 Gemini CLI 的本地会话聚合到一�
 
 ## 支持来源
 
-| 来源        | 默认本地路径                    | 支持范围                                                                                                                                                  |
-| ----------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Codex       | `~/.codex/sessions`             | 元数据、消息、工具调用、原始事件、搜索和实时刷新                                                                                                          |
-| Codex 归档  | `~/.codex/archived_sessions`    | 浏览、搜索和永久删除归档会话；不移动文件或恢复归档状态                                                                                                    |
-| Claude Code | `~/.claude/{projects,sessions}` | 同时扫描现代 `projects/**/*.jsonl` 与旧版 `sessions/*.json`；支持对话、Thinking、工具调用/结果、搜索和实时刷新，并在可用时从 `history.jsonl` 补充旧版详情 |
-| Gemini CLI  | `~/.gemini/tmp/*/logs.json`     | 流式扫描、按 sessionId 聚合、逐文件增量缓存和按需加载有界详情                                                                                             |
+| 来源          | 默认本地路径                    | 支持范围                                                                                                                                                  |
+| ------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Codex         | `~/.codex/sessions`             | 元数据、消息、工具调用、原始事件、搜索和实时刷新                                                                                                          |
+| Codex 归档    | `~/.codex/archived_sessions`    | 浏览、搜索和永久删除归档会话；不移动文件或恢复归档状态                                                                                                    |
+| Claude Code   | `~/.claude/{projects,sessions}` | 同时扫描现代 `projects/**/*.jsonl` 与旧版 `sessions/*.json`；支持对话、Thinking、工具调用/结果、搜索和实时刷新，并在可用时从 `history.jsonl` 补充旧版详情 |
+| Gemini CLI    | `~/.gemini/tmp/*/logs.json`     | 流式扫描、按 sessionId 聚合、逐文件增量缓存和按需加载有界详情                                                                                             |
+| Pi            | `~/.pi/agent/sessions`          | 从 v1-v3 JSONL 树重建当前分支；支持消息、Thinking、工具、摘要、原始事件、搜索和实时刷新                                                                   |
+| Kimi Code CLI | `~/.kimi/sessions`              | 读取 `wire.jsonl`，关联工作目录和自定义标题，合并流式内容，并支持子 Agent、工具、原始事件、搜索和实时刷新                                                 |
 
 ## 安装包与运行
 
@@ -65,22 +67,27 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 
 环境变量需在启动桌面应用前设置（启动时读取一次）：
 
-| 变量                           | 说明                             | 默认值                             |
-| ------------------------------ | -------------------------------- | ---------------------------------- |
-| `CODEX_HOME`                   | Codex 数据根目录（单路径）       | `~/.codex`                         |
-| `CODEX_SESSIONS_DIR`           | Codex 会话根目录（路径列表）     | `$CODEX_HOME/sessions`             |
-| `CODEX_ARCHIVED_SESSIONS_DIR`  | Codex 归档根目录（路径列表）     | `$CODEX_HOME/archived_sessions`    |
-| `CLAUDE_SESSIONS_DIR`          | Claude Code 根目录（路径列表）   | `~/.claude`                        |
-| `GEMINI_SESSIONS_DIR`          | Gemini CLI 根目录（路径列表）    | `~/.gemini`                        |
-| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录         | 系统用户缓存目录下的 `AllSessions` |
-| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存          | 未设置                             |
-| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径 | 系统应用数据目录                   |
+| 变量                           | 说明                                 | 默认值                             |
+| ------------------------------ | ------------------------------------ | ---------------------------------- |
+| `CODEX_HOME`                   | Codex 数据根目录（单路径）           | `~/.codex`                         |
+| `CODEX_SESSIONS_DIR`           | Codex 会话根目录（路径列表）         | `$CODEX_HOME/sessions`             |
+| `CODEX_ARCHIVED_SESSIONS_DIR`  | Codex 归档根目录（路径列表）         | `$CODEX_HOME/archived_sessions`    |
+| `CLAUDE_SESSIONS_DIR`          | Claude Code 根目录（路径列表）       | `~/.claude`                        |
+| `GEMINI_SESSIONS_DIR`          | Gemini CLI 根目录（路径列表）        | `~/.gemini`                        |
+| `PI_SESSIONS_DIR`              | Pi 会话根目录（路径列表）            | `~/.pi/agent/sessions`             |
+| `PI_CODING_AGENT_SESSION_DIR`  | Pi 官方会话目录                      | —                                  |
+| `PI_CODING_AGENT_DIR`          | Pi 官方数据目录                      | `~/.pi/agent`                      |
+| `KIMI_SESSIONS_DIR`            | Kimi Code CLI 数据根目录（路径列表） | `~/.kimi`                          |
+| `KIMI_SHARE_DIR`               | Kimi Code CLI 官方数据目录           | `~/.kimi`                          |
+| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录             | 系统用户缓存目录下的 `AllSessions` |
+| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存              | 未设置                             |
+| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径     | 系统应用数据目录                   |
 
-四个 `*_SESSIONS_DIR` 变量支持用系统路径分隔符（macOS/Linux 为 `:`，Windows 为 `;`）分隔的多个路径，例如 `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`。路径支持前导 `~` 展开为用户主目录，从 Finder/Dock 启动（无 shell 展开环境变量）时同样生效。不存在的根会被跳过；同一类来源的多个根中出现相同会话 id 时，只保留列表中靠前的根（备份副本只显示一次）。注意：Codex Provider 可见性修复工具只覆盖主 `CODEX_HOME` 下的会话目录，不包含额外列出的根。
+六个 `*_SESSIONS_DIR` 变量支持用系统路径分隔符（macOS/Linux 为 `:`，Windows 为 `;`）分隔的多个路径，例如 `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`。路径支持前导 `~` 展开为用户主目录，从 Finder/Dock 启动（无 shell 展开环境变量）时同样生效。未设置 AllSessions 专用变量时，Pi 与 Kimi 会继续采用各自的官方变量。不存在的根会被跳过；同一类来源的多个根中出现相同会话 id 时，只保留列表中靠前的根（备份副本只显示一次）。注意：Codex Provider 可见性修复工具只覆盖主 `CODEX_HOME` 下的会话目录，不包含额外列出的根。
 
 ## 隐私与安全
 
-本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览、搜索和导出不会修改来源数据。显式确认永久删除会在创建本地备份后修改 Codex、Claude Code 或 Gemini CLI 的原始记录；Codex Provider 维护模式也会在启用并确认执行后修改 Codex 数据。
+本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览、搜索和导出不会修改来源数据。显式确认永久删除会在创建本地备份后修改 Codex、Claude Code 或 Gemini CLI 的原始记录；Codex Provider 维护模式也会在启用并确认执行后修改 Codex 数据。Pi 与 Kimi Code CLI 在当前版本中保持只读：仍可在 AllSessions 内本地移除，但删除原始记录需回到对应 Agent 操作。
 
 收藏、标签、备注、常用筛选和本地归档/移除状态属于 AllSessions 用户数据，独立保存在 `workspace.sqlite` 中；它们不会修改 Agent 原始记录，也不会随可重建的索引缓存一起清除。导出脱敏默认关闭；开启后会移除已知会话标识和常见本地路径模式，但分享前仍应人工检查导出内容。
 
@@ -117,7 +124,7 @@ pnpm licenses:check
 pnpm release:build
 ```
 
-来源存储与统一契约位于 [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs)，Gemini 适配器位于 `src-tauri/src/sessions/gemini.rs`；缓存、Tauri 边界和维护操作分别位于 `cache.rs`、`backend.rs` 与 `maintenance.rs`。增加来源前请阅读[来源架构](./docs/source-adapters.md)。
+来源存储与统一契约位于 [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs)，各格式适配器位于 `src-tauri/src/sessions/`；缓存、Tauri 边界和维护操作分别位于 `cache.rs`、`backend.rs` 与 `maintenance.rs`。增加来源前请阅读[来源架构](./docs/source-adapters.md)。
 
 ## 许可证
 

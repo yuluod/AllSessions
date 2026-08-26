@@ -757,6 +757,8 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
   );
   assert.match(source, /originKey[\s\S]*resolved\.origin/);
   assert.match(source, /t\(`settingsOrigin_\$\{originKey\}`\)/);
+  assert.match(source, /key: "pi", label: "Pi"/);
+  assert.match(source, /key: "kimi", label: "Kimi Code CLI"/);
   assert.match(
     app,
     /createSettingsController\(\{[\s\S]*onLanguageChanged[\s\S]*onSaved/
@@ -938,6 +940,10 @@ test("会话和消息同时支持可恢复移除与二次确认的永久删除",
   assert.match(app, /localStorage\.removeItem\(REMOVED_SESSIONS_KEY\)/);
   assert.match(app, /localStorage\.removeItem\(REMOVED_MESSAGES_KEY\)/);
   assert.match(app, /showPermanentDeleteConfirmation/);
+  assert.match(
+    app,
+    /deletePermanentBtn\.classList\.toggle\([\s\S]*source_read_only === true/
+  );
   assert.match(app, /\/api\/sessions\/delete-message/);
   assert.match(app, /const result = await fetchJson\(url/);
   assert.match(app, /result\?\.backup\?\.path/);

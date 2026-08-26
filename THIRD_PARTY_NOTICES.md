@@ -228,6 +228,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |
 | log | 0.4.33 | MIT OR Apache-2.0 |
 | markup5ever | 0.38.0 | MIT OR Apache-2.0 |
+| md5 | 0.7.0 | Apache-2.0/MIT |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | memoffset | 0.9.1 | MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |

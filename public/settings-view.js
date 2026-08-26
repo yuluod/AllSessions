@@ -7,6 +7,8 @@ const SOURCE_KINDS = [
   { key: "codex_archived", label: "Codex Archived" },
   { key: "claude", label: "Claude Code" },
   { key: "gemini", label: "Gemini CLI" },
+  { key: "pi", label: "Pi" },
+  { key: "kimi", label: "Kimi Code CLI" },
 ];
 
 function formatBytes(bytes) {

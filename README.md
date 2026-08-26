@@ -16,13 +16,13 @@
 
 </div>
 
-AllSessions combines local Codex, Claude Code, and Gemini CLI history in one Tauri desktop app. Rust owns session discovery, parsing, search, caching, file watching, and maintenance. The WebView is a presentation layer: no HTTP server is opened and no Node.js runtime is bundled.
+AllSessions combines local Codex, Claude Code, Gemini CLI, Pi, and Kimi Code CLI history in one Tauri desktop app. Rust owns session discovery, parsing, search, caching, file watching, and maintenance. The WebView is a presentation layer: no HTTP server is opened and no Node.js runtime is bundled.
 
-> AllSessions is an independent community project. It is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic, or Google. Product names are used only to identify compatible local data sources.
+> AllSessions is an independent community project. It is not affiliated with, sponsored by, or endorsed by the maintainers or vendors of the supported agents. Product names are used only to identify compatible local data sources.
 
 ## Features
 
-- Browse Codex, archived Codex, Claude Code, and Gemini CLI sessions together
+- Browse Codex, archived Codex, Claude Code, Gemini CLI, Pi, and Kimi Code CLI sessions together
 - Filter and search by source, provider, date, project, and working directory
 - Inspect normalized conversations, tool activity, and raw events
 - Organize sessions with favorites, tags, notes, local archive/removal state, and reusable filters
@@ -45,6 +45,8 @@ AllSessions combines local Codex, Claude Code, and Gemini CLI history in one Tau
 | Codex Archived | `~/.codex/archived_sessions`    | Browse, search, and permanently delete archived sessions; files are not moved and archive state cannot be restored                                                                                                    |
 | Claude Code    | `~/.claude/{projects,sessions}` | Concurrently scans modern `projects/**/*.jsonl` and legacy `sessions/*.json`; supports messages, thinking, tools/results, search, and live refresh, with `history.jsonl` enrichment for legacy details when available |
 | Gemini CLI     | `~/.gemini/tmp/*/logs.json`     | Streaming scan, per-file incremental cache, session aggregation, and bounded on-demand details                                                                                                                        |
+| Pi             | `~/.pi/agent/sessions`          | Rebuilds the current branch from v1-v3 JSONL trees; supports messages, thinking, tools, summaries, raw events, search, and live refresh                                                                               |
+| Kimi Code CLI  | `~/.kimi/sessions`              | Reads `wire.jsonl`, maps working directories and custom titles, merges streamed content, and exposes subagents, tools, raw events, search, and live refresh                                                           |
 
 ## Install and run
 
@@ -71,15 +73,20 @@ Set these before starting the desktop app (values are read once at startup):
 | `CODEX_ARCHIVED_SESSIONS_DIR`  | Archived Codex session roots (path list) | `$CODEX_HOME/archived_sessions`              |
 | `CLAUDE_SESSIONS_DIR`          | Claude Code roots (path list)            | `~/.claude`                                  |
 | `GEMINI_SESSIONS_DIR`          | Gemini CLI roots (path list)             | `~/.gemini`                                  |
+| `PI_SESSIONS_DIR`              | Pi session roots (path list)             | `~/.pi/agent/sessions`                       |
+| `PI_CODING_AGENT_SESSION_DIR`  | Pi's official session directory          | —                                            |
+| `PI_CODING_AGENT_DIR`          | Pi's official data directory             | `~/.pi/agent`                                |
+| `KIMI_SESSIONS_DIR`            | Kimi Code CLI data roots (path list)     | `~/.kimi`                                    |
+| `KIMI_SHARE_DIR`               | Kimi Code CLI's official data directory  | `~/.kimi`                                    |
 | `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite index directory              | Platform cache directory under `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset                                        |
 | `ALLSESSIONS_WORKSPACE_DB`     | AllSessions user-data SQLite path        | Platform app-data directory                  |
 
-The four `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator (`:` on macOS/Linux, `;` on Windows), e.g. `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`. A leading `~` expands to the home directory, so lists also work when the app is launched from Finder/Dock. Non-existent roots are skipped. If the same session id appears in several roots of one kind, only the first-listed root is kept (a backup copy shows once). Note: the Codex provider maintenance tool only covers the primary `CODEX_HOME` session directories, not additional listed roots.
+The six `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator (`:` on macOS/Linux, `;` on Windows), e.g. `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`. A leading `~` expands to the home directory, so lists also work when the app is launched from Finder/Dock. Pi and Kimi's official variables are used when their AllSessions-specific variable is unset. Non-existent roots are skipped. If the same session id appears in several roots of one kind, only the first-listed root is kept (a backup copy shows once). Note: the Codex provider maintenance tool only covers the primary `CODEX_HOME` session directories, not additional listed roots.
 
 ## Privacy and security
 
-Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing, search, and export do not modify source data. Explicitly confirmed permanent deletion modifies the original Codex, Claude Code, or Gemini CLI record after creating a local backup; Codex provider maintenance also modifies Codex data after it is enabled and execution is confirmed.
+Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing, search, and export do not modify source data. Explicitly confirmed permanent deletion modifies the original Codex, Claude Code, or Gemini CLI record after creating a local backup; Codex provider maintenance also modifies Codex data after it is enabled and execution is confirmed. Pi and Kimi Code CLI are read-only sources in this release: AllSessions local removal remains available, but original records can only be deleted in the source agent.
 
 Favorites, tags, notes, reusable filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`; they never modify Agent source records and are not deleted when the rebuildable index cache is cleared. Export redaction is optional and off by default. When enabled, it removes known session identifiers and common local-path patterns, but exports should still be reviewed before sharing.
 
@@ -114,7 +121,7 @@ pnpm licenses:check
 pnpm release:build
 ```
 
-The session store and normalized contract live in [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs), while the Gemini adapter lives in `src-tauri/src/sessions/gemini.rs`. Caching, the Tauri boundary, and maintenance live in `cache.rs`, `backend.rs`, and `maintenance.rs`. Read the [source architecture](./docs/source-adapters.md) before adding an agent.
+The session store and normalized contract live in [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs); format-specific adapters live under `src-tauri/src/sessions/`. Caching, the Tauri boundary, and maintenance live in `cache.rs`, `backend.rs`, and `maintenance.rs`. Read the [source architecture](./docs/source-adapters.md) before adding an agent.
 
 ## License
 

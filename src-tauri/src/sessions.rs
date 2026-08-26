@@ -16,6 +16,8 @@ use walkdir::WalkDir;
 use crate::cache::IndexCache;
 
 mod gemini;
+mod kimi;
+mod pi;
 
 const PAGE_LIMIT: usize = 50;
 const SEARCH_TEXT_LIMIT: usize = 64_000;
@@ -38,6 +40,8 @@ enum SourceFormat {
     Codex,
     Claude,
     Gemini,
+    Pi,
+    Kimi,
 }
 
 #[derive(Clone)]
@@ -157,7 +161,7 @@ impl SessionStore {
 
     pub fn diagnostics(&self) -> Value {
         let mut sources = BTreeMap::<String, Value>::new();
-        for kind in ["codex", "codex_archived", "claude", "gemini"] {
+        for kind in ["codex", "codex_archived", "claude", "gemini", "pi", "kimi"] {
             let enabled = self
                 .sources_config
                 .get(kind)
@@ -181,6 +185,8 @@ impl SessionStore {
             ("codex_archived", lists.codex_archived.as_slice()),
             ("claude", lists.claude.as_slice()),
             ("gemini", lists.gemini.as_slice()),
+            ("pi", lists.pi.as_slice()),
+            ("kimi", lists.kimi.as_slice()),
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());
@@ -276,12 +282,17 @@ impl SessionStore {
                         continue;
                     }
                 };
-                let parsed = self
-                    .index_cache
-                    .get(&path, source.kind, &metadata)
-                    .map(|cached| (cached.summary, cached.search_text))
-                    .map(Ok)
-                    .unwrap_or_else(|| parse_summary(&path, source));
+                let parsed = if matches!(source.format, SourceFormat::Kimi) {
+                    // Kimi 的标题保存在相邻 state.json，工作目录映射保存在 kimi.json；
+                    // 仅使用 wire.jsonl 指纹会让这些元数据变化后继续命中旧缓存。
+                    parse_summary(&path, source)
+                } else {
+                    self.index_cache
+                        .get(&path, source.kind, &metadata)
+                        .map(|cached| (cached.summary, cached.search_text))
+                        .map(Ok)
+                        .unwrap_or_else(|| parse_summary(&path, source))
+                };
                 match parsed {
                     Ok((summary, search_text)) => {
                         self.index_cache
@@ -321,7 +332,9 @@ impl SessionStore {
         // 单路径更新无法可靠重建聚合结果或来源优先级，因此复用缓存全量刷新。
         if paths.iter().any(|path| {
             self.sources.iter().any(|source| {
-                matches!(source.format, SourceFormat::Gemini | SourceFormat::Claude)
+                (matches!(source.format, SourceFormat::Gemini | SourceFormat::Claude)
+                    || matches!(source.format, SourceFormat::Kimi)
+                        && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl"))
                     && path.starts_with(&source.root)
             })
         }) {
@@ -507,6 +520,9 @@ impl SessionStore {
             .get(&resolved)
             .cloned()
             .ok_or_else(|| "会话不存在".to_string())?;
+        if matches!(record.source.format, SourceFormat::Pi | SourceFormat::Kimi) {
+            return Err("该来源当前为只读模式；请在原 Agent 中删除会话".into());
+        }
         let current_summary = if record.detail_locator.is_none() {
             let (summary, _) = parse_summary(&record.path, &record.source)?;
             if summary["_key"].as_str() != Some(resolved.as_str()) {
@@ -555,6 +571,14 @@ impl SessionStore {
         let resolved = self
             .resolve_record_key(key)
             .ok_or_else(|| "会话不存在或标识不唯一".to_string())?;
+        let record = self
+            .records
+            .get(&resolved)
+            .cloned()
+            .ok_or_else(|| "会话不存在".to_string())?;
+        if matches!(record.source.format, SourceFormat::Pi | SourceFormat::Kimi) {
+            return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
+        }
         let detail = self
             .detail(&resolved)
             .ok_or_else(|| "无法读取会话详情".to_string())?;
@@ -568,11 +592,6 @@ impl SessionStore {
             .get("_delete_ref")
             .cloned()
             .ok_or_else(|| "该消息不支持删除原始数据".to_string())?;
-        let record = self
-            .records
-            .get(&resolved)
-            .cloned()
-            .ok_or_else(|| "会话不存在".to_string())?;
         let backup_paths = if let Some(locator) = &record.detail_locator {
             gemini::message_backup_paths(&record.source, locator, &delete_ref)?
         } else {
@@ -941,6 +960,9 @@ impl ParseState {
                 SourceFormat::Claude => "anthropic",
                 SourceFormat::Gemini => "google",
                 SourceFormat::Codex => "unknown",
+                SourceFormat::Pi => "unknown",
+                // Kimi Code CLI 可配置不同模型 Provider；wire.jsonl 未记录时不做推断。
+                SourceFormat::Kimi => "unknown",
             }
         } else {
             &self.provider
@@ -950,6 +972,8 @@ impl ParseState {
                 SourceFormat::Claude => "claude_code",
                 SourceFormat::Gemini => "google_gemini",
                 SourceFormat::Codex => "",
+                SourceFormat::Pi => "pi",
+                SourceFormat::Kimi => "kimi_code_cli",
             }
         } else {
             &self.originator
@@ -959,6 +983,11 @@ impl ParseState {
 }
 
 fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
+    match source.format {
+        SourceFormat::Pi => return pi::parse_summary(path, source),
+        SourceFormat::Kimi => return kimi::parse_summary(path, source),
+        _ => {}
+    }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
         return parse_legacy_claude_summary(path, source);
     }
@@ -979,6 +1008,11 @@ fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String
 }
 
 fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
+    match source.format {
+        SourceFormat::Pi => return pi::parse_detail(path, source),
+        SourceFormat::Kimi => return kimi::parse_detail(path, source),
+        _ => {}
+    }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
         let value: Value =
             serde_json::from_reader(File::open(path).map_err(error_text)?).map_err(error_text)?;
@@ -1131,11 +1165,13 @@ pub(crate) struct RootLists {
     pub codex_archived: Vec<PathBuf>,
     pub claude: Vec<PathBuf>,
     pub gemini: Vec<PathBuf>,
+    pub pi: Vec<PathBuf>,
+    pub kimi: Vec<PathBuf>,
 }
 
 fn resolve_kind(
     config_roots: Option<&Vec<String>>,
-    env_key: &str,
+    env_keys: &[&str],
     fallback: PathBuf,
 ) -> (Vec<PathBuf>, &'static str) {
     if let Some(roots) = config_roots {
@@ -1148,8 +1184,10 @@ fn resolve_kind(
             "config",
         );
     }
-    if let Some(value) = env::var_os(env_key) {
-        return (split_path_list(&value), "env");
+    for env_key in env_keys {
+        if let Some(value) = env::var_os(env_key) {
+            return (split_path_list(&value), "env");
+        }
     }
     (vec![fallback], "default")
 }
@@ -1162,29 +1200,51 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         .unwrap_or_else(|| home.join(".codex"));
     let (codex, codex_origin) = resolve_kind(
         config.get("codex"),
-        "CODEX_SESSIONS_DIR",
+        &["CODEX_SESSIONS_DIR"],
         codex_home.join("sessions"),
     );
     let (codex_archived, codex_archived_origin) = resolve_kind(
         config.get("codex_archived"),
-        "CODEX_ARCHIVED_SESSIONS_DIR",
+        &["CODEX_ARCHIVED_SESSIONS_DIR"],
         codex_home.join("archived_sessions"),
     );
     let (claude, claude_origin) = resolve_kind(
         config.get("claude"),
-        "CLAUDE_SESSIONS_DIR",
+        &["CLAUDE_SESSIONS_DIR"],
         home.join(".claude"),
     );
     let (gemini, gemini_origin) = resolve_kind(
         config.get("gemini"),
-        "GEMINI_SESSIONS_DIR",
+        &["GEMINI_SESSIONS_DIR"],
         home.join(".gemini"),
+    );
+    let pi_agent_dir = env::var_os("PI_CODING_AGENT_DIR")
+        .map(PathBuf::from)
+        .map(expand_tilde);
+    let pi_fallback = pi_agent_dir
+        .as_ref()
+        .map(|path| path.join("sessions"))
+        .unwrap_or_else(|| home.join(".pi").join("agent").join("sessions"));
+    let (pi, mut pi_origin) = resolve_kind(
+        config.get("pi"),
+        &["PI_SESSIONS_DIR", "PI_CODING_AGENT_SESSION_DIR"],
+        pi_fallback,
+    );
+    if pi_origin == "default" && pi_agent_dir.is_some() {
+        pi_origin = "env";
+    }
+    let (kimi, kimi_origin) = resolve_kind(
+        config.get("kimi"),
+        &["KIMI_SESSIONS_DIR", "KIMI_SHARE_DIR"],
+        home.join(".kimi"),
     );
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
         "claude": { "roots": claude.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": claude_origin },
         "gemini": { "roots": gemini.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": gemini_origin },
+        "pi": { "roots": pi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": pi_origin },
+        "kimi": { "roots": kimi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kimi_origin },
     });
     (
         RootLists {
@@ -1192,6 +1252,8 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             codex_archived,
             claude,
             gemini,
+            pi,
+            kimi,
         },
         description,
     )
@@ -1256,17 +1318,34 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "codex_archived": describe_protected_source_roots(config.codex_archived.as_deref().unwrap_or_default(), &inherited.codex_archived),
         "claude": describe_protected_source_roots(config.claude.as_deref().unwrap_or_default(), &inherited.claude),
         "gemini": describe_protected_source_roots(config.gemini.as_deref().unwrap_or_default(), &inherited.gemini),
+        "pi": describe_protected_source_roots(config.pi.as_deref().unwrap_or_default(), &inherited.pi),
+        "kimi": describe_protected_source_roots(config.kimi.as_deref().unwrap_or_default(), &inherited.kimi),
     })
 }
 
 fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
     let lists = root_lists(config).0;
-    sources_from_paths(
+    let mut sources = sources_from_paths(
         &lists.codex,
         &lists.codex_archived,
         &lists.claude,
         &lists.gemini,
-    )
+    );
+    sources.extend(lists.pi.iter().map(|root| Source {
+        kind: "pi",
+        display_name: "Pi",
+        root: root.clone(),
+        format: SourceFormat::Pi,
+        archived: false,
+    }));
+    sources.extend(lists.kimi.iter().map(|root| Source {
+        kind: "kimi",
+        display_name: "Kimi Code CLI",
+        root: root.clone(),
+        format: SourceFormat::Kimi,
+        archived: false,
+    }));
+    sources
 }
 fn sources_from_paths(
     codex_roots: &[PathBuf],
@@ -1366,6 +1445,9 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
         .collect()
 }
 fn discover_files(source: &Source) -> Vec<PathBuf> {
+    if matches!(source.format, SourceFormat::Kimi) {
+        return kimi::discover_files(source);
+    }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
             "json"
@@ -1386,6 +1468,9 @@ fn discover_files(source: &Source) -> Vec<PathBuf> {
 }
 
 fn source_matches_path(source: &Source, path: &Path) -> bool {
+    if matches!(source.format, SourceFormat::Kimi) {
+        return kimi::matches_path(path);
+    }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
             "json"
@@ -1727,11 +1812,10 @@ fn message_value(
     json!({ "role": role, "text": text.trim(), "timestamp": nullable_string(timestamp), "source_type": source_type, "source_subtype": subtype, "synthetic_context": synthetic || role == "developer" || (role == "user" && is_synthetic_context(text)) })
 }
 
-pub(super) fn attach_message_delete_ref(message: &mut Value, mut delete_ref: Value) {
+pub(super) fn attach_message_key(message: &mut Value, mut identity_ref: Value) {
     if let Some(tool_call_id) = message["tool_call_id"].as_str() {
-        delete_ref["tool_call_id"] = Value::String(tool_call_id.to_string());
+        identity_ref["tool_call_id"] = Value::String(tool_call_id.to_string());
     }
-    let mut identity_ref = delete_ref.clone();
     if let Some(object) = identity_ref.as_object_mut() {
         for field in ["line_number", "record_index", "entry_index"] {
             object.remove(field);
@@ -1749,6 +1833,13 @@ pub(super) fn attach_message_delete_ref(message: &mut Value, mut delete_ref: Val
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     message["_message_key"] = Value::String(key);
+}
+
+pub(super) fn attach_message_delete_ref(message: &mut Value, mut delete_ref: Value) {
+    if let Some(tool_call_id) = message["tool_call_id"].as_str() {
+        delete_ref["tool_call_id"] = Value::String(tool_call_id.to_string());
+    }
+    attach_message_key(message, delete_ref.clone());
     message["_delete_ref"] = delete_ref;
 }
 
@@ -2457,6 +2548,8 @@ mod tests {
             codex_archived: Some(Vec::new()),
             claude: Some(Vec::new()),
             gemini: Some(Vec::new()),
+            pi: Some(Vec::new()),
+            kimi: Some(Vec::new()),
         }
     }
 
@@ -2541,6 +2634,8 @@ mod tests {
                 codex_archived: Some(Vec::new()),
                 claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
                 gemini: Some(Vec::new()),
+                pi: Some(Vec::new()),
+                kimi: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -2594,6 +2689,8 @@ mod tests {
                 codex: Some(Vec::new()),
                 codex_archived: Some(Vec::new()),
                 gemini: Some(Vec::new()),
+                pi: Some(Vec::new()),
+                kimi: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -2674,7 +2771,7 @@ mod tests {
         let configured = vec!["~/custom-codex".to_string()];
         let (roots, origin) = resolve_kind(
             Some(&configured),
-            "CODEX_SESSIONS_DIR",
+            &["CODEX_SESSIONS_DIR"],
             PathBuf::from("/fallback"),
         );
         assert_eq!(origin, "config");
@@ -2716,7 +2813,7 @@ mod tests {
     fn 配置空数组会停用对应来源() {
         let (roots, origin) = resolve_kind(
             Some(&Vec::new()),
-            "CODEX_SESSIONS_DIR",
+            &["CODEX_SESSIONS_DIR"],
             PathBuf::from("/fallback"),
         );
         assert_eq!(origin, "config");
@@ -3263,6 +3360,8 @@ mod tests {
                 codex: Some(Vec::new()),
                 codex_archived: Some(Vec::new()),
                 gemini: Some(Vec::new()),
+                pi: Some(Vec::new()),
+                kimi: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

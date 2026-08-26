@@ -1,0 +1,128 @@
+{
+  "title": "选择 AllSessions 的新视觉世界",
+  "question": "骰子指定了「连续报表纸」。保留它、选备选,或重掷。",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "连续报表纸 Greenbar",
+      "kicker": "THE ROLL",
+      "lineage": "1960-80 年代机房链式打印机的连续折叠报表纸",
+      "thesis": "会话历史就是机房打出来的连续作业报表:横条纹为逐行扫描而生,齿孔边距为索引而生。",
+      "palette": ["#f7f5ec", "#dbe7d9", "#1c2420", "#c8361f", "#11151a"],
+      "materials": ["隔行条纹底", "链式打印等宽字", "齿孔索引边栏", "作业头分隔行"],
+      "viewport": "左侧齿孔索引栏承载来源与过滤;中间是隔行条纹的连续会话报表,列严格等宽对齐;顶部一行 JOB HEADER 式作业头显示统计与搜索;详情像撕下的一联在右侧展开。浅色=报表纸,深色=同一份记录的缩微胶片读法(负片),条纹纪律不变。",
+      "risk": "条纹密度、打印字号与留白需要严格纪律,否则滑向复古玩具;深色负片模式要做成同一世界,不能裂成两套皮。",
+      "raised": [
+        { "from": "kraftwerk-man-machine", "raise": "信号色纪律:全应用只有一支信号红,专供破坏性操作与故障态,任何装饰不得占用。" },
+        { "from": "alphabet-storm", "raise": "大数字排版纪律:统计数字用报表自身的等宽字以 banner-print 尺度直接排印,拒绝通用图表皮肤。" },
+        { "from": "darkroom-safelight", "raise": "提交前试条:永久删除前必须出现『试印条』预览,逐行列出将要失去的确切内容才可提交。" },
+        { "from": "drawcord-cape", "raise": "单一基准纪律:齿孔边栏是全应用唯一对齐基准,所有视图的列锁在同一栅格上。" }
+      ]
+    },
+    {
+      "id": "model-pick",
+      "label": "现代 TUI 面板语法",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "lazygit / k9s / fzf 一代的终端面板语法",
+      "thesis": "把用户每天生活的终端面板语法搬进桌面:窗格、细线框、常驻状态栏、键盘优先、来源即高亮色。",
+      "palette": ["#0d1117", "#c9d1d9", "#58a6ff", "#3fb950", "#f0f6fc"],
+      "materials": ["细线框窗格", "常驻状态栏", "键位提示", "语法高亮色系"],
+      "viewport": "三窗格布局:来源树、会话列表、对话详情;底部状态栏常驻键位与扫描健康;每个来源一个语法高亮色;深浅两套终端配色。",
+      "risk": "这是本品类最容易想到的方向——大多数同类工具都会落在这里;做不够狠就只是又一层『终端风皮肤』。"
+    },
+    {
+      "id": "japanese-high-density-web",
+      "label": "日式高密度站点",
+      "verdict": "competitive",
+      "lineage": "日本当代高密度电商/资讯站",
+      "thesis": "几十个细线框模块平铺一屏,红色小页签领头,每个像素都在工作。",
+      "palette": ["#ffffff", "#111111", "#d7000f", "#e8e8e8"],
+      "materials": ["细线框模块马赛克", "红色页签", "小字号密排"],
+      "viewport": "会话、统计、健康状态全部装进带页签的小模块,一屏尽收;左栏手风琴分类。",
+      "case": "在信息密度与任务清晰度上咬住了指定方向,但报表纸是这群用户自己文化里的物件,受众认同上输了。",
+      "risk": "密度纪律稍松就变成杂乱;红签用滥即廉价。",
+      "hero": "https://impeccable.style/worlds/cards/japanese-high-density-web-hero.webp"
+    },
+    {
+      "id": "operate-c-depot-blind-courses",
+      "label": "车库目的地布帘",
+      "verdict": "competitive",
+      "lineage": "公交车库的卷动目的地布帘",
+      "thesis": "内容是一卷叠放的染布行,在固定窗口下逐行步进;任何异常就是布帘停在半格。",
+      "palette": ["#1d4a2f", "#f4c400", "#efe8d8", "#14100c"],
+      "materials": ["瓶绿帆布", "铬黄字模", "冲孔索引带", "整行步进"],
+      "viewport": "会话列表是一卷布帘行,变化按整行步进并回弹;故障行停在半格露出两半字样。",
+      "case": "状态语义(故障=半格)极有纪律,守住了清晰度这条轴;但受众认同不如打印纸——开发者没在车库长大。",
+      "risk": "卷帘拓扑比会话浏览器需要的更受限;步进动效控制不好会烦人。",
+      "hero": "https://impeccable.style/worlds/cards/operate-c-depot-blind-courses-hero.webp"
+    },
+    {
+      "id": "kraftwerk-man-machine",
+      "label": "人机乐队线路图",
+      "verdict": "declined",
+      "lineage": "Kraftwerk《Man-Machine》视觉体系",
+      "thesis": "一切元素都是霓虹线路图,信号红黄绿在严格栅格上布线。",
+      "palette": ["#d40000", "#f5a800", "#0a0a0a", "#f5f2ea"],
+      "materials": ["霓虹连线", "信号三色", "对称栅格"],
+      "viewport": "会话节点由发光连线接入栅格,激活即通电点亮。",
+      "case": "接线图隐喻映射不到会话浏览任务,两条轴都输。",
+      "kept": "信号色的全局纪律——一支红只做一件事——被指定方向收下。",
+      "risk": "形式压过任务。",
+      "hero": "https://impeccable.style/worlds/cards/kraftwerk-man-machine-hero.webp"
+    },
+    {
+      "id": "textiles-drawcord-cape",
+      "label": "抽绳斗篷",
+      "verdict": "declined",
+      "lineage": "带隐藏抽绳槽的宽幅丝绸斗篷",
+      "thesis": "一拉抽绳,平面变成褶皱与保护性体量。",
+      "palette": ["#0c0c0c", "#b8892e", "#3a3f45", "#565d66"],
+      "materials": ["哑光黑丝", "金色抽绳", "褶皱阴影"],
+      "viewport": "内容平面随一根主控抽绳聚拢变形。",
+      "case": "体验型形式,不适合高频操作面;两轴皆输。",
+      "kept": "『所有对齐由一个几何基准统治』的纪律被指定方向收下。",
+      "risk": "华而不实。",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-drawcord-transforming-cape-hero.webp"
+    },
+    {
+      "id": "alphabet-storm",
+      "label": "字母风暴",
+      "verdict": "declined",
+      "lineage": "超现实主义的文字气象世界",
+      "thesis": "字母凝成词、碎成天气、按语法重塑地貌。",
+      "palette": ["#ffffff", "#0b0b0b", "#b9c4cc", "#8a9199"],
+      "materials": ["纪念碑级怪诞体", "粒子文字", "银色闪变"],
+      "viewport": "一屏一场文字气象事件。",
+      "case": "叙事奇观,无法承载检索与管理任务;两轴皆输。",
+      "kept": "『文字以纪念碑尺度作为物质』的排版胆量,化为统计大数字的 banner-print 纪律。",
+      "risk": "任务不可读。",
+      "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-alphabet-storm-hero.webp"
+    },
+    {
+      "id": "darkroom-safelight",
+      "label": "暗房安全灯",
+      "verdict": "declined",
+      "lineage": "琥珀色安全灯下的放大冲印暗房",
+      "thesis": "影像在计时药液里缓慢显影,过点即不可逆。",
+      "palette": ["#c77f1e", "#1a130a", "#8f8b84", "#efece6"],
+      "materials": ["琥珀灯光", "湿银灰阶", "试印条"],
+      "viewport": "固定工位顺序:构图-曝光-显影-定影。",
+      "case": "化学工位流程与会话浏览不匹配;两轴皆输。",
+      "kept": "『不可逆点必须先出试条』的纪律,成为删除前的试印条预览。",
+      "risk": "全屏琥珀不宜久用。",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-darkroom-safelight-bay-hero.webp"
+    }
+  ],
+  "canon": true,
+  "canonCard": {
+    "label": "品类标准",
+    "thesis": "本品类的标准答案:原生质感的现代桌面应用,以 Linear / Raycast 的工艺水准执行。",
+    "palette": ["#ffffff", "#0f1115", "#4f6ef7"],
+    "materials": ["系统字体", "侧栏导航", "跟随系统深浅色"],
+    "viewport": "侧栏 + 列表 + 详情的三栏桌面范式,访客期待的排布,以满级工艺完成。",
+    "risk": "刻意与同类产品无法区分。"
+  },
+  "reroll": { "registers": ["safer", "bolder"] },
+  "steer": true,
+  "buildPath": { "value": "code", "toggle": false }
+}

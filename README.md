@@ -25,9 +25,12 @@ AllSessions combines local Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, an
 - Browse Codex, archived Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, and OpenCode sessions together
 - Filter and search by source, provider, date, project, and working directory
 - Inspect normalized conversations, tool activity, and raw events
+- Compare session, message, tool, activity, provider, and working-directory statistics by Agent
 - Organize sessions with favorites, tags, notes, local archive/removal state, and reusable filters
 - Select loaded sessions for JSON or Markdown export, with optional path and session-ID redaction
 - Reveal a session source file or project directory in the system file manager
+- Choose from five visual themes with light, dark, or system color schemes
+- Navigate primary views, settings sections, and conversations with keyboard shortcuts
 - Refresh through native filesystem watching and Tauri events
 - Inspect per-source scan health and copy sanitized diagnostics without session content or local paths
 - Hide subagents, sidechains, thinking, and injected context by default
@@ -63,7 +66,7 @@ All platforms use the same Tauri 2 shell, tray actions, and signed updater. GNOM
 
 ## Configuration
 
-The toolbar **Settings** button opens a dialog for switching the UI language, editing per-source paths (with `~` expansion), inspecting source health, copying sanitized diagnostics, and reviewing local index and deletion-backup storage. Source paths are persisted to `AllSessions/config.json` in the user config directory (override with `ALLSESSIONS_CONFIG_PATH`) and take effect immediately; a configured source no longer reads its environment variable, and "Restore default" falls back to the env var or system default path. If the configuration file is damaged, the app starts with safe defaults and opens Source Settings so it can be replaced without manual file editing.
+The toolbar **Settings** button opens a dialog for switching the UI language and appearance, editing per-source paths (with `~` expansion), inspecting source health, copying sanitized diagnostics, and reviewing local index and deletion-backup storage. Appearance settings include five themes plus light, dark, and system color schemes. Source paths are persisted to `AllSessions/config.json` in the user config directory (override with `ALLSESSIONS_CONFIG_PATH`) and take effect immediately; a configured source no longer reads its environment variable, and "Restore default" falls back to the env var or system default path. If the configuration file is damaged, the app starts with safe defaults and opens Source Settings so it can be replaced without manual file editing.
 
 Set these before starting the desktop app (values are read once at startup):
 
@@ -113,6 +116,8 @@ Requirements: Node.js 24, pnpm 11.10, Rust stable, and the current platform's [T
 pnpm install
 pnpm desktop:dev
 ```
+
+For a UI-only browser preview, run `pnpm web:dev`. Desktop APIs and local session loading remain available only in the Tauri app.
 
 ```bash
 pnpm test

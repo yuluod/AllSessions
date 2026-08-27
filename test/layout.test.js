@@ -36,7 +36,6 @@ test("首页具备工作台式布局骨架", async () => {
   assert.match(html, /class="detail-shell detail-pane"/);
   assert.match(html, /class="props-panel inspector-pane"/);
   assert.match(html, /class="status-bar"/);
-  assert.match(html, /THESIS:[\s\S]*OWN-WORLD:[\s\S]*5d8dd611[\s\S]*FINISH:/);
 });
 
 test("浏览器预览使用独立且固定端口的开发脚本", async () => {

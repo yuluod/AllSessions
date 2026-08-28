@@ -38,12 +38,13 @@ export async function fetchJson(url, options = {}, { formatError } = {}) {
       request: {
         url,
         method: options.method || "GET",
-        body
-      }
+        body,
+      },
     });
   } catch (error) {
-    const message = errorMessage(error) || (formatError ? formatError(500) : "请求失败");
-    throw new Error(message);
+    const message =
+      errorMessage(error) || (formatError ? formatError(500) : "请求失败");
+    throw new Error(message, { cause: error });
   }
   if (options.signal?.aborted) throw abortError();
   return result;

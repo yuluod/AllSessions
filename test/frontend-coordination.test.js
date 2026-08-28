@@ -86,6 +86,7 @@ test("Tauri invoke 的不可序列化错误会使用本地化回退", async (t) 
     ),
     (caught) => {
       assert.equal(caught.message, "fallback:500");
+      assert.equal(caught.cause, error);
       return true;
     }
   );

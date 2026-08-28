@@ -499,7 +499,7 @@ fn scan_jsonl(
             }
             files.push(JsonlPlan {
                 path: entry.path().to_path_buf(),
-                hash: format!("{:x}", hash.finalize()),
+                hash: encode_hex(hash.finalize()),
                 assignments,
             });
         }
@@ -1147,13 +1147,23 @@ fn hash_bytes(value: &str) -> String {
     hash_raw(value.as_bytes())
 }
 fn hash_raw(value: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(value))
+    encode_hex(Sha256::digest(value))
 }
 fn hash_file(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(error_text)?;
     let mut hash = Sha256::new();
     std::io::copy(&mut file, &mut HashWriter(&mut hash)).map_err(error_text)?;
-    Ok(format!("{:x}", hash.finalize()))
+    Ok(encode_hex(hash.finalize()))
+}
+fn encode_hex(value: impl AsRef<[u8]>) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let bytes = value.as_ref();
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(DIGITS[(byte >> 4) as usize] as char);
+        output.push(DIGITS[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 struct HashWriter<'a>(&'a mut Sha256);
 impl Write for HashWriter<'_> {
@@ -1185,9 +1195,17 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        assignment_from_line, contains_codex_process, parse_providers, rewrite_jsonl,
+        assignment_from_line, contains_codex_process, hash_raw, parse_providers, rewrite_jsonl,
         valid_provider, ProviderAssignment,
     };
+
+    #[test]
+    fn sha256_hash_remains_lowercase_hex() {
+        assert_eq!(
+            hash_raw(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 
     #[test]
     fn process_detection_parses_windows_tasklist_csv() {

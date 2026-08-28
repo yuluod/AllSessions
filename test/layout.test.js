@@ -506,18 +506,65 @@ test("常用窗口下可收起来源栏并让窄会话表自动降噪", async ()
     html,
     /id="rail-toggle"[\s\S]*aria-controls="source-rail"[\s\S]*aria-expanded="true"/
   );
+  assert.match(
+    html,
+    /class="toolbar-workspace"[\s\S]*class="sidebar-tabs workspace-tabs"[\s\S]*<\/nav>[\s\S]*id="rail-toggle"/
+  );
+  assert.match(
+    html,
+    /id="rail-toggle"[\s\S]*aria-label="收起来源栏"[\s\S]*title="收起来源栏"[\s\S]*<svg/
+  );
+  assert.doesNotMatch(html, /data-i18n="sourceRailShort"/);
+  assert.match(
+    html,
+    /<div class="toolbar-center">\s*<div class="search-box">/
+  );
   assert.match(html, /id="source-rail"[\s\S]*class="rail sidebar-left"/);
   assert.match(source, /const COMPACT_WORKSPACE_QUERY =/);
   assert.match(source, /function setSourceRailCollapsed\(collapsed/);
   assert.match(
     css,
-    /\.app-layout\.rail-collapsed\s*\{[\s\S]*grid-template-columns: var\(--list-w\) minmax\(0, 1fr\)/
+    /\.toolbar-workspace\s*\{[\s\S]*display: flex;[\s\S]*gap: 8px/
   );
-  assert.match(css, /@container session-pane \(max-width: 470px\)/);
   assert.match(
     css,
-    /\.session-list-columns > :nth-child\(4\),[\s\S]*\.session-directory-cell\s*\{\s*display: none/
+    /\.rail-toggle\s*\{[\s\S]*display: grid;[\s\S]*width: var\(--toolbar-control-h\);[\s\S]*height: var\(--toolbar-control-h\);[\s\S]*min-height: var\(--toolbar-control-h\)/
   );
+  assert.match(
+    css,
+    /\.toolbar\s*\{[\s\S]*--toolbar-control-h: 40px;[\s\S]*\.sidebar-tabs\s*\{[\s\S]*height: var\(--toolbar-control-h\)/
+  );
+  assert.match(
+    css,
+    /\.search-box input\[type="search"\]\s*\{[\s\S]*height: var\(--toolbar-control-h\)/
+  );
+  assert.match(
+    css,
+    /\.toolbar-right > \.ghost-button\s*\{[\s\S]*height: var\(--toolbar-control-h\)/
+  );
+  assert.doesNotMatch(
+    css,
+    /\.session-list-shell\.is-selecting \.session-list-header/
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 1040px\)[\s\S]*\.toolbar-workspace\s*\{[\s\S]*grid-area: views/
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 760px\)[\s\S]*\.toolbar-workspace\s*\{\s*display: contents/
+  );
+  assert.match(
+    css,
+    /\.app-layout\.rail-collapsed\s*\{[\s\S]*grid-template-columns: var\(--list-w\) minmax\(0, 1fr\)/
+  );
+  assert.match(css, /@container session-pane \(max-width: 500px\)/);
+  assert.match(
+    css,
+    /@container session-pane \(max-width: 500px\)[\s\S]*\.session-list-columns,[\s\S]*\.session-directory-cell\s*\{\s*display: none/
+  );
+  assert.match(css, /\.session-title-cell\s*\{\s*display: contents/);
+  assert.match(css, /\.session-title\s*\{[\s\S]*grid-column: 1 \/ -1;[\s\S]*-webkit-line-clamp: 2/);
   assert.match(
     css,
     /\.detail-topbar\s*\{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\)/
@@ -1132,6 +1179,14 @@ test("个人工作台数据独立持久化并提供整理与可选脱敏导出",
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(app, /exportSessionCollection/);
+  assert.match(
+    html,
+    /id="active-filter-bar"[\s\S]*id="bulk-toolbar"[\s\S]*class="session-list-header"/
+  );
+  assert.match(
+    html,
+    /id="bulk-export-btn"[\s\S]*data-i18n="export"[\s\S]*id="clear-selection-btn"[\s\S]*data-i18n="cancel"/
+  );
   assert.match(app, /const MAX_BULK_EXPORT_SESSIONS = 20/);
   assert.match(app, /mapWithConcurrency\(\s*keys,\s*BULK_EXPORT_CONCURRENCY/);
   assert.match(app, /redact: elements\.exportRedactToggle/);

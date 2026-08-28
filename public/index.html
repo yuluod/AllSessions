@@ -57,45 +57,47 @@
             </p>
           </div>
         </a>
-        <nav
-          class="sidebar-tabs workspace-tabs"
-          aria-label="工作区视图"
-          data-i18n="workspaceViews"
-          data-i18n-attr="aria-label"
-        >
-          <button
-            class="sidebar-tab active"
-            data-sidebar-tab="list"
-            type="button"
-            aria-current="page"
-            data-i18n="sessionList"
+        <div class="toolbar-workspace">
+          <nav
+            class="sidebar-tabs workspace-tabs"
+            aria-label="工作区视图"
+            data-i18n="workspaceViews"
+            data-i18n-attr="aria-label"
           >
-            会话列表
-          </button>
-          <button
-            class="sidebar-tab"
-            data-sidebar-tab="stats"
-            type="button"
-            data-i18n="statsOverview"
-          >
-            统计概览
-          </button>
-          <button
-            class="sidebar-tab"
-            data-sidebar-tab="tools"
-            type="button"
-            data-i18n="tools"
-          >
-            工具
-          </button>
-        </nav>
-        <div class="toolbar-center">
+            <button
+              class="sidebar-tab active"
+              data-sidebar-tab="list"
+              type="button"
+              aria-current="page"
+              data-i18n="sessionList"
+            >
+              会话列表
+            </button>
+            <button
+              class="sidebar-tab"
+              data-sidebar-tab="stats"
+              type="button"
+              data-i18n="statsOverview"
+            >
+              统计概览
+            </button>
+            <button
+              class="sidebar-tab"
+              data-sidebar-tab="tools"
+              type="button"
+              data-i18n="tools"
+            >
+              工具
+            </button>
+          </nav>
           <button
             id="rail-toggle"
             class="ghost-button rail-toggle"
             type="button"
             aria-controls="source-rail"
             aria-expanded="true"
+            aria-label="收起来源栏"
+            title="收起来源栏"
           >
             <svg
               aria-hidden="true"
@@ -111,8 +113,9 @@
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="M9 4v16M6 8h.01M6 12h.01M6 16h.01" />
             </svg>
-            <span data-i18n="sourceRailShort">来源</span>
           </button>
+        </div>
+        <div class="toolbar-center">
           <div class="search-box">
             <input
               id="search-input"
@@ -443,16 +446,17 @@
           data-i18n-attr="aria-label"
         >
           <div class="session-list-shell">
+            <div
+              id="active-filter-bar"
+              class="active-filter-bar"
+              aria-live="polite"
+            ></div>
             <div id="bulk-toolbar" class="bulk-toolbar hidden">
-              <button
-                id="select-visible-btn"
-                class="ghost-button"
-                type="button"
-                data-i18n="selectLoadedSessions"
-              >
-                选择当前页
-              </button>
-              <span id="bulk-selection-count" data-i18n="noSessionsSelected"
+              <span
+                id="bulk-selection-count"
+                class="bulk-selection-count"
+                aria-live="polite"
+                data-i18n="noSessionsSelected"
                 >未选择会话</span
               >
               <div id="bulk-actions" class="bulk-actions hidden">
@@ -465,35 +469,48 @@
                   <option value="json">JSON</option>
                   <option value="markdown">Markdown</option>
                 </select>
-                <label class="bulk-redact-option">
+                <label
+                  class="bulk-redact-option"
+                  title="隐藏本地路径和会话标识"
+                  data-i18n-title="redactExportHint"
+                >
                   <input id="bulk-redact-toggle" type="checkbox" />
-                  <span data-i18n="redactExport">脱敏</span>
+                  <span data-i18n="redact">脱敏</span>
                 </label>
                 <button
                   id="bulk-export-btn"
-                  class="ghost-button"
+                  class="ghost-button bulk-export-button"
                   type="button"
-                  data-i18n="exportSelected"
+                  title="导出所选"
+                  data-i18n="export"
+                  data-i18n-title="exportSelected"
                 >
-                  导出所选
+                  导出
                 </button>
                 <button
                   id="clear-selection-btn"
                   class="ghost-button"
                   type="button"
-                  data-i18n="clearSelection"
+                  title="取消选择"
+                  data-i18n="cancel"
+                  data-i18n-title="clearSelection"
                 >
-                  取消选择
+                  取消
                 </button>
               </div>
             </div>
-            <div
-              id="active-filter-bar"
-              class="active-filter-bar"
-              aria-live="polite"
-            ></div>
             <div class="session-list-header">
-              <span data-i18n="sortDesc">按时间倒序</span>
+              <div class="session-list-header__primary">
+                <button
+                  id="select-visible-btn"
+                  class="ghost-button session-select-visible"
+                  type="button"
+                  data-i18n="selectLoadedSessions"
+                >
+                  选择当前页
+                </button>
+                <span data-i18n="sortDesc">按时间倒序</span>
+              </div>
               <span class="session-list-hint" data-i18n="listHint"
                 >选择一条会话查看详情</span
               >

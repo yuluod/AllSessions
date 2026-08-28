@@ -302,10 +302,7 @@ async function saveCurrentFilter() {
 
 function updateBulkToolbar() {
   const count = state.selectedSessionKeys.size;
-  elements.bulkToolbar?.classList.toggle(
-    "hidden",
-    state.sessions.length === 0 && count === 0
-  );
+  elements.bulkToolbar?.classList.toggle("hidden", count === 0);
   if (elements.selectVisibleBtn) {
     elements.selectVisibleBtn.disabled = state.sessions.length === 0;
   }

@@ -248,6 +248,21 @@ test("统计与工具视图使用全宽工作区且手机端提供返回入口",
   );
 });
 
+test("超宽桌面使用完整窗口宽度并保留正文阅读宽度", async () => {
+  const foundation = await readProjectFile("public/styles/foundation.css");
+  const responsive = await readProjectFile("public/styles/responsive.css");
+
+  assert.match(
+    foundation,
+    /\.page-shell\s*\{[\s\S]*width: 100%;[\s\S]*margin: 0;/
+  );
+  assert.doesNotMatch(foundation, /width: min\(2240px, 100%\)/);
+  assert.match(
+    responsive,
+    /@media \(min-width: 1600px\)[\s\S]*\.detail-body\s*\{[\s\S]*max-width: 1200px/
+  );
+});
+
 test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分布", async () => {
   const source = await readProjectFile("public/stats-view.js");
   const html = await readProjectFile("public/index.html");

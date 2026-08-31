@@ -427,7 +427,12 @@
 }
 
 .app-layout[data-view="tools"] {
-  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-layout[data-view="tools"] .sidebar-left,
+body[data-view="tools"] .rail-toggle {
+  display: none;
 }
 
 .app-layout.rail-collapsed {
@@ -1168,36 +1173,6 @@
 .session-hidden-reason {
   color: var(--info);
   background: var(--info-soft);
-}
-
-.session-archive-btn {
-  position: absolute;
-  top: 29px;
-  right: 8px;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 2px 6px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  color: var(--muted);
-  background: var(--surface);
-  cursor: pointer;
-  font-size: 0.66rem;
-  opacity: 0;
-  transition:
-    opacity 140ms var(--ease-out),
-    color 140ms var(--ease-out),
-    border-color 140ms var(--ease-out);
-}
-
-.session-row:hover .session-archive-btn,
-.session-row:focus-within .session-archive-btn {
-  opacity: 1;
-}
-
-.session-archive-btn:hover {
-  border-color: var(--line-accent);
-  color: var(--accent-strong);
 }
 
 .load-more-btn {
@@ -2445,7 +2420,7 @@
   display: grid;
   align-items: center;
   min-height: 27px;
-  padding: 4px 10px 4px 36px;
+  padding: 4px 10px 4px 40px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   color: var(--muted);
@@ -2485,7 +2460,7 @@
   align-items: center;
   gap: 0;
   min-height: calc(66px * var(--density));
-  padding: 7px 44px 7px 40px;
+  padding: 7px 10px 7px 40px;
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -2650,22 +2625,6 @@
 
   .session-list-hint {
     display: none;
-  }
-}
-
-.session-archive-btn {
-  top: 50%;
-  right: 4px;
-  width: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  transform: translateY(-50%);
-  background: var(--surface-raised);
-}
-
-@media (hover: none) {
-  .session-archive-btn {
-    opacity: 1;
   }
 }
 

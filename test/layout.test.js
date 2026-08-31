@@ -69,6 +69,14 @@ test("页面在首屏渲染前恢复主题，并提供设置与顶栏切换入�
   assert.match(html, /id="settings-theme-standard"/);
   assert.match(html, /id="settings-theme-hdweb"/);
   assert.match(html, /id="settings-theme-blind"/);
+  assert.match(
+    html,
+    /themeGreenbar">经典报表<[\s\S]*themeTui">开发者终端<[\s\S]*themeStandard">现代蓝白<[\s\S]*themeHdweb">高对比红白<[\s\S]*themeBlind">工业警示</
+  );
+  assert.match(
+    i18n,
+    /themeGreenbar: "经典报表"[\s\S]*themeTui: "开发者终端"[\s\S]*themeStandard: "现代蓝白"[\s\S]*themeHdweb: "高对比红白"[\s\S]*themeBlind: "工业警示"/
+  );
   assert.match(html, /name="settings-scheme"[\s\S]*value="system"/);
 
   for (const theme of ["greenbar", "tui", "standard", "hdweb", "blind"]) {
@@ -149,6 +157,15 @@ test("工作区切换使用普通导航语义并支持键盘切换", async () =>
   assert.match(source, /input, textarea, select, \[contenteditable='true'\]/);
 });
 
+test("进入统计视图时默认展开项目和筛选条件", async () => {
+  const source = await readProjectFile("public/app.js");
+
+  assert.match(
+    source,
+    /if \(panel === "stats"\) \{[\s\S]*elements\.projectNav\.open = true;[\s\S]*elements\.sidebarFilters\.open = true;/
+  );
+});
+
 test("首次数据读取失败会显示可重试状态，静态交互在读取前完成绑定", async () => {
   const source = await readProjectFile("public/app.js");
   const html = await readProjectFile("public/index.html");
@@ -219,7 +236,7 @@ test("属性型 i18n 不会覆盖带子节点的控件内容", async () => {
   assert.match(source, /el\.setAttribute\(attr, t\(key\)\)/);
 });
 
-test("统计与工具视图使用全宽工作区且手机端提供返回入口", async () => {
+test("统计保留筛选栏、工具隐藏会话栏且手机端提供返回入口", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
   const css = await readProjectFile("public/styles.css");
@@ -231,7 +248,11 @@ test("统计与工具视图使用全宽工作区且手机端提供返回入口",
   );
   assert.match(
     css,
-    /\.app-layout\[data-view="tools"\]\s*\{[\s\S]*grid-template-columns: var\(--rail-w\) minmax\(0, 1fr\)/
+    /\.app-layout\[data-view="tools"\]\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/
+  );
+  assert.match(
+    css,
+    /\.app-layout\[data-view="tools"\] \.sidebar-left,[\s\S]*body\[data-view="tools"\] \.rail-toggle\s*\{\s*display: none;/
   );
   assert.match(
     css,
@@ -333,14 +354,21 @@ test("会话列表项使用严格对齐的五列信息层级", async () => {
   assert.match(html, /class="session-cwd session-cwd-main"/);
   assert.match(html, /class="session-cwd-path"/);
   assert.match(html, /class="session-row"[\s\S]*class="session-item"/);
-  assert.match(source, /row\.append\(archiveBtn\)/);
-  assert.doesNotMatch(source, /button\.append\(archiveBtn\)/);
+  assert.doesNotMatch(
+    source,
+    /createElement\("button"\)[\s\S]{0,160}session-archive-btn/
+  );
   assert.match(source, /messageCountEl\.textContent = String\(messageCount\)/);
   assert.match(css, /\.session-list\s*\{[\s\S]*overflow-x: hidden/);
   assert.match(
     css,
     /\.session-list-columns,\s*\.session-item\s*\{[\s\S]*grid-template-columns: 78px 68px minmax\(0, 1fr\) 34px minmax\(72px, 128px\)/
   );
+  assert.match(
+    css,
+    /\.session-list-columns\s*\{[\s\S]*padding: 4px 10px 4px 40px;/
+  );
+  assert.match(css, /\.session-item\s*\{[\s\S]*padding: 7px 10px 7px 40px;/);
   assert.match(css, /background: var\(--stripe-a\)/);
   assert.match(css, /background: var\(--stripe-b\)/);
 });
@@ -672,6 +700,31 @@ test("本地归档不会被初始自动选中，空页仍可继续加载", async
   );
 });
 
+test("归档会话需要二次确认，取消归档保持直接恢复", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const i18n = await readProjectFile("public/i18n.js");
+
+  assert.match(
+    html,
+    /id="archive-confirm-dialog"[\s\S]*id="archive-dialog-cancel"[\s\S]*id="archive-dialog-confirm"/
+  );
+  assert.match(html, /data-i18n="archiveConfirmDesc"/);
+  assert.match(
+    html,
+    /id="export-md-btn"[\s\S]*id="session-archive-btn"[\s\S]*id="session-delete-btn"/
+  );
+  assert.match(i18n, /archiveConfirmAction: "确认归档"/);
+  assert.match(
+    source,
+    /sessionArchiveBtn\?\.addEventListener[\s\S]*sessionWorkspace\(key\)\.archived !== true[\s\S]*openArchiveConfirmDialog\(key\)[\s\S]*updateSessionWorkspace\(key, \{ archived: false \}\)/
+  );
+  assert.match(
+    source,
+    /async function confirmSessionArchive\(\)[\s\S]*updateSessionWorkspace\(sessionKey, \{ archived: true \}\)/
+  );
+});
+
 test("筛选入口归入左栏且顶部保留全局导航与搜索", async () => {
   const html = await readProjectFile("public/index.html");
 
@@ -805,6 +858,19 @@ test("Codex 归档会话开关会进入 URL 并触发重新加载", async () => 
   );
 });
 
+test("归档查看入口明确跳转会话页并仅显示 Codex 归档来源", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const dict = await readProjectFile("public/i18n.js");
+
+  assert.match(html, /data-i18n="viewCodexArchived"[\s\S]*在会话页查看归档/);
+  assert.match(dict, /viewCodexArchived: "在会话页查看归档"/);
+  assert.match(
+    source,
+    /openCodexArchiveBtn[\s\S]*state\.showCodexArchived = true;[\s\S]*state\.filters\.source_kind = "codex_archived";[\s\S]*sidebarFilters\.open = true;[\s\S]*activateWorkspaceView\("list"\)/
+  );
+});
+
 test("隐藏会话开关会进入 URL 并触发重新加载", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
@@ -894,7 +960,7 @@ test("设置对话框使用四个顶部分类并只在来源页显示保存操�
   assert.match(settingsCss, /\.settings-diagnostics-footer/);
   assert.match(
     settingsCss,
-    /\.settings-dialog\s*\{[\s\S]*height: min\(560px, calc\(100dvh - 32px\)\)/
+    /\.settings-dialog\s*\{[\s\S]*width: min\(840px, calc\(100vw - 32px\)\);[\s\S]*height: min\(720px, 80dvh\)/
   );
   assert.match(
     settingsCss,
@@ -1131,6 +1197,33 @@ test("设置将默认路径与新增目录分开，并通过显式操作停用�
   ]) {
     assert.match(i18n, new RegExp(`${key}:`));
   }
+});
+
+test("新增来源路径同时支持手动输入和系统选择器", async () => {
+  const source = await readProjectFile("public/settings-view.js");
+  const i18n = await readProjectFile("public/i18n.js");
+  const css = await readProjectFile("public/styles/settings.css");
+  const capability = await readProjectFile(
+    "src-tauri/capabilities/default.json"
+  );
+
+  assert.match(source, /open as openPathDialog/);
+  assert.match(
+    source,
+    /openPathDialog\(\{[\s\S]*directory: !database,[\s\S]*multiple: false/
+  );
+  assert.match(source, /extensions: \["db", "sqlite", "sqlite3"\]/);
+  assert.match(
+    source,
+    /settings-root-pick[\s\S]*chooseSourcePath\(key, input\.value\)[\s\S]*draft\[key\]\[index\] = selected/
+  );
+  assert.match(i18n, /settingsChooseRoot: "选择目录"/);
+  assert.match(i18n, /settingsChooseDatabase: "选择数据库"/);
+  assert.match(
+    css,
+    /\.settings-root-row\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto auto/
+  );
+  assert.match(capability, /"dialog:allow-open"/);
 });
 
 test("会话和消息同时支持可恢复移除与二次确认的永久删除", async () => {

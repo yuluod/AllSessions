@@ -99,6 +99,7 @@ const state = {
 };
 
 let pendingDeletion = null;
+let pendingArchive = null;
 
 function readLegacyArchivedIds() {
   try {
@@ -508,6 +509,7 @@ const elements = {
   exportMdBtn: document.querySelector("#export-md-btn"),
   exportJsonBtn: document.querySelector("#export-json-btn"),
   exportRedactToggle: document.querySelector("#export-redact-toggle"),
+  sessionArchiveBtn: document.querySelector("#session-archive-btn"),
   sessionFavoriteBtn: document.querySelector("#session-favorite-btn"),
   sessionOrganizeMenu: document.querySelector("#session-organize-menu"),
   sessionTagsInput: document.querySelector("#session-tags-input"),
@@ -566,6 +568,11 @@ const elements = {
   settingsSaveBtn: document.querySelector("#settings-save-btn"),
   settingsStatus: document.querySelector("#settings-status"),
   sessionDeleteBtn: document.querySelector("#session-delete-btn"),
+  archiveDialog: document.querySelector("#archive-confirm-dialog"),
+  archiveDialogClose: document.querySelector("#archive-dialog-close"),
+  archiveDialogCancel: document.querySelector("#archive-dialog-cancel"),
+  archiveDialogConfirm: document.querySelector("#archive-dialog-confirm"),
+  archiveDialogStatus: document.querySelector("#archive-dialog-status"),
   deleteDialog: document.querySelector("#delete-dialog"),
   deleteDialogTitle: document.querySelector("#delete-dialog-title"),
   deleteDialogDescription: document.querySelector("#delete-dialog-description"),
@@ -952,6 +959,7 @@ function rerenderLocalizedContent() {
     elements.detailTitle.title = fullCwd;
     renderDetailTags(state.currentDetail.summary);
     syncSessionWorkspaceControls(state.currentDetail.summary);
+    syncSessionArchiveButton();
     syncSessionDeleteButton();
     renderPropsPanel(
       state.currentDetail.summary,
@@ -1347,29 +1355,6 @@ function appendSessionItems(sessions) {
       button.querySelector(".session-tertiary").append(removedBadge);
     }
 
-    const archiveBtn = document.createElement("button");
-    archiveBtn.type = "button";
-    archiveBtn.className = "session-archive-btn";
-    const archiveLabel = archived ? t("unarchive") : t("archive");
-    archiveBtn.title = archiveLabel;
-    archiveBtn.setAttribute("aria-label", archiveLabel);
-    archiveBtn.textContent = archived ? "↩" : "⊗";
-    archiveBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      archiveBtn.disabled = true;
-      try {
-        const next = !archived;
-        await updateSessionWorkspace(session._key, { archived: next });
-        await Promise.all([loadSessions(), loadStats(), loadFacets()]);
-        announce(t(next ? "sessionArchived" : "sessionUnarchived"));
-      } catch (error) {
-        showError(`${t("workspaceSaveFailed")}: ${error.message}`);
-      } finally {
-        archiveBtn.disabled = false;
-      }
-    });
-    row.append(archiveBtn);
-
     button.addEventListener("click", () => {
       selectSession(session._key, button);
     });
@@ -1561,9 +1546,52 @@ function syncSessionDeleteButton() {
   );
 }
 
+function syncSessionArchiveButton() {
+  if (!elements.sessionArchiveBtn) return;
+  const key = state.currentDetail?.summary?._key;
+  const archived = key && sessionWorkspace(key).archived === true;
+  elements.sessionArchiveBtn.textContent = t(archived ? "unarchive" : "archive");
+}
+
 function announce(message) {
   const ariaLive = document.querySelector("#aria-live");
   if (ariaLive) ariaLive.textContent = message;
+}
+
+function closeArchiveConfirmDialog() {
+  if (elements.archiveDialogConfirm?.disabled) return;
+  elements.archiveDialog?.close();
+  pendingArchive = null;
+}
+
+function openArchiveConfirmDialog(sessionKey) {
+  if (!sessionKey || !elements.archiveDialog) return;
+  pendingArchive = sessionKey;
+  elements.archiveDialogStatus.textContent = "";
+  elements.archiveDialog.showModal();
+  elements.archiveDialogConfirm?.focus();
+}
+
+async function confirmSessionArchive() {
+  if (!pendingArchive) return;
+  const sessionKey = pendingArchive;
+  elements.archiveDialogConfirm.disabled = true;
+  elements.archiveDialogClose.disabled = true;
+  elements.archiveDialogCancel.disabled = true;
+  try {
+    await updateSessionWorkspace(sessionKey, { archived: true });
+    syncSessionArchiveButton();
+    pendingArchive = null;
+    elements.archiveDialog.close();
+    await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+    announce(t("sessionArchived"));
+  } catch (error) {
+    elements.archiveDialogStatus.textContent = `${t("workspaceSaveFailed")}: ${error.message}`;
+  } finally {
+    elements.archiveDialogConfirm.disabled = false;
+    elements.archiveDialogClose.disabled = false;
+    elements.archiveDialogCancel.disabled = false;
+  }
 }
 
 function closeDeleteDialog() {
@@ -1928,6 +1956,7 @@ async function loadSessionDetail(id, { silent = false } = {}) {
     elements.detailTitle.title = fullCwd;
     renderDetailTags(detail.summary);
     syncSessionWorkspaceControls(detail.summary);
+    syncSessionArchiveButton();
     syncSessionDeleteButton();
     renderPropsPanel(detail.summary, detail.conversation_messages);
     conversationView.renderConversation(detail.conversation_messages);
@@ -2294,6 +2323,10 @@ async function activateWorkspaceView(panel) {
   document.body.dataset.view = panel;
   if (elements.appLayout) elements.appLayout.dataset.view = panel;
   if (elements.sidebarLeft) elements.sidebarLeft.dataset.activePanel = panel;
+  if (panel === "stats") {
+    if (elements.projectNav) elements.projectNav.open = true;
+    if (elements.sidebarFilters) elements.sidebarFilters.open = true;
+  }
 
   document.querySelectorAll(".sidebar-tab").forEach((tab) => {
     const active = tab.dataset.sidebarTab === panel;
@@ -2543,8 +2576,11 @@ async function initialize() {
 
   elements.openCodexArchiveBtn?.addEventListener("click", async () => {
     state.showCodexArchived = true;
+    state.filters.source_kind = "codex_archived";
     if (elements.showCodexArchivedToggle)
       elements.showCodexArchivedToggle.checked = true;
+    if (elements.sidebarFilters) elements.sidebarFilters.open = true;
+    syncFilterControls();
     syncUrl();
     await activateWorkspaceView("list");
     await Promise.all([loadSessions(), loadStats()]);
@@ -2558,6 +2594,44 @@ async function initialize() {
   elements.sessionDeleteBtn?.addEventListener("click", () =>
     openDeleteDialog({ kind: "session" })
   );
+  elements.sessionArchiveBtn?.addEventListener("click", async () => {
+    const key = state.currentDetail?.summary?._key;
+    if (!key) return;
+    if (sessionWorkspace(key).archived !== true) {
+      openArchiveConfirmDialog(key);
+      return;
+    }
+    elements.sessionArchiveBtn.disabled = true;
+    try {
+      await updateSessionWorkspace(key, { archived: false });
+      syncSessionArchiveButton();
+      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+      announce(t("sessionUnarchived"));
+    } catch (error) {
+      showError(`${t("workspaceSaveFailed")}: ${error.message}`);
+    } finally {
+      elements.sessionArchiveBtn.disabled = false;
+    }
+  });
+  elements.archiveDialogClose?.addEventListener(
+    "click",
+    closeArchiveConfirmDialog
+  );
+  elements.archiveDialogCancel?.addEventListener(
+    "click",
+    closeArchiveConfirmDialog
+  );
+  elements.archiveDialogConfirm?.addEventListener(
+    "click",
+    confirmSessionArchive
+  );
+  elements.archiveDialog?.addEventListener("click", (event) => {
+    if (event.target === elements.archiveDialog) closeArchiveConfirmDialog();
+  });
+  elements.archiveDialog?.addEventListener("cancel", (event) => {
+    if (elements.archiveDialogConfirm?.disabled) event.preventDefault();
+    else pendingArchive = null;
+  });
   elements.deleteDialogClose?.addEventListener("click", closeDeleteDialog);
   elements.deleteSoftBtn?.addEventListener("click", applySoftDeletion);
   elements.deletePermanentBtn?.addEventListener(

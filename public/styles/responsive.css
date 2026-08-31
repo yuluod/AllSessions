@@ -31,9 +31,12 @@
     grid-template-columns: var(--list-w) minmax(0, 1fr);
   }
 
-  .app-layout[data-view="stats"],
-  .app-layout[data-view="tools"] {
+  .app-layout[data-view="stats"] {
     grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  }
+
+  .app-layout[data-view="tools"] {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .app-layout.rail-collapsed[data-view="stats"],
@@ -230,7 +233,7 @@
     margin-top: 7px;
   }
 
-  .app-layout.rail-collapsed .sidebar-left {
+  .app-layout.rail-collapsed:not([data-view="tools"]) .sidebar-left {
     display: flex;
   }
 

@@ -248,7 +248,7 @@ test("统计与工具视图使用全宽工作区且手机端提供返回入口",
   );
 });
 
-test("统计页展示真实事件总数、近期趋势和 Agent 分布", async () => {
+test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分布", async () => {
   const source = await readProjectFile("public/stats-view.js");
   const html = await readProjectFile("public/index.html");
   const i18n = await readProjectFile("public/i18n.js");
@@ -262,17 +262,24 @@ test("统计页展示真实事件总数、近期趋势和 Agent 分布", async (
   assert.match(source, /codex:[\s\S]*label: "Codex"/);
   assert.doesNotMatch(source, /stats\.by_source_kind/);
   assert.match(html, /id="agent-chart-body"/);
+  assert.match(html, /class="stats-header"/);
+  assert.match(html, /class="stats-surface"/);
+  assert.match(html, /data-i18n="statsDashboardSummary"/);
   assert.match(html, /data-i18n="statsAgentDist"/);
   assert.match(i18n, /statsAgentDist: "按 Agent 分布"/);
   assert.match(i18n, /statsMessages: "消息总数"/);
   assert.match(i18n, /statsTools: "工具调用数"/);
+  assert.match(i18n, /statsDashboardTitle: "统计概览"/);
   assert.doesNotMatch(source, /document\.querySelector/);
+  assert.match(source, /donutCenter\.className = "donut-center"/);
+  assert.match(source, /stats-section--\$\{kind\}/);
   const css = await readProjectFile("public/styles/analytics.css");
   assert.match(css, /\.stats-empty\s*\{/);
   assert.match(
     css,
-    /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/
+    /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/
   );
+  assert.match(css, /\.stats-section--daily \.stats-section__body/);
 });
 
 test("页面复用项目图标作为 favicon 与工具栏标识", async () => {
@@ -515,10 +522,7 @@ test("常用窗口下可收起来源栏并让窄会话表自动降噪", async ()
     /id="rail-toggle"[\s\S]*aria-label="收起来源栏"[\s\S]*title="收起来源栏"[\s\S]*<svg/
   );
   assert.doesNotMatch(html, /data-i18n="sourceRailShort"/);
-  assert.match(
-    html,
-    /<div class="toolbar-center">\s*<div class="search-box">/
-  );
+  assert.match(html, /<div class="toolbar-center">\s*<div class="search-box">/);
   assert.match(html, /id="source-rail"[\s\S]*class="rail sidebar-left"/);
   assert.match(source, /const COMPACT_WORKSPACE_QUERY =/);
   assert.match(source, /function setSourceRailCollapsed\(collapsed/);
@@ -564,7 +568,10 @@ test("常用窗口下可收起来源栏并让窄会话表自动降噪", async ()
     /@container session-pane \(max-width: 500px\)[\s\S]*\.session-list-columns,[\s\S]*\.session-directory-cell\s*\{\s*display: none/
   );
   assert.match(css, /\.session-title-cell\s*\{\s*display: contents/);
-  assert.match(css, /\.session-title\s*\{[\s\S]*grid-column: 1 \/ -1;[\s\S]*-webkit-line-clamp: 2/);
+  assert.match(
+    css,
+    /\.session-title\s*\{[\s\S]*grid-column: 1 \/ -1;[\s\S]*-webkit-line-clamp: 2/
+  );
   assert.match(
     css,
     /\.detail-topbar\s*\{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\)/

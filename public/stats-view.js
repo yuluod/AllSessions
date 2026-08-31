@@ -85,6 +85,14 @@ function renderTrend(stats, container) {
     return;
   }
   const max = Math.max(...dates.map((item) => item.count), 1);
+  const plot = document.createElement("div");
+  plot.className = "trend-plot";
+  const guides = document.createElement("div");
+  guides.className = "trend-guides";
+  guides.setAttribute("aria-hidden", "true");
+  for (let index = 0; index < 4; index += 1) {
+    guides.append(document.createElement("span"));
+  }
   const wrap = document.createElement("div");
   wrap.className = "trend-bars";
   dates.forEach(({ label, count }) => {
@@ -106,7 +114,8 @@ function renderTrend(stats, container) {
     column.append(value, barWrap, date);
     wrap.append(column);
   });
-  container.append(wrap);
+  plot.append(guides, wrap);
+  container.append(plot);
 }
 
 function renderAgents(stats, container) {
@@ -133,12 +142,24 @@ function renderAgents(stats, container) {
   });
   const wrap = document.createElement("div");
   wrap.className = "donut-wrap";
+  const visual = document.createElement("div");
+  visual.className = "donut-visual";
+  visual.setAttribute("role", "img");
+  visual.setAttribute("aria-label", `${t("statsAgentDist")}: ${total}`);
   const donut = document.createElement("div");
   donut.className = "donut-chart";
   donut.setAttribute("aria-hidden", "true");
   donut.style.background = `conic-gradient(${stops.join(", ")})`;
   donut.style.mask = "radial-gradient(transparent 55%, black 56%)";
   donut.style.webkitMask = "radial-gradient(transparent 55%, black 56%)";
+  const donutCenter = document.createElement("div");
+  donutCenter.className = "donut-center";
+  const donutTotal = document.createElement("strong");
+  donutTotal.textContent = String(total);
+  const donutLabel = document.createElement("span");
+  donutLabel.textContent = t("statsTotalSessions");
+  donutCenter.append(donutTotal, donutLabel);
+  visual.append(donut, donutCenter);
   const legend = document.createElement("div");
   legend.className = "donut-legend";
   items.forEach((item, index) => {
@@ -159,33 +180,44 @@ function renderAgents(stats, container) {
     row.append(dot, name, count, percent);
     legend.append(row);
   });
-  wrap.append(donut, legend);
+  wrap.append(visual, legend);
   container.append(wrap);
 }
 
 function renderRankings(stats, container) {
   container.replaceChildren();
   const sections = [
-    { title: t("statsRecentDaily"), items: (stats.by_date || []).slice(-14) },
-    { title: t("statsCommonProvider"), items: stats.by_provider || [] },
+    {
+      title: t("statsRecentDaily"),
+      items: (stats.by_date || []).slice(-14),
+      kind: "daily",
+    },
+    {
+      title: t("statsCommonProvider"),
+      items: stats.by_provider || [],
+      kind: "provider",
+    },
     {
       title: t("statsCommonCwd"),
       items: (stats.by_cwd || []).slice(0, 8),
       isPath: true,
+      kind: "cwd",
     },
   ];
-  sections.forEach(({ title, items, isPath }) => {
+  sections.forEach(({ title, items, isPath, kind }) => {
     if (!items.length) return;
     const section = document.createElement("div");
-    section.className = "stats-section";
+    section.className = `stats-section stats-section--${kind}`;
     const heading = document.createElement("h3");
     heading.textContent = title;
-    section.append(heading);
+    const body = document.createElement("div");
+    body.className = "stats-section__body";
     const max = Math.max(...items.map((item) => item.count), 1);
     items.forEach(({ label, count }) => {
       const displayLabel = isPath ? label.split(/[\\/]/).pop() || label : label;
-      section.append(renderBar(label, count, max, displayLabel));
+      body.append(renderBar(label, count, max, displayLabel));
     });
+    section.append(heading, body);
     container.append(section);
   });
 }

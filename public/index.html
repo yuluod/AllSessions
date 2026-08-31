@@ -837,18 +837,31 @@
             id="stats-dashboard"
             data-view-panel="stats"
           >
-            <div class="stats-metrics" id="stats-metrics"></div>
-            <div class="stats-charts" id="stats-charts">
-              <div class="chart-card">
-                <h3 data-i18n="statsTrend">会话趋势</h3>
-                <div class="chart-body" id="trend-chart-body"></div>
+            <header class="stats-header">
+              <div>
+                <h2 data-i18n="statsDashboardTitle">统计概览</h2>
+                <p data-i18n="statsDashboardSummary">
+                  快速了解会话规模、活跃趋势与使用分布。
+                </p>
               </div>
-              <div class="chart-card">
-                <h3 data-i18n="statsAgentDist">按 Agent 分布</h3>
-                <div class="chart-body" id="agent-chart-body"></div>
+              <span class="stats-range" data-i18n="statsDashboardRange"
+                >全部时间 · 最近 14 个活跃日</span
+              >
+            </header>
+            <div class="stats-surface">
+              <div class="stats-metrics" id="stats-metrics"></div>
+              <div class="stats-charts" id="stats-charts">
+                <div class="chart-card">
+                  <h3 data-i18n="statsTrend">会话趋势</h3>
+                  <div class="chart-body" id="trend-chart-body"></div>
+                </div>
+                <div class="chart-card">
+                  <h3 data-i18n="statsAgentDist">按 Agent 分布</h3>
+                  <div class="chart-body" id="agent-chart-body"></div>
+                </div>
               </div>
+              <div class="stats-grid" id="stats-grid"></div>
             </div>
-            <div class="stats-grid" id="stats-grid"></div>
           </div>
 
           <div

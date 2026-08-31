@@ -12,8 +12,8 @@ html.settings-modal-open body {
 }
 
 .settings-dialog {
-  width: min(680px, calc(100vw - 32px));
-  height: min(560px, calc(100dvh - 32px));
+  width: min(840px, calc(100vw - 32px));
+  height: min(720px, 80dvh);
   max-height: calc(100dvh - 32px);
   padding: 0;
   border: 1px solid var(--line);
@@ -527,7 +527,7 @@ html.settings-modal-open body {
 
 .settings-root-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 6px;
 }
 
@@ -574,6 +574,7 @@ html.settings-modal-open body {
   background: var(--surface-muted);
 }
 
+.settings-root-pick,
 .settings-root-remove {
   min-height: 32px;
   padding: 4px 9px;

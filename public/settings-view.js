@@ -1,6 +1,7 @@
 import { t, getLang, setLang } from "./i18n.js";
 import { DESKTOP_RUNTIME_REQUIRED, fetchJson } from "./api-client.js";
 import { getThemeState, setScheme, setTheme } from "./theme-manager.js";
+import { open as openPathDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 const SOURCE_KINDS = [
@@ -108,6 +109,36 @@ export function createSettingsController({
 
   function sourceErrorText(key, error) {
     return key === "opencode" ? t("settingsOpenCodeReadFailed") : error;
+  }
+
+  async function chooseSourcePath(key, currentPath) {
+    if (!window.__TAURI__?.core?.invoke) {
+      setStatus(t("settingsDesktopPreview"));
+      return null;
+    }
+    const database = key === "opencode";
+    try {
+      return await openPathDialog({
+        title: sourceText(key, "settingsChooseRoot", "settingsChooseDatabase"),
+        defaultPath: currentPath || undefined,
+        directory: !database,
+        multiple: false,
+        ...(database
+          ? {
+              filters: [
+                {
+                  name: "SQLite",
+                  extensions: ["db", "sqlite", "sqlite3"],
+                },
+              ],
+            }
+          : {}),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`${t("settingsChoosePathFailed")}: ${message}`, true);
+      return null;
+    }
   }
 
   function appendSourceHealth(block, key, diagnostic) {
@@ -276,6 +307,21 @@ export function createSettingsController({
                 draft[key][index] = input.value;
               });
               row.append(input);
+              const choose = document.createElement("button");
+              choose.className = "ghost-button settings-root-pick";
+              choose.type = "button";
+              choose.textContent = sourceText(
+                key,
+                "settingsChooseRoot",
+                "settingsChooseDatabase"
+              );
+              choose.addEventListener("click", async () => {
+                const selected = await chooseSourcePath(key, input.value);
+                if (!selected) return;
+                draft[key][index] = selected;
+                input.value = selected;
+              });
+              row.append(choose);
               if (protectedRoots.size > 0 || customRoots.length > 1) {
                 const remove = document.createElement("button");
                 remove.className = "ghost-button settings-root-remove";

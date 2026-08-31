@@ -1,6 +1,6 @@
 {
   "name": "allsessions",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "description": "A local-first Tauri desktop app for browsing Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, and OpenCode session history.",
   "type": "module",
   "license": "Apache-2.0",

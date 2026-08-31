@@ -1381,6 +1381,7 @@
 }
 
 .detail-topbar-right {
+  position: relative;
   width: 100%;
   min-width: 0;
   justify-content: flex-start;
@@ -1402,8 +1403,15 @@
 
 .export-menu,
 .session-organize-menu {
-  position: relative;
   flex: 0 0 auto;
+}
+
+.export-menu {
+  position: relative;
+}
+
+.session-organize-menu {
+  position: static;
 }
 
 .export-menu > summary,
@@ -1437,10 +1445,11 @@
 .session-organize-body {
   position: absolute;
   top: calc(100% + 6px);
-  right: 0;
+  left: 0;
+  right: auto;
   z-index: 13;
   display: grid;
-  width: min(360px, calc(100vw - 32px));
+  width: min(360px, 100%);
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--line);

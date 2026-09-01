@@ -167,6 +167,11 @@ test("原生更新确认使用中文文案且托盘图标符合状态栏规范",
     /MessageDialogButtons::OkCancelCustom\([\s\S]*"立即下载并安装"[\s\S]*"暂不"/
   );
   assert.doesNotMatch(updater, /MessageDialogButtons::YesNo/);
+  assert.match(
+    updater,
+    /fn update_confirmation_message[\s\S]*更新内容[\s\S]*完整更新日志请前往 GitHub Releases 查看/
+  );
+  assert.match(updater, /update\.body\.as_deref\(\)/);
   assert.match(rustSource, /fn transparent_tray_icon\(\)/);
   assert.match(rustSource, /\.icon\(transparent_tray_icon\(\)\?\)/);
   assert.match(rustSource, /\.icon_as_template\(true\)/);

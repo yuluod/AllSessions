@@ -53,6 +53,57 @@ fn update_error_message(error: &str) -> String {
     format!("检查或安装更新失败：{error}")
 }
 
+const MAX_NOTES_CHARS: usize = 600;
+
+fn plain_text_notes(notes: &str) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for line in notes.lines() {
+        let trimmed = line.trim();
+        let text = match trimmed.strip_prefix('#') {
+            Some(heading) => format!("【{}】", heading.trim_start_matches('#').trim()),
+            None => trimmed.to_string(),
+        };
+        let text = text.replace("**", "").replace('`', "");
+        if !lines.is_empty() || !text.is_empty() {
+            lines.push(text);
+        }
+    }
+    while lines.last().is_some_and(|line| line.is_empty()) {
+        lines.pop();
+    }
+    lines.join("\n")
+}
+
+fn update_confirmation_message(version: &str, body: Option<&str>) -> String {
+    let mut message = format!("发现新版本 v{version}，是否立即下载并安装？");
+    let notes = body
+        .map(str::trim)
+        .filter(|notes| !notes.is_empty())
+        .map(plain_text_notes)
+        .unwrap_or_default();
+    if notes.is_empty() {
+        return message;
+    }
+
+    message.push_str("\n\n更新内容：");
+    if notes.chars().count() <= MAX_NOTES_CHARS {
+        message.push('\n');
+        message.push_str(&notes);
+        return message;
+    }
+
+    let mut truncated: String = notes.chars().take(MAX_NOTES_CHARS).collect();
+    if let Some(line_break) = truncated.rfind('\n') {
+        if truncated[..line_break].chars().count() >= MAX_NOTES_CHARS / 2 {
+            truncated.truncate(line_break);
+        }
+    }
+    message.push_str(&format!(
+        "\n{truncated}\n\n以上为部分更新内容，完整更新日志请前往 GitHub Releases 查看。"
+    ));
+    message
+}
+
 fn update_confirmation_buttons() -> MessageDialogButtons {
     MessageDialogButtons::OkCancelCustom("立即下载并安装".into(), "暂不".into())
 }
@@ -80,9 +131,9 @@ async fn run_update(app: &tauri::AppHandle, mode: UpdateCheckMode) -> Result<(),
 
     let confirmed = app
         .dialog()
-        .message(format!(
-            "发现新版本 v{}，是否立即下载并安装？",
-            update.version
+        .message(update_confirmation_message(
+            &update.version,
+            update.body.as_deref(),
         ))
         .title("AllSessions 更新")
         .kind(MessageDialogKind::Info)
@@ -104,7 +155,10 @@ async fn run_update(app: &tauri::AppHandle, mode: UpdateCheckMode) -> Result<(),
 mod tests {
     use tauri_plugin_dialog::MessageDialogButtons;
 
-    use super::{update_confirmation_buttons, update_error_message, UpdateCheckMode};
+    use super::{
+        update_confirmation_buttons, update_confirmation_message, update_error_message,
+        UpdateCheckMode,
+    };
 
     #[test]
     fn 更新确认使用中文操作文案() {
@@ -133,6 +187,51 @@ mod tests {
             update_error_message("network unavailable"),
             "检查或安装更新失败：network unavailable"
         );
+    }
+
+    #[test]
+    fn 更新确认附带清理后的更新日志() {
+        let message = update_confirmation_message(
+            "0.1.0",
+            Some("### 新增\n\n- **支持**在更新提示中显示更新日志。\n\n### 修复\n\n- 修复 `滚动条` 布局跳动。"),
+        );
+
+        assert!(message.starts_with("发现新版本 v0.1.0，是否立即下载并安装？"));
+        assert!(message.contains("更新内容："));
+        assert!(message.contains("【新增】"));
+        assert!(message.contains("- 支持在更新提示中显示更新日志。"));
+        assert!(message.contains("【修复】"));
+        assert!(!message.contains("**"));
+        assert!(!message.contains("###"));
+    }
+
+    #[test]
+    fn 缺少更新日志时保持原有确认文案() {
+        let message = update_confirmation_message("0.1.0", None);
+        assert_eq!(message, "发现新版本 v0.1.0，是否立即下载并安装？");
+
+        let empty = update_confirmation_message("0.1.0", Some("  \n"));
+        assert_eq!(empty, "发现新版本 v0.1.0，是否立即下载并安装？");
+    }
+
+    #[test]
+    fn 超长更新日志截断并引导查看完整内容() {
+        let long_notes = (0..80)
+            .map(|index| format!("- 第 {index} 条更新说明，用于验证截断行为。"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let message = update_confirmation_message("0.1.0", Some(&long_notes));
+
+        assert!(message.contains("以上为部分更新内容，完整更新日志请前往 GitHub Releases 查看。"));
+        assert!(message.chars().count() < long_notes.chars().count());
+    }
+
+    #[test]
+    fn 中文更新日志按字符位置判断截断换行() {
+        let notes = format!("{}\n{}", "甲".repeat(100), "乙".repeat(600));
+        let message = update_confirmation_message("0.1.0", Some(&notes));
+
+        assert!(message.contains('乙'));
     }
 
     #[test]

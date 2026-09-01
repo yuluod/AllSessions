@@ -89,6 +89,9 @@ const DICT = {
       "从修复时生成的备份恢复旧 Provider。仅在修复后出现异常时使用。",
     openRollbackTool: "打开回滚工具",
     backToTools: "返回工具",
+    toolsNav: "工具导航",
+    toolsNavTitle: "工具列表",
+    toolsNavHint: "本地只读与维护工具",
     codexRollbackPageDesc:
       "选择一次修复生成的备份目录，将 Provider 字段恢复到修复前状态。",
     rollbackEnableTitle: "1. 开启维护模式",
@@ -555,6 +558,9 @@ const DICT = {
       "Restore old provider data from a repair backup. Use only if a completed repair caused problems.",
     openRollbackTool: "Open rollback tool",
     backToTools: "Back to tools",
+    toolsNav: "Tool navigation",
+    toolsNavTitle: "Tools",
+    toolsNavHint: "Local read-only and maintenance tools",
     codexRollbackPageDesc:
       "Choose a backup created by a repair to restore provider fields to their previous state.",
     rollbackEnableTitle: "1. Enable maintenance mode",

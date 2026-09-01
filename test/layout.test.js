@@ -318,6 +318,35 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   assert.match(css, /\.stats-section--daily \.stats-section__body/);
 });
 
+test("工具视图提供侧边栏导航并可切换各工具面板", async () => {
+  const html = await readProjectFile("public/index.html");
+  const styles = await readProjectFile("public/styles.css");
+  const source = await readProjectFile("public/maintenance-view.js");
+  const i18n = await readProjectFile("public/i18n.js");
+
+  assert.match(html, /class="tools-sidebar"/);
+  assert.match(html, /class="tools-nav"/);
+  assert.match(html, /class="tools-content"/);
+  assert.match(html, /class="tools-panel active"/);
+  assert.match(html, /data-tools-panel="codex-archive-tool-card"/);
+  assert.match(html, /data-tools-panel="codex-rollback-tool-card"/);
+  assert.match(html, /data-tools-panel="codex-migration-card"/);
+  assert.match(html, /data-tools-target="#codex-migration-card"/);
+  assert.match(i18n, /toolsNav: "工具导航"/);
+  assert.match(i18n, /toolsNavTitle: "工具列表"/);
+  assert.match(i18n, /toolsNavHint: "本地只读与维护工具"/);
+  assert.match(
+    styles,
+    /#tools-dashboard \{[\s\S]*?grid-template-columns: max-content minmax\(0, 1fr\)/
+  );
+  assert.match(styles, /\.tools-sidebar \{[\s\S]*?position: sticky/);
+  assert.match(styles, /\.tools-nav-item\.active/);
+  assert.match(styles, /\.tools-panel\.active/);
+  assert.match(source, /toolsNavItems/);
+  assert.match(source, /toolsPanels/);
+  assert.match(source, /showToolsPanel/);
+});
+
 test("页面复用项目图标作为 favicon 与工具栏标识", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");

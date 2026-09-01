@@ -6,6 +6,8 @@ import { formatCount } from "./session-format.js";
 function queryElements(root) {
   return {
     toolsDashboard: root.querySelector("#tools-dashboard"),
+    toolsNavItems: Array.from(root.querySelectorAll(".tools-nav-item")),
+    toolsPanels: Array.from(root.querySelectorAll(".tools-panel")),
     rollbackDashboard: root.querySelector("#codex-rollback-dashboard"),
     openRollbackBtn: root.querySelector("#open-codex-rollback-btn"),
     rollbackBackBtn: root.querySelector("#codex-rollback-back-btn"),
@@ -558,6 +560,30 @@ export function createMaintenanceController({
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
+  function setToolsNavActive(item) {
+    elements.toolsNavItems.forEach((navItem) => {
+      const active = navItem === item;
+      navItem.classList.toggle("active", active);
+      if (active) {
+        navItem.setAttribute("aria-current", "true");
+      } else {
+        navItem.removeAttribute("aria-current");
+      }
+    });
+  }
+
+  function showToolsPanel(item) {
+    const target = item?.dataset.toolsTarget;
+    if (!target) return;
+
+    const panelId = target.replace(/^#/, "");
+    elements.toolsPanels?.forEach((panel) => {
+      panel.classList.toggle("active", panel.dataset.toolsPanel === panelId);
+    });
+    setToolsNavActive(item);
+    elements.toolsDashboard?.scrollTo({ top: 0, behavior: "auto" });
+  }
+
   function bind() {
     if (state.bound) return;
     state.bound = true;
@@ -569,6 +595,9 @@ export function createMaintenanceController({
     );
     elements.openRollbackBtn?.addEventListener("click", openRollbackView);
     elements.rollbackBackBtn?.addEventListener("click", closeRollbackView);
+    elements.toolsNavItems.forEach((item) => {
+      item.addEventListener("click", () => showToolsPanel(item));
+    });
     elements.finishBtn?.addEventListener("click", async () => {
       if (!elements.maintenanceToggle) return;
       elements.maintenanceToggle.checked = false;

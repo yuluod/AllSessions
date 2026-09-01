@@ -69,17 +69,25 @@ test("页面在首屏渲染前恢复主题，并提供设置与顶栏切换入�
   assert.match(html, /id="settings-theme-standard"/);
   assert.match(html, /id="settings-theme-hdweb"/);
   assert.match(html, /id="settings-theme-blind"/);
+  assert.match(html, /id="settings-theme-pixel"/);
   assert.match(
     html,
-    /themeGreenbar">经典报表<[\s\S]*themeTui">开发者终端<[\s\S]*themeStandard">现代蓝白<[\s\S]*themeHdweb">高对比红白<[\s\S]*themeBlind">工业警示</
+    /themeGreenbar">经典报表<[\s\S]*themeTui">开发者终端<[\s\S]*themeStandard">现代蓝白<[\s\S]*themeHdweb">高对比红白<[\s\S]*themeBlind">工业警示<[\s\S]*themePixel">像素工作站</
   );
   assert.match(
     i18n,
-    /themeGreenbar: "经典报表"[\s\S]*themeTui: "开发者终端"[\s\S]*themeStandard: "现代蓝白"[\s\S]*themeHdweb: "高对比红白"[\s\S]*themeBlind: "工业警示"/
+    /themeGreenbar: "经典报表"[\s\S]*themeTui: "开发者终端"[\s\S]*themeStandard: "现代蓝白"[\s\S]*themeHdweb: "高对比红白"[\s\S]*themeBlind: "工业警示"[\s\S]*themePixel: "像素工作站"/
   );
   assert.match(html, /name="settings-scheme"[\s\S]*value="system"/);
 
-  for (const theme of ["greenbar", "tui", "standard", "hdweb", "blind"]) {
+  for (const theme of [
+    "greenbar",
+    "tui",
+    "standard",
+    "hdweb",
+    "blind",
+    "pixel",
+  ]) {
     assert.match(styles, new RegExp(`themes/${theme}\\.css`));
     assert.match(styles, new RegExp(`data-theme="${theme}"`));
   }
@@ -109,12 +117,28 @@ test("页面在首屏渲染前恢复主题，并提供设置与顶栏切换入�
     "themeStandard",
     "themeHdweb",
     "themeBlind",
+    "themePixel",
     "schemeLight",
     "schemeDark",
     "schemeSystem",
   ]) {
     assert.match(i18n, new RegExp(`${key}:`));
   }
+});
+
+test("像素主题的选中行和滚动条保持高对比硬边样式", async () => {
+  const pixel = await readProjectFile("public/styles/themes/pixel.css");
+
+  assert.match(
+    pixel,
+    /\.session-list[\s\S]*> \.session-row[\s\S]*\.session-item\.active[\s\S]*background: var\(--accent-strong\)/
+  );
+  assert.match(pixel, /\*::-webkit-scrollbar \{[\s\S]*width: 18px/);
+  assert.match(
+    pixel,
+    /\*::-webkit-scrollbar-thumb \{[\s\S]*border-radius: 0[\s\S]*background: var\(--accent-strong\)/
+  );
+  assert.match(pixel, /\*::-webkit-scrollbar-button \{[\s\S]*display: none/);
 });
 
 test("全局导航位于顶部并将次要筛选渐进折叠", async () => {

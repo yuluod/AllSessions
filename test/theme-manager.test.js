@@ -50,8 +50,15 @@ const {
   toggleScheme,
 } = await import("../public/theme-manager.js");
 
-test("主题管理器声明五套主题和三种明暗偏好", () => {
-  assert.deepEqual(THEMES, ["greenbar", "tui", "standard", "hdweb", "blind"]);
+test("主题管理器声明六套主题和三种明暗偏好", () => {
+  assert.deepEqual(THEMES, [
+    "greenbar",
+    "tui",
+    "standard",
+    "hdweb",
+    "blind",
+    "pixel",
+  ]);
   assert.deepEqual(SCHEMES, ["light", "dark", "system"]);
 });
 

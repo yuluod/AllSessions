@@ -1,4 +1,11 @@
-export const THEMES = ["greenbar", "tui", "standard", "hdweb", "blind"];
+export const THEMES = [
+  "greenbar",
+  "tui",
+  "standard",
+  "hdweb",
+  "blind",
+  "pixel",
+];
 export const SCHEMES = ["light", "dark", "system"];
 
 const THEME_KEY = "allsessions_theme";

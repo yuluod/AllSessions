@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
       (() => {
-        const themes = ["greenbar", "tui", "standard", "hdweb", "blind"];
+        const themes = [
+          "greenbar",
+          "tui",
+          "standard",
+          "hdweb",
+          "blind",
+          "pixel",
+        ];
         const schemes = ["light", "dark", "system"];
         let theme = "greenbar";
         let scheme = "system";
@@ -1770,6 +1777,24 @@
                         <i></i><i></i><i></i>
                       </span>
                       <strong data-i18n="themeBlind">工业警示</strong>
+                    </span>
+                  </label>
+                  <label
+                    class="settings-theme-option"
+                    data-preview-theme="pixel"
+                  >
+                    <input
+                      id="settings-theme-pixel"
+                      class="visually-hidden"
+                      type="radio"
+                      name="settings-theme"
+                      value="pixel"
+                    />
+                    <span class="settings-theme-card">
+                      <span class="settings-theme-preview" aria-hidden="true">
+                        <i></i><i></i><i></i>
+                      </span>
+                      <strong data-i18n="themePixel">像素工作站</strong>
                     </span>
                   </label>
                 </div>

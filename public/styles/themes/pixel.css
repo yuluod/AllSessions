@@ -1,0 +1,262 @@
+[data-theme="pixel"] {
+  --font-ui: "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --font-mono: "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --font-display: "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --radius: 0;
+  --radius-small: 0;
+  --density: 0.98;
+}
+
+.settings-theme-option[data-preview-theme="pixel"] {
+  --preview-bg: #f4f2df;
+  --preview-surface: #cfd9bd;
+  --preview-accent: #173622;
+}
+
+[data-theme="pixel"][data-scheme="light"] {
+  --bg: #e5e7d7;
+  --surface: #f4f2df;
+  --surface-raised: #fffdf0;
+  --surface-sunken: #d6ddc7;
+  --stripe-a: #f4f2df;
+  --stripe-b: #e9eddd;
+  --line: #788676;
+  --line-strong: #1f3527;
+  --line-accent: #245534;
+  --text: #101b14;
+  --text-secondary: #27372c;
+  --muted: #526156;
+  --text-inverse: #fffdf0;
+  --accent: #245534;
+  --accent-strong: #173622;
+  --accent-soft: #cbd7bd;
+  --signal: #922e1d;
+  --signal-soft: #ead0c4;
+  --info: #1d5680;
+  --info-soft: #d5e5ee;
+  --warning: #7a5008;
+  --warning-soft: #eadcae;
+  --success: #285d39;
+  --success-soft: #ccdfca;
+  --src-codex: #245534;
+  --src-claude: #8b4a14;
+  --src-gemini: #4f5799;
+  --src-pi: #78477f;
+  --src-kimi: #17656a;
+  --src-opencode: #8b3328;
+  --shadow-raised: 2px 2px 0 #1f3527;
+  --focus-ring: #1d5680;
+}
+
+[data-theme="pixel"][data-scheme="dark"] {
+  --bg: #07100a;
+  --surface: #0e1a12;
+  --surface-raised: #15241a;
+  --surface-sunken: #050b07;
+  --stripe-a: #0e1a12;
+  --stripe-b: #122018;
+  --line: #395343;
+  --line-strong: #9daf8f;
+  --line-accent: #b6d5a3;
+  --text: #e5e5c9;
+  --text-secondary: #c7cfb7;
+  --muted: #9aa58f;
+  --text-inverse: #07100a;
+  --accent: #8fb87d;
+  --accent-strong: #c0dda8;
+  --accent-soft: #29412f;
+  --signal: #f07855;
+  --signal-soft: #4a261d;
+  --info: #74b7de;
+  --info-soft: #173247;
+  --warning: #e0b755;
+  --warning-soft: #42371c;
+  --success: #91c58a;
+  --success-soft: #243e28;
+  --src-codex: #91c58a;
+  --src-claude: #e0a264;
+  --src-gemini: #aaa5ef;
+  --src-pi: #dda0d1;
+  --src-kimi: #78c6c9;
+  --src-opencode: #ef8a72;
+  --shadow-raised: 2px 2px 0 #9daf8f;
+  --focus-ring: #74b7de;
+}
+
+[data-theme="pixel"] body {
+  letter-spacing: 0.01em;
+}
+
+[data-theme="pixel"]
+  :is(
+    .job-header,
+    .sidebar-left,
+    .session-pane,
+    .detail-shell,
+    .props-panel,
+    .stats-dashboard,
+    .tool-card,
+    .statusbar,
+    .settings-dialog,
+    .delete-dialog
+  ) {
+  border-width: 2px;
+  border-radius: 0;
+  box-shadow: var(--shadow-raised);
+}
+
+[data-theme="pixel"]
+  :is(
+    button,
+    summary,
+    select,
+    input,
+    textarea,
+    .detail-tag,
+    .session-source-kind,
+    .session-workspace-badge,
+    .session-provider,
+    .message-role,
+    .message-tool,
+    .raw-event-type,
+    .tool-mode-badge,
+    .saved-filter-chip,
+    .filter-chip,
+    .settings-general-list,
+    .settings-theme-card,
+    .settings-theme-preview,
+    .settings-scheme-options,
+    .settings-scheme-options span,
+    .settings-recovery,
+    .settings-source-overview,
+    .settings-sources,
+    .settings-origin,
+    .settings-root-list li,
+    .settings-root-protected-label,
+    .settings-health-badge,
+    .settings-storage-card,
+    .settings-switch,
+    .source-tree__dot,
+    .local-indicator
+  ) {
+  border-radius: 0;
+}
+
+[data-theme="pixel"] .settings-switch::after {
+  border-radius: 0;
+  transition: none;
+}
+
+[data-theme="pixel"]
+  :is(
+    .ghost-button,
+    .danger-button,
+    .tab-button,
+    .role-filter-btn,
+    .mobile-back-button,
+    .sidebar-tab,
+    .settings-tab,
+    .export-menu > summary,
+    .session-organize-menu > summary
+  ) {
+  border-width: 2px;
+  box-shadow: 1px 1px 0 var(--line-strong);
+  transition: none;
+}
+
+[data-theme="pixel"]
+  :is(
+    .ghost-button,
+    .danger-button,
+    .tab-button,
+    .role-filter-btn,
+    .mobile-back-button,
+    .sidebar-tab,
+    .settings-tab
+  ):active {
+  box-shadow: none;
+  transform: translate(1px, 1px);
+}
+
+[data-theme="pixel"] :is(input, textarea, select):focus {
+  box-shadow: inset 0 0 0 1px var(--line-accent);
+}
+
+[data-theme="pixel"] .session-list-columns,
+[data-theme="pixel"] .session-group-header,
+[data-theme="pixel"] .detail-topbar,
+[data-theme="pixel"] .rail__header {
+  border-color: var(--line-strong);
+}
+
+[data-theme="pixel"] .session-list > .session-row .session-item.active {
+  color: var(--text-inverse);
+  background: var(--accent-strong);
+  box-shadow:
+    inset 5px 0 0 var(--accent),
+    inset 0 0 0 1px var(--line-accent);
+}
+
+[data-theme="pixel"]
+  .session-list
+  > .session-row
+  .session-item.active
+  :is(
+    .session-time,
+    .session-message-count,
+    .session-cwd-main,
+    .session-cwd-path
+  ) {
+  color: var(--text-inverse);
+}
+
+[data-theme="pixel"] .session-row.is-selected .session-item {
+  box-shadow:
+    inset 5px 0 0 var(--accent),
+    inset 0 0 0 1px var(--line-accent);
+}
+
+[data-theme="pixel"] img,
+[data-theme="pixel"] svg {
+  image-rendering: pixelated;
+}
+
+[data-theme="pixel"] * {
+  scrollbar-color: var(--accent-strong) var(--surface-sunken);
+  scrollbar-width: auto;
+}
+
+[data-theme="pixel"] *::-webkit-scrollbar {
+  width: 18px;
+  height: 18px;
+}
+
+[data-theme="pixel"] *::-webkit-scrollbar-track {
+  border: 2px solid var(--line-strong);
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--surface-raised);
+}
+
+[data-theme="pixel"] *::-webkit-scrollbar-thumb {
+  min-width: 40px;
+  min-height: 40px;
+  border: 3px solid var(--surface-sunken);
+  border-radius: 0;
+  background: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+[data-theme="pixel"] *::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+[data-theme="pixel"] *::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+[data-theme="pixel"] *::-webkit-scrollbar-corner {
+  border: 2px solid var(--line-strong);
+  background: var(--surface-sunken);
+}

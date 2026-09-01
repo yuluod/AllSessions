@@ -281,6 +281,20 @@
     padding: 12px;
   }
 
+  #tools-dashboard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tools-sidebar {
+    position: static;
+  }
+
+  .tools-nav {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(148px, 1fr);
+    overflow-x: auto;
+  }
+
   .sidebar-left,
   .session-pane,
   .detail-shell {

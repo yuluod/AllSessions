@@ -2,9 +2,96 @@
 .tools-dashboard {
   display: grid;
   width: min(1120px, 100%);
-  min-height: calc(100dvh - var(--header-h) - 38px);
   gap: 12px;
   margin: 0 auto;
+  align-content: start;
+}
+
+.tools-panel {
+  display: none;
+}
+
+.tools-panel.active {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.tools-panel .tool-card {
+  height: 100%;
+  align-content: start;
+}
+
+#tools-dashboard {
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
+}
+
+.tools-sidebar {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.tools-sidebar-heading {
+  display: grid;
+  gap: 3px;
+  padding: 0 6px;
+}
+
+.tools-sidebar-heading strong {
+  font-size: 0.78rem;
+}
+
+.tools-sidebar-heading span {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.tools-nav {
+  display: grid;
+  gap: 4px;
+}
+
+.tools-nav-item {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 620;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 150ms var(--ease-out),
+    border-color 150ms var(--ease-out),
+    color 150ms var(--ease-out);
+}
+
+.tools-nav-item:hover {
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+
+.tools-nav-item.active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--surface));
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.tools-content {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
   align-content: start;
 }
 
@@ -24,7 +111,7 @@
 
 .tool-card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 18px;
 }
@@ -113,6 +200,11 @@
   font-size: 0.79rem;
   line-height: 1.55;
   text-wrap: pretty;
+}
+
+.tool-card-header .ghost-button {
+  flex: none;
+  white-space: nowrap;
 }
 
 .tool-card-header .tool-card-hint {
@@ -219,11 +311,6 @@
   color: var(--muted);
   font-size: 0.73rem;
   line-height: 1.5;
-}
-
-.maintenance-step > .maintenance-toggle {
-  width: fit-content;
-  margin-left: 34px;
 }
 
 .maintenance-step > .maintenance-boundary {

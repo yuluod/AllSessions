@@ -26,6 +26,7 @@ html {
   min-height: 100%;
   color-scheme: light dark;
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 body {

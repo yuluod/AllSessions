@@ -26,6 +26,7 @@ import { createConversationView } from "./conversation-view.js";
 import { createMaintenanceController } from "./maintenance-view.js";
 import { renderStats } from "./stats-view.js";
 import { createSettingsController } from "./settings-view.js";
+import { createUpdateController } from "./update-view.js";
 import { getThemeState, initTheme, toggleScheme } from "./theme-manager.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
@@ -37,8 +38,7 @@ const BULK_EXPORT_CONCURRENCY = 4;
 const PROJECT_PREVIEW_LIMIT = 4;
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const INSPECTOR_DRAWER_QUERY = "(max-width: 1640px)";
-const COMPACT_WORKSPACE_QUERY =
-  "(min-width: 761px) and (max-width: 1640px)";
+const COMPACT_WORKSPACE_QUERY = "(min-width: 761px) and (max-width: 1640px)";
 const SOURCE_RAIL_COLLAPSED_KEY = "allsessions_source_rail_collapsed";
 const SOURCE_RAIL_AGENTS = [
   { agent: "codex", kinds: ["codex", "codex_archived"] },
@@ -607,6 +607,7 @@ const settingsController = createSettingsController({
       .catch((error) => showError(error.message));
   },
 });
+const updateController = createUpdateController({ requestJson: fetchJson });
 const maintenanceController = createMaintenanceController({
   requestJson: fetchJson,
   refreshData: async () => {
@@ -981,6 +982,7 @@ function rerenderLocalizedContent() {
   }
   renderWorkspaceStatus();
   maintenanceController.renderLocalized();
+  updateController.renderLocalized();
 }
 
 function syncSearchShortcut() {
@@ -1489,7 +1491,11 @@ function renderDetailTags(summary) {
   elements.detailTags.innerHTML = "";
   const workspace = sessionWorkspace(summary);
   const tags = [
-    { text: formatTimestamp(summary.timestamp), icon: "calendar", cls: "tag-time" },
+    {
+      text: formatTimestamp(summary.timestamp),
+      icon: "calendar",
+      cls: "tag-time",
+    },
     { text: summary.model_provider || "unknown", cls: "tag-provider" },
     {
       text: displaySourceLabel(summary),
@@ -1550,7 +1556,9 @@ function syncSessionArchiveButton() {
   if (!elements.sessionArchiveBtn) return;
   const key = state.currentDetail?.summary?._key;
   const archived = key && sessionWorkspace(key).archived === true;
-  elements.sessionArchiveBtn.textContent = t(archived ? "unarchive" : "archive");
+  elements.sessionArchiveBtn.textContent = t(
+    archived ? "unarchive" : "archive"
+  );
 }
 
 function announce(message) {
@@ -2863,6 +2871,7 @@ async function initialize() {
   maintenanceController.renderLocalized();
 
   settingsController.bind();
+  await updateController.bind();
   await bindTauriSettingsEvent();
 
   elements.detailSearchInput?.addEventListener("input", (event) => {

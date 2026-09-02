@@ -1,0 +1,170 @@
+html.update-modal-open,
+html.update-modal-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.update-dialog {
+  width: min(560px, calc(100vw - 28px));
+  max-height: min(680px, calc(100dvh - 32px));
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.update-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.update-dialog::backdrop {
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
+}
+
+.update-dialog-header,
+.update-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.update-dialog-header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-subtle);
+}
+
+.update-dialog-header h2,
+.update-dialog-header p,
+.update-dialog-body p,
+.update-notes-section h3 {
+  margin: 0;
+}
+
+.update-dialog-header h2 {
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.update-dialog-header .update-version {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.update-dialog-close {
+  display: grid;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  place-items: center;
+  border-color: transparent;
+  border-radius: 50%;
+  color: var(--muted);
+  background: transparent;
+}
+
+.update-dialog-close:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
+.update-dialog-body {
+  display: grid;
+  min-height: 0;
+  gap: 14px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.update-status {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.update-status[data-state="error"] {
+  color: var(--signal);
+}
+
+.update-notes-section {
+  display: grid;
+  min-height: 0;
+  gap: 7px;
+}
+
+.update-notes-section h3 {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.update-notes {
+  max-height: 300px;
+  margin: 0;
+  padding: 11px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.update-progress-region {
+  display: grid;
+  gap: 7px;
+}
+
+.update-progress-region progress {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--surface-muted);
+  accent-color: var(--accent);
+}
+
+.update-progress-region span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-dialog-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+}
+
+.update-dialog-actions button:disabled {
+  cursor: wait;
+  opacity: 0.56;
+}
+
+.update-primary-button {
+  border-color: var(--line-accent);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+@media (max-width: 500px) {
+  .update-dialog {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .update-dialog-actions button {
+    flex: 1;
+  }
+}

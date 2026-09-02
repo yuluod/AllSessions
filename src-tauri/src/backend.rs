@@ -46,7 +46,7 @@ impl BackendState {
             None => (AppConfig::default(), None),
         };
         Ok(Self {
-            store: Arc::new(Mutex::new(SessionStore::load(&config)?)),
+            store: Arc::new(Mutex::new(SessionStore::open(&config)?)),
             workspace: Arc::new(Mutex::new(WorkspaceStore::open()?)),
             config: Arc::new(Mutex::new(config)),
             config_path,
@@ -112,6 +112,18 @@ impl BackendState {
             .map_err(lock_error)?
             .preferences
             .check_updates_on_startup)
+    }
+
+    /// 在后台线程执行首次全量扫描，完成后通知前端刷新列表，
+    /// 让窗口不必等待扫描结束即可显示。
+    pub fn spawn_initial_scan(&self, app: &AppHandle) {
+        let state = self.clone();
+        let app = app.clone();
+        std::thread::spawn(move || {
+            if let Err(error) = state.refresh_and_emit(&app) {
+                eprintln!("首次扫描会话失败：{error}");
+            }
+        });
     }
 
     pub fn refresh_and_emit(&self, app: &AppHandle) -> Result<(), String> {

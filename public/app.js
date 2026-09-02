@@ -61,6 +61,7 @@ const state = {
   facets: null,
   stats: null,
   sessions: [],
+  scanning: false,
   selectedSessionKey: null,
   activeTab: "conversation",
   hasMore: false,
@@ -1418,7 +1419,7 @@ function renderSessionList() {
   if (!visible.length) {
     const empty = document.createElement("p");
     empty.className = "hero-copy";
-    empty.textContent = t("noResults");
+    empty.textContent = t(state.scanning ? "scanningSessions" : "noResults");
     elements.sessionList.append(empty);
     renderLoadMoreButton();
     updateSessionCount();
@@ -2020,6 +2021,7 @@ async function loadSessions({ reportError = true, background = false } = {}) {
     if (data.session_roots) {
       state.facets = { ...state.facets, session_roots: data.session_roots };
     }
+    state.scanning = data.scanning === true;
     syncSessionRoot();
 
     const selectedMissing = Boolean(
@@ -2270,6 +2272,8 @@ async function bindTauriSessionEventsOnce() {
 
 async function loadInitialWorkspace() {
   try {
+    // 后端首次扫描在后台进行，先订阅事件再拉取，避免漏掉扫描完成通知。
+    await bindTauriSessionEventsOnce();
     await loadWorkspaceState();
     await Promise.all([
       loadFacets(),
@@ -2283,7 +2287,6 @@ async function loadInitialWorkspace() {
     state._initialized = true;
     state.workspaceLoadError = null;
     void loadStats();
-    await bindTauriSessionEventsOnce();
     openRecoverySettingsOnce();
     return true;
   } catch (error) {

@@ -140,8 +140,10 @@ pub struct SessionStore {
 }
 
 impl SessionStore {
-    pub fn load(config: &crate::config::AppConfig) -> Result<Self, String> {
-        let mut store = Self {
+    /// 打开索引缓存但不扫描会话；首次扫描由调用方在后台线程执行，
+    /// 避免阻塞窗口创建。
+    pub fn open(config: &crate::config::AppConfig) -> Result<Self, String> {
+        Ok(Self {
             summaries: Vec::new(),
             records: HashMap::new(),
             sources: Vec::new(),
@@ -149,9 +151,7 @@ impl SessionStore {
             index_cache: IndexCache::open()?,
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
             scan_diagnostics: ScanDiagnostics::default(),
-        };
-        store.refresh()?;
-        Ok(store)
+        })
     }
 
     pub fn reconfigure(&mut self, config: &crate::config::AppConfig) -> Result<(), String> {
@@ -498,6 +498,11 @@ impl SessionStore {
         self.detail_cache.clear();
     }
 
+    /// 首次全量扫描尚未完成时为 true，前端据此区分“扫描中”和“确无会话”。
+    pub fn scanning(&self) -> bool {
+        self.scan_diagnostics.last_scan_at.is_empty()
+    }
+
     pub fn capabilities(&self, maintenance_enabled: bool) -> Value {
         json!({ "service": { "name": "AllSessions", "protocol_version": 2 }, "codex_maintenance": { "enabled": maintenance_enabled } })
     }
@@ -510,7 +515,7 @@ impl SessionStore {
         paginate(
             self.filtered(query, workspace),
             query,
-            json!({ "session_roots": self.session_roots() }),
+            json!({ "session_roots": self.session_roots(), "scanning": self.scanning() }),
         )
     }
 

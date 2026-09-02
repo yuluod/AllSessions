@@ -119,6 +119,7 @@ pub fn run() {
             let backend = BackendState::load().map_err(|error| format!("加载会话失败：{error}"))?;
             app.manage(backend);
             app.manage(watcher::start(app.handle()));
+            app.state::<BackendState>().spawn_initial_scan(app.handle());
             create_tray(app)?;
             Ok(())
         })

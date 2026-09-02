@@ -85,7 +85,10 @@ fn create_tray(app: &tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => show_main_window(app),
             "settings" => show_settings(app),
-            "update" => updater::check_for_updates(app.clone()),
+            "update" => {
+                show_main_window(app);
+                updater::check_for_updates(app.clone());
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -114,15 +117,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![request_json])
         .setup(|app| {
             let backend = BackendState::load().map_err(|error| format!("加载会话失败：{error}"))?;
-            let check_updates_on_startup = backend
-                .check_updates_on_startup()
-                .map_err(|error| format!("读取常规设置失败：{error}"))?;
             app.manage(backend);
             app.manage(watcher::start(app.handle()));
             create_tray(app)?;
-            if !cfg!(debug_assertions) && check_updates_on_startup {
-                updater::check_for_updates_silently(app.handle().clone());
-            }
             Ok(())
         })
         .on_window_event(|window, event| {

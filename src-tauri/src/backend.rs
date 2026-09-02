@@ -415,6 +415,16 @@ fn route_request(
             updater::check_for_updates(app);
             Ok(json!({ "ok": true }))
         }
+        ("POST", "/api/settings/install-update") => {
+            updater::install_update(app)?;
+            Ok(json!({ "ok": true }))
+        }
+        ("POST", "/api/settings/update-ready") => {
+            if !cfg!(debug_assertions) && state.check_updates_on_startup()? {
+                updater::check_for_updates_silently(app);
+            }
+            Ok(json!({ "ok": true }))
+        }
         ("GET", "/api/facets") => {
             let workspace = state.workspace_snapshot()?;
             let mut facets = state.store.lock().map_err(lock_error)?.facets();

@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use serde_json::{json, Value};
+use tauri::Emitter;
 use tauri_plugin_updater::UpdaterExt;
 
 static UPDATE_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -27,23 +28,43 @@ pub fn check_for_updates_silently(app: tauri::AppHandle) {
     spawn_update_check(app, UpdateCheckMode::Silent);
 }
 
+pub fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    if UPDATE_RUNNING.swap(true, Ordering::AcqRel) {
+        return Err("另一项更新操作仍在进行，请稍后重试。".into());
+    }
+    tauri::async_runtime::spawn(async move {
+        let _guard = UpdateGuard;
+        if let Err(error) = run_install(&app).await {
+            emit_status(
+                &app,
+                json!({ "phase": "error", "message": update_error_message(&error) }),
+            );
+        }
+    });
+    Ok(())
+}
+
 fn spawn_update_check(app: tauri::AppHandle, mode: UpdateCheckMode) {
     if UPDATE_RUNNING.swap(true, Ordering::AcqRel) {
         return;
     }
     tauri::async_runtime::spawn(async move {
         let _guard = UpdateGuard;
-        if let Err(error) = run_update(&app, mode).await {
-            if mode == UpdateCheckMode::Silent {
-                return;
+        if let Err(error) = run_update_check(&app, mode).await {
+            if mode == UpdateCheckMode::Interactive {
+                emit_status(
+                    &app,
+                    json!({ "phase": "error", "message": update_error_message(&error) }),
+                );
             }
-            app.dialog()
-                .message(update_error_message(&error))
-                .title("AllSessions 更新")
-                .kind(MessageDialogKind::Error)
-                .blocking_show();
         }
     });
+}
+
+fn emit_status(app: &tauri::AppHandle, payload: Value) {
+    if let Err(error) = app.emit("update-status", payload) {
+        eprintln!("无法发送更新状态：{error}");
+    }
 }
 
 fn update_error_message(error: &str) -> String {
@@ -74,22 +95,14 @@ fn plain_text_notes(notes: &str) -> String {
     lines.join("\n")
 }
 
-fn update_confirmation_message(version: &str, body: Option<&str>) -> String {
-    let mut message = format!("发现新版本 v{version}，是否立即下载并安装？");
+fn bounded_notes(body: Option<&str>) -> String {
     let notes = body
         .map(str::trim)
         .filter(|notes| !notes.is_empty())
         .map(plain_text_notes)
         .unwrap_or_default();
-    if notes.is_empty() {
-        return message;
-    }
-
-    message.push_str("\n\n更新内容：");
     if notes.chars().count() <= MAX_NOTES_CHARS {
-        message.push('\n');
-        message.push_str(&notes);
-        return message;
+        return notes;
     }
 
     let mut truncated: String = notes.chars().take(MAX_NOTES_CHARS).collect();
@@ -98,53 +111,78 @@ fn update_confirmation_message(version: &str, body: Option<&str>) -> String {
             truncated.truncate(line_break);
         }
     }
-    message.push_str(&format!(
-        "\n{truncated}\n\n以上为部分更新内容，完整更新日志请前往 GitHub Releases 查看。"
-    ));
-    message
+    format!("{truncated}\n\n以上为部分更新内容，完整更新日志请前往 GitHub Releases 查看。")
 }
 
-fn update_confirmation_buttons() -> MessageDialogButtons {
-    MessageDialogButtons::OkCancelCustom("立即下载并安装".into(), "暂不".into())
-}
-
-async fn run_update(app: &tauri::AppHandle, mode: UpdateCheckMode) -> Result<(), String> {
-    let update = app
-        .updater()
+async fn check(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Update>, String> {
+    app.updater()
         .map_err(|error| error.to_string())?
         .check()
         .await
-        .map_err(|error| error.to_string())?;
-    let Some(update) = update else {
+        .map_err(|error| error.to_string())
+}
+
+async fn run_update_check(app: &tauri::AppHandle, mode: UpdateCheckMode) -> Result<(), String> {
+    if mode == UpdateCheckMode::Interactive {
+        emit_status(app, json!({ "phase": "checking" }));
+    }
+    let Some(update) = check(app).await? else {
         if mode == UpdateCheckMode::Interactive {
-            app.dialog()
-                .message(format!(
-                    "当前版本 v{} 已是最新版本。",
-                    app.package_info().version
-                ))
-                .title("AllSessions 更新")
-                .kind(MessageDialogKind::Info)
-                .blocking_show();
+            emit_status(
+                app,
+                json!({
+                    "phase": "latest",
+                    "version": app.package_info().version.to_string(),
+                }),
+            );
         }
         return Ok(());
     };
 
-    let confirmed = app
-        .dialog()
-        .message(update_confirmation_message(
-            &update.version,
-            update.body.as_deref(),
-        ))
-        .title("AllSessions 更新")
-        .kind(MessageDialogKind::Info)
-        .buttons(update_confirmation_buttons())
-        .blocking_show();
-    if !confirmed {
-        return Ok(());
-    }
+    emit_status(
+        app,
+        json!({
+            "phase": "available",
+            "version": update.version,
+            "notes": bounded_notes(update.body.as_deref()),
+        }),
+    );
+    Ok(())
+}
 
+async fn run_install(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(update) = check(app).await? else {
+        return Err("更新已不可用，请重新检查。".into());
+    };
+
+    emit_status(
+        app,
+        json!({
+            "phase": "downloading",
+            "version": update.version,
+            "downloaded": 0,
+            "total": null,
+        }),
+    );
+
+    let mut downloaded = 0_u64;
+    let progress_app = app.clone();
+    let install_app = app.clone();
     update
-        .download_and_install(|_, _| {}, || {})
+        .download_and_install(
+            move |chunk_length, total| {
+                downloaded = downloaded.saturating_add(chunk_length as u64);
+                emit_status(
+                    &progress_app,
+                    json!({
+                        "phase": "downloading",
+                        "downloaded": downloaded,
+                        "total": total,
+                    }),
+                );
+            },
+            move || emit_status(&install_app, json!({ "phase": "installing" })),
+        )
         .await
         .map_err(|error| error.to_string())?;
     app.request_restart();
@@ -153,23 +191,7 @@ async fn run_update(app: &tauri::AppHandle, mode: UpdateCheckMode) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use tauri_plugin_dialog::MessageDialogButtons;
-
-    use super::{
-        update_confirmation_buttons, update_confirmation_message, update_error_message,
-        UpdateCheckMode,
-    };
-
-    #[test]
-    fn 更新确认使用中文操作文案() {
-        match update_confirmation_buttons() {
-            MessageDialogButtons::OkCancelCustom(confirm, cancel) => {
-                assert_eq!(confirm, "立即下载并安装");
-                assert_eq!(cancel, "暂不");
-            }
-            _ => panic!("更新确认必须使用自定义的确定和取消文案"),
-        }
-    }
+    use super::{bounded_notes, update_error_message, UpdateCheckMode};
 
     #[test]
     fn 缺少当前平台时提供可执行的提示() {
@@ -190,28 +212,22 @@ mod tests {
     }
 
     #[test]
-    fn 更新确认附带清理后的更新日志() {
-        let message = update_confirmation_message(
-            "0.1.0",
-            Some("### 新增\n\n- **支持**在更新提示中显示更新日志。\n\n### 修复\n\n- 修复 `滚动条` 布局跳动。"),
-        );
+    fn 更新日志转换为适合窗口展示的纯文本() {
+        let notes = bounded_notes(Some(
+            "### 新增\n\n- **支持**在更新提示中显示更新日志。\n\n### 修复\n\n- 修复 `滚动条` 布局跳动。",
+        ));
 
-        assert!(message.starts_with("发现新版本 v0.1.0，是否立即下载并安装？"));
-        assert!(message.contains("更新内容："));
-        assert!(message.contains("【新增】"));
-        assert!(message.contains("- 支持在更新提示中显示更新日志。"));
-        assert!(message.contains("【修复】"));
-        assert!(!message.contains("**"));
-        assert!(!message.contains("###"));
+        assert!(notes.contains("【新增】"));
+        assert!(notes.contains("- 支持在更新提示中显示更新日志。"));
+        assert!(notes.contains("【修复】"));
+        assert!(!notes.contains("**"));
+        assert!(!notes.contains("###"));
     }
 
     #[test]
-    fn 缺少更新日志时保持原有确认文案() {
-        let message = update_confirmation_message("0.1.0", None);
-        assert_eq!(message, "发现新版本 v0.1.0，是否立即下载并安装？");
-
-        let empty = update_confirmation_message("0.1.0", Some("  \n"));
-        assert_eq!(empty, "发现新版本 v0.1.0，是否立即下载并安装？");
+    fn 缺少更新日志时返回空文本() {
+        assert_eq!(bounded_notes(None), "");
+        assert_eq!(bounded_notes(Some("  \n")), "");
     }
 
     #[test]
@@ -220,18 +236,18 @@ mod tests {
             .map(|index| format!("- 第 {index} 条更新说明，用于验证截断行为。"))
             .collect::<Vec<_>>()
             .join("\n");
-        let message = update_confirmation_message("0.1.0", Some(&long_notes));
+        let notes = bounded_notes(Some(&long_notes));
 
-        assert!(message.contains("以上为部分更新内容，完整更新日志请前往 GitHub Releases 查看。"));
-        assert!(message.chars().count() < long_notes.chars().count());
+        assert!(notes.contains("以上为部分更新内容，完整更新日志请前往 GitHub Releases 查看。"));
+        assert!(notes.chars().count() < long_notes.chars().count());
     }
 
     #[test]
     fn 中文更新日志按字符位置判断截断换行() {
         let notes = format!("{}\n{}", "甲".repeat(100), "乙".repeat(600));
-        let message = update_confirmation_message("0.1.0", Some(&notes));
+        let result = bounded_notes(Some(&notes));
 
-        assert!(message.contains('乙'));
+        assert!(result.contains('乙'));
     }
 
     #[test]

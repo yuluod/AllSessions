@@ -16,7 +16,7 @@ export function formatTimestamp(value) {
 
   return new Intl.DateTimeFormat(locale(), {
     dateStyle: "medium",
-    timeStyle: "medium"
+    timeStyle: "medium",
   }).format(date);
 }
 
@@ -59,7 +59,9 @@ export function formatDateGroup(value) {
 
   return {
     key,
-    label: new Intl.DateTimeFormat(locale(), { dateStyle: "medium" }).format(date)
+    label: new Intl.DateTimeFormat(locale(), { dateStyle: "medium" }).format(
+      date
+    ),
   };
 }
 
@@ -79,12 +81,16 @@ function createOption(value, label) {
 export function fillSelect(select, values, labelFor = (value) => value) {
   const currentValue = select.value;
   select.replaceChildren(createOption("", t("all")));
-  values.forEach((value) => select.append(createOption(value, labelFor(value))));
+  values.forEach((value) =>
+    select.append(createOption(value, labelFor(value)))
+  );
   select.value = values.includes(currentValue) ? currentValue : "";
 }
 
 export function compactText(value, maxLength = 90) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const text = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (text.length <= maxLength) return text;
   return text.slice(0, Math.max(0, maxLength - 3)).trimEnd() + "...";
 }

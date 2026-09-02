@@ -11,9 +11,8 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { createMaintenanceController } = await import(
-  "../public/maintenance-view.js"
-);
+const { createMaintenanceController } =
+  await import("../public/maintenance-view.js");
 
 function createEventElement() {
   const listeners = new Map();

@@ -14,7 +14,7 @@ function firstInlineMatch(text) {
     { kind: "strong", regex: /\*\*([^*\n]+)\*\*/ },
     { kind: "strike", regex: /~~([^~\n]+)~~/ },
     { kind: "em", regex: /\*([^*\n]+)\*/ },
-    { kind: "url", regex: /https?:\/\/[^\s<>]+/i }
+    { kind: "url", regex: /https?:\/\/[^\s<>]+/i },
   ];
   let selected = null;
   for (const pattern of patterns) {
@@ -87,7 +87,8 @@ function appendInline(parent, value, depth = 0) {
       node.textContent = url;
     }
     parent.append(node);
-    const consumedLength = kind === "url" ? trimUrlPunctuation(match[0]).length : match[0].length;
+    const consumedLength =
+      kind === "url" ? trimUrlPunctuation(match[0]).length : match[0].length;
     remaining = remaining.slice(match.index + consumedLength);
   }
 }
@@ -108,12 +109,21 @@ function isListItem(line) {
 }
 
 function isTableDelimiter(line) {
-  const cells = String(line).trim().replace(/^\||\|$/g, "").split("|");
-  return cells.length > 0 && cells.every((cell) => /^\s*:?-{3,}:?\s*$/.test(cell));
+  const cells = String(line)
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split("|");
+  return (
+    cells.length > 0 && cells.every((cell) => /^\s*:?-{3,}:?\s*$/.test(cell))
+  );
 }
 
 function tableCells(line) {
-  return String(line).trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+  return String(line)
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split("|")
+    .map((cell) => cell.trim());
 }
 
 function isBlockStart(lines, index) {
@@ -122,7 +132,11 @@ function isBlockStart(lines, index) {
   if (isFence(line) || /^\s{0,3}#{1,6}\s+/.test(line)) return true;
   if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line)) return true;
   if (/^\s*>\s?/.test(line) || isListItem(line)) return true;
-  return index + 1 < lines.length && line.includes("|") && isTableDelimiter(lines[index + 1]);
+  return (
+    index + 1 < lines.length &&
+    line.includes("|") &&
+    isTableDelimiter(lines[index + 1])
+  );
 }
 
 function appendTable(parent, headerLine, delimiterLine, bodyLines) {
@@ -163,7 +177,9 @@ function appendTable(parent, headerLine, delimiterLine, bodyLines) {
 }
 
 export function renderMarkdown(container, markdown) {
-  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const lines = String(markdown || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n");
   const fragment = document.createDocumentFragment();
   let index = 0;
 
@@ -178,14 +194,18 @@ export function renderMarkdown(container, markdown) {
     if (fence) {
       const codeLines = [];
       index += 1;
-      while (index < lines.length && !new RegExp(`^\\s*${fence[1]}\\s*$`).test(lines[index])) {
+      while (
+        index < lines.length &&
+        !new RegExp(`^\\s*${fence[1]}\\s*$`).test(lines[index])
+      ) {
         codeLines.push(lines[index]);
         index += 1;
       }
       if (index < lines.length) index += 1;
       const pre = document.createElement("pre");
       const code = document.createElement("code");
-      if (fence[2]) code.className = `language-${fence[2].replace(/[^a-z0-9_-]/gi, "")}`;
+      if (fence[2])
+        code.className = `language-${fence[2].replace(/[^a-z0-9_-]/gi, "")}`;
       code.textContent = codeLines.join("\n");
       pre.append(code);
       fragment.append(pre);
@@ -207,10 +227,18 @@ export function renderMarkdown(container, markdown) {
       continue;
     }
 
-    if (index + 1 < lines.length && line.includes("|") && isTableDelimiter(lines[index + 1])) {
+    if (
+      index + 1 < lines.length &&
+      line.includes("|") &&
+      isTableDelimiter(lines[index + 1])
+    ) {
       const bodyLines = [];
       let cursor = index + 2;
-      while (cursor < lines.length && lines[cursor].trim() && lines[cursor].includes("|")) {
+      while (
+        cursor < lines.length &&
+        lines[cursor].trim() &&
+        lines[cursor].includes("|")
+      ) {
         bodyLines.push(lines[cursor]);
         cursor += 1;
       }
@@ -238,7 +266,10 @@ export function renderMarkdown(container, markdown) {
         const currentOrdered = /^\s*\d+[.)]\s+/.test(lines[index]);
         if (currentOrdered !== ordered) break;
         const item = document.createElement("li");
-        appendInline(item, lines[index].replace(/^\s*(?:[-+*]|\d+[.)])\s+/, ""));
+        appendInline(
+          item,
+          lines[index].replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "")
+        );
         list.append(item);
         index += 1;
       }
@@ -247,7 +278,11 @@ export function renderMarkdown(container, markdown) {
     }
 
     const paragraphLines = [];
-    while (index < lines.length && lines[index].trim() && !isBlockStart(lines, index)) {
+    while (
+      index < lines.length &&
+      lines[index].trim() &&
+      !isBlockStart(lines, index)
+    ) {
       paragraphLines.push(lines[index]);
       index += 1;
     }

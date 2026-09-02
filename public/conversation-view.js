@@ -141,7 +141,9 @@ export function createConversationView({
       card.dataset.role = message.role;
       fragment.querySelector(".message-idx").textContent =
         `#${message._origIdx + 1}`;
-      fragment.querySelector(".message-role").textContent = displayRoleLabel(message.role);
+      fragment.querySelector(".message-role").textContent = displayRoleLabel(
+        message.role
+      );
       const toolElement = fragment.querySelector(".message-tool");
       if (message.synthetic_context) {
         toolElement.textContent = t("systemContext");

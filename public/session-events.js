@@ -1,12 +1,15 @@
 const EVENT_TYPES = ["session-added", "session-updated", "session-deleted"];
 
-export function bindSessionEvents(eventSource, {
-  refresh,
-  onSessionAdded = () => {},
-  onMalformed = () => {},
-  onError = () => {},
-  debounceMs = 120
-}) {
+export function bindSessionEvents(
+  eventSource,
+  {
+    refresh,
+    onSessionAdded = () => {},
+    onMalformed = () => {},
+    onError = () => {},
+    debounceMs = 120,
+  }
+) {
   let timer = null;
   let disposed = false;
 
@@ -21,19 +24,21 @@ export function bindSessionEvents(eventSource, {
     }, debounceMs);
   };
 
-  const handlers = new Map(EVENT_TYPES.map((type) => {
-    const handler = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (type === "session-added") onSessionAdded(payload);
-      } catch (error) {
-        onMalformed(error);
-      }
-      scheduleRefresh();
-    };
-    eventSource.addEventListener(type, handler);
-    return [type, handler];
-  }));
+  const handlers = new Map(
+    EVENT_TYPES.map((type) => {
+      const handler = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (type === "session-added") onSessionAdded(payload);
+        } catch (error) {
+          onMalformed(error);
+        }
+        scheduleRefresh();
+      };
+      eventSource.addEventListener(type, handler);
+      return [type, handler];
+    })
+  );
 
   return () => {
     disposed = true;
@@ -52,7 +57,7 @@ export async function bindTauriSessionEvents(options) {
     },
     removeEventListener(type, handler) {
       listeners.get(type)?.delete(handler);
-    }
+    },
   };
   const disposeBinding = bindSessionEvents(bridge, options);
   const listen = window.__TAURI__?.event?.listen;
@@ -61,8 +66,11 @@ export async function bindTauriSessionEvents(options) {
     throw new Error("Tauri 事件接口不可用");
   }
   const unlisten = await listen("sessions-changed", (event) => {
-    const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
-    const type = EVENT_TYPES.includes(payload.type) ? payload.type : "session-updated";
+    const payload =
+      event.payload && typeof event.payload === "object" ? event.payload : {};
+    const type = EVENT_TYPES.includes(payload.type)
+      ? payload.type
+      : "session-updated";
     const data = JSON.stringify(payload.summary || payload);
     for (const handler of listeners.get(type) || []) {
       handler({ data });

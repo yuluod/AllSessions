@@ -2,7 +2,12 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const requiredPlatforms = ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"];
+const requiredPlatforms = [
+  "darwin-aarch64",
+  "darwin-x86_64",
+  "linux-x86_64",
+  "windows-x86_64",
+];
 
 function artifactArchitecture(name) {
   const normalized = name.toLowerCase();
@@ -45,59 +50,87 @@ function publishedAssetUrl(asset, tagName) {
 
 export function buildUpdaterManifest({ metadata, signatures, version }) {
   if (metadata.tagName !== `v${version}`) {
-    throw new Error(`发布标签 ${metadata.tagName} 与项目版本 v${version} 不一致`);
+    throw new Error(
+      `发布标签 ${metadata.tagName} 与项目版本 v${version} 不一致`
+    );
   }
   if (!metadata.publishedAt) throw new Error("发布信息缺少 publishedAt");
 
-  const assetsByName = new Map(metadata.assets.map((asset) => [asset.name, asset]));
+  const assetsByName = new Map(
+    metadata.assets.map((asset) => [asset.name, asset])
+  );
   const platforms = {};
   for (const signatureName of Object.keys(signatures).sort()) {
     const artifactName = signatureName.slice(0, -".sig".length);
     const asset = assetsByName.get(artifactName);
-    if (!asset) throw new Error(`签名 ${signatureName} 找不到对应发布资源 ${artifactName}`);
+    if (!asset)
+      throw new Error(
+        `签名 ${signatureName} 找不到对应发布资源 ${artifactName}`
+      );
 
     for (const platform of updaterPlatformKeys(artifactName)) {
-      if (platforms[platform]) throw new Error(`平台 ${platform} 匹配到多个更新资源`);
+      if (platforms[platform])
+        throw new Error(`平台 ${platform} 匹配到多个更新资源`);
       platforms[platform] = {
         signature: signatures[signatureName].trim(),
         // 草稿 Release 的 asset.url 使用临时的 untagged-* 路径，发布后会失效。
         // 清单始终写入由正式 tag 和附件名组成的稳定 GitHub 下载地址。
-        url: publishedAssetUrl(asset, metadata.tagName)
+        url: publishedAssetUrl(asset, metadata.tagName),
       };
     }
   }
 
   const missing = requiredPlatforms.filter((platform) => !platforms[platform]);
-  if (missing.length > 0) throw new Error(`更新清单缺少平台：${missing.join(", ")}`);
+  if (missing.length > 0)
+    throw new Error(`更新清单缺少平台：${missing.join(", ")}`);
 
   return {
     version,
     notes: metadata.body ?? "",
     pub_date: metadata.publishedAt,
-    platforms
+    platforms,
   };
 }
 
 async function readSignatures(directory) {
-  const names = (await readdir(directory)).filter((name) => name.endsWith(".sig"));
+  const names = (await readdir(directory)).filter((name) =>
+    name.endsWith(".sig")
+  );
   return Object.fromEntries(
-    await Promise.all(names.map(async (name) => [name, await readFile(path.join(directory, name), "utf8")]))
+    await Promise.all(
+      names.map(async (name) => [
+        name,
+        await readFile(path.join(directory, name), "utf8"),
+      ])
+    )
   );
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   const [metadataPath, signaturesPath, outputPath] = process.argv.slice(2);
   if (!metadataPath || !signaturesPath || !outputPath) {
-    throw new Error("用法：node scripts/build-updater-manifest.mjs <release-metadata.json> <signatures-dir> <output.json>");
+    throw new Error(
+      "用法：node scripts/build-updater-manifest.mjs <release-metadata.json> <signatures-dir> <output.json>"
+    );
   }
 
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const projectRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    ".."
+  );
   const [metadata, signatures, packageJson] = await Promise.all([
     readFile(metadataPath, "utf8").then(JSON.parse),
     readSignatures(signaturesPath),
-    readFile(path.join(projectRoot, "package.json"), "utf8").then(JSON.parse)
+    readFile(path.join(projectRoot, "package.json"), "utf8").then(JSON.parse),
   ]);
-  const manifest = buildUpdaterManifest({ metadata, signatures, version: packageJson.version });
+  const manifest = buildUpdaterManifest({
+    metadata,
+    signatures,
+    version: packageJson.version,
+  });
   await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`更新清单已生成：${outputPath}`);
 }

@@ -270,7 +270,7 @@ test("安装包包含 Rust 许可证且发布依赖质量门禁", async () => {
   assert.match(packageJson, /"licenses:check"/);
   assert.doesNotMatch(notices, /## Node\.js/);
   assert.match(notices, /## Rust dependencies/);
-  assert.match(notices, /\| tauri \| 2\.\d+\.\d+ \| (?:Apache|MIT)/);
+  assert.match(notices, /\|\s+tauri\s+\|\s+2\.\d+\.\d+\s+\|\s+(?:Apache|MIT)/);
 });
 
 test("macOS 构建号独立于显示版本且发布会汇总更新清单", async () => {

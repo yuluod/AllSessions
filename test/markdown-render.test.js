@@ -56,20 +56,23 @@ const previousDocument = globalThis.document;
 globalThis.document = {
   createElement: (name) => new TestNode(name),
   createTextNode: (value) => new TestNode("text", value),
-  createDocumentFragment: () => new TestNode("fragment")
+  createDocumentFragment: () => new TestNode("fragment"),
 };
 
 test("Markdown 实际渲染会转义 HTML 并拒绝危险链接", () => {
   const container = new TestNode("div");
-  renderMarkdown(container, [
-    "# <script>alert(1)</script>",
-    "",
-    "[危险链接](javascript:alert(1))",
-    "",
-    "| 来源 | 状态 |",
-    "| --- | --- |",
-    "| Claude | 支持 |"
-  ].join("\n"));
+  renderMarkdown(
+    container,
+    [
+      "# <script>alert(1)</script>",
+      "",
+      "[危险链接](javascript:alert(1))",
+      "",
+      "| 来源 | 状态 |",
+      "| --- | --- |",
+      "| Claude | 支持 |",
+    ].join("\n")
+  );
 
   const html = serialize(container);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);

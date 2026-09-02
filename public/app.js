@@ -10,6 +10,12 @@ import {
 } from "./async-coordinator.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import {
+  EDITABLE_SHORTCUT_SELECTOR,
+  resolveGlobalShortcut,
+  resolveTabIndex,
+  wrapSelectionIndex,
+} from "./keyboard-nav.js";
+import {
   cwdParts,
   fillSelect,
   formatDateGroup,
@@ -2366,9 +2372,7 @@ async function activateWorkspaceView(panel) {
 
 function isEditableShortcutTarget(target) {
   if (!(target instanceof Element)) return false;
-  return Boolean(
-    target.closest("input, textarea, select, [contenteditable='true']")
-  );
+  return Boolean(target.closest(EDITABLE_SHORTCUT_SELECTOR));
 }
 
 function sessionKeyboardItems() {
@@ -2381,16 +2385,8 @@ function moveSessionSelection(direction) {
   const focused = document.activeElement?.closest?.(".session-item");
   const selected = items.find((item) => item.classList.contains("active"));
   const current = focused || selected;
-  const index = items.indexOf(current);
-  const nextIndex =
-    direction > 0
-      ? index < items.length - 1
-        ? index + 1
-        : 0
-      : index > 0
-        ? index - 1
-        : items.length - 1;
-  const next = items[nextIndex];
+  const next =
+    items[wrapSelectionIndex(items.indexOf(current), items.length, direction)];
   next.focus();
   next.scrollIntoView({ block: "nearest" });
   const sessionKey = next.dataset.sessionKey;
@@ -2684,15 +2680,11 @@ async function initialize() {
       });
     });
     tab.addEventListener("keydown", (event) => {
-      const currentIndex = workspaceTabs.indexOf(tab);
-      let nextIndex = null;
-      if (event.key === "ArrowRight")
-        nextIndex = (currentIndex + 1) % workspaceTabs.length;
-      if (event.key === "ArrowLeft")
-        nextIndex =
-          (currentIndex - 1 + workspaceTabs.length) % workspaceTabs.length;
-      if (event.key === "Home") nextIndex = 0;
-      if (event.key === "End") nextIndex = workspaceTabs.length - 1;
+      const nextIndex = resolveTabIndex(
+        event.key,
+        workspaceTabs.indexOf(tab),
+        workspaceTabs.length
+      );
       if (nextIndex === null) return;
       event.preventDefault();
       workspaceTabs[nextIndex].focus();
@@ -2785,67 +2777,49 @@ async function initialize() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      if (closeTopDialogFromKeyboard()) {
-        event.preventDefault();
-        return;
-      }
-      if (
+    const activeElement = document.activeElement;
+    const action = resolveGlobalShortcut(event, {
+      editableTarget: isEditableShortcutTarget(event.target),
+      dialogOpen: Boolean(document.querySelector("dialog[open]")),
+      inspectorOpen: Boolean(
         elements.propsContent
           ?.closest(".props-panel")
           ?.classList.contains("is-open")
-      ) {
+      ),
+      arrowFromList:
+        elements.sessionList.contains(activeElement) ||
+        activeElement === document.body,
+    });
+    if (!action) return;
+    switch (action.type) {
+      case "close-dialog":
+        if (closeTopDialogFromKeyboard()) event.preventDefault();
+        break;
+      case "close-inspector":
         event.preventDefault();
         setInspectorOpen(false);
         elements.sessionInspectorToggle?.focus();
-      }
-      return;
-    }
-
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-      event.preventDefault();
-      elements.searchInput?.focus();
-      elements.searchInput?.select();
-      return;
-    }
-
-    if (
-      isEditableShortcutTarget(event.target) ||
-      document.querySelector("dialog[open]")
-    ) {
-      return;
-    }
-
-    const view = { 1: "list", 2: "stats", 3: "tools" }[event.key];
-    if (view && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      event.preventDefault();
-      activateWorkspaceView(view).catch((error) => {
-        console.error(error);
-        showError(error.message);
-      });
-      return;
-    }
-
-    const activeElement = document.activeElement;
-    const arrowFromList =
-      elements.sessionList.contains(activeElement) ||
-      activeElement === document.body;
-    const moveDown = event.key === "j" || event.key === "ArrowDown";
-    const moveUp = event.key === "k" || event.key === "ArrowUp";
-    if (
-      (moveDown || moveUp) &&
-      (!event.key.startsWith("Arrow") || arrowFromList)
-    ) {
-      event.preventDefault();
-      if (state.activeView !== "list") {
-        void activateWorkspaceView("list");
-      }
-      moveSessionSelection(moveDown ? 1 : -1);
-      return;
-    }
-
-    if (event.key === "Enter" && openFocusedSession()) {
-      event.preventDefault();
+        break;
+      case "focus-search":
+        event.preventDefault();
+        elements.searchInput?.focus();
+        elements.searchInput?.select();
+        break;
+      case "switch-view":
+        event.preventDefault();
+        activateWorkspaceView(action.view).catch((error) => {
+          console.error(error);
+          showError(error.message);
+        });
+        break;
+      case "move-selection":
+        event.preventDefault();
+        if (state.activeView !== "list") void activateWorkspaceView("list");
+        moveSessionSelection(action.direction);
+        break;
+      case "open-focused":
+        if (openFocusedSession()) event.preventDefault();
+        break;
     }
   });
 

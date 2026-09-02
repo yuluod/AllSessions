@@ -154,7 +154,7 @@ test("全局导航位于顶部并将次要筛选渐进折叠", async () => {
   assert.match(html, /<details class="visibility-panel">/);
 });
 
-test("工作区切换使用普通导航语义并支持键盘切换", async () => {
+test("工作区切换使用普通导航语义并接入键盘导航模块", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
 
@@ -164,21 +164,11 @@ test("工作区切换使用普通导航语义并支持键盘切换", async () =>
     /class="sidebar-tab active"[\s\S]{0,160}role="tab"/
   );
   assert.match(source, /tab\.setAttribute\("aria-current", "page"\)/);
-  assert.match(source, /if \(event\.key === "Home"\) nextIndex = 0/);
-  assert.match(
-    source,
-    /if \(event\.key === "End"\) nextIndex = workspaceTabs\.length - 1/
-  );
-  assert.match(source, /event\.key === "j" \|\| event\.key === "ArrowDown"/);
-  assert.match(source, /event\.key === "k" \|\| event\.key === "ArrowUp"/);
-  assert.match(source, /\{ 1: "list", 2: "stats", 3: "tools" \}/);
-  assert.match(source, /event\.key === "Enter" && openFocusedSession\(\)/);
-  assert.match(
-    source,
-    /const item = document\.activeElement\?\.closest\?\.\("\.session-item"\)/
-  );
-  assert.match(source, /function closeTopDialogFromKeyboard\(\)/);
-  assert.match(source, /input, textarea, select, \[contenteditable='true'\]/);
+  // 按键到动作的映射由 keyboard-nav.js 提供并在 keyboard-nav.test.js 中按行为验证
+  assert.match(source, /from "\.\/keyboard-nav\.js"/);
+  assert.match(source, /resolveGlobalShortcut\(event, \{/);
+  assert.match(source, /resolveTabIndex\(/);
+  assert.match(source, /wrapSelectionIndex\(/);
 });
 
 test("进入统计视图时默认展开项目和筛选条件", async () => {
@@ -798,10 +788,8 @@ test("全局搜索按平台显示快捷键并从其他视图返回会话列表",
   const css = await readProjectFile("public/styles.css");
 
   assert.match(html, /id="search-shortcut"[\s\S]*>Ctrl K<\/kbd\s*>/);
-  assert.match(
-    source,
-    /\(event\.metaKey \|\| event\.ctrlKey\) && event\.key\.toLowerCase\(\) === "k"/
-  );
+  // Cmd/Ctrl+K 到 focus-search 的映射在 keyboard-nav.test.js 中按行为验证
+  assert.match(source, /case "focus-search":/);
   assert.match(
     source,
     /navigator\.userAgentData\?\.platform \|\| navigator\.platform/

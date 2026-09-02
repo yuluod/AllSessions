@@ -645,8 +645,24 @@ impl SessionStore {
             }
         };
         self.index_cache.remove(&record.path);
-        self.refresh()?;
+        self.refresh_after_mutation(&record, backup_paths)?;
         Ok(json!({ "ok": true, "deleted_files": deleted_files, "backup": backup }))
+    }
+
+    /// 删除/编辑后只重扫受影响的文件；跨文件来源（Gemini/Claude 等）
+    /// 由 `refresh_paths` 自行回退到全量刷新。
+    fn refresh_after_mutation(
+        &mut self,
+        record: &StoredSession,
+        mut paths: Vec<PathBuf>,
+    ) -> Result<(), String> {
+        paths.push(record.path.clone());
+        let paths = paths.into_iter().collect::<BTreeSet<_>>();
+        if !self.refresh_paths(&paths)? {
+            self.scan_diagnostics.touch();
+            self.rebuild_summaries();
+        }
+        Ok(())
     }
 
     pub fn delete_message(&mut self, key: &str, message_key: &str) -> Result<Value, String> {
@@ -707,7 +723,7 @@ impl SessionStore {
             delete_jsonl_message(&record.path, &delete_ref)?;
         }
         self.index_cache.remove(&record.path);
-        self.refresh()?;
+        self.refresh_after_mutation(&record, backup_paths)?;
         Ok(json!({ "ok": true, "backup": backup }))
     }
 
@@ -2816,6 +2832,51 @@ mod tests {
         std::fs::write(root.join("a.jsonl"), session).unwrap();
         store.refresh().unwrap();
         assert!(store.records.contains_key("codex:late"));
+    }
+
+    #[test]
+    fn refresh_after_mutation_drops_removed_file_without_full_rescan() {
+        let base = tempdir().unwrap();
+        let root = base.path().join("codex");
+        std::fs::create_dir_all(&root).unwrap();
+        for id in ["first", "second"] {
+            std::fs::write(
+                root.join(format!("{id}.jsonl")),
+                format!(
+                    "{}\n",
+                    json!({ "type": "session_meta", "payload": { "id": id } })
+                ),
+            )
+            .unwrap();
+        }
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: codex_roots_config(std::slice::from_ref(&root)),
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+        store.refresh().unwrap();
+        let record = store.records["codex:first"].clone();
+        // 模拟另一个进程写入新文件：增量刷新不应扫描到它
+        std::fs::write(
+            root.join("third.jsonl"),
+            format!(
+                "{}\n",
+                json!({ "type": "session_meta", "payload": { "id": "third" } })
+            ),
+        )
+        .unwrap();
+        std::fs::remove_file(&record.path).unwrap();
+
+        store.refresh_after_mutation(&record, Vec::new()).unwrap();
+
+        assert!(!store.records.contains_key("codex:first"));
+        assert!(store.records.contains_key("codex:second"));
+        assert!(!store.records.contains_key("codex:third"));
+        assert_eq!(store.summaries.len(), 1);
     }
 
     #[test]

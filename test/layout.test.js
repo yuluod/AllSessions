@@ -1183,11 +1183,11 @@ test("仓库链接在桌面端通过受限的系统浏览器能力打开", async
 });
 
 test("开发构建不会在启动时连接正式更新通道", async () => {
-  const runtime = await readProjectFile("src-tauri/src/lib.rs");
+  const backend = await readProjectFile("src-tauri/src/backend.rs");
 
   assert.match(
-    runtime,
-    /if !cfg!\(debug_assertions\) && check_updates_on_startup \{[\s\S]*check_for_updates_silently/
+    backend,
+    /if !cfg!\(debug_assertions\) && state\.check_updates_on_startup\(\)\? \{[\s\S]*check_for_updates_silently/
   );
 });
 

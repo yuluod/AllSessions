@@ -4,21 +4,45 @@ import path from "node:path";
 import test from "node:test";
 
 import { buildUpdaterManifest } from "../scripts/build-updater-manifest.mjs";
-import { releaseFileName, updaterFileName } from "../scripts/collect-tauri-artifact.mjs";
+import {
+  releaseFileName,
+  updaterFileName,
+} from "../scripts/collect-tauri-artifact.mjs";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 
 test("跨平台安装包名称保持稳定且 macOS 使用 mac", () => {
-  assert.equal(releaseFileName({ platform: "windows", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-windows-x64-setup.exe");
-  assert.equal(releaseFileName({ platform: "mac", arch: "arm64", version: "1.2.3" }), "AllSessions-1.2.3-mac-arm64.dmg");
-  assert.equal(releaseFileName({ platform: "linux", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-linux-x64.deb");
+  assert.equal(
+    releaseFileName({ platform: "windows", arch: "x64", version: "1.2.3" }),
+    "AllSessions-1.2.3-windows-x64-setup.exe"
+  );
+  assert.equal(
+    releaseFileName({ platform: "mac", arch: "arm64", version: "1.2.3" }),
+    "AllSessions-1.2.3-mac-arm64.dmg"
+  );
+  assert.equal(
+    releaseFileName({ platform: "linux", arch: "x64", version: "1.2.3" }),
+    "AllSessions-1.2.3-linux-x64.deb"
+  );
 });
 
 test("更新安装包复用公开文件名且 macOS 使用独立更新压缩包", () => {
-  assert.equal(updaterFileName({ platform: "windows", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-windows-x64-setup.exe");
-  assert.equal(updaterFileName({ platform: "mac", arch: "arm64", version: "1.2.3" }), "AllSessions-1.2.3-mac-arm64.app.tar.gz");
-  assert.equal(updaterFileName({ platform: "mac", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-mac-x64.app.tar.gz");
-  assert.equal(updaterFileName({ platform: "linux", arch: "x64", version: "1.2.3" }), "AllSessions-1.2.3-linux-x64.deb");
+  assert.equal(
+    updaterFileName({ platform: "windows", arch: "x64", version: "1.2.3" }),
+    "AllSessions-1.2.3-windows-x64-setup.exe"
+  );
+  assert.equal(
+    updaterFileName({ platform: "mac", arch: "arm64", version: "1.2.3" }),
+    "AllSessions-1.2.3-mac-arm64.app.tar.gz"
+  );
+  assert.equal(
+    updaterFileName({ platform: "mac", arch: "x64", version: "1.2.3" }),
+    "AllSessions-1.2.3-mac-x64.app.tar.gz"
+  );
+  assert.equal(
+    updaterFileName({ platform: "linux", arch: "x64", version: "1.2.3" }),
+    "AllSessions-1.2.3-linux-x64.deb"
+  );
 });
 
 test("更新清单同时包含所有桌面平台及安装器别名", () => {
@@ -26,31 +50,34 @@ test("更新清单同时包含所有桌面平台及安装器别名", () => {
     "AllSessions-0.0.8-mac-arm64.app.tar.gz",
     "AllSessions-0.0.8-mac-x64.app.tar.gz",
     "AllSessions-0.0.8-linux-x64.deb",
-    "AllSessions-0.0.8-windows-x64-setup.exe"
+    "AllSessions-0.0.8-windows-x64-setup.exe",
   ];
   const metadata = {
     tagName: "v0.0.8",
     publishedAt: "2026-08-13T00:00:00Z",
     body: "修复更新",
-    assets: names.map((name) => ({ name, url: `https://example.com/${name}` }))
+    assets: names.map((name) => ({ name, url: `https://example.com/${name}` })),
   };
-  const signatures = Object.fromEntries(names.map((name) => [`${name}.sig`, `signature:${name}`]));
-
-  const manifest = buildUpdaterManifest({ metadata, signatures, version: "0.0.8" });
-
-  assert.deepEqual(
-    Object.keys(manifest.platforms).sort(),
-    [
-      "darwin-aarch64",
-      "darwin-aarch64-app",
-      "darwin-x86_64",
-      "darwin-x86_64-app",
-      "linux-x86_64",
-      "linux-x86_64-deb",
-      "windows-x86_64",
-      "windows-x86_64-nsis"
-    ]
+  const signatures = Object.fromEntries(
+    names.map((name) => [`${name}.sig`, `signature:${name}`])
   );
+
+  const manifest = buildUpdaterManifest({
+    metadata,
+    signatures,
+    version: "0.0.8",
+  });
+
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), [
+    "darwin-aarch64",
+    "darwin-aarch64-app",
+    "darwin-x86_64",
+    "darwin-x86_64-app",
+    "linux-x86_64",
+    "linux-x86_64-deb",
+    "windows-x86_64",
+    "windows-x86_64-nsis",
+  ]);
   assert.equal(
     manifest.platforms["darwin-aarch64"].url,
     "https://example.com/AllSessions-0.0.8-mac-arm64.app.tar.gz"
@@ -59,15 +86,21 @@ test("更新清单同时包含所有桌面平台及安装器别名", () => {
 
 test("更新清单缺少任一目标平台时拒绝发布", () => {
   assert.throws(
-    () => buildUpdaterManifest({
-      metadata: {
-        tagName: "v0.0.8",
-        publishedAt: "2026-08-13T00:00:00Z",
-        assets: [{ name: "AllSessions_0.0.8_x64-setup.exe", url: "https://example.com/windows.exe" }]
-      },
-      signatures: { "AllSessions_0.0.8_x64-setup.exe.sig": "signature" },
-      version: "0.0.8"
-    }),
+    () =>
+      buildUpdaterManifest({
+        metadata: {
+          tagName: "v0.0.8",
+          publishedAt: "2026-08-13T00:00:00Z",
+          assets: [
+            {
+              name: "AllSessions_0.0.8_x64-setup.exe",
+              url: "https://example.com/windows.exe",
+            },
+          ],
+        },
+        signatures: { "AllSessions_0.0.8_x64-setup.exe.sig": "signature" },
+        version: "0.0.8",
+      }),
     /更新清单缺少平台/
   );
 });
@@ -77,37 +110,57 @@ test("更新清单不会保留 GitHub 草稿资源的临时地址", () => {
     "AllSessions-0.0.15-mac-arm64.app.tar.gz",
     "AllSessions-0.0.15-mac-x64.app.tar.gz",
     "AllSessions-0.0.15-linux-x64.deb",
-    "AllSessions-0.0.15-windows-x64-setup.exe"
+    "AllSessions-0.0.15-windows-x64-setup.exe",
   ];
   const metadata = {
     tagName: "v0.0.15",
     publishedAt: "2026-08-21T00:00:00Z",
     assets: names.map((name) => ({
       name,
-      url: `https://github.com/yuluod/AllSessions/releases/download/untagged-draft/${name}`
-    }))
+      url: `https://github.com/yuluod/AllSessions/releases/download/untagged-draft/${name}`,
+    })),
   };
-  const signatures = Object.fromEntries(names.map((name) => [`${name}.sig`, `signature:${name}`]));
+  const signatures = Object.fromEntries(
+    names.map((name) => [`${name}.sig`, `signature:${name}`])
+  );
 
-  const manifest = buildUpdaterManifest({ metadata, signatures, version: "0.0.15" });
+  const manifest = buildUpdaterManifest({
+    metadata,
+    signatures,
+    version: "0.0.15",
+  });
 
   assert.equal(
     manifest.platforms["windows-x86_64"].url,
     "https://github.com/yuluod/AllSessions/releases/download/v0.0.15/AllSessions-0.0.15-windows-x64-setup.exe"
   );
-  assert.ok(Object.values(manifest.platforms).every(({ url }) => !url.includes("/untagged-")));
+  assert.ok(
+    Object.values(manifest.platforms).every(
+      ({ url }) => !url.includes("/untagged-")
+    )
+  );
 });
 
 test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
-  const [config, cargo, rustSource, backend, mainSource, updater, workflow] = await Promise.all([
-    readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri", "Cargo.toml"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri", "src", "backend.rs"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri", "src", "main.rs"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri", "src", "updater.rs"), "utf8"),
-    readFile(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8")
-  ]);
+  const [config, cargo, rustSource, backend, mainSource, updater, workflow] =
+    await Promise.all([
+      readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
+      readFile(path.join(projectRoot, "src-tauri", "Cargo.toml"), "utf8"),
+      readFile(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8"),
+      readFile(
+        path.join(projectRoot, "src-tauri", "src", "backend.rs"),
+        "utf8"
+      ),
+      readFile(path.join(projectRoot, "src-tauri", "src", "main.rs"), "utf8"),
+      readFile(
+        path.join(projectRoot, "src-tauri", "src", "updater.rs"),
+        "utf8"
+      ),
+      readFile(
+        path.join(projectRoot, ".github", "workflows", "release.yml"),
+        "utf8"
+      ),
+    ]);
 
   assert.doesNotMatch(config, /externalBin|binaries\/node|server\//);
   assert.match(config, /"frontendDist": "\.\.\/dist"/);
@@ -120,34 +173,28 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   assert.match(rustSource, /TrayIconBuilder/);
   assert.match(rustSource, /generate_handler!\[request_json\]/);
   assert.match(backend, /sessions-changed/);
-  assert.doesNotMatch(rustSource, /sidecar|TcpListener|ALLSESSIONS_INSTANCE_TOKEN/);
+  assert.doesNotMatch(
+    rustSource,
+    /sidecar|TcpListener|ALLSESSIONS_INSTANCE_TOKEN/
+  );
   assert.match(mainSource, /windows_subsystem = "windows"/);
   assert.match(rustSource, /tauri_plugin_updater::Builder/);
-  assert.match(
-    rustSource,
-    /MenuItem::with_id\(app, "settings", "设置…"/
-  );
-  assert.match(
-    rustSource,
-    /"settings" => show_settings\(app\)/
-  );
+  assert.match(rustSource, /MenuItem::with_id\(app, "settings", "设置…"/);
+  assert.match(rustSource, /"settings" => show_settings\(app\)/);
   assert.match(
     rustSource,
     /fn show_settings[\s\S]*show_main_window\(app\)[\s\S]*emit\("open-settings"/
   );
   assert.match(
-    rustSource,
-    /check_updates_on_startup[\s\S]*updater::check_for_updates_silently/
+    backend,
+    /\/api\/settings\/update-ready[\s\S]*check_updates_on_startup[\s\S]*check_for_updates_silently/
   );
   assert.match(updater, /检查或安装更新失败/);
   assert.match(updater, /download_and_install/);
+  assert.match(updater, /app\.emit\("update-status"/);
   assert.match(
     updater,
-    /mode == UpdateCheckMode::Silent[\s\S]*return/
-  );
-  assert.match(
-    updater,
-    /mode == UpdateCheckMode::Interactive[\s\S]*当前版本 v\{\} 已是最新版本/
+    /mode == UpdateCheckMode::Interactive[\s\S]*"phase": "latest"/
   );
   assert.match(config, /"createUpdaterArtifacts": true/);
   assert.match(config, /releases\/latest\/download\/latest\.json/);
@@ -156,22 +203,36 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY/);
 });
 
-test("原生更新确认使用中文文案且托盘图标符合状态栏规范", async () => {
-  const [rustSource, updater] = await Promise.all([
+test("应用内更新窗口接收日志和下载进度且托盘图标符合状态栏规范", async () => {
+  const [rustSource, backend, updater, updateView, html] = await Promise.all([
     readFile(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri", "src", "updater.rs"), "utf8")
+    readFile(path.join(projectRoot, "src-tauri", "src", "backend.rs"), "utf8"),
+    readFile(path.join(projectRoot, "src-tauri", "src", "updater.rs"), "utf8"),
+    readFile(path.join(projectRoot, "public", "update-view.js"), "utf8"),
+    readFile(path.join(projectRoot, "public", "index.html"), "utf8"),
   ]);
 
   assert.match(
-    updater,
-    /MessageDialogButtons::OkCancelCustom\([\s\S]*"立即下载并安装"[\s\S]*"暂不"/
+    html,
+    /id="update-dialog"[\s\S]*id="update-notes"[\s\S]*id="update-progress"/
   );
-  assert.doesNotMatch(updater, /MessageDialogButtons::YesNo/);
   assert.match(
     updater,
-    /fn update_confirmation_message[\s\S]*更新内容[\s\S]*完整更新日志请前往 GitHub Releases 查看/
+    /"phase": "available"[\s\S]*bounded_notes\(update\.body\.as_deref\(\)\)/
   );
-  assert.match(updater, /update\.body\.as_deref\(\)/);
+  assert.match(
+    updater,
+    /download_and_install\([\s\S]*chunk_length[\s\S]*"phase": "installing"/
+  );
+  assert.match(
+    backend,
+    /\/api\/settings\/install-update[\s\S]*updater::install_update/
+  );
+  assert.match(updateView, /listen\("update-status"/);
+  assert.match(
+    updateView,
+    /progressPercent\(payload\.downloaded, payload\.total\)/
+  );
   assert.match(rustSource, /fn transparent_tray_icon\(\)/);
   assert.match(rustSource, /\.icon\(transparent_tray_icon\(\)\?\)/);
   assert.match(rustSource, /\.icon_as_template\(true\)/);
@@ -179,20 +240,33 @@ test("原生更新确认使用中文文案且托盘图标符合状态栏规范",
 });
 
 test("安装包包含 Rust 许可证且发布依赖质量门禁", async () => {
-  const [config, releaseWorkflow, ciWorkflow, packageJson, notices] = await Promise.all([
-    readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
-    readFile(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8"),
-    readFile(path.join(projectRoot, ".github", "workflows", "ci.yml"), "utf8"),
-    readFile(path.join(projectRoot, "package.json"), "utf8"),
-    readFile(path.join(projectRoot, "THIRD_PARTY_NOTICES.md"), "utf8")
-  ]);
+  const [config, releaseWorkflow, ciWorkflow, packageJson, notices] =
+    await Promise.all([
+      readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
+      readFile(
+        path.join(projectRoot, ".github", "workflows", "release.yml"),
+        "utf8"
+      ),
+      readFile(
+        path.join(projectRoot, ".github", "workflows", "ci.yml"),
+        "utf8"
+      ),
+      readFile(path.join(projectRoot, "package.json"), "utf8"),
+      readFile(path.join(projectRoot, "THIRD_PARTY_NOTICES.md"), "utf8"),
+    ]);
 
   assert.match(config, /THIRD_PARTY_NOTICES\.md/);
   assert.doesNotMatch(config, /third-party\/node/);
-  assert.match(releaseWorkflow, /quality:[\s\S]*pnpm licenses:check[\s\S]*pnpm test[\s\S]*pnpm lint[\s\S]*pnpm build/);
+  assert.match(
+    releaseWorkflow,
+    /quality:[\s\S]*pnpm licenses:check[\s\S]*pnpm test[\s\S]*pnpm lint[\s\S]*pnpm build/
+  );
   assert.match(releaseWorkflow, /build-installers:[\s\S]*needs: quality/);
   assert.match(releaseWorkflow, /publish:[\s\S]*needs: build-installers/);
-  assert.match(ciWorkflow, /pull_request:[\s\S]*pnpm licenses:check[\s\S]*cargo test/);
+  assert.match(
+    ciWorkflow,
+    /pull_request:[\s\S]*pnpm licenses:check[\s\S]*cargo test/
+  );
   assert.match(packageJson, /"licenses:check"/);
   assert.doesNotMatch(notices, /## Node\.js/);
   assert.match(notices, /## Rust dependencies/);
@@ -203,7 +277,10 @@ test("macOS 构建号独立于显示版本且发布会汇总更新清单", async
   const [configText, packageText, workflow] = await Promise.all([
     readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
     readFile(path.join(projectRoot, "package.json"), "utf8"),
-    readFile(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8")
+    readFile(
+      path.join(projectRoot, ".github", "workflows", "release.yml"),
+      "utf8"
+    ),
   ]);
   const config = JSON.parse(configText);
   const packageJson = JSON.parse(packageText);
@@ -219,15 +296,23 @@ test("macOS 构建号独立于显示版本且发布会汇总更新清单", async
   assert.match(workflow, /EXISTING_ASSET_URLS[\s\S]*gh api --method DELETE/);
   assert.doesNotMatch(workflow, /gh release upload[^\n]*--clobber/);
   assert.match(workflow, /publish:[\s\S]*needs: build-installers/);
-  assert.match(workflow, /publish:[\s\S]*build-updater-manifest\.mjs[\s\S]*gh release upload/);
+  assert.match(
+    workflow,
+    /publish:[\s\S]*build-updater-manifest\.mjs[\s\S]*gh release upload/
+  );
   const uploadStep =
-    workflow.match(/- name: 上传全部安装包到草稿[\s\S]*?- name: 生成并上传完整更新清单/)?.[0] ?? "";
+    workflow.match(
+      /- name: 上传全部安装包到草稿[\s\S]*?- name: 生成并上传完整更新清单/
+    )?.[0] ?? "";
   assert.doesNotMatch(uploadStep, /\.sig/);
   assert.match(
     workflow,
     /build-updater-manifest\.mjs release-metadata\.json release-assets latest\.json/
   );
-  assert.doesNotMatch(workflow, /gh release download[\s\S]*--pattern '\*\.sig'/);
+  assert.doesNotMatch(
+    workflow,
+    /gh release download[\s\S]*--pattern '\*\.sig'/
+  );
   assert.match(workflow, /gh release create[\s\S]*--draft/);
   assert.match(workflow, /gh release edit[\s\S]*--draft=false/);
   assert.doesNotMatch(

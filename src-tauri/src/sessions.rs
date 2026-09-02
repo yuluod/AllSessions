@@ -14,6 +14,7 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::cache::IndexCache;
+use crate::error::ApiError;
 
 mod gemini;
 mod kimi;
@@ -587,25 +588,15 @@ impl SessionStore {
         (matches.len() == 1).then(|| matches[0].clone())
     }
 
-    pub fn delete_session(&mut self, key: &str) -> Result<Value, String> {
-        let resolved = self
-            .resolve_record_key(key)
-            .ok_or_else(|| "会话不存在或标识不唯一".to_string())?;
-        let record = self
-            .records
-            .get(&resolved)
-            .cloned()
-            .ok_or_else(|| "会话不存在".to_string())?;
-        if matches!(
-            record.source.format,
-            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode
-        ) {
-            return Err("该来源当前为只读模式；请在原 Agent 中删除会话".into());
-        }
+    pub fn delete_session(&mut self, key: &str) -> Result<Value, ApiError> {
+        let (resolved, record) = self.resolve_writable_record(key)?;
         let current_summary = if record.detail_locator.is_none() {
             let (summary, _) = parse_summary(&record.path, &record.source)?;
             if summary["_key"].as_str() != Some(resolved.as_str()) {
-                return Err("原始文件已经变化；请刷新列表后重试".into());
+                return Err(ApiError::new(
+                    ApiError::FILE_CHANGED,
+                    "原始文件已经变化；请刷新列表后重试",
+                ));
             }
             Some(summary)
         } else {
@@ -616,7 +607,7 @@ impl SessionStore {
                 DetailLocator::Gemini(locator) => {
                     gemini::session_backup_paths(&record.source, locator)?
                 }
-                DetailLocator::OpenCode(_) => return Err("OpenCode 来源当前为只读模式".into()),
+                DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
             }
         } else {
             session_backup_paths(&record.path)
@@ -631,7 +622,7 @@ impl SessionStore {
         let deleted_files = if let Some(locator) = &record.detail_locator {
             match locator {
                 DetailLocator::Gemini(locator) => gemini::delete_session(&record.source, locator)?,
-                DetailLocator::OpenCode(_) => return Err("OpenCode 来源当前为只读模式".into()),
+                DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
             }
         } else {
             if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -670,15 +661,27 @@ impl SessionStore {
         Ok(())
     }
 
-    pub fn delete_message(&mut self, key: &str, message_key: &str) -> Result<Value, String> {
+    /// 解析会话键并拒绝只读来源，供删除类操作复用。
+    fn resolve_writable_record(&self, key: &str) -> Result<(String, StoredSession), ApiError> {
         let resolved = self
             .resolve_record_key(key)
-            .ok_or_else(|| "会话不存在或标识不唯一".to_string())?;
+            .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在或标识不唯一"))?;
         let record = self
             .records
             .get(&resolved)
             .cloned()
-            .ok_or_else(|| "会话不存在".to_string())?;
+            .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
+        if matches!(
+            record.source.format,
+            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode
+        ) {
+            return Err(read_only_source_error());
+        }
+        Ok((resolved, record))
+    }
+
+    pub fn delete_message(&mut self, key: &str, message_key: &str) -> Result<Value, ApiError> {
+        let (resolved, record) = self.resolve_writable_record(key)?;
         if matches!(
             record.source.format,
             SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode
@@ -697,13 +700,13 @@ impl SessionStore {
         let delete_ref = message
             .get("_delete_ref")
             .cloned()
-            .ok_or_else(|| "该消息不支持删除原始数据".to_string())?;
+            .ok_or_else(|| ApiError::invalid("该消息不支持删除原始数据"))?;
         let backup_paths = if let Some(locator) = &record.detail_locator {
             match locator {
                 DetailLocator::Gemini(locator) => {
                     gemini::message_backup_paths(&record.source, locator, &delete_ref)?
                 }
-                DetailLocator::OpenCode(_) => return Err("OpenCode 来源当前为只读模式".into()),
+                DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
             }
         } else {
             message_backup_paths(&record.path, &delete_ref)?
@@ -720,7 +723,7 @@ impl SessionStore {
                 DetailLocator::Gemini(locator) => {
                     gemini::delete_message(&record.source, locator, &delete_ref)?;
                 }
-                DetailLocator::OpenCode(_) => return Err("OpenCode 来源当前为只读模式".into()),
+                DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
             }
         } else if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
             delete_legacy_message(&record.path, &delete_ref)?;
@@ -2707,6 +2710,13 @@ fn diagnostic_source_kind(kind: &str) -> &str {
 fn scan_timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
+fn read_only_source_error() -> ApiError {
+    ApiError::new(
+        ApiError::READ_ONLY_SOURCE,
+        "该来源当前为只读模式；请在原 Agent 中删除会话",
+    )
+}
+
 fn error_text(error: impl std::fmt::Display) -> String {
     error.to_string()
 }

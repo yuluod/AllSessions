@@ -297,6 +297,12 @@ const DICT = {
     loadingMore: "加载中...",
     noResults: "当前筛选条件下没有会话。",
     scanningSessions: "正在扫描本地会话…",
+    backendError_invalid_request: "请求参数无效",
+    backendError_confirmation_required: "永久删除需要显式确认",
+    backendError_session_not_found: "会话不存在，可能已被删除；请刷新列表",
+    backendError_read_only_source: "该来源为只读模式，请在原 Agent 中删除",
+    backendError_file_changed: "原始文件已经变化，请刷新列表后重试",
+    backendError_maintenance_disabled: "Codex 维护模式未开启",
     noWorkDir: "未记录工作目录",
     loadDetailFailed: "加载会话详情失败",
     loadListFailed: "加载会话列表失败",
@@ -797,6 +803,16 @@ const DICT = {
     loadingMore: "Loading...",
     noResults: "No sessions match the current filters.",
     scanningSessions: "Scanning local sessions…",
+    backendError_invalid_request: "Invalid request parameters",
+    backendError_confirmation_required:
+      "Permanent deletion requires explicit confirmation",
+    backendError_session_not_found:
+      "Session not found; it may have been deleted. Refresh the list",
+    backendError_read_only_source:
+      "This source is read-only; delete it in the original agent",
+    backendError_file_changed:
+      "The original file has changed; refresh the list and retry",
+    backendError_maintenance_disabled: "Codex maintenance mode is not enabled",
     noWorkDir: "No working directory recorded",
     loadDetailFailed: "Failed to load session details",
     loadListFailed: "Failed to load session list",
@@ -997,6 +1013,12 @@ const DICT = {
 };
 
 let currentLang = localStorage.getItem(LANG_KEY) || "zh";
+
+// 将后端错误码翻译为当前语言；未知错误码返回 null 以便调用方回退到原始文案。
+export function translateBackendError(code) {
+  const key = `backendError_${code}`;
+  return DICT[currentLang]?.[key] ?? DICT.zh[key] ?? null;
+}
 
 export function t(key, vars = {}) {
   const str = DICT[currentLang]?.[key] ?? DICT.zh[key] ?? key;

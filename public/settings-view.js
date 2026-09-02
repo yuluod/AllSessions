@@ -1,5 +1,8 @@
-import { t, getLang, setLang } from "./i18n.js";
-import { DESKTOP_RUNTIME_REQUIRED, fetchJson } from "./api-client.js";
+import { t, getLang, setLang, translateBackendError } from "./i18n.js";
+import {
+  DESKTOP_RUNTIME_REQUIRED,
+  fetchJson as requestJson,
+} from "./api-client.js";
 import { getThemeState, setScheme, setTheme } from "./theme-manager.js";
 import { open as openPathDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -34,6 +37,10 @@ function formatBytes(bytes) {
   if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${value} B`;
+}
+
+function fetchJson(url, options) {
+  return requestJson(url, options, { translateCode: translateBackendError });
 }
 
 export function createSettingsController({

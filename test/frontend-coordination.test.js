@@ -92,6 +92,44 @@ test("Tauri invoke 的不可序列化错误会使用本地化回退", async (t) 
   );
 });
 
+test("后端结构化错误保留错误码并优先使用翻译文案", async (t) => {
+  globalThis.window = {
+    __TAURI__: {
+      core: {
+        invoke: async () => {
+          throw { code: "read_only_source", message: "该来源当前为只读模式" };
+        },
+      },
+    },
+  };
+  t.after(() => {
+    delete globalThis.window;
+  });
+
+  await assert.rejects(
+    fetchJson(
+      "/api/test",
+      {},
+      {
+        translateCode: (code) =>
+          code === "read_only_source" ? "Read-only source" : null,
+      }
+    ),
+    (caught) => {
+      assert.equal(caught.code, "read_only_source");
+      assert.equal(caught.message, "Read-only source");
+      assert.equal(caught.backendMessage, "该来源当前为只读模式");
+      return true;
+    }
+  );
+
+  await assert.rejects(fetchJson("/api/test"), (caught) => {
+    assert.equal(caught.code, "read_only_source");
+    assert.equal(caught.message, "该来源当前为只读模式");
+    return true;
+  });
+});
+
 test("缺少 Tauri runtime 时返回稳定错误码", async (t) => {
   globalThis.window = {};
   t.after(() => {

@@ -1,4 +1,4 @@
-import { t, getLang, updateStaticI18n } from "./i18n.js";
+import { t, getLang, translateBackendError, updateStaticI18n } from "./i18n.js";
 import {
   DESKTOP_RUNTIME_REQUIRED,
   fetchJson as requestJson,
@@ -1075,6 +1075,7 @@ function buildSearchUrl({ cursor } = {}) {
 async function fetchJson(url, options) {
   return requestJson(url, options, {
     formatError: (status) => t("requestFailed", { status }),
+    translateCode: translateBackendError,
   });
 }
 

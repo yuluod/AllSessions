@@ -15,6 +15,7 @@ use url::Url;
 
 use crate::{
     config::{self, AppConfig},
+    error::ApiError,
     maintenance,
     sessions::SessionStore,
     updater,
@@ -191,20 +192,20 @@ pub async fn request_json(
     app: AppHandle,
     state: State<'_, BackendState>,
     request: FrontendRequest,
-) -> Result<Value, String> {
+) -> Result<Value, ApiError> {
     let backend = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || route_request(app, backend, request))
         .await
-        .map_err(|error| format!("后端任务异常结束：{error}"))?
+        .map_err(|error| ApiError::from(format!("后端任务异常结束：{error}")))?
 }
 
 fn route_request(
     app: AppHandle,
     state: BackendState,
     request: FrontendRequest,
-) -> Result<Value, String> {
+) -> Result<Value, ApiError> {
     let parsed = Url::parse(&format!("http://allsessions.local{}", request.url))
-        .map_err(|_| "请求地址无效".to_string())?;
+        .map_err(|_| ApiError::invalid("请求地址无效"))?;
     let path = parsed.path();
     let query = parsed.query_pairs().into_owned().collect::<HashMap<_, _>>();
     let method = request.method.to_uppercase();
@@ -226,7 +227,7 @@ fn route_request(
                 .body
                 .get("enabled")
                 .and_then(Value::as_bool)
-                .ok_or_else(|| "enabled 必须是布尔值".to_string())?;
+                .ok_or_else(|| ApiError::invalid("enabled 必须是布尔值"))?;
             if !enabled {
                 state.maintenance_enabled.store(false, Ordering::SeqCst);
             } else {
@@ -237,11 +238,17 @@ fn route_request(
         }
         (_, path) if path.starts_with("/api/codex-provider-migration/") => {
             if !state.maintenance_enabled.load(Ordering::SeqCst) {
-                return Err("Codex 维护模式未开启".into());
+                return Err(ApiError::new(
+                    ApiError::MAINTENANCE_DISABLED,
+                    "Codex 维护模式未开启",
+                ));
             }
             let _guard = state.maintenance_lock.lock().map_err(lock_error)?;
             if !state.maintenance_enabled.load(Ordering::SeqCst) {
-                return Err("Codex 维护模式已关闭".into());
+                return Err(ApiError::new(
+                    ApiError::MAINTENANCE_DISABLED,
+                    "Codex 维护模式已关闭",
+                ));
             }
             let result = match (method.as_str(), path) {
                 ("GET", "/api/codex-provider-migration/preview") => maintenance::preview(
@@ -254,7 +261,7 @@ fn route_request(
                 ("POST", "/api/codex-provider-migration/rollback") => {
                     maintenance::rollback(&request.body)
                 }
-                _ => Err("不支持的维护请求".into()),
+                _ => Err("不支持的维护请求".to_string()),
             }?;
             if path != "/api/codex-provider-migration/preview" {
                 state.refresh_and_emit(&app)?;
@@ -271,7 +278,7 @@ fn route_request(
         }
         ("GET", "/api/search") => {
             if query.get("q").is_none_or(|value| value.trim().is_empty()) {
-                return Err("缺少搜索内容".into());
+                return Err(ApiError::invalid("缺少搜索内容"));
             }
             let workspace = state.workspace_snapshot()?;
             Ok(state
@@ -282,14 +289,17 @@ fn route_request(
         }
         ("POST", "/api/sessions/delete") => {
             if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {
-                return Err("永久删除需要显式确认".into());
+                return Err(ApiError::new(
+                    ApiError::CONFIRMATION_REQUIRED,
+                    "永久删除需要显式确认",
+                ));
             }
             let session_key = request
                 .body
                 .get("sessionKey")
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty())
-                .ok_or_else(|| "缺少 sessionKey".to_string())?;
+                .ok_or_else(|| ApiError::invalid("缺少 sessionKey"))?;
             let result = state
                 .store
                 .lock()
@@ -309,20 +319,23 @@ fn route_request(
         }
         ("POST", "/api/sessions/delete-message") => {
             if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {
-                return Err("永久删除需要显式确认".into());
+                return Err(ApiError::new(
+                    ApiError::CONFIRMATION_REQUIRED,
+                    "永久删除需要显式确认",
+                ));
             }
             let session_key = request
                 .body
                 .get("sessionKey")
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty())
-                .ok_or_else(|| "缺少 sessionKey".to_string())?;
+                .ok_or_else(|| ApiError::invalid("缺少 sessionKey"))?;
             let message_key = request
                 .body
                 .get("messageKey")
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty())
-                .ok_or_else(|| "缺少 messageKey".to_string())?;
+                .ok_or_else(|| ApiError::invalid("缺少 messageKey"))?;
             let result = state
                 .store
                 .lock()
@@ -340,39 +353,39 @@ fn route_request(
                 .map_err(|error| error.to_string())?;
             Ok(result)
         }
-        ("GET", "/api/settings") => state.settings_payload(&app),
+        ("GET", "/api/settings") => Ok(state.settings_payload(&app)?),
         ("GET", "/api/workspace") => Ok(state.workspace_snapshot()?.value()),
-        ("POST", "/api/workspace/session") => state
+        ("POST", "/api/workspace/session") => Ok(state
             .workspace
             .lock()
             .map_err(lock_error)?
-            .update_session(&request.body),
-        ("POST", "/api/workspace/message") => state
+            .update_session(&request.body)?),
+        ("POST", "/api/workspace/message") => Ok(state
             .workspace
             .lock()
             .map_err(lock_error)?
-            .update_message(&request.body),
-        ("POST", "/api/workspace/saved-filter") => state
+            .update_message(&request.body)?),
+        ("POST", "/api/workspace/saved-filter") => Ok(state
             .workspace
             .lock()
             .map_err(lock_error)?
-            .save_filter(&request.body),
-        ("POST", "/api/workspace/saved-filter/delete") => state
+            .save_filter(&request.body)?),
+        ("POST", "/api/workspace/saved-filter/delete") => Ok(state
             .workspace
             .lock()
             .map_err(lock_error)?
-            .delete_filter(&request.body),
-        ("POST", "/api/workspace/migrate-legacy") => state
+            .delete_filter(&request.body)?),
+        ("POST", "/api/workspace/migrate-legacy") => Ok(state
             .workspace
             .lock()
             .map_err(lock_error)?
-            .migrate_legacy(&request.body),
+            .migrate_legacy(&request.body)?),
         ("POST", "/api/settings") => {
             let sources = config::parse_sources(
                 request
                     .body
                     .get("sources")
-                    .ok_or_else(|| "缺少 sources 字段".to_string())?,
+                    .ok_or_else(|| ApiError::invalid("缺少 sources 字段"))?,
             )?;
             let config_path = state
                 .config_path
@@ -393,14 +406,14 @@ fn route_request(
             state.sync_watcher_roots(&app);
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
-            state.settings_payload(&app)
+            Ok(state.settings_payload(&app)?)
         }
         ("POST", "/api/settings/preferences") => {
             let preferences = config::parse_preferences(
                 request
                     .body
                     .get("preferences")
-                    .ok_or_else(|| "缺少 preferences 字段".to_string())?,
+                    .ok_or_else(|| ApiError::invalid("缺少 preferences 字段"))?,
             )?;
             let config_path = state
                 .config_path
@@ -411,7 +424,7 @@ fn route_request(
             config::save(&config_path, &config)?;
             drop(config);
             state.clear_startup_error()?;
-            state.settings_payload(&app)
+            Ok(state.settings_payload(&app)?)
         }
         ("POST", "/api/settings/clear-cache") => {
             {
@@ -421,7 +434,7 @@ fn route_request(
             }
             app.emit("sessions-changed", json!({ "type": "session-updated" }))
                 .map_err(|error| error.to_string())?;
-            state.settings_payload(&app)
+            Ok(state.settings_payload(&app)?)
         }
         ("POST", "/api/settings/check-update") => {
             updater::check_for_updates(app);
@@ -458,17 +471,17 @@ fn route_request(
         ("GET", path) if path.starts_with("/api/sessions/") => {
             let key = percent_decode_str(path.trim_start_matches("/api/sessions/"))
                 .decode_utf8()
-                .map_err(|_| "会话 ID 编码无效".to_string())?;
+                .map_err(|_| ApiError::invalid("会话 ID 编码无效"))?;
             let mut detail = state
                 .store
                 .lock()
                 .map_err(lock_error)?
                 .detail(&key)
-                .ok_or_else(|| "会话不存在".to_string())?;
+                .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
             state.workspace_snapshot()?.decorate_detail(&mut detail);
             Ok(detail)
         }
-        _ => Err(format!("不支持的请求：{method} {path}")),
+        _ => Err(ApiError::invalid(format!("不支持的请求：{method} {path}"))),
     }
 }
 

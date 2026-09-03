@@ -1,0 +1,9 @@
+# 生成文件：由脚本或工具产出，不应被 Prettier 重新格式化
+THIRD_PARTY_NOTICES.md
+pnpm-lock.yaml
+src-tauri/Cargo.lock
+
+# 构建产物
+dist/
+src-tauri/target/
+src-tauri/gen/

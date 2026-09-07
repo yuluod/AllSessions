@@ -33,6 +33,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | autocfg | 1.5.1 | Apache-2.0 OR MIT |
 | base64 | 0.21.7 | MIT OR Apache-2.0 |
 | base64 | 0.22.1 | MIT OR Apache-2.0 |
+| base64 | 0.23.1 | MIT OR Apache-2.0 |
 | bit-set | 0.8.0 | Apache-2.0 OR MIT |
 | bit-vec | 0.8.0 | Apache-2.0 OR MIT |
 | bitflags | 1.3.2 | MIT/Apache-2.0 |
@@ -55,7 +56,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | cargo_metadata | 0.19.2 | MIT |
 | cargo_toml | 0.22.3 | Apache-2.0 OR MIT |
 | cargo-platform | 0.1.9 | MIT OR Apache-2.0 |
-| cc | 1.4.4 | MIT OR Apache-2.0 |
+| cc | 1.4.5 | MIT OR Apache-2.0 |
 | cesu8 | 1.1.0 | Apache-2.0/MIT |
 | cfb | 0.7.3 | MIT |
 | cfg-expr | 0.15.8 | MIT OR Apache-2.0 |
@@ -66,14 +67,15 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | const-oid | 0.10.2 | Apache-2.0 OR MIT |
 | cookie | 0.18.2 | MIT OR Apache-2.0 |
 | core-foundation | 0.10.1 | MIT OR Apache-2.0 |
+| core-foundation | 0.9.4 | MIT OR Apache-2.0 |
 | core-foundation-sys | 0.8.7 | MIT OR Apache-2.0 |
 | core-graphics | 0.25.0 | MIT OR Apache-2.0 |
 | core-graphics-types | 0.2.0 | MIT OR Apache-2.0 |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 |
 | cpufeatures | 0.3.1 | MIT OR Apache-2.0 |
 | crc32fast | 1.5.1 | MIT OR Apache-2.0 |
-| crossbeam-channel | 0.5.16 | MIT OR Apache-2.0 |
-| crossbeam-utils | 0.8.22 | MIT OR Apache-2.0 |
+| crossbeam-channel | 0.5.17 | MIT OR Apache-2.0 |
+| crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 |
 | crypto-common | 0.1.7 | MIT OR Apache-2.0 |
 | crypto-common | 0.2.2 | MIT OR Apache-2.0 |
 | cssparser | 0.36.0 | MPL-2.0 |
@@ -123,7 +125,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
 | field-offset | 0.3.6 | MIT OR Apache-2.0 |
 | filetime | 0.2.29 | MIT/Apache-2.0 |
-| find-msvc-tools | 0.1.11 | MIT OR Apache-2.0 |
+| find-msvc-tools | 0.1.12 | MIT OR Apache-2.0 |
 | flate2 | 1.1.10 | MIT OR Apache-2.0 |
 | fnv | 1.0.7 | Apache-2.0 / MIT |
 | foldhash | 0.2.0 | Zlib |
@@ -168,7 +170,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | hashlink | 0.12.1 | MIT OR Apache-2.0 |
 | heck | 0.4.1 | MIT OR Apache-2.0 |
 | heck | 0.5.0 | MIT OR Apache-2.0 |
-| hermit-abi | 0.5.2 | MIT OR Apache-2.0 |
+| hermit-abi | 0.5.3 | MIT OR Apache-2.0 |
 | hex | 0.4.3 | MIT OR Apache-2.0 |
 | html5ever | 0.38.0 | MIT OR Apache-2.0 |
 | http | 1.5.0 | MIT OR Apache-2.0 |
@@ -176,7 +178,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | http-body-util | 0.1.5 | MIT |
 | httparse | 1.10.1 | MIT OR Apache-2.0 |
 | hybrid-array | 0.4.14 | MIT OR Apache-2.0 |
-| hyper | 1.11.0 | MIT |
+| hyper | 1.11.1 | MIT |
 | hyper-rustls | 0.27.9 | Apache-2.0 OR ISC OR MIT |
 | hyper-util | 0.1.20 | MIT |
 | iana-time-zone | 0.1.65 | MIT OR Apache-2.0 |
@@ -194,11 +196,11 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | idna_adapter | 1.2.2 | Apache-2.0 OR MIT |
 | image | 0.25.10 | MIT OR Apache-2.0 |
 | indexmap | 1.9.3 | Apache-2.0 OR MIT |
-| indexmap | 2.14.0 | Apache-2.0 OR MIT |
+| indexmap | 2.14.2 | Apache-2.0 OR MIT |
 | infer | 0.19.0 | MIT |
 | inotify | 0.11.5 | ISC |
 | inotify-sys | 0.1.8 | ISC |
-| ipnet | 2.12.1 | MIT OR Apache-2.0 |
+| ipnet | 2.12.2 | MIT OR Apache-2.0 |
 | is-docker | 0.2.0 | MIT |
 | is-wsl | 0.4.0 | MIT |
 | itoa | 1.0.18 | MIT OR Apache-2.0 |
@@ -215,7 +217,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | jni-sys | 0.3.1 | MIT OR Apache-2.0 |
 | jni-sys | 0.4.1 | MIT OR Apache-2.0 |
 | jni-sys-macros | 0.4.1 | MIT OR Apache-2.0 |
-| js-sys | 0.3.104 | MIT OR Apache-2.0 |
+| js-sys | 0.3.105 | MIT OR Apache-2.0 |
 | json-patch | 3.0.1 | MIT/Apache-2.0 |
 | jsonptr | 0.6.3 | MIT OR Apache-2.0 |
 | keyboard-types | 0.7.0 | MIT OR Apache-2.0 |
@@ -226,7 +228,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | libc | 0.2.189 | MIT OR Apache-2.0 |
 | libdbus-sys | 0.2.7 | Apache-2.0/MIT |
 | libloading | 0.7.4 | ISC |
-| libredox | 0.1.21 | MIT |
+| libredox | 0.1.23 | MIT |
 | libsqlite3-sys | 0.38.2 | MIT |
 | linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | litemap | 0.8.3 | Unicode-3.0 |
@@ -240,7 +242,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | minisign-verify | 0.2.5 | MIT |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
-| mio | 1.2.2 | MIT |
+| mio | 1.2.3 | MIT |
 | moxcms | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
 | muda | 0.19.3 | Apache-2.0 OR MIT |
 | ndk | 0.9.0 | MIT OR Apache-2.0 |
@@ -271,7 +273,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | objc2-user-notifications | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-web-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 |
-| open | 5.4.2 | MIT |
+| open | 5.4.3 | MIT |
 | openssl-probe | 0.2.1 | MIT OR Apache-2.0 |
 | option-ext | 0.2.0 | MPL-2.0 |
 | ordered-stream | 0.2.0 | MIT OR Apache-2.0 |
@@ -290,12 +292,12 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | pin-project-lite | 0.2.17 | Apache-2.0 OR MIT |
 | piper | 0.2.5 | MIT OR Apache-2.0 |
 | pkg-config | 0.3.34 | MIT OR Apache-2.0 |
-| plist | 1.10.0 | MIT |
+| plist | 1.10.1 | MIT |
 | png | 0.17.16 | MIT OR Apache-2.0 |
 | png | 0.18.1 | MIT OR Apache-2.0 |
 | polling | 3.11.0 | Apache-2.0 OR MIT |
 | portable-atomic | 1.15.0 | Apache-2.0 OR MIT |
-| portable-atomic-util | 0.2.7 | Apache-2.0 OR MIT |
+| portable-atomic-util | 0.2.8 | Apache-2.0 OR MIT |
 | potential_utf | 0.1.6 | Unicode-3.0 |
 | powerfmt | 0.2.0 | MIT OR Apache-2.0 |
 | precomputed-hash | 0.1.1 | MIT |
@@ -306,7 +308,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | proc-macro-error-attr | 1.0.4 | MIT OR Apache-2.0 |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
 | pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
-| quick-xml | 0.41.0 | MIT |
+| quick-xml | 0.42.0 | MIT |
 | quote | 1.0.47 | MIT OR Apache-2.0 |
 | r-efi | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later |
 | r-efi | 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later |
@@ -367,7 +369,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | simdutf8 | 0.1.5 | MIT OR Apache-2.0 |
 | siphasher | 1.0.3 | MIT/Apache-2.0 |
 | slab | 0.4.12 | MIT |
-| smallvec | 1.15.2 | MIT OR Apache-2.0 |
+| smallvec | 1.16.0 | MIT OR Apache-2.0 |
 | socket2 | 0.6.5 | MIT OR Apache-2.0 |
 | softbuffer | 0.4.8 | MIT OR Apache-2.0 |
 | soup3 | 0.5.0 | MIT |
@@ -381,9 +383,11 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | swift-rs | 1.0.8 | MIT OR Apache-2.0 |
 | syn | 1.0.109 | MIT OR Apache-2.0 |
 | syn | 2.0.119 | MIT OR Apache-2.0 |
-| syn | 3.0.4 | MIT OR Apache-2.0 |
+| syn | 3.0.5 | MIT OR Apache-2.0 |
 | sync_wrapper | 1.0.2 | Apache-2.0 |
 | synstructure | 0.13.2 | MIT |
+| system-configuration | 0.7.0 | MIT OR Apache-2.0 |
+| system-configuration-sys | 0.6.0 | MIT OR Apache-2.0 |
 | system-deps | 6.2.2 | MIT OR Apache-2.0 |
 | tao | 0.35.3 | Apache-2.0 |
 | tao-macros | 0.1.4 | MIT OR Apache-2.0 |
@@ -394,11 +398,11 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | tauri-codegen | 2.6.3 | Apache-2.0 OR MIT |
 | tauri-macros | 2.6.3 | Apache-2.0 OR MIT |
 | tauri-plugin | 2.6.3 | Apache-2.0 OR MIT |
-| tauri-plugin-dialog | 2.7.2 | Apache-2.0 OR MIT |
-| tauri-plugin-fs | 2.5.1 | Apache-2.0 OR MIT |
-| tauri-plugin-opener | 2.5.4 | Apache-2.0 OR MIT |
-| tauri-plugin-single-instance | 2.4.3 | Apache-2.0 OR MIT |
-| tauri-plugin-updater | 2.10.1 | Apache-2.0 OR MIT |
+| tauri-plugin-dialog | 2.7.3 | Apache-2.0 OR MIT |
+| tauri-plugin-fs | 2.5.2 | Apache-2.0 OR MIT |
+| tauri-plugin-opener | 2.5.5 | Apache-2.0 OR MIT |
+| tauri-plugin-single-instance | 2.4.4 | Apache-2.0 OR MIT |
+| tauri-plugin-updater | 2.11.0 | Apache-2.0 OR MIT |
 | tauri-runtime | 2.11.3 | Apache-2.0 OR MIT |
 | tauri-runtime-wry | 2.11.4 | Apache-2.0 OR MIT |
 | tauri-utils | 2.9.3 | Apache-2.0 OR MIT |
@@ -413,14 +417,14 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | time-core | 0.1.9 | MIT OR Apache-2.0 |
 | time-macros | 0.2.32 | MIT OR Apache-2.0 |
 | tinystr | 0.8.4 | Unicode-3.0 |
-| tinyvec | 1.12.0 | Zlib OR Apache-2.0 OR MIT |
+| tinyvec | 1.13.2 | Zlib OR Apache-2.0 OR MIT |
 | tinyvec_macros | 0.1.1 | MIT OR Apache-2.0 OR Zlib |
 | tokio | 1.53.1 | MIT |
-| tokio-rustls | 0.26.4 | MIT OR Apache-2.0 |
+| tokio-rustls | 0.26.5 | MIT OR Apache-2.0 |
 | tokio-util | 0.7.19 | MIT |
 | toml | 0.8.2 | MIT OR Apache-2.0 |
 | toml | 0.9.12+spec-1.1.0 | MIT OR Apache-2.0 |
-| toml | 1.1.4+spec-1.1.0 | MIT OR Apache-2.0 |
+| toml | 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 |
 | toml_datetime | 0.6.3 | MIT OR Apache-2.0 |
 | toml_datetime | 0.7.5+spec-1.1.0 | MIT OR Apache-2.0 |
 | toml_datetime | 1.1.1+spec-1.1.0 | MIT OR Apache-2.0 |
@@ -462,14 +466,14 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | want | 0.3.1 | MIT |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | wasip2 | 1.0.4+wasi-0.2.12 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
-| wasm-bindgen | 0.2.127 | MIT OR Apache-2.0 |
-| wasm-bindgen-futures | 0.4.77 | MIT OR Apache-2.0 |
-| wasm-bindgen-macro | 0.2.127 | MIT OR Apache-2.0 |
-| wasm-bindgen-macro-support | 0.2.127 | MIT OR Apache-2.0 |
-| wasm-bindgen-shared | 0.2.127 | MIT OR Apache-2.0 |
+| wasm-bindgen | 0.2.128 | MIT OR Apache-2.0 |
+| wasm-bindgen-futures | 0.4.78 | MIT OR Apache-2.0 |
+| wasm-bindgen-macro | 0.2.128 | MIT OR Apache-2.0 |
+| wasm-bindgen-macro-support | 0.2.128 | MIT OR Apache-2.0 |
+| wasm-bindgen-shared | 0.2.128 | MIT OR Apache-2.0 |
 | wasm-streams | 0.5.0 | MIT OR Apache-2.0 |
 | web_atoms | 0.2.6 | MIT OR Apache-2.0 |
-| web-sys | 0.3.104 | MIT OR Apache-2.0 |
+| web-sys | 0.3.105 | MIT OR Apache-2.0 |
 | webkit2gtk | 2.0.2 | MIT |
 | webkit2gtk-sys | 2.0.2 | MIT |
 | webpki-root-certs | 1.0.9 | CDLA-Permissive-2.0 |
@@ -514,6 +518,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | windows-link | 0.1.3 | MIT OR Apache-2.0 |
 | windows-link | 0.2.1 | MIT OR Apache-2.0 |
 | windows-numerics | 0.2.0 | MIT OR Apache-2.0 |
+| windows-registry | 0.6.1 | MIT OR Apache-2.0 |
 | windows-result | 0.3.4 | MIT OR Apache-2.0 |
 | windows-result | 0.4.1 | MIT OR Apache-2.0 |
 | windows-strings | 0.4.2 | MIT OR Apache-2.0 |

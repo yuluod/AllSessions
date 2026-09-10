@@ -1347,6 +1347,21 @@ body[data-view="tools"] .rail-toggle {
   background: var(--warning-soft);
 }
 
+.detail-tag.tag-session-id {
+  cursor: pointer;
+  border-color: color-mix(in srgb, var(--muted) 42%, var(--surface));
+  color: var(--muted);
+  background: var(--surface-sunken);
+  font-family: var(--mono-font, ui-monospace, monospace);
+  font-size: 0.7rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.detail-tag.tag-session-id:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
 .detail-topbar-right,
 .export-actions {
   display: flex;

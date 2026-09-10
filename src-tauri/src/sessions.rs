@@ -20,6 +20,7 @@ mod gemini;
 mod kimi;
 mod opencode;
 mod pi;
+mod zcode;
 
 const PAGE_LIMIT: usize = 50;
 const SEARCH_TEXT_LIMIT: usize = 64_000;
@@ -45,12 +46,14 @@ enum SourceFormat {
     Pi,
     Kimi,
     OpenCode,
+    ZCode,
 }
 
 #[derive(Clone)]
 enum DetailLocator {
     Gemini(gemini::DetailLocator),
     OpenCode(opencode::DetailLocator),
+    ZCode(zcode::DetailLocator),
 }
 
 #[derive(Clone)]
@@ -321,6 +324,38 @@ impl SessionStore {
                 }
                 continue;
             }
+            if matches!(source.format, SourceFormat::ZCode) {
+                if !source.root.exists() {
+                    continue;
+                }
+                let parsed = match zcode::parse_source(source) {
+                    Ok(parsed) => parsed,
+                    Err(error) => {
+                        diagnostics.record_error(&diagnostic_kind, &source.root, &error);
+                        eprintln!("无法解析 ZCode 来源：{error}");
+                        continue;
+                    }
+                };
+                for path in &parsed.active_paths {
+                    diagnostics.discover(&diagnostic_kind, Path::new(path));
+                    active_paths.insert(path.clone());
+                    active_paths.insert(path_identity(Path::new(path)));
+                }
+                for session in parsed.sessions {
+                    let key = session.summary["_key"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string();
+                    next.entry(key).or_insert_with(|| StoredSession {
+                        search_text: session.search_text,
+                        summary: session.summary,
+                        source: source.clone(),
+                        path: session.path,
+                        detail_locator: Some(DetailLocator::ZCode(session.detail_locator)),
+                    });
+                }
+                continue;
+            }
             for path in discover_files(source) {
                 diagnostics.discover(&diagnostic_kind, &path);
                 let path_key = path_identity(&path);
@@ -389,14 +424,18 @@ impl SessionStore {
         // 单路径更新无法可靠重建聚合结果或来源优先级，因此复用缓存全量刷新。
         if paths.iter().any(|path| {
             self.sources.iter().any(|source| {
-                let belongs_to_source = if matches!(source.format, SourceFormat::OpenCode) {
-                    opencode_event_matches(&source.root, path)
-                } else {
-                    path.starts_with(&source.root)
-                };
+                let belongs_to_source =
+                    if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
+                        opencode_event_matches(&source.root, path)
+                    } else {
+                        path.starts_with(&source.root)
+                    };
                 (matches!(
                     source.format,
-                    SourceFormat::Gemini | SourceFormat::Claude | SourceFormat::OpenCode
+                    SourceFormat::Gemini
+                        | SourceFormat::Claude
+                        | SourceFormat::OpenCode
+                        | SourceFormat::ZCode
                 ) || matches!(source.format, SourceFormat::Kimi)
                     && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl"))
                     && belongs_to_source
@@ -413,8 +452,10 @@ impl SessionStore {
                 .sources
                 .iter()
                 .find(|source| {
-                    !matches!(source.format, SourceFormat::Gemini | SourceFormat::OpenCode)
-                        && path.starts_with(&source.root)
+                    !matches!(
+                        source.format,
+                        SourceFormat::Gemini | SourceFormat::OpenCode | SourceFormat::ZCode
+                    ) && path.starts_with(&source.root)
                 })
                 .cloned()
             else {
@@ -564,6 +605,7 @@ impl SessionStore {
                 DetailLocator::OpenCode(locator) => {
                     opencode::parse_detail(&record.source, locator).ok()
                 }
+                DetailLocator::ZCode(locator) => zcode::parse_detail(&record.source, locator).ok(),
             }
         } else {
             parse_detail(&record.path, &record.source).ok()
@@ -608,6 +650,7 @@ impl SessionStore {
                     gemini::session_backup_paths(&record.source, locator)?
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
+                DetailLocator::ZCode(_) => return Err(read_only_source_error()),
             }
         } else {
             session_backup_paths(&record.path)
@@ -623,6 +666,7 @@ impl SessionStore {
             match locator {
                 DetailLocator::Gemini(locator) => gemini::delete_session(&record.source, locator)?,
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
+                DetailLocator::ZCode(_) => return Err(read_only_source_error()),
             }
         } else {
             if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -673,7 +717,7 @@ impl SessionStore {
             .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
         if matches!(
             record.source.format,
-            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode
+            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode | SourceFormat::ZCode
         ) {
             return Err(read_only_source_error());
         }
@@ -684,7 +728,7 @@ impl SessionStore {
         let (resolved, record) = self.resolve_writable_record(key)?;
         if matches!(
             record.source.format,
-            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode
+            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode | SourceFormat::ZCode
         ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
         }
@@ -707,6 +751,7 @@ impl SessionStore {
                     gemini::message_backup_paths(&record.source, locator, &delete_ref)?
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
+                DetailLocator::ZCode(_) => return Err(read_only_source_error()),
             }
         } else {
             message_backup_paths(&record.path, &delete_ref)?
@@ -724,6 +769,7 @@ impl SessionStore {
                     gemini::delete_message(&record.source, locator, &delete_ref)?;
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
+                DetailLocator::ZCode(_) => return Err(read_only_source_error()),
             }
         } else if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
             delete_legacy_message(&record.path, &delete_ref)?;
@@ -1091,6 +1137,7 @@ impl ParseState {
                 // Kimi Code CLI 可配置不同模型 Provider；wire.jsonl 未记录时不做推断。
                 SourceFormat::Kimi => "unknown",
                 SourceFormat::OpenCode => "unknown",
+                SourceFormat::ZCode => "unknown",
             }
         } else {
             &self.provider
@@ -1103,6 +1150,7 @@ impl ParseState {
                 SourceFormat::Pi => "pi",
                 SourceFormat::Kimi => "kimi_code_cli",
                 SourceFormat::OpenCode => "opencode",
+                SourceFormat::ZCode => "zcode",
             }
         } else {
             &self.originator
@@ -1116,6 +1164,7 @@ fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String
         SourceFormat::Pi => return pi::parse_summary(path, source),
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过聚合来源解析".into()),
+        SourceFormat::ZCode => return Err("ZCode 数据库必须通过聚合来源解析".into()),
         _ => {}
     }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -1142,6 +1191,7 @@ fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
         SourceFormat::Pi => return pi::parse_detail(path, source),
         SourceFormat::Kimi => return kimi::parse_detail(path, source),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过详情定位器解析".into()),
+        SourceFormat::ZCode => return Err("ZCode 数据库必须通过详情定位器解析".into()),
         _ => {}
     }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -1299,6 +1349,7 @@ pub(crate) struct RootLists {
     pub pi: Vec<PathBuf>,
     pub kimi: Vec<PathBuf>,
     pub opencode: Vec<PathBuf>,
+    pub zcode: Vec<PathBuf>,
 }
 
 fn resolve_kind(
@@ -1397,6 +1448,29 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
     } else {
         (vec![opencode_data.join("opencode.db")], "default")
     };
+    let zcode_cli_dir = home.join(".zcode").join("cli");
+    let (zcode, zcode_origin) = if let Some(roots) = config.get("zcode") {
+        (
+            roots
+                .iter()
+                .map(|raw| expand_tilde(PathBuf::from(raw)))
+                .filter(|path| !path.as_os_str().is_empty())
+                .collect(),
+            "config",
+        )
+    } else if let Some(value) = env::var_os("ZCODE_DB") {
+        let path = expand_tilde(PathBuf::from(value));
+        (
+            vec![if path.is_absolute() {
+                path
+            } else {
+                zcode_cli_dir.join(path)
+            }],
+            "env",
+        )
+    } else {
+        (vec![zcode_cli_dir.join("db").join("db.sqlite")], "default")
+    };
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -1405,6 +1479,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         "pi": { "roots": pi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": pi_origin },
         "kimi": { "roots": kimi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kimi_origin },
         "opencode": { "roots": opencode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": opencode_origin },
+        "zcode": { "roots": zcode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": zcode_origin },
     });
     (
         RootLists {
@@ -1415,6 +1490,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             pi,
             kimi,
             opencode,
+            zcode,
         },
         description,
     )
@@ -1482,6 +1558,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "pi": describe_protected_source_roots(config.pi.as_deref().unwrap_or_default(), &inherited.pi),
         "kimi": describe_protected_source_roots(config.kimi.as_deref().unwrap_or_default(), &inherited.kimi),
         "opencode": describe_protected_source_roots(config.opencode.as_deref().unwrap_or_default(), &inherited.opencode),
+        "zcode": describe_protected_source_roots(config.zcode.as_deref().unwrap_or_default(), &inherited.zcode),
     })
 }
 
@@ -1512,6 +1589,13 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
         display_name: "OpenCode",
         root: root.clone(),
         format: SourceFormat::OpenCode,
+        archived: false,
+    }));
+    sources.extend(lists.zcode.iter().map(|root| Source {
+        kind: "zcode",
+        display_name: "ZCode",
+        root: root.clone(),
+        format: SourceFormat::ZCode,
         archived: false,
     }));
     sources
@@ -1614,7 +1698,7 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
         .collect()
 }
 fn discover_files(source: &Source) -> Vec<PathBuf> {
-    if matches!(source.format, SourceFormat::OpenCode) {
+    if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
         return source
             .root
             .exists()
@@ -1645,7 +1729,7 @@ fn discover_files(source: &Source) -> Vec<PathBuf> {
 }
 
 fn source_matches_path(source: &Source, path: &Path) -> bool {
-    if matches!(source.format, SourceFormat::OpenCode) {
+    if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
         return opencode_event_matches(&source.root, path);
     }
     if matches!(source.format, SourceFormat::Kimi) {
@@ -2759,6 +2843,7 @@ mod tests {
             pi: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
+            zcode: Some(Vec::new()),
         }
     }
 
@@ -2923,6 +3008,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
+                zcode: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -2954,6 +3040,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(vec![database.to_string_lossy().into_owned()]),
+                zcode: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3009,6 +3096,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
+                zcode: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3700,6 +3788,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
+                zcode: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

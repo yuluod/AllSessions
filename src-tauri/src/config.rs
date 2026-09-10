@@ -10,7 +10,7 @@ use serde_json::Value;
 
 const ROOT_LIMIT_PER_KIND: usize = 16;
 const ROOT_TEXT_LIMIT: usize = 1024;
-const SOURCE_KINDS: [&str; 7] = [
+const SOURCE_KINDS: [&str; 8] = [
     "codex",
     "codex_archived",
     "claude",
@@ -18,6 +18,7 @@ const SOURCE_KINDS: [&str; 7] = [
     "pi",
     "kimi",
     "opencode",
+    "zcode",
 ];
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -60,6 +61,8 @@ pub struct SourceRoots {
     pub kimi: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opencode: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zcode: Option<Vec<String>>,
 }
 
 impl SourceRoots {
@@ -72,6 +75,7 @@ impl SourceRoots {
             "pi" => self.pi.as_ref(),
             "kimi" => self.kimi.as_ref(),
             "opencode" => self.opencode.as_ref(),
+            "zcode" => self.zcode.as_ref(),
             _ => None,
         }
     }
@@ -85,6 +89,7 @@ impl SourceRoots {
             "pi" => self.pi = roots,
             "kimi" => self.kimi = roots,
             "opencode" => self.opencode = roots,
+            "zcode" => self.zcode = roots,
             _ => {}
         }
     }
@@ -232,6 +237,7 @@ mod tests {
         assert_eq!(parsed.pi, None);
         assert_eq!(parsed.kimi, None);
         assert_eq!(parsed.opencode, None);
+        assert_eq!(parsed.zcode, None);
     }
 
     #[test]

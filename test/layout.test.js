@@ -482,8 +482,18 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   assert.match(html, /id="detail-search-input"/);
   assert.match(html, /id="show-tools-toggle"/);
   assert.match(html, /id="show-context-toggle"/);
+  assert.match(html, /id="conversation-desc-toggle"/);
+  assert.match(html, /data-i18n="newestFirst"/);
   assert.match(html, /id="message-nav-inline-list"/);
   assert.match(app, /createConversationView/);
+  assert.match(
+    app,
+    /state\.conversationDesc = elements\.conversationDescToggle\.checked/
+  );
+  assert.match(
+    view,
+    /state\.conversationDesc \? \[\.\.\.visible\]\.reverse\(\) : visible/
+  );
   assert.match(view, /createMessageNavSection/);
   assert.match(filter, /showTools \|\| message\.role !== "tool"/);
   assert.match(filter, /showContext \|\| message\.synthetic_context !== true/);

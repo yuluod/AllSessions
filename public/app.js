@@ -85,7 +85,8 @@ const state = {
   currentDetail: null,
   detailQuery: "",
   showTools: true,
-  showContext: false,
+  showContext: true,
+  conversationDesc: false,
   activeView: "list",
   lastSessionError: null,
   workspaceLoadError: null,
@@ -508,6 +509,7 @@ const elements = {
   detailSearchInput: document.querySelector("#detail-search-input"),
   showToolsToggle: document.querySelector("#show-tools-toggle"),
   showContextToggle: document.querySelector("#show-context-toggle"),
+  conversationDescToggle: document.querySelector("#conversation-desc-toggle"),
   messageNavInlineList: document.querySelector("#message-nav-inline-list"),
   conversationList: document.querySelector("#conversation-list"),
   rawEvents: document.querySelector("#raw-events"),
@@ -1999,6 +2001,9 @@ async function loadSessionDetail(id, { silent = false } = {}) {
     if (elements.showContextToggle) {
       elements.showContextToggle.checked = state.showContext;
     }
+    if (elements.conversationDescToggle) {
+      elements.conversationDescToggle.checked = state.conversationDesc;
+    }
     syncRoleFilterButtons();
     elements.detailEmpty.classList.add("hidden");
     elements.detailView.classList.remove("hidden");
@@ -2901,6 +2906,15 @@ async function initialize() {
 
   elements.showContextToggle?.addEventListener("change", () => {
     state.showContext = elements.showContextToggle.checked;
+    if (state.currentDetail) {
+      conversationView.renderConversation(
+        state.currentDetail.conversation_messages || []
+      );
+    }
+  });
+
+  elements.conversationDescToggle?.addEventListener("change", () => {
+    state.conversationDesc = elements.conversationDescToggle.checked;
     if (state.currentDetail) {
       conversationView.renderConversation(
         state.currentDetail.conversation_messages || []

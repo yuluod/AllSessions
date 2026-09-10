@@ -40,6 +40,11 @@ export function createConversationView({
     });
   }
 
+  function displayed(messages) {
+    const visible = filtered(messages);
+    return state.conversationDesc ? [...visible].reverse() : visible;
+  }
+
   function setMessageCardCollapsed(card, toggleButton, collapsed) {
     card.classList.toggle("collapsed", collapsed);
     toggleButton.textContent = collapsed ? "▶" : "▼";
@@ -101,13 +106,13 @@ export function createConversationView({
     heading.textContent = t("messageNav");
     const list = document.createElement("div");
     list.className = "message-nav-list";
-    appendMessageNavItems(list, filtered(messages));
+    appendMessageNavItems(list, displayed(messages));
     wrap.append(heading, list);
     return wrap;
   }
 
   function renderMessageNavigation(messages) {
-    const visibleMessages = filtered(messages);
+    const visibleMessages = displayed(messages);
     if (elements.messageNavInlineList) {
       appendMessageNavItems(elements.messageNavInlineList, visibleMessages);
     }
@@ -121,7 +126,7 @@ export function createConversationView({
 
   function renderConversation(messages) {
     elements.conversationList.replaceChildren();
-    const visibleMessages = filtered(messages);
+    const visibleMessages = displayed(messages);
     renderMessageNavigation(messages);
 
     if (!visibleMessages.length) {

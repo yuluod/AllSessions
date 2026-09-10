@@ -120,7 +120,7 @@ pnpm install
 pnpm desktop:dev
 ```
 
-只需在浏览器中预览界面时，可运行 `pnpm web:dev`；桌面 API 和本地会话加载仍仅在 Tauri 应用中可用。
+桌面开发（`pnpm dev` / `pnpm desktop:dev`）通过 Vite 开发服务器加载界面，前端改动支持热更新，无需重启。只需在浏览器中预览界面时，可运行 `pnpm web:dev`；桌面 API 和本地会话加载仍仅在 Tauri 应用中可用。
 
 验证和构建：
 

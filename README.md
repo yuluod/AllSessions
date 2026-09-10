@@ -119,7 +119,7 @@ pnpm install
 pnpm desktop:dev
 ```
 
-For a UI-only browser preview, run `pnpm web:dev`. Desktop APIs and local session loading remain available only in the Tauri app.
+Desktop development (`pnpm dev` / `pnpm desktop:dev`) loads the UI through the Vite dev server, so frontend changes hot-reload without restarting. For a UI-only browser preview, run `pnpm web:dev`. Desktop APIs and local session loading remain available only in the Tauri app.
 
 ```bash
 pnpm test

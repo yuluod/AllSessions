@@ -165,6 +165,9 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   assert.doesNotMatch(config, /externalBin|binaries\/node|server\//);
   assert.match(config, /"frontendDist": "\.\.\/dist"/);
   assert.match(config, /"beforeBuildCommand": "pnpm build"/);
+  assert.match(config, /"devUrl": "http:\/\/127\.0\.0\.1:3210"/);
+  assert.match(config, /"beforeDevCommand": "pnpm web:dev"/);
+  assert.match(config, /"devCsp"[\s\S]*?ws:\/\/127\.0\.0\.1:3210/);
   assert.match(config, /"withGlobalTauri": true/);
   assert.match(config, /"installMode": "currentUser"/);
   assert.doesNotMatch(config, /"csp": null/);

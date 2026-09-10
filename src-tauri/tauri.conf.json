@@ -4,8 +4,9 @@
   "version": "../package.json",
   "identifier": "com.yuluod.allsessions",
   "build": {
-    "beforeDevCommand": "pnpm build",
+    "beforeDevCommand": "pnpm web:dev",
     "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://127.0.0.1:3210",
     "frontendDist": "../dist"
   },
   "app": {
@@ -23,7 +24,8 @@
     ],
     "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      "devCsp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ws://127.0.0.1:3210; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {

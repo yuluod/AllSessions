@@ -764,6 +764,12 @@ function renderSourceRail() {
         ? String(agent === "all" ? total : counts.get(agent) || 0)
         : "-";
     }
+    const isEmptySource =
+      Boolean(state.diagnostics) &&
+      agent !== "all" &&
+      !active &&
+      !Number(counts.get(agent) || 0);
+    button.classList.toggle("is-empty", isEmptySource);
   });
 }
 

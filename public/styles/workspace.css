@@ -2362,6 +2362,10 @@ body.is-resizing {
   background: var(--accent-soft);
 }
 
+.source-tree__item.is-empty {
+  display: none;
+}
+
 .source-tree__item > span:nth-child(2) {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -771,6 +771,11 @@ test("会话来源只在左侧筛选中出现，顶部保留搜索主路径", as
     /elements\.sourceRailItems\.forEach\(\(button\) => \{[\s\S]*?setSourceKindFilter\(button\.dataset\.sourceKind \|\| ""\)/
   );
   assert.match(
+    source,
+    /button\.classList\.toggle\("is-empty", isEmptySource\)/
+  );
+  assert.match(css, /\.source-tree__item\.is-empty\s*\{\s*display: none/);
+  assert.match(
     css,
     /\.toolbar\s*\{[\s\S]*grid-template-columns: auto auto minmax\(300px, 1fr\) auto/
   );

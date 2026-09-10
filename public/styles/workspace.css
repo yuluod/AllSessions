@@ -1163,6 +1163,13 @@ body[data-view="tools"] .rail-toggle {
   background: color-mix(in srgb, var(--src-opencode) 13%, var(--surface));
 }
 
+.session-source-kind[data-source-kind="zcode"],
+.detail-tag.tag-source[data-source-kind="zcode"] {
+  border-color: color-mix(in srgb, var(--src-zcode) 42%, var(--surface));
+  color: var(--src-zcode);
+  background: color-mix(in srgb, var(--src-zcode) 13%, var(--surface));
+}
+
 .session-source-kind[data-source-kind="codex_archived"],
 .detail-tag.tag-source[data-source-kind="codex_archived"] {
   border-color: var(--line-strong);
@@ -1354,7 +1361,9 @@ body[data-view="tools"] .rail-toggle {
   background: var(--surface-sunken);
   font-family: var(--mono-font, ui-monospace, monospace);
   font-size: 0.7rem;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .detail-tag.tag-session-id:hover {
@@ -2403,6 +2412,10 @@ body[data-view="tools"] .rail-toggle {
 
 .source-tree__item[data-source-agent="opencode"] .source-tree__dot {
   background: var(--src-opencode);
+}
+
+.source-tree__item[data-source-agent="zcode"] .source-tree__dot {
+  background: var(--src-zcode);
 }
 
 .session-pane {

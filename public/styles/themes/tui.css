@@ -45,6 +45,7 @@
   --src-pi: #bf3989;
   --src-kimi: #0969da;
   --src-opencode: #cf222e;
+  --src-zcode: #1f6feb;
   --shadow-raised: 0 3px 12px rgb(31 35 40 / 12%);
   --focus-ring: #0969da;
 }
@@ -80,6 +81,7 @@
   --src-pi: #f778ba;
   --src-kimi: #39c5cf;
   --src-opencode: #f85149;
+  --src-zcode: #58a6ff;
   --shadow-raised: 0 3px 16px rgb(0 0 0 / 38%);
   --focus-ring: #79c0ff;
 }

@@ -82,14 +82,15 @@ export function createUpdateController({ root = document, requestJson }) {
     if (elements.status) {
       const statusKey = {
         checking: "updateChecking",
-        available: "updateAvailable",
         downloading: "updateDownloading",
         installing: "updateInstallingHint",
         latest: "updateLatest",
         error: "updateFailed",
       }[phase];
-      elements.status.textContent =
+      const statusText =
         phase === "error" && message ? message : statusKey ? t(statusKey) : "";
+      elements.status.textContent = statusText;
+      elements.status.classList.toggle("hidden", !statusText);
       elements.status.dataset.state = phase === "error" ? "error" : phase;
     }
     setProgress(current);

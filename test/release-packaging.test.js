@@ -232,6 +232,11 @@ test("应用内更新窗口接收日志和下载进度且托盘图标符合状�
     /\/api\/settings\/install-update[\s\S]*updater::install_update/
   );
   assert.match(updateView, /listen\("update-status"/);
+  assert.doesNotMatch(updateView, /updateAvailable/);
+  assert.match(
+    updateView,
+    /elements\.status\.classList\.toggle\("hidden", !statusText\)/
+  );
   assert.match(
     updateView,
     /progressPercent\(payload\.downloaded, payload\.total\)/

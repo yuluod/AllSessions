@@ -448,7 +448,6 @@ const DICT = {
     updateTitle: "软件更新",
     updateVersion: "可用版本 v{version}",
     updateChecking: "正在检查更新…",
-    updateAvailable: "发现新版本。你可以先查看更新日志，再决定是否下载并安装。",
     updateLatest: "当前已经是最新版本。",
     updateNotes: "更新日志",
     updateInstall: "下载并安装",
@@ -966,8 +965,6 @@ const DICT = {
     updateTitle: "Software Update",
     updateVersion: "Version v{version} available",
     updateChecking: "Checking for updates…",
-    updateAvailable:
-      "A new version is available. Review the release notes before downloading and installing it.",
     updateLatest: "You already have the latest version.",
     updateNotes: "Release notes",
     updateInstall: "Download and install",

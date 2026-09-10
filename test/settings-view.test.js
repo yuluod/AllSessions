@@ -20,5 +20,5 @@ test("来源概览按 Agent 去重并统计当前检测结果", () => {
     },
   });
 
-  assert.deepEqual(result, { supported: 6, detected: 2 });
+  assert.deepEqual(result, { supported: 7, detected: 2 });
 });

@@ -1073,14 +1073,17 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
   assert.match(source, /key: "pi", agent: "pi", label: "Pi"/);
   assert.match(source, /key: "kimi", agent: "kimi", label: "Kimi Code CLI"/);
   assert.match(source, /key: "opencode", agent: "opencode", label: "OpenCode"/);
+  assert.match(source, /key: "zcode", agent: "zcode", label: "ZCode"/);
   assert.match(source, /agent: "codex"/);
   assert.match(source, /summarizeSourceSupport\(payload\)/);
   assert.match(source, /key === "opencode"[\s\S]*settingsOpenCodeReadFailed/);
+  assert.match(source, /key === "zcode"[\s\S]*settingsZCodeReadFailed/);
   assert.match(i18n, /settingsSupportedAgents:/);
   assert.match(i18n, /settingsDetectedAgents:/);
   assert.match(i18n, /settingsSourceHealth_missing: "未检测到"/);
   assert.doesNotMatch(i18n, /settingsSourceDatabaseMissing:/);
   assert.match(i18n, /settingsOpenCodeReadFailed:/);
+  assert.match(i18n, /settingsZCodeReadFailed:/);
   assert.match(
     app,
     /createSettingsController\(\{[\s\S]*onLanguageChanged[\s\S]*onSaved/

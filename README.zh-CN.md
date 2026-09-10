@@ -17,13 +17,13 @@
 
 </div>
 
-AllSessions 将 Codex、Claude Code、Gemini CLI、Pi、Kimi Code CLI 和 OpenCode 的本地会话聚合到一个 Tauri 桌面应用中。会话发现、解析、搜索、缓存、文件监听和维护操作均由 Rust 实现；前端 WebView 只负责展示，不启动 HTTP 服务，也不捆绑 Node.js 运行时。
+AllSessions 将 Codex、Claude Code、Gemini CLI、Pi、Kimi Code CLI、OpenCode 和 ZCode 的本地会话聚合到一个 Tauri 桌面应用中。会话发现、解析、搜索、缓存、文件监听和维护操作均由 Rust 实现；前端 WebView 只负责展示，不启动 HTTP 服务，也不捆绑 Node.js 运行时。
 
 > AllSessions 是独立的社区项目，与所支持 Agent 的维护者或厂商不存在隶属、赞助或官方认可关系。产品及公司名称仅用于说明兼容的本地会话来源。
 
 ## 功能
 
-- 统一浏览 Codex、Codex 归档、Claude Code、Gemini CLI、Pi、Kimi Code CLI 和 OpenCode 会话
+- 统一浏览 Codex、Codex 归档、Claude Code、Gemini CLI、Pi、Kimi Code CLI、OpenCode 和 ZCode 会话
 - 按来源、Provider、日期、项目和工作目录筛选并搜索
 - 查看归一化对话、工具调用与原始事件
 - 按 Agent 对比会话、消息、工具、活跃度、Provider 和工作目录统计
@@ -52,6 +52,7 @@ AllSessions 将 Codex、Claude Code、Gemini CLI、Pi、Kimi Code CLI 和 OpenCo
 | Pi            | `~/.pi/agent/sessions`                | 从 v1-v3 JSONL 树重建当前分支；支持消息、Thinking、工具、摘要、原始事件、搜索和实时刷新                                                                   |
 | Kimi Code CLI | `~/.kimi/sessions`                    | 读取 `wire.jsonl`，关联工作目录和自定义标题，合并流式内容，并支持子 Agent、工具、原始事件、搜索和实时刷新                                                 |
 | OpenCode      | `~/.local/share/opencode/opencode.db` | 读取最新正式版使用的 SQLite 格式；支持消息、Thinking、工具、子 Agent、原始事件、搜索和 WAL 实时刷新；来源数据保持只读                                     |
+| ZCode         | `~/.zcode/cli/db/db.sqlite`           | 读取 ZCode CLI 使用的 SQLite 格式；支持消息、Thinking、工具、压缩标记、原始事件、搜索和 WAL 实时刷新；排除子 Agent 会话；来源数据保持只读                 |
 
 ## 安装包与运行
 
@@ -84,6 +85,7 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 | `KIMI_SESSIONS_DIR`            | Kimi Code CLI 数据根目录（路径列表） | `~/.kimi`                             |
 | `KIMI_SHARE_DIR`               | Kimi Code CLI 官方数据目录           | `~/.kimi`                             |
 | `OPENCODE_DB`                  | OpenCode 官方 SQLite 数据库路径      | `~/.local/share/opencode/opencode.db` |
+| `ZCODE_DB`                     | ZCode 官方 SQLite 数据库路径         | `~/.zcode/cli/db/db.sqlite`           |
 | `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录             | 系统用户缓存目录下的 `AllSessions`    |
 | `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存              | 未设置                                |
 | `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径     | 系统应用数据目录                      |
@@ -92,7 +94,7 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 
 ## 隐私与安全
 
-本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览、搜索和导出不会修改来源数据。显式确认永久删除会在创建本地备份后修改 Codex、Claude Code 或 Gemini CLI 的原始记录；Codex Provider 维护模式也会在启用并确认执行后修改 Codex 数据。Pi、Kimi Code CLI 与 OpenCode 在当前版本中保持只读：仍可在 AllSessions 内本地移除，但删除原始记录需回到对应 Agent 操作。
+本地 AI 历史可能包含提示词、工具输出、源代码、工作目录和 Provider 标识。普通浏览、搜索和导出不会修改来源数据。显式确认永久删除会在创建本地备份后修改 Codex、Claude Code 或 Gemini CLI 的原始记录；Codex Provider 维护模式也会在启用并确认执行后修改 Codex 数据。Pi、Kimi Code CLI、OpenCode 与 ZCode 在当前版本中保持只读：仍可在 AllSessions 内本地移除，但删除原始记录需回到对应 Agent 操作。
 
 收藏、标签、备注、常用筛选和本地归档/移除状态属于 AllSessions 用户数据，独立保存在 `workspace.sqlite` 中；它们不会修改 Agent 原始记录，也不会随可重建的索引缓存一起清除。导出脱敏默认关闭；开启后会移除已知会话标识和常见本地路径模式，但分享前仍应人工检查导出内容。
 

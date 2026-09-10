@@ -16,13 +16,13 @@
 
 </div>
 
-AllSessions combines local Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, and OpenCode history in one Tauri desktop app. Rust owns session discovery, parsing, search, caching, file watching, and maintenance. The WebView is a presentation layer: no HTTP server is opened and no Node.js runtime is bundled.
+AllSessions combines local Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, and ZCode history in one Tauri desktop app. Rust owns session discovery, parsing, search, caching, file watching, and maintenance. The WebView is a presentation layer: no HTTP server is opened and no Node.js runtime is bundled.
 
 > AllSessions is an independent community project. It is not affiliated with, sponsored by, or endorsed by the maintainers or vendors of the supported agents. Product names are used only to identify compatible local data sources.
 
 ## Features
 
-- Browse Codex, archived Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, and OpenCode sessions together
+- Browse Codex, archived Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, and ZCode sessions together
 - Filter and search by source, provider, date, project, and working directory
 - Inspect normalized conversations, tool activity, and raw events
 - Compare session, message, tool, activity, provider, and working-directory statistics by Agent
@@ -51,6 +51,7 @@ AllSessions combines local Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, an
 | Pi             | `~/.pi/agent/sessions`                | Rebuilds the current branch from v1-v3 JSONL trees; supports messages, thinking, tools, summaries, raw events, search, and live refresh                                                                               |
 | Kimi Code CLI  | `~/.kimi/sessions`                    | Reads `wire.jsonl`, maps working directories and custom titles, merges streamed content, and exposes subagents, tools, raw events, search, and live refresh                                                           |
 | OpenCode       | `~/.local/share/opencode/opencode.db` | Reads the SQLite schema used by the latest stable release; supports messages, reasoning, tools, subagents, raw events, search, and WAL-based live refresh; source data is read-only                                   |
+| ZCode          | `~/.zcode/cli/db/db.sqlite`           | Reads the SQLite schema used by ZCode CLI; supports messages, reasoning, tools, compaction markers, raw events, search, and WAL-based live refresh; subagent sessions are excluded; source data is read-only          |
 
 ## Install and run
 
@@ -83,6 +84,7 @@ Set these before starting the desktop app (values are read once at startup):
 | `KIMI_SESSIONS_DIR`            | Kimi Code CLI data roots (path list)     | `~/.kimi`                                    |
 | `KIMI_SHARE_DIR`               | Kimi Code CLI's official data directory  | `~/.kimi`                                    |
 | `OPENCODE_DB`                  | OpenCode's official SQLite database path | `~/.local/share/opencode/opencode.db`        |
+| `ZCODE_DB`                     | ZCode's official SQLite database path    | `~/.zcode/cli/db/db.sqlite`                  |
 | `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite index directory              | Platform cache directory under `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset                                        |
 | `ALLSESSIONS_WORKSPACE_DB`     | AllSessions user-data SQLite path        | Platform app-data directory                  |
@@ -91,7 +93,7 @@ The six `*_SESSIONS_DIR` variables accept multiple paths separated by the OS pat
 
 ## Privacy and security
 
-Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing, search, and export do not modify source data. Explicitly confirmed permanent deletion modifies the original Codex, Claude Code, or Gemini CLI record after creating a local backup; Codex provider maintenance also modifies Codex data after it is enabled and execution is confirmed. Pi, Kimi Code CLI, and OpenCode are read-only sources in this release: AllSessions local removal remains available, but original records can only be deleted in the source agent.
+Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing, search, and export do not modify source data. Explicitly confirmed permanent deletion modifies the original Codex, Claude Code, or Gemini CLI record after creating a local backup; Codex provider maintenance also modifies Codex data after it is enabled and execution is confirmed. Pi, Kimi Code CLI, OpenCode, and ZCode are read-only sources in this release: AllSessions local removal remains available, but original records can only be deleted in the source agent.
 
 Favorites, tags, notes, reusable filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`; they never modify Agent source records and are not deleted when the rebuildable index cache is cleared. Export redaction is optional and off by default. When enabled, it removes known session identifiers and common local-path patterns, but exports should still be reviewed before sharing.
 

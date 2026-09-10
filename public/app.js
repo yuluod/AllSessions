@@ -686,6 +686,26 @@ function sourceKindValue(summary) {
   return summary?.source_kind || "unknown";
 }
 
+function resumeCommandForKind(kind, sessionId) {
+  switch (kind) {
+    case "claude_code":
+      return `claude --resume ${sessionId}`;
+    case "codex":
+    case "codex_archived":
+      return `codex resume ${sessionId}`;
+    case "gemini":
+      return `gemini --resume ${sessionId}`;
+    case "pi":
+      return `pi --resume ${sessionId}`;
+    case "kimi":
+      return `kimi --resume ${sessionId}`;
+    case "opencode":
+      return `opencode resume ${sessionId}`;
+    default:
+      return null;
+  }
+}
+
 function compactSourceLabel(label) {
   const compact = String(label)
     .replace(/\s*\b(Code CLI|Code|CLI)\b\s*$/i, "")
@@ -1537,6 +1557,30 @@ function renderDetailTags(summary) {
     }
     elements.detailTags.append(span);
   });
+
+  if (summary.id) {
+    const shortId = summary.id.length > 8 ? summary.id.slice(0, 8) : summary.id;
+    const kind = sourceKindValue(summary);
+    const resumeCmd = resumeCommandForKind(kind, summary.id);
+    const idTag = document.createElement("button");
+    idTag.type = "button";
+    idTag.className = "detail-tag tag-session-id";
+    idTag.title = resumeCmd
+      ? `${resumeCmd}\n${t("copy")}`
+      : `${t("sessionId")}: ${summary.id}\n${t("copy")}`;
+    idTag.textContent = `ID: ${shortId}`;
+    idTag.addEventListener("click", () => {
+      const copyText = resumeCmd || summary.id;
+      navigator.clipboard.writeText(copyText).then(() => {
+        const orig = idTag.textContent;
+        idTag.textContent = "✓";
+        setTimeout(() => {
+          idTag.textContent = orig;
+        }, 1500);
+      });
+    });
+    elements.detailTags.append(idTag);
+  }
   (workspace.tags || []).slice(0, 3).forEach((tag) => {
     const span = document.createElement("span");
     span.className = "detail-tag tag-workspace";

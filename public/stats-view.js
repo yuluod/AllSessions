@@ -8,6 +8,7 @@ const AGENT_PRESENTATION = {
   pi: { label: "Pi", color: "#2563eb" },
   kimi: { label: "Kimi Code CLI", color: "#b42318" },
   opencode: { label: "OpenCode", color: "#16794f" },
+  zcode: { label: "ZCode", color: "#3b6ea5" },
 };
 
 function renderBar(label, count, max, displayLabel = label) {
@@ -120,7 +121,7 @@ function renderTrend(stats, container) {
 
 function renderAgents(stats, container) {
   container.replaceChildren();
-  const items = (stats.by_agent || []).slice(0, 6);
+  const items = (stats.by_agent || []).slice(0, 7);
   if (!items.length) {
     renderEmpty(container);
     return;

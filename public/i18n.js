@@ -417,6 +417,8 @@ const DICT = {
     settingsSourceHealthSummary: "{sessions} 个会话 · {files} 个文件",
     settingsOpenCodeReadFailed:
       "无法读取数据库，请确认路径、读取权限和 OpenCode 版本。",
+    settingsZCodeReadFailed:
+      "无法读取数据库，请确认路径、读取权限和 ZCode 版本。",
     settingsNeverScanned: "尚未扫描",
     settingsWatcherActive: "正在监听 {n} 个目录",
     settingsWatcherInactive: "文件监听未运行",
@@ -933,6 +935,8 @@ const DICT = {
     settingsSourceHealthSummary: "{sessions} sessions · {files} files",
     settingsOpenCodeReadFailed:
       "Could not read the database. Check the path, read permission, and OpenCode version.",
+    settingsZCodeReadFailed:
+      "Could not read the database. Check the path, read permission, and ZCode version.",
     settingsNeverScanned: "Not scanned yet",
     settingsWatcherActive: "Watching {n} directories",
     settingsWatcherInactive: "File watching is inactive",

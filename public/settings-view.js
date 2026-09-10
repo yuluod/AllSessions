@@ -15,6 +15,7 @@ const SOURCE_KINDS = [
   { key: "pi", agent: "pi", label: "Pi" },
   { key: "kimi", agent: "kimi", label: "Kimi Code CLI" },
   { key: "opencode", agent: "opencode", label: "OpenCode" },
+  { key: "zcode", agent: "zcode", label: "ZCode" },
 ];
 
 export function summarizeSourceSupport(payload) {
@@ -29,7 +30,7 @@ export function summarizeSourceSupport(payload) {
 }
 
 function sourceText(key, directoryKey, databaseKey) {
-  return t(key === "opencode" ? databaseKey : directoryKey);
+  return t(key === "opencode" || key === "zcode" ? databaseKey : directoryKey);
 }
 
 function formatBytes(bytes) {
@@ -115,7 +116,9 @@ export function createSettingsController({
   }
 
   function sourceErrorText(key, error) {
-    return key === "opencode" ? t("settingsOpenCodeReadFailed") : error;
+    if (key === "opencode") return t("settingsOpenCodeReadFailed");
+    if (key === "zcode") return t("settingsZCodeReadFailed");
+    return error;
   }
 
   async function chooseSourcePath(key, currentPath) {
@@ -123,7 +126,7 @@ export function createSettingsController({
       setStatus(t("settingsDesktopPreview"));
       return null;
     }
-    const database = key === "opencode";
+    const database = key === "opencode" || key === "zcode";
     try {
       return await openPathDialog({
         title: sourceText(key, "settingsChooseRoot", "settingsChooseDatabase"),

@@ -53,6 +53,7 @@ const SOURCE_RAIL_AGENTS = [
   { agent: "pi", kinds: ["pi"] },
   { agent: "kimi", kinds: ["kimi"] },
   { agent: "opencode", kinds: ["opencode"] },
+  { agent: "zcode", kinds: ["zcode"] },
 ];
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";
@@ -701,6 +702,8 @@ function resumeCommandForKind(kind, sessionId) {
       return `kimi --resume ${sessionId}`;
     case "opencode":
       return `opencode resume ${sessionId}`;
+    case "zcode":
+      return `zcode --resume ${sessionId}`;
     default:
       return null;
   }

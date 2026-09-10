@@ -414,10 +414,13 @@
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  container-name: rail;
+  container-type: inline-size;
 }
 
 .content-main {
   display: grid;
+  position: relative;
   min-width: 0;
   min-height: 0;
 }
@@ -446,6 +449,45 @@ body[data-view="tools"] .rail-toggle {
 
 .app-layout.rail-collapsed .sidebar-left {
   display: none;
+}
+
+.pane-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: calc(var(--z-sticky) + 2);
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pane-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 120ms var(--ease-out);
+}
+
+.pane-resizer:hover::before,
+.pane-resizer:focus-visible::before,
+.pane-resizer.is-active::before {
+  background: var(--line-accent);
+}
+
+.pane-resizer:focus-visible {
+  outline: 1px solid var(--line-accent);
+  outline-offset: -1px;
+}
+
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 /* 左侧浏览器 */
@@ -505,6 +547,19 @@ body[data-view="tools"] .rail-toggle {
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sidebar-filters > summary > span:first-child,
+.project-nav > summary > span:first-child,
+.visibility-panel > summary > span:first-child {
+  flex: none;
+  white-space: nowrap;
+}
+
+@container rail (max-width: 250px) {
+  .sidebar-filters > summary .summary-hint {
+    display: none;
+  }
 }
 
 .sidebar-filter-content {
@@ -631,13 +686,17 @@ body[data-view="tools"] .rail-toggle {
 }
 
 .project-nav {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 96px;
 }
 
 .project-list {
   display: grid;
   gap: 2px;
-  max-height: 184px;
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 0 8px 9px;
   overflow: auto;
 }

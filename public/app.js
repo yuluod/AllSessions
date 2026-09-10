@@ -34,14 +34,16 @@ import { renderStats } from "./stats-view.js";
 import { createSettingsController } from "./settings-view.js";
 import { createUpdateController } from "./update-view.js";
 import { getThemeState, initTheme, toggleScheme } from "./theme-manager.js";
+import { initPaneLayout } from "./pane-layout.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 initTheme();
+initPaneLayout();
 
 const PAGE_LIMIT = 50;
 const MAX_BULK_EXPORT_SESSIONS = 20;
 const BULK_EXPORT_CONCURRENCY = 4;
-const PROJECT_PREVIEW_LIMIT = 4;
+const PROJECT_PREVIEW_LIMIT = 12;
 const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 const INSPECTOR_DRAWER_QUERY = "(max-width: 1640px)";
 const COMPACT_WORKSPACE_QUERY = "(min-width: 761px) and (max-width: 1640px)";

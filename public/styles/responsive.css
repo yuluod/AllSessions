@@ -89,6 +89,10 @@
     --header-h: 114px;
   }
 
+  .pane-resizer {
+    display: none;
+  }
+
   .toolbar {
     grid-template-areas:
       "brand views right"

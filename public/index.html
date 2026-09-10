@@ -325,21 +325,11 @@
             </div>
           </nav>
 
-          <details class="project-nav rail__group">
-            <summary id="project-nav-title">
-              <span data-i18n="projects">项目</span>
-              <span class="summary-hint" data-i18n="recentProjects"
-                >最近使用</span
-              >
-            </summary>
-            <div id="project-list" class="project-list"></div>
-          </details>
-
           <details id="sidebar-filters" class="sidebar-filters">
             <summary>
               <span data-i18n="filterOptions">筛选条件</span>
               <span class="summary-hint" data-i18n="filterOptionsHint"
-                >来源 · Provider · 日期</span
+                >Provider · 标签 · 日期</span
               >
             </summary>
             <div class="sidebar-filter-content">
@@ -363,12 +353,6 @@
               </div>
               <div class="filter-bar">
                 <label class="field">
-                  <span data-i18n="sourceKind">来源</span>
-                  <select id="source-kind-filter">
-                    <option value="" data-i18n="all">全部</option>
-                  </select>
-                </label>
-                <label class="field">
                   <span>Provider</span>
                   <select id="provider-filter">
                     <option value="" data-i18n="all">全部</option>
@@ -377,12 +361,6 @@
                 <label class="field">
                   <span data-i18n="date">日期</span>
                   <select id="date-filter">
-                    <option value="" data-i18n="all">全部</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span data-i18n="cwd">工作目录</span>
-                  <select id="cwd-filter">
                     <option value="" data-i18n="all">全部</option>
                   </select>
                 </label>
@@ -419,10 +397,6 @@
                     <input id="show-removed-toggle" type="checkbox" />
                     <span data-i18n="showRemoved">显示已移除内容</span>
                   </label>
-                  <label class="archive-toggle-label">
-                    <input id="favorite-only-toggle" type="checkbox" />
-                    <span data-i18n="favoriteOnly">只看收藏</span>
-                  </label>
                 </div>
               </details>
               <div class="saved-filter-section">
@@ -452,6 +426,16 @@
                 ></div>
               </div>
             </div>
+          </details>
+
+          <details class="project-nav rail__group">
+            <summary id="project-nav-title">
+              <span data-i18n="projects">项目</span>
+              <span class="summary-hint" data-i18n="recentProjects"
+                >最近使用</span
+              >
+            </summary>
+            <div id="project-list" class="project-list"></div>
           </details>
         </aside>
 
@@ -539,16 +523,10 @@
                 </button>
                 <span data-i18n="sortDesc">按时间倒序</span>
               </div>
-              <span class="session-list-hint" data-i18n="listHint"
-                >选择一条会话查看详情</span
-              >
-            </div>
-            <div class="session-list-columns" aria-hidden="true">
-              <span data-i18n="listColumnTime">时间</span>
-              <span data-i18n="sourceKind">来源</span>
-              <span data-i18n="listColumnTitle">标题</span>
-              <span data-i18n="messages">消息</span>
-              <span data-i18n="cwd">工作目录</span>
+              <label class="session-list-header__favorite">
+                <input id="favorite-only-toggle" type="checkbox" />
+                <span data-i18n="favoriteOnly">只看收藏</span>
+              </label>
             </div>
             <div
               id="session-list"
@@ -2198,18 +2176,20 @@
           >
         </label>
         <button class="session-item" type="button">
-          <span class="session-time session-row__time"></span>
-          <span class="session-source-kind session-row__source"></span>
-          <span class="session-title-cell session-row__title">
+          <span class="session-item__meta">
+            <span class="session-time"></span>
+            <span class="session-source-kind"></span>
+            <span class="session-message-count"></span>
+          </span>
+          <span class="session-title-cell">
             <strong class="session-title"></strong>
             <span class="session-preview"></span>
-            <span class="session-tertiary">
-              <strong class="session-provider"></strong>
-              <span class="session-source"></span>
-            </span>
           </span>
-          <span class="session-message-count session-row__messages"></span>
-          <span class="session-directory-cell session-row__directory">
+          <span class="session-tertiary">
+            <strong class="session-provider"></strong>
+            <span class="session-source"></span>
+          </span>
+          <span class="session-directory-cell">
             <span class="session-cwd session-cwd-main"></span>
             <span class="session-cwd-path"></span>
           </span>

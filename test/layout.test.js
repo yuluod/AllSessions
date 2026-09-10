@@ -377,20 +377,18 @@ test("页面复用项目图标作为 favicon 与工具栏标识", async () => {
   assert.match(source, /elements\.homeLink\?\.addEventListener\("click"/);
 });
 
-test("会话列表项使用严格对齐的五列信息层级", async () => {
+test("会话列表项使用卡片式堆叠信息层级", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
   const css = await readProjectFile("public/styles.css");
 
-  assert.match(
-    html,
-    /class="session-list-columns"[\s\S]*listColumnTime[\s\S]*sourceKind[\s\S]*listColumnTitle[\s\S]*messages[\s\S]*cwd/
-  );
-  assert.match(html, /class="session-time session-row__time"/);
-  assert.match(html, /class="session-source-kind session-row__source"/);
-  assert.match(html, /class="session-title-cell session-row__title"/);
-  assert.match(html, /class="session-message-count session-row__messages"/);
-  assert.match(html, /class="session-directory-cell session-row__directory"/);
+  assert.doesNotMatch(html, /session-list-columns/);
+  assert.match(html, /class="session-item__meta"/);
+  assert.match(html, /class="session-time"/);
+  assert.match(html, /class="session-source-kind"/);
+  assert.match(html, /class="session-title-cell"/);
+  assert.match(html, /class="session-message-count"/);
+  assert.match(html, /class="session-directory-cell"/);
   assert.match(html, /class="session-tertiary"/);
   assert.match(html, /class="session-title"/);
   assert.match(html, /class="session-preview"/);
@@ -405,15 +403,50 @@ test("会话列表项使用严格对齐的五列信息层级", async () => {
   assert.match(css, /\.session-list\s*\{[\s\S]*overflow-x: hidden/);
   assert.match(
     css,
-    /\.session-list-columns,\s*\.session-item\s*\{[\s\S]*grid-template-columns: 78px 68px minmax\(0, 1fr\) 34px minmax\(72px, 128px\)/
+    /\.session-item\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/
   );
+  assert.match(css, /\.session-item__meta\s*\{[^}]*display: flex/);
   assert.match(
     css,
-    /\.session-list-columns\s*\{[\s\S]*padding: 4px 10px 4px 40px;/
+    /\.session-item__meta \.session-message-count\s*\{[^}]*margin-left: auto/
   );
-  assert.match(css, /\.session-item\s*\{[\s\S]*padding: 7px 10px 7px 40px;/);
+  assert.match(css, /\.session-item\s*\{[^}]*padding: 7px 10px 7px 40px;/);
   assert.match(css, /background: var\(--stripe-a\)/);
   assert.match(css, /background: var\(--stripe-b\)/);
+});
+
+test("工作台支持拖拽调整三栏宽度且窄栏摘要不换行", async () => {
+  const html = await readProjectFile("public/index.html");
+  const app = await readProjectFile("public/app.js");
+  const pane = await readProjectFile("public/pane-layout.js");
+  const css = await readProjectFile("public/styles.css");
+  const responsive = await readProjectFile("public/styles/responsive.css");
+  const i18n = await readProjectFile("public/i18n.js");
+
+  assert.match(
+    html,
+    /data-pane-resizer="rail"[\s\S]*?role="separator"[\s\S]*?tabindex="0"/
+  );
+  assert.match(
+    html,
+    /data-pane-resizer="list"[\s\S]*?role="separator"[\s\S]*?tabindex="0"/
+  );
+  assert.match(app, /import \{ initPaneLayout \} from "\.\/pane-layout\.js"/);
+  assert.match(app, /^initPaneLayout\(\);$/m);
+  assert.match(pane, /allsessions_pane_widths/);
+  assert.match(pane, /"--rail-w"/);
+  assert.match(pane, /"--list-w"/);
+  assert.match(pane, /max-width: 1040px/);
+  assert.match(css, /\.pane-resizer\s*\{[^}]*cursor: col-resize/);
+  assert.match(css, /\.content-main\s*\{[^}]*position: relative/);
+  assert.match(css, /@container rail \(max-width: 250px\)/);
+  assert.match(css, /\.sidebar-filters > summary > span:first-child/);
+  assert.match(
+    responsive,
+    /@media \(max-width: 1040px\)[\s\S]*?\.pane-resizer\s*\{\s*display: none/
+  );
+  assert.match(i18n, /resizeRailPane:/);
+  assert.match(i18n, /resizeListPane:/);
 });
 
 test("页面提供项目导航入口并复用 cwd 筛选", async () => {
@@ -422,7 +455,15 @@ test("页面提供项目导航入口并复用 cwd 筛选", async () => {
   const css = await readProjectFile("public/styles.css");
 
   assert.match(html, /id="project-list"/);
+  assert.match(
+    html,
+    /id="sidebar-filters"[\s\S]*?<details class="project-nav rail__group"/
+  );
   assert.match(source, /function renderProjectNav\(\)/);
+  assert.match(source, /PROJECT_PREVIEW_LIMIT = 12/);
+  assert.match(css, /\.project-nav\s*\{[^}]*flex: 1 1 auto/);
+  assert.match(css, /\.project-list\s*\{[^}]*flex: 1 1 auto/);
+  assert.doesNotMatch(css, /max-height: 184px/);
   assert.match(source, /async function setCwdFilter\(cwd\)/);
   assert.match(source, /state\.filters\.cwd = cwd/);
   assert.match(source, /showAllProjects/);
@@ -546,14 +587,11 @@ test("列表和详情为不同 Agent 来源设置明确标识", async () => {
 
   assert.match(
     html,
-    /class="session-source-kind session-row__source"[\s\S]*class="session-title-cell session-row__title"[\s\S]*class="session-title"/
+    /class="session-source-kind"[\s\S]*class="session-title-cell"[\s\S]*class="session-title"/
   );
   assert.match(source, /sourceKindEl\.dataset\.sourceKind = sourceKind/);
   assert.match(source, /span\.dataset\.sourceKind = sourceKind/);
-  assert.match(
-    source,
-    /fillSelect\(elements\.sourceKindFilter,[\s\S]*sourceKindLabel\)/
-  );
+  assert.match(source, /sourceKindLabel\(state\.filters\.source_kind\)/);
   assert.match(css, /data-source-kind="claude_code"/);
   assert.match(css, /data-source-kind="gemini"/);
   assert.match(css, /data-source-kind="codex_archived"/);
@@ -651,13 +689,9 @@ test("常用窗口下可收起来源栏并让窄会话表自动降噪", async ()
   assert.match(css, /@container session-pane \(max-width: 500px\)/);
   assert.match(
     css,
-    /@container session-pane \(max-width: 500px\)[\s\S]*\.session-list-columns,[\s\S]*\.session-directory-cell\s*\{\s*display: none/
+    /@container session-pane \(max-width: 500px\)[\s\S]*\.session-directory-cell\s*\{\s*display: none/
   );
-  assert.match(css, /\.session-title-cell\s*\{\s*display: contents/);
-  assert.match(
-    css,
-    /\.session-title\s*\{[\s\S]*grid-column: 1 \/ -1;[\s\S]*-webkit-line-clamp: 2/
-  );
+  assert.match(css, /\.session-title\s*\{[^}]*text-overflow: ellipsis/);
   assert.match(
     css,
     /\.detail-topbar\s*\{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\)/
@@ -711,8 +745,10 @@ test("会话来源只在左侧筛选中出现，顶部保留搜索主路径", as
 
   assert.match(
     html,
-    /<aside[\s\S]{0,120}class="rail sidebar-left"[\s\S]*id="sidebar-filters"[\s\S]*id="source-kind-filter"/
+    /class="rail sidebar-left"[\s\S]*id="source-rail-list"[\s\S]*id="sidebar-filters"/
   );
+  assert.doesNotMatch(html, /id="source-kind-filter"/);
+  assert.doesNotMatch(html, /id="cwd-filter"/);
   assert.match(
     html,
     /<header class="job-header toolbar">[\s\S]*class="sidebar-tabs workspace-tabs"[\s\S]*class="toolbar-center"/
@@ -722,7 +758,7 @@ test("会话来源只在左侧筛选中出现，顶部保留搜索主路径", as
   assert.match(source, /async function setSourceKindFilter\(sourceKind\)/);
   assert.match(
     source,
-    /elements\.sourceKindFilter\?\.addEventListener\("change",[\s\S]*setSourceKindFilter\(event\.target\.value\)/
+    /elements\.sourceRailItems\.forEach\(\(button\) => \{[\s\S]*?setSourceKindFilter\(button\.dataset\.sourceKind \|\| ""\)/
   );
   assert.match(
     css,
@@ -1337,6 +1373,11 @@ test("个人工作台数据独立持久化并提供整理与可选脱敏导出",
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
+  assert.match(
+    html,
+    /class="session-list-header__primary"[\s\S]*?id="favorite-only-toggle"[\s\S]*?<div\s+id="session-list"/
+  );
+  assert.doesNotMatch(html, /session-list-hint/);
   assert.match(app, /exportSessionCollection/);
   assert.match(
     html,

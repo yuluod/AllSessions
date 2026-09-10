@@ -184,7 +184,6 @@
   box-shadow: inset 0 0 0 1px var(--line-accent);
 }
 
-[data-theme="pixel"] .session-list-columns,
 [data-theme="pixel"] .session-group-header,
 [data-theme="pixel"] .detail-topbar,
 [data-theme="pixel"] .rail__header {
@@ -207,7 +206,8 @@
     .session-time,
     .session-message-count,
     .session-cwd-main,
-    .session-cwd-path
+    .session-cwd-path,
+    .session-tertiary
   ) {
   color: var(--text-inverse);
 }

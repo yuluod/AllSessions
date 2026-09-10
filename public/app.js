@@ -463,13 +463,11 @@ const elements = {
   projectNav: document.querySelector(".project-nav"),
   sessionRoot: document.querySelector("#session-root"),
   sessionCount: document.querySelector("#session-count"),
-  sourceKindFilter: document.querySelector("#source-kind-filter"),
   sourceRailItems: Array.from(
     document.querySelectorAll("#source-rail-list [data-source-kind]")
   ),
   providerFilter: document.querySelector("#provider-filter"),
   dateFilter: document.querySelector("#date-filter"),
-  cwdFilter: document.querySelector("#cwd-filter"),
   workspaceTagFilter: document.querySelector("#workspace-tag-filter"),
   favoriteOnlyToggle: document.querySelector("#favorite-only-toggle"),
   savedFilterName: document.querySelector("#saved-filter-name"),
@@ -905,16 +903,8 @@ function updateFacetFilters() {
     return;
   }
 
-  const sourceKinds = Array.from(
-    new Set([
-      ...(state.facets.sources || []).map((source) => source.kind),
-      ...(state.facets.source_kinds || []),
-    ])
-  );
-  fillSelect(elements.sourceKindFilter, sourceKinds, sourceKindLabel);
   fillSelect(elements.providerFilter, state.facets.providers);
   fillSelect(elements.dateFilter, state.facets.dates);
-  fillSelect(elements.cwdFilter, state.facets.cwds);
   fillSelect(elements.workspaceTagFilter, state.facets.workspace_tags || []);
   renderProjectNav();
 }
@@ -945,12 +935,9 @@ function updateSessionCount() {
 }
 
 function syncFilterControls() {
-  if (elements.sourceKindFilter)
-    elements.sourceKindFilter.value = state.filters.source_kind;
   if (elements.providerFilter)
     elements.providerFilter.value = state.filters.provider;
   if (elements.dateFilter) elements.dateFilter.value = state.filters.date;
-  if (elements.cwdFilter) elements.cwdFilter.value = state.filters.cwd;
   if (elements.workspaceTagFilter)
     elements.workspaceTagFilter.value = state.filters.tag;
   if (elements.searchInput) elements.searchInput.value = state.searchQuery;
@@ -1154,7 +1141,7 @@ function activeFilterEntries() {
     entries.push({
       type: "source_kind",
       label: t("sourceKind"),
-      value: state.filters.source_kind,
+      value: sourceKindLabel(state.filters.source_kind),
     });
   }
   if (state.filters.provider) {
@@ -2497,9 +2484,6 @@ async function initialize() {
     });
   });
 
-  elements.sourceKindFilter?.addEventListener("change", async (event) => {
-    await setSourceKindFilter(event.target.value);
-  });
   elements.sourceRailItems.forEach((button) => {
     button.addEventListener("click", () => {
       setSourceKindFilter(button.dataset.sourceKind || "").catch((error) => {
@@ -2522,10 +2506,6 @@ async function initialize() {
     state.filters.date = event.target.value;
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
-  });
-
-  elements.cwdFilter?.addEventListener("change", async (event) => {
-    await setCwdFilter(event.target.value);
   });
 
   elements.workspaceTagFilter?.addEventListener("change", async (event) => {

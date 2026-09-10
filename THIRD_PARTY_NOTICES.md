@@ -37,7 +37,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | bit-set | 0.8.0 | Apache-2.0 OR MIT |
 | bit-vec | 0.8.0 | Apache-2.0 OR MIT |
 | bitflags | 1.3.2 | MIT/Apache-2.0 |
-| bitflags | 2.13.1 | MIT OR Apache-2.0 |
+| bitflags | 2.13.2 | MIT OR Apache-2.0 |
 | block-buffer | 0.10.4 | MIT OR Apache-2.0 |
 | block-buffer | 0.12.1 | MIT OR Apache-2.0 |
 | block2 | 0.6.2 | MIT |
@@ -82,9 +82,9 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | cssparser-macros | 0.6.1 | MPL-2.0 |
 | ctor | 0.8.0 | Apache-2.0 OR MIT |
 | ctor-proc-macro | 0.0.7 | Apache-2.0 OR MIT |
-| darling | 0.23.0 | MIT |
-| darling_core | 0.23.0 | MIT |
-| darling_macro | 0.23.0 | MIT |
+| darling | 0.24.1 | MIT |
+| darling_core | 0.24.1 | MIT |
+| darling_macro | 0.24.1 | MIT |
 | dbus | 0.9.12 | Apache-2.0/MIT |
 | defmt | 1.1.1 | MIT OR Apache-2.0 |
 | defmt-macros | 1.1.1 | MIT OR Apache-2.0 |
@@ -167,7 +167,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | hashbrown | 0.12.3 | MIT OR Apache-2.0 |
 | hashbrown | 0.16.1 | MIT OR Apache-2.0 |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 |
-| hashlink | 0.12.1 | MIT OR Apache-2.0 |
+| hashlink | 0.12.2 | MIT OR Apache-2.0 |
 | heck | 0.4.1 | MIT OR Apache-2.0 |
 | heck | 0.5.0 | MIT OR Apache-2.0 |
 | hermit-abi | 0.5.3 | MIT OR Apache-2.0 |
@@ -177,7 +177,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | http-body | 1.1.0 | MIT |
 | http-body-util | 0.1.5 | MIT |
 | httparse | 1.10.1 | MIT OR Apache-2.0 |
-| hybrid-array | 0.4.14 | MIT OR Apache-2.0 |
+| hybrid-array | 0.4.15 | MIT OR Apache-2.0 |
 | hyper | 1.11.1 | MIT |
 | hyper-rustls | 0.27.9 | Apache-2.0 OR ISC OR MIT |
 | hyper-util | 0.1.20 | MIT |
@@ -273,7 +273,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | objc2-user-notifications | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-web-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 |
-| open | 5.4.3 | MIT |
+| open | 5.4.4 | MIT |
 | openssl-probe | 0.2.1 | MIT OR Apache-2.0 |
 | option-ext | 0.2.0 | MPL-2.0 |
 | ordered-stream | 0.2.0 | MIT OR Apache-2.0 |
@@ -320,7 +320,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | regex | 1.13.1 | MIT OR Apache-2.0 |
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 |
 | regex-syntax | 0.8.11 | MIT OR Apache-2.0 |
-| reqwest | 0.13.4 | MIT OR Apache-2.0 |
+| reqwest | 0.13.5 | MIT OR Apache-2.0 |
 | rfd | 0.16.0 | MIT |
 | ring | 0.17.14 | Apache-2.0 AND ISC |
 | rsqlite-vfs | 0.1.1 | MIT |
@@ -328,7 +328,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |
 | rustix | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
-| rustls | 0.23.43 | Apache-2.0 OR ISC OR MIT |
+| rustls | 0.23.44 | Apache-2.0 OR ISC OR MIT |
 | rustls-native-certs | 0.8.4 | Apache-2.0 OR ISC OR MIT |
 | rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 |
 | rustls-platform-verifier | 0.7.0 | MIT OR Apache-2.0 |
@@ -354,8 +354,8 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | serde_repr | 0.1.21 | MIT OR Apache-2.0 |
 | serde_spanned | 0.6.9 | MIT OR Apache-2.0 |
 | serde_spanned | 1.1.1 | MIT OR Apache-2.0 |
-| serde_with | 3.22.0 | MIT OR Apache-2.0 |
-| serde_with_macros | 3.22.0 | MIT OR Apache-2.0 |
+| serde_with | 3.23.0 | MIT OR Apache-2.0 |
+| serde_with_macros | 3.23.0 | MIT OR Apache-2.0 |
 | serde-untagged | 0.1.9 | MIT OR Apache-2.0 |
 | serialize-to-javascript | 0.1.2 | MIT OR Apache-2.0 |
 | serialize-to-javascript-impl | 0.1.2 | MIT OR Apache-2.0 |
@@ -456,7 +456,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | url | 2.5.8 | MIT OR Apache-2.0 |
 | urlpattern | 0.3.0 | MIT |
 | utf8_iter | 1.0.4 | Apache-2.0 OR MIT |
-| uuid | 1.26.0 | Apache-2.0 OR MIT |
+| uuid | 1.26.1 | Apache-2.0 OR MIT |
 | vcpkg | 0.2.15 | MIT/Apache-2.0 |
 | version_check | 0.9.5 | MIT/Apache-2.0 |
 | version-compare | 0.2.1 | MIT |

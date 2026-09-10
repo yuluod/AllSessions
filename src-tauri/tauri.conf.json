@@ -50,7 +50,7 @@
       }
     },
     "macOS": {
-      "bundleVersion": "24"
+      "bundleVersion": "1000"
     }
   },
   "plugins": {

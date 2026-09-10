@@ -1,6 +1,6 @@
 {
   "name": "allsessions",
-  "version": "0.0.24",
+  "version": "0.1.0",
   "description": "A local-first Tauri desktop app for browsing Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, and OpenCode session history.",
   "type": "module",
   "license": "Apache-2.0",
@@ -37,6 +37,7 @@
     "build": "vite build",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "licenses:check": "node scripts/generate-third-party-notices.mjs --check",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "release:build": "pnpm desktop:build"

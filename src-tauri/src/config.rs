@@ -33,6 +33,11 @@ pub struct AppConfig {
 pub struct Preferences {
     pub keep_running_in_tray: bool,
     pub check_updates_on_startup: bool,
+    /// 恢复会话使用的终端应用；"auto" 按平台内置顺序自动探测，
+    /// "custom" 使用 terminal_custom 指定的应用。
+    pub terminal_app: String,
+    /// 自定义终端的应用名称或可执行文件路径。
+    pub terminal_custom: String,
 }
 
 impl Default for Preferences {
@@ -40,6 +45,8 @@ impl Default for Preferences {
         Self {
             keep_running_in_tray: true,
             check_updates_on_startup: true,
+            terminal_app: "auto".to_string(),
+            terminal_custom: String::new(),
         }
     }
 }

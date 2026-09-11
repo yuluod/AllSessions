@@ -85,6 +85,7 @@ impl BackendState {
             },
             "deletion_backup": crate::deletion_backup::storage_info(),
             "workspace_storage": workspace.value()["storage"].clone(),
+            "terminal_options": crate::resume::terminal_options(),
         }))
     }
 
@@ -316,6 +317,28 @@ fn route_request(
             app.emit("sessions-changed", json!({ "type": "session-deleted" }))
                 .map_err(|error| error.to_string())?;
             Ok(result)
+        }
+        ("POST", "/api/sessions/resume") => {
+            let session_key = request
+                .body
+                .get("sessionKey")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| ApiError::invalid("缺少 sessionKey"))?;
+            let summary = state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .summary_for_key(session_key)
+                .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
+            let (terminal, custom) = {
+                let config = state.config.lock().map_err(lock_error)?;
+                (
+                    config.preferences.terminal_app.clone(),
+                    config.preferences.terminal_custom.clone(),
+                )
+            };
+            crate::resume::resume_session(&summary, &terminal, &custom)
         }
         ("POST", "/api/sessions/delete-message") => {
             if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {

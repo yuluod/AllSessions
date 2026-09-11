@@ -617,6 +617,12 @@ impl SessionStore {
         Some(detail)
     }
 
+    /// 仅取摘要（不解析详情），供恢复会话这类只需要 id/cwd/source_kind 的操作使用。
+    pub fn summary_for_key(&self, key: &str) -> Option<Value> {
+        let resolved = self.resolve_record_key(key)?;
+        Some(self.records.get(&resolved)?.summary.clone())
+    }
+
     fn resolve_record_key(&self, key: &str) -> Option<String> {
         if self.records.contains_key(key) {
             return Some(key.to_string());

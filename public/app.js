@@ -406,6 +406,29 @@ function syncSessionWorkspaceControls(summary) {
   if (elements.revealProjectBtn) {
     elements.revealProjectBtn.disabled = !summary.cwd;
   }
+  if (elements.resumeSessionBtn) {
+    elements.resumeSessionBtn.disabled =
+      !summary.id ||
+      !resumeCommandForKind(sourceKindValue(summary), summary.id);
+  }
+}
+
+async function resumeCurrentSession() {
+  const summary = state.currentDetail?.summary;
+  const sessionKey = summary?._key;
+  if (!sessionKey || !elements.resumeSessionBtn) return;
+  elements.resumeSessionBtn.disabled = true;
+  try {
+    const result = await fetchJson("/api/sessions/resume", {
+      method: "POST",
+      body: { sessionKey },
+    });
+    announce(t("resumeLaunched", { command: result.command || "" }));
+  } catch (error) {
+    showError(`${t("resumeFailed")}: ${error.message || error}`);
+  } finally {
+    elements.resumeSessionBtn.disabled = false;
+  }
 }
 
 async function revealCurrentPath(kind) {
@@ -529,6 +552,7 @@ const elements = {
   ),
   revealSourceBtn: document.querySelector("#reveal-source-btn"),
   revealProjectBtn: document.querySelector("#reveal-project-btn"),
+  resumeSessionBtn: document.querySelector("#resume-session-btn"),
   statsDashboard: document.querySelector("#stats-dashboard"),
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
@@ -554,6 +578,10 @@ const elements = {
   ),
   settingsKeepRunning: document.querySelector("#settings-keep-running"),
   settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
+  settingsTerminalApp: document.querySelector("#settings-terminal-app"),
+  settingsTerminalCustomPick: document.querySelector(
+    "#settings-terminal-custom-pick"
+  ),
   settingsSourceOverview: document.querySelector("#settings-source-overview"),
   settingsSources: document.querySelector("#settings-sources"),
   settingsRecovery: document.querySelector("#settings-recovery"),
@@ -2797,6 +2825,9 @@ async function initialize() {
   });
   elements.revealProjectBtn?.addEventListener("click", () => {
     void revealCurrentPath("project");
+  });
+  elements.resumeSessionBtn?.addEventListener("click", () => {
+    void resumeCurrentSession();
   });
 
   let searchDebounce = null;

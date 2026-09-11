@@ -482,6 +482,8 @@ export function createSettingsController({
     savedPreferences = {
       keep_running_in_tray: preferences.keep_running_in_tray !== false,
       check_updates_on_startup: preferences.check_updates_on_startup !== false,
+      terminal_app: preferences.terminal_app || "auto",
+      terminal_custom: preferences.terminal_custom || "",
     };
     if (elements.settingsKeepRunning) {
       elements.settingsKeepRunning.checked =
@@ -491,6 +493,48 @@ export function createSettingsController({
       elements.settingsStartupUpdates.checked =
         savedPreferences.check_updates_on_startup;
     }
+    if (elements.settingsTerminalApp) {
+      const options = (payload?.terminal_options || []).filter(
+        ({ value, installed }) =>
+          installed !== false || value === savedPreferences.terminal_app
+      );
+      elements.settingsTerminalApp.replaceChildren(
+        ...options.map(({ value, label }) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent =
+            value === "auto"
+              ? t("settingsTerminalAuto")
+              : value === "custom"
+                ? t("settingsTerminalCustomOption")
+                : label;
+          return option;
+        })
+      );
+      elements.settingsTerminalApp.value = savedPreferences.terminal_app;
+      elements.settingsTerminalApp
+        .closest(".settings-general-row")
+        ?.classList.toggle("hidden", options.length === 0);
+    }
+    syncTerminalCustomPick();
+  }
+
+  // 选中“自定义”时显示选择按钮；已选路径时按钮上显示应用名。
+  function syncTerminalCustomPick() {
+    const pick = elements.settingsTerminalCustomPick;
+    if (!pick) return;
+    const isCustom = elements.settingsTerminalApp?.value === "custom";
+    pick.classList.toggle("hidden", !isCustom);
+    const path = savedPreferences?.terminal_custom || "";
+    pick.textContent = path
+      ? customTerminalName(path)
+      : t("settingsTerminalCustomPick");
+    pick.title = path;
+  }
+
+  function customTerminalName(path) {
+    const base = path.split(/[\\/]/).pop() || path;
+    return base.endsWith(".app") ? base.slice(0, -4) : base;
   }
 
   function setPreferenceControlsDisabled(disabled) {
@@ -499,6 +543,12 @@ export function createSettingsController({
     }
     if (elements.settingsStartupUpdates) {
       elements.settingsStartupUpdates.disabled = disabled;
+    }
+    if (elements.settingsTerminalApp) {
+      elements.settingsTerminalApp.disabled = disabled;
+    }
+    if (elements.settingsTerminalCustomPick) {
+      elements.settingsTerminalCustomPick.disabled = disabled;
     }
   }
 
@@ -592,6 +642,11 @@ export function createSettingsController({
       keep_running_in_tray: elements.settingsKeepRunning?.checked !== false,
       check_updates_on_startup:
         elements.settingsStartupUpdates?.checked !== false,
+      terminal_app:
+        elements.settingsTerminalApp?.value ||
+        savedPreferences.terminal_app ||
+        "auto",
+      terminal_custom: savedPreferences.terminal_custom ?? "",
     };
     setPreferenceControlsDisabled(true);
     setStatus(t("settingsSaving"));
@@ -697,6 +752,32 @@ export function createSettingsController({
       "change",
       savePreferences
     );
+    elements.settingsTerminalApp?.addEventListener("change", () => {
+      syncTerminalCustomPick();
+      savePreferences();
+    });
+    elements.settingsTerminalCustomPick?.addEventListener("click", async () => {
+      if (!window.__TAURI__?.core?.invoke) {
+        setStatus(t("settingsDesktopPreview"));
+        return;
+      }
+      try {
+        const selected = await openPathDialog({
+          title: t("settingsTerminalCustomPick"),
+          defaultPath: savedPreferences?.terminal_custom || undefined,
+          directory: false,
+          multiple: false,
+        });
+        if (selected && savedPreferences) {
+          savedPreferences.terminal_custom = selected;
+          syncTerminalCustomPick();
+          savePreferences();
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setStatus(`${t("settingsChoosePathFailed")}: ${message}`, true);
+      }
+    });
     elements.settingsThemeInputs?.forEach((input) => {
       input.addEventListener("change", (event) => {
         if (event.target.checked) setTheme(event.target.value);

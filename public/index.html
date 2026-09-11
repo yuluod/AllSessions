@@ -657,6 +657,14 @@
                         >
                           显示项目目录
                         </button>
+                        <button
+                          id="resume-session-btn"
+                          class="ghost-button"
+                          type="button"
+                          data-i18n="resumeSession"
+                        >
+                          在终端恢复
+                        </button>
                       </div>
                     </div>
                   </details>
@@ -1939,6 +1947,29 @@
                   <option value="zh">中文</option>
                   <option value="en">English</option>
                 </select>
+              </div>
+              <div class="settings-general-row">
+                <div class="settings-general-copy">
+                  <label
+                    for="settings-terminal-app"
+                    data-i18n="settingsTerminalApp"
+                  >
+                    终端应用
+                  </label>
+                  <span data-i18n="settingsTerminalAppHint">
+                    “在终端恢复”会话时使用的终端
+                  </span>
+                </div>
+                <div class="settings-terminal-controls">
+                  <select id="settings-terminal-app"></select>
+                  <button
+                    id="settings-terminal-custom-pick"
+                    class="ghost-button hidden"
+                    type="button"
+                  >
+                    浏览…
+                  </button>
+                </div>
               </div>
               <label class="settings-general-row">
                 <div class="settings-general-copy">

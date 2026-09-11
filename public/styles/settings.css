@@ -302,6 +302,12 @@ html.settings-modal-open body {
   background: var(--surface-subtle);
 }
 
+.settings-terminal-controls {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
 .settings-general-copy {
   display: grid;
   gap: 2px;

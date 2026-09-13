@@ -5,6 +5,7 @@ mod deletion_backup;
 mod error;
 mod maintenance;
 mod resume;
+mod search;
 mod sessions;
 mod updater;
 mod watcher;

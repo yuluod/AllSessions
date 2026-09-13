@@ -368,6 +368,14 @@ pub(super) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
 }
 
 pub(super) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
+    visit_detail(path, source, &mut |_| {})
+}
+
+pub(super) fn visit_detail(
+    path: &Path,
+    source: &Source,
+    visitor: &mut dyn FnMut(&Value),
+) -> Result<Value, String> {
     let metadata = metadata(path)?;
     let (state, title) = build_state(path, &metadata)?;
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
@@ -401,6 +409,7 @@ pub(super) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String
                                 "message_index": message_index,
                             }),
                         );
+                        visitor(&message);
                         truncate_message(&mut message);
                         messages.push(message);
                     }

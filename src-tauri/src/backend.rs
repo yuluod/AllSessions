@@ -5,6 +5,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
+    time::Instant,
 };
 
 use percent_encoding::percent_decode_str;
@@ -31,6 +32,10 @@ pub struct BackendState {
     startup_error: Arc<Mutex<Option<String>>>,
     maintenance_enabled: Arc<AtomicBool>,
     maintenance_lock: Arc<Mutex<()>>,
+    scan_lock: Arc<Mutex<()>>,
+    search_indexing: Arc<AtomicBool>,
+    search_index_error: Arc<Mutex<Option<String>>>,
+    index_progress: Arc<Mutex<Value>>,
 }
 
 impl BackendState {
@@ -54,6 +59,10 @@ impl BackendState {
             startup_error: Arc::new(Mutex::new(startup_error)),
             maintenance_enabled: Arc::new(AtomicBool::new(false)),
             maintenance_lock: Arc::new(Mutex::new(())),
+            scan_lock: Arc::new(Mutex::new(())),
+            search_indexing: Arc::new(AtomicBool::new(true)),
+            search_index_error: Arc::new(Mutex::new(None)),
+            index_progress: Arc::new(Mutex::new(json!({"phase":"scanning"}))),
         })
     }
 
@@ -128,11 +137,79 @@ impl BackendState {
         });
     }
 
+    fn scan_and_publish(
+        &self,
+        app: &AppHandle,
+        paths: Option<&BTreeSet<PathBuf>>,
+    ) -> Result<(), String> {
+        let _scan = self.scan_lock.lock().map_err(lock_error)?;
+        self.scan_locked(app, paths)
+    }
+
+    /// 调用方必须已持有 scan_lock（修改类路由在入口处获取）。
+    /// 摘要扫描和全文索引构建都在独立的工作副本上进行，不持有界面
+    /// 读取的会话锁；先发布摘要列表让界面立即可读，索引构建完成后
+    /// 再短暂加锁把工作副本整体换入。
+    pub fn scan_locked(
+        &self,
+        app: &AppHandle,
+        paths: Option<&BTreeSet<PathBuf>>,
+    ) -> Result<(), String> {
+        self.search_indexing.store(true, Ordering::SeqCst);
+        let started = Instant::now();
+        *self.index_progress.lock().map_err(lock_error)? = json!({"phase":"scanning"});
+        let result = (|| {
+            let config = self.config.lock().map_err(lock_error)?.clone();
+            let mut working = SessionStore::open(&config)?;
+            if let Some(paths) = paths {
+                {
+                    let live = self.store.lock().map_err(lock_error)?;
+                    working.publish_metadata_from(&live);
+                }
+                if !working.refresh_paths_metadata(paths)? {
+                    return Ok(());
+                }
+            } else {
+                working.refresh_metadata()?;
+            }
+            self.store
+                .lock()
+                .map_err(lock_error)?
+                .publish_metadata_from(&working);
+            self.sync_watcher_roots(app);
+            app.emit("sessions-changed", json!({"type":"session-updated"}))
+                .map_err(|e| e.to_string())?;
+            let metadata_ms = started.elapsed().as_millis();
+            let indexing = Instant::now();
+            working.rebuild_search_index_with_progress(|processed, total| {
+                // 进度使用独立锁，不等待会话列表锁或 SQLite 查询。
+                *self.index_progress.lock().map_err(lock_error)? =
+                    json!({"phase":"indexing", "processed":processed, "total":total});
+                Ok(())
+            })?;
+            eprintln!(
+                "工作区耗时：模式={}，摘要={}ms，索引={}ms",
+                if paths.is_some() { "增量" } else { "全量" },
+                metadata_ms,
+                indexing.elapsed().as_millis()
+            );
+            *self.store.lock().map_err(lock_error)? = working;
+            Ok::<(), String>(())
+        })();
+        *self.search_index_error.lock().map_err(lock_error)? = result.as_ref().err().cloned();
+        self.search_indexing.store(false, Ordering::SeqCst);
+        *self.index_progress.lock().map_err(lock_error)? = json!({
+            "phase": if result.is_ok() { "ready" } else { "error" },
+            "error": result.as_ref().err(),
+            "elapsed_ms": started.elapsed().as_millis()
+        });
+        app.emit("sessions-changed", json!({"type":"session-updated"}))
+            .map_err(|e| e.to_string())?;
+        result
+    }
+
     pub fn refresh_and_emit(&self, app: &AppHandle) -> Result<(), String> {
-        self.store.lock().map_err(lock_error)?.refresh()?;
-        self.sync_watcher_roots(app);
-        app.emit("sessions-changed", json!({ "type": "session-updated" }))
-            .map_err(|error| error.to_string())
+        self.scan_and_publish(app, None)
     }
 
     pub fn refresh_paths_and_emit(
@@ -140,17 +217,7 @@ impl BackendState {
         app: &AppHandle,
         paths: &BTreeSet<PathBuf>,
     ) -> Result<(), String> {
-        let changed = self
-            .store
-            .lock()
-            .map_err(lock_error)?
-            .refresh_paths(paths)?;
-        self.sync_watcher_roots(app);
-        if changed {
-            app.emit("sessions-changed", json!({ "type": "session-updated" }))
-                .map_err(|error| error.to_string())?;
-        }
-        Ok(())
+        self.scan_and_publish(app, Some(paths))
     }
 
     /// 来源目录可能在刷新时新建或删除（例如用户首次运行 Codex/Claude/Gemini
@@ -211,6 +278,20 @@ fn route_request(
     let query = parsed.query_pairs().into_owned().collect::<HashMap<_, _>>();
     let method = request.method.to_uppercase();
 
+    // 修改来源或索引的操作与扫描串行；普通读取不等待全文索引。
+    let _scan = if method == "POST"
+        && matches!(
+            path,
+            "/api/settings"
+                | "/api/settings/clear-cache"
+                | "/api/sessions/delete"
+                | "/api/sessions/delete-message"
+        ) {
+        Some(state.scan_lock.lock().map_err(lock_error)?)
+    } else {
+        None
+    };
+
     match (method.as_str(), path) {
         ("GET", "/api/capabilities") => {
             let enabled = state.maintenance_enabled.load(Ordering::SeqCst);
@@ -270,6 +351,16 @@ fn route_request(
             Ok(result)
         }
         ("GET", "/api/sessions") => {
+            if let Some(error) = state
+                .search_index_error
+                .lock()
+                .map_err(lock_error)?
+                .as_ref()
+            {
+                if state.store.lock().map_err(lock_error)?.scanning() {
+                    return Err(ApiError::from(error.clone()));
+                }
+            }
             let workspace = state.workspace_snapshot()?;
             Ok(state
                 .store
@@ -278,15 +369,29 @@ fn route_request(
                 .list(&query, &workspace))
         }
         ("GET", "/api/search") => {
+            let started = Instant::now();
+            if let Some(error) = state
+                .search_index_error
+                .lock()
+                .map_err(lock_error)?
+                .as_ref()
+            {
+                return Err(ApiError::from(format!("全文索引构建失败：{error}")));
+            }
             if query.get("q").is_none_or(|value| value.trim().is_empty()) {
                 return Err(ApiError::invalid("缺少搜索内容"));
             }
             let workspace = state.workspace_snapshot()?;
-            Ok(state
-                .store
-                .lock()
-                .map_err(lock_error)?
-                .search(&query, &workspace))
+            // 摘要快照在会话锁内快速取样；耗时的全文查询在锁外执行，
+            // 搜索期间列表和详情读取不被阻塞。
+            let plan = {
+                let store = state.store.lock().map_err(lock_error)?;
+                store.prepare_search(&query, &workspace)
+            };
+            let mut result = plan.search(&query, &workspace)?;
+            eprintln!("搜索耗时：{}ms", started.elapsed().as_millis());
+            result["scanning"] = json!(state.search_indexing.load(Ordering::SeqCst));
+            Ok(result)
         }
         ("POST", "/api/sessions/delete") => {
             if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {
@@ -376,6 +481,9 @@ fn route_request(
                 .map_err(|error| error.to_string())?;
             Ok(result)
         }
+        ("GET", "/api/index-status") => {
+            Ok(state.index_progress.lock().map_err(lock_error)?.clone())
+        }
         ("GET", "/api/settings") => Ok(state.settings_payload(&app)?),
         ("GET", "/api/workspace") => Ok(state.workspace_snapshot()?.value()),
         ("POST", "/api/workspace/session") => Ok(state
@@ -420,15 +528,14 @@ fn route_request(
                 config::save(&config_path, &config)?;
                 config.clone()
             };
-            {
-                let mut store = state.store.lock().map_err(lock_error)?;
-                store.reconfigure(&config)?;
-            }
+            drop(config);
             state.clear_startup_error()?;
-            // 监听只是自动刷新的辅助能力；失败时保留旧监听，后续刷新会重试。
-            state.sync_watcher_roots(&app);
-            app.emit("sessions-changed", json!({ "type": "session-updated" }))
-                .map_err(|error| error.to_string())?;
+            // 来源可能已变化，重扫复用后台路径（发布摘要在前、索引重建在后），
+            // 不在会话锁内做全量刷新。设置保存本身已成功，重扫失败只记录到
+            // 索引状态并在 /api/search 上报，不当作保存失败。
+            if let Err(error) = state.scan_locked(&app, None) {
+                eprintln!("保存设置后的会话重扫失败：{error}");
+            }
             Ok(state.settings_payload(&app)?)
         }
         ("POST", "/api/settings/preferences") => {
@@ -450,13 +557,9 @@ fn route_request(
             Ok(state.settings_payload(&app)?)
         }
         ("POST", "/api/settings/clear-cache") => {
-            {
-                let mut store = state.store.lock().map_err(lock_error)?;
-                store.clear_index_cache();
-                store.refresh()?;
-            }
-            app.emit("sessions-changed", json!({ "type": "session-updated" }))
-                .map_err(|error| error.to_string())?;
+            state.store.lock().map_err(lock_error)?.clear_index_cache();
+            // 清空后需要全量重扫和索引重建，同样走后台路径避免阻塞界面读取。
+            state.scan_locked(&app, None)?;
             Ok(state.settings_payload(&app)?)
         }
         ("POST", "/api/settings/check-update") => {
@@ -495,12 +598,23 @@ fn route_request(
             let key = percent_decode_str(path.trim_start_matches("/api/sessions/"))
                 .decode_utf8()
                 .map_err(|_| ApiError::invalid("会话 ID 编码无效"))?;
-            let mut detail = state
-                .store
-                .lock()
-                .map_err(lock_error)?
-                .detail(&key)
-                .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
+            let mut store = state.store.lock().map_err(lock_error)?;
+            let mut detail = if let Some(around) = query.get("around") {
+                let ordinal = around
+                    .parse::<i64>()
+                    .map_err(|_| ApiError::invalid("消息位置无效"))?;
+                store.search_context(
+                    &key,
+                    ordinal,
+                    query.get("message").map(String::as_str),
+                    query.get("term").map(String::as_str).unwrap_or_default(),
+                )?
+            } else {
+                store
+                    .detail(&key)
+                    .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?
+            };
+            drop(store);
             state.workspace_snapshot()?.decorate_detail(&mut detail);
             Ok(detail)
         }

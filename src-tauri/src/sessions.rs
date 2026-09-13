@@ -65,14 +65,14 @@ struct StoredSession {
     detail_locator: Option<DetailLocator>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct SourceScanDiagnostic {
     discovered_paths: BTreeSet<PathBuf>,
     errors: BTreeMap<PathBuf, String>,
     last_error: Option<String>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct ScanDiagnostics {
     last_scan_at: String,
     sources: BTreeMap<String, SourceScanDiagnostic>,
@@ -156,11 +156,6 @@ impl SessionStore {
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
             scan_diagnostics: ScanDiagnostics::default(),
         })
-    }
-
-    pub fn reconfigure(&mut self, config: &crate::config::AppConfig) -> Result<(), String> {
-        self.sources_config = config.sources.clone();
-        self.refresh()
     }
 
     pub fn clear_index_cache(&mut self) {
@@ -251,7 +246,15 @@ impl SessionStore {
         watch_roots_for(&self.sources_config)
     }
 
+    /// 仅测试使用：同步完成摘要刷新和索引重建。后端运行时走
+    /// scan_locked 的两阶段路径，不在会话锁内做全量重建。
+    #[cfg(test)]
     pub fn refresh(&mut self) -> Result<(), String> {
+        self.refresh_metadata()?;
+        self.rebuild_search_index()
+    }
+
+    pub fn refresh_metadata(&mut self) -> Result<(), String> {
         // 来源目录可能在启动后才被创建（例如首次运行 Codex/Claude/Gemini），
         // 每次刷新都按当前配置重新解析，而不是沿用启动时的快照。
         self.resolve_sources();
@@ -408,16 +411,24 @@ impl SessionStore {
         self.index_cache.prune(&active_paths);
         self.records = next;
         self.scan_diagnostics = diagnostics;
-        self.rebuild_summaries();
+        self.rebuild_summary_list();
         Ok(())
     }
 
     pub fn refresh_paths(&mut self, paths: &BTreeSet<PathBuf>) -> Result<bool, String> {
+        let changed = self.refresh_paths_metadata(paths)?;
+        if changed {
+            self.rebuild_search_index()?;
+        }
+        Ok(changed)
+    }
+
+    pub fn refresh_paths_metadata(&mut self, paths: &BTreeSet<PathBuf>) -> Result<bool, String> {
         // 来源集合变化时，事件路径无法可靠匹配新旧来源，继续走增量更新
         // 会让旧目录的 records 残留（新旧会话混列、已删文件变幽灵会话），
         // 直接全量重建。
         if self.resolve_sources() {
-            self.refresh()?;
+            self.refresh_metadata()?;
             return Ok(true);
         }
         // Gemini 会话可能跨文件，Claude 新旧布局也可能包含相同会话 ID。
@@ -441,7 +452,7 @@ impl SessionStore {
                     && belongs_to_source
             })
         }) {
-            self.refresh()?;
+            self.refresh_metadata()?;
             return Ok(true);
         }
 
@@ -481,19 +492,28 @@ impl SessionStore {
                 continue;
             }
             self.scan_diagnostics.discover(diagnostic_kind, path);
-            let metadata = fs::metadata(path).map_err(|error| {
-                let error = error_text(error);
-                self.scan_diagnostics.record_error(
-                    diagnostic_kind,
-                    path,
-                    &format!("无法读取文件元数据：{error}"),
-                );
-                error
-            })?;
-            let (summary, search_text) = parse_summary(path, &source).inspect_err(|error| {
-                self.scan_diagnostics
-                    .record_error(diagnostic_kind, path, error);
-            })?;
+            // 监听事件可能在文件写入到一半时触发；单个文件读取或解析失败
+            // 只记录诊断并保留旧记录，等下次变更事件重试，不能让同批次
+            // 其他文件的更新一起丢失。
+            let metadata = match fs::metadata(path) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    self.scan_diagnostics.record_error(
+                        diagnostic_kind,
+                        path,
+                        &format!("无法读取文件元数据：{}", error_text(error)),
+                    );
+                    continue;
+                }
+            };
+            let (summary, search_text) = match parse_summary(path, &source) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    self.scan_diagnostics
+                        .record_error(diagnostic_kind, path, &error);
+                    continue;
+                }
+            };
             self.scan_diagnostics.clear_error(diagnostic_kind, path);
             for (key, record_path) in affected {
                 self.records.remove(&key);
@@ -512,7 +532,7 @@ impl SessionStore {
             changed = true;
         }
         if changed {
-            self.rebuild_summaries();
+            self.rebuild_summary_list();
         }
         Ok(changed)
     }
@@ -529,7 +549,12 @@ impl SessionStore {
         }
     }
 
-    fn rebuild_summaries(&mut self) {
+    fn rebuild_summaries(&mut self) -> Result<(), String> {
+        self.rebuild_summary_list();
+        self.rebuild_search_index()
+    }
+
+    fn rebuild_summary_list(&mut self) {
         self.summaries = self
             .records
             .values()
@@ -538,6 +563,110 @@ impl SessionStore {
         self.summaries
             .sort_by(|left, right| timestamp_of(right).cmp(timestamp_of(left)));
         self.detail_cache.clear();
+    }
+
+    pub fn publish_metadata_from(&mut self, working: &Self) {
+        self.summaries = working.summaries.clone();
+        self.records = working.records.clone();
+        self.sources = working.sources.clone();
+        self.sources_config = working.sources_config.clone();
+        self.scan_diagnostics = working.scan_diagnostics.clone();
+        self.detail_cache.clear();
+    }
+
+    pub fn rebuild_search_index(&mut self) -> Result<(), String> {
+        self.rebuild_search_index_with_progress(|_, _| Ok(()))
+    }
+
+    pub fn rebuild_search_index_with_progress(
+        &mut self,
+        mut progress: impl FnMut(usize, usize) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let total = self.records.len();
+        progress(0, total)?;
+        for (position, (key, record)) in self.records.iter().enumerate() {
+            let content_fingerprint = match &record.detail_locator {
+                Some(DetailLocator::OpenCode(locator)) => Some(&locator.content_fingerprint),
+                Some(DetailLocator::ZCode(locator)) => Some(&locator.content_fingerprint),
+                _ => None,
+            };
+            let paths = match &record.detail_locator {
+                Some(DetailLocator::Gemini(locator)) => {
+                    match gemini::session_backup_paths(&record.source, locator) {
+                        Ok(paths) => paths,
+                        Err(error) => {
+                            self.scan_diagnostics.record_error(
+                                diagnostic_source_kind(record.source.kind),
+                                &record.path,
+                                &format!("搜索索引：{error}"),
+                            );
+                            self.index_cache.search.invalidate(key)?;
+                            progress(position + 1, total)?;
+                            continue;
+                        }
+                    }
+                }
+                _ if content_fingerprint.is_some() => Vec::new(),
+                _ => session_backup_paths(&record.path),
+            };
+            let mut stamps = Vec::new();
+            for path in paths
+                .into_iter()
+                .chain((content_fingerprint.is_none()).then(|| record.path.clone()))
+            {
+                for suffix in ["", "-wal"] {
+                    let mut name = path.as_os_str().to_os_string();
+                    name.push(suffix);
+                    let metadata = fs::metadata(&name).ok();
+                    stamps.push(format!(
+                        "{:?}:{:?}",
+                        name,
+                        metadata.map(|m| (m.len(), m.modified().ok()))
+                    ));
+                }
+            }
+            let fingerprint = search_fingerprint(
+                &record.summary,
+                &record.search_text,
+                &stamps,
+                content_fingerprint.map(String::as_str),
+            );
+            let result = self
+                .index_cache
+                .search
+                .refresh(key, &fingerprint, |visitor| {
+                    match &record.detail_locator {
+                        Some(DetailLocator::Gemini(locator)) => {
+                            gemini::visit_detail(&record.source, locator, visitor)
+                        }
+                        Some(DetailLocator::OpenCode(locator)) => {
+                            opencode::visit_detail(&record.source, locator, visitor)
+                        }
+                        Some(DetailLocator::ZCode(locator)) => {
+                            zcode::visit_detail(&record.source, locator, visitor)
+                        }
+                        None => visit_detail(&record.path, &record.source, visitor),
+                    }
+                    .map(|_| ())
+                });
+            match result {
+                Ok(()) => {}
+                Err(crate::search::RefreshError::Source(error)) => {
+                    self.scan_diagnostics.record_error(
+                        diagnostic_source_kind(record.source.kind),
+                        &record.path,
+                        &format!("搜索索引：{error}"),
+                    );
+                    self.index_cache.search.invalidate(key)?;
+                }
+                Err(crate::search::RefreshError::Database(error)) => return Err(error),
+            }
+            progress(position + 1, total)?;
+        }
+        self.index_cache
+            .search
+            .prune(&self.records.keys().cloned().collect())?;
+        Ok(())
     }
 
     /// 首次全量扫描尚未完成时为 true，前端据此区分“扫描中”和“确无会话”。
@@ -561,33 +690,60 @@ impl SessionStore {
         )
     }
 
+    /// 搜索分两步执行：先在持有会话锁时收集输入（摘要快照和索引句柄），
+    /// 耗时的全文查询在锁外进行，避免搜索阻塞列表和详情读取。
+    pub fn prepare_search(
+        &self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> SearchPlan {
+        SearchPlan {
+            index: self.index_cache.search.clone(),
+            summaries: self.filtered(query, workspace),
+            scanning: self.scanning(),
+            session_roots: self.session_roots(),
+        }
+    }
+
+    /// 仅测试使用的一步式搜索；运行时后端走 prepare_search + 锁外执行。
+    #[cfg(test)]
     pub fn search(
         &self,
         query: &HashMap<String, String>,
         workspace: &crate::workspace::WorkspaceSnapshot,
-    ) -> Value {
-        let needle = query
-            .get("q")
-            .map(|value| value.to_lowercase())
-            .unwrap_or_default();
-        let filtered = self
-            .filtered(query, workspace)
-            .into_iter()
-            .filter_map(|summary| {
-                let record = self.records.get(summary["_key"].as_str()?)?;
-                let text = record.search_text.to_lowercase();
-                if !search_query_matches(&text, &needle) {
-                    return None;
-                }
-                let mut result = summary;
-                result["search_snippet"] = Value::String(search_snippet(&text, &needle));
-                Some(result)
+    ) -> Result<Value, String> {
+        self.prepare_search(query, workspace)
+            .search(query, workspace)
+    }
+
+    pub fn search_context(
+        &self,
+        key: &str,
+        ordinal: i64,
+        message_key: Option<&str>,
+        query: &str,
+    ) -> Result<Value, String> {
+        let record = self.records.get(key).ok_or("会话不存在")?;
+        let messages = self.index_cache.search.context(key, ordinal, query)?;
+        if !messages
+            .iter()
+            .any(|m| m["search_ordinal"].as_i64() == Some(ordinal))
+        {
+            return Err("搜索位置已失效，请重新搜索".into());
+        }
+        if message_key
+            .filter(|value| !value.is_empty())
+            .is_some_and(|expected| {
+                !messages.iter().any(|m| {
+                    m["search_ordinal"].as_i64() == Some(ordinal)
+                        && m["_message_key"].as_str() == Some(expected)
+                })
             })
-            .collect();
-        paginate(
-            filtered,
-            query,
-            json!({ "session_roots": self.session_roots(), "query": query.get("q").cloned().unwrap_or_default() }),
+        {
+            return Err("搜索位置已失效，请重新搜索".into());
+        }
+        Ok(
+            json!({"summary":record.summary,"conversation_messages":messages,"raw_events":[],"search_context":true,"search_target":ordinal,"truncation":{"truncated":true,"messages":{"omitted":0},"raw_events":{"omitted":0}}}),
         )
     }
 
@@ -706,7 +862,7 @@ impl SessionStore {
         let paths = paths.into_iter().collect::<BTreeSet<_>>();
         if !self.refresh_paths(&paths)? {
             self.scan_diagnostics.touch();
-            self.rebuild_summaries();
+            self.rebuild_summaries()?;
         }
         Ok(())
     }
@@ -899,6 +1055,102 @@ impl SessionStore {
             .filter(|source| source.root.exists())
             .map(|source| source.root.to_string_lossy().into_owned())
             .collect()
+    }
+}
+
+/// 从会话锁内取出的搜索输入；耗时的全文查询可在会话锁外执行。
+pub(crate) struct SearchPlan {
+    index: std::sync::Arc<crate::search::SearchIndex>,
+    summaries: Vec<Value>,
+    scanning: bool,
+    session_roots: Vec<String>,
+}
+
+impl SearchPlan {
+    pub(crate) fn search(
+        self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Result<Value, String> {
+        let index = std::sync::Arc::clone(&self.index);
+        index.read_snapshot(|snapshot| {
+        let needle = query
+            .get("q")
+            .map(|value| value.to_lowercase())
+            .unwrap_or_default();
+        let terms = crate::search::terms(&needle);
+        let keys: BTreeSet<&str> = self
+            .summaries
+            .iter()
+            .filter_map(|summary| summary["_key"].as_str())
+            .collect();
+        let mut indexed = snapshot.query_hits(&needle, |key, message| {
+            keys.contains(key)
+                && (bool_query(query, "show_removed") || !workspace.message_removed(key, message))
+        })?;
+        let mut filtered: Vec<Value> = self
+            .summaries
+            .into_iter()
+            .filter_map(|summary| {
+                let key = summary["_key"].as_str()?;
+                let mut hits = indexed.remove(key).unwrap_or_default();
+                hits.retain(|hit| bool_query(query,"show_removed") || !workspace.message_removed(key,hit["message_key"].as_str().unwrap_or_default()));
+                for (field, text, score) in [
+                    ("title",summary["title"].as_str().unwrap_or_default().to_string(),5.0),
+                    ("path",["id","cwd","file_path","source_kind","model_provider"].iter().filter_map(|field|summary[*field].as_str()).collect::<Vec<_>>().join("\n"),1.0),
+                    ("note",summary["workspace"]["note"].as_str().unwrap_or_default().to_string(),4.0),
+                    ("tag",summary["workspace"]["tags"].as_array().map(|tags|tags.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")).unwrap_or_default(),4.0),
+                ] {
+                    let lower = text.to_lowercase();
+                    for term in &terms {
+                        if lower.contains(term) { hits.push(json!({"field":field,"term":term,"snippet":crate::search::snippet(&text,term),"score":score})); }
+                    }
+                }
+                if !terms.iter().all(|term|hits.iter().any(|hit|hit["term"].as_str()==Some(term))) {return None;}
+                hits.sort_by(|a,b|b["score"].as_f64().unwrap_or_default().total_cmp(&a["score"].as_f64().unwrap_or_default()));
+                let score = hits.first().and_then(|hit|hit["score"].as_f64()).unwrap_or_default();
+                let mut seen = BTreeSet::new();
+                hits.retain(|hit|seen.insert((hit["field"].to_string(),hit["ordinal"].to_string())));
+                let message_hit = hits.iter().find(|hit| hit["ordinal"].is_i64()).cloned();
+                hits.truncate(2);
+                if !hits.iter().any(|hit| hit["ordinal"].is_i64()) {
+                    if let Some(hit) = message_hit { hits.truncate(1); hits.push(hit); }
+                }
+                let mut result = summary;
+                result["search_snippet"] = hits.first().map(|hit|hit["snippet"].clone()).unwrap_or_default();
+                result["search_hits"] = json!(hits);
+                result["search_score"] = json!(score);
+                Some(result)
+            })
+            .collect();
+        if query.get("sort").map(String::as_str) != Some("recent") {
+            filtered.sort_by(|a, b| {
+                b["search_score"]
+                    .as_f64()
+                    .unwrap_or_default()
+                    .total_cmp(&a["search_score"].as_f64().unwrap_or_default())
+                    .then_with(|| timestamp_of(b).cmp(timestamp_of(a)))
+                    .then_with(|| a["_key"].as_str().cmp(&b["_key"].as_str()))
+            });
+        }
+        let total = filtered.len();
+        let mut page = paginate(
+            filtered,
+            query,
+            json!({ "session_roots": self.session_roots, "total":total, "scanning":self.scanning, "query": query.get("q").cloned().unwrap_or_default() }),
+        );
+        if let Some(sessions) = page["sessions"].as_array_mut() {
+            for summary in sessions {
+                if let Some(hits) = summary["search_hits"].as_array_mut() {
+                    for hit in hits {
+                        snapshot.hydrate_hit(hit)?;
+                    }
+                }
+                summary["search_snippet"] = summary["search_hits"][0]["snippet"].clone();
+            }
+        }
+        Ok(page)
+        })
     }
 }
 
@@ -1196,6 +1448,19 @@ fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
     match source.format {
         SourceFormat::Pi => return pi::parse_detail(path, source),
         SourceFormat::Kimi => return kimi::parse_detail(path, source),
+        _ => {}
+    }
+    visit_detail(path, source, &mut |_| {})
+}
+
+fn visit_detail(
+    path: &Path,
+    source: &Source,
+    visitor: &mut dyn FnMut(&Value),
+) -> Result<Value, String> {
+    match source.format {
+        SourceFormat::Pi => return pi::visit_detail(path, source, visitor),
+        SourceFormat::Kimi => return kimi::visit_detail(path, source, visitor),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过详情定位器解析".into()),
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过详情定位器解析".into()),
         _ => {}
@@ -1203,8 +1468,16 @@ fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
         let value: Value =
             serde_json::from_reader(File::open(path).map_err(error_text)?).map_err(error_text)?;
-        return parse_legacy_claude_detail(path, source, value)
-            .ok_or_else(|| "旧版 Claude 会话缺少 ID".into());
+        let detail = parse_legacy_claude_detail(path, source, value)
+            .ok_or_else(|| "旧版 Claude 会话缺少 ID".to_string())?;
+        for message in detail["conversation_messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            visitor(message);
+        }
+        return Ok(detail);
     }
     let mut state = ParseState::new(path);
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
@@ -1229,6 +1502,7 @@ fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
                             "record_fingerprint": json_fingerprint(&record),
                         }),
                     );
+                    visitor(&message);
                     truncate_message(&mut message);
                     messages.push(message);
                 }
@@ -2127,6 +2401,19 @@ pub(super) fn attach_message_delete_ref(message: &mut Value, mut delete_ref: Val
     message["_delete_ref"] = delete_ref;
 }
 
+fn search_fingerprint(
+    summary: &Value,
+    search_text: &str,
+    stamps: &[String],
+    content_fingerprint: Option<&str>,
+) -> String {
+    // 普通文件来源保留旧格式，避免追加 null 导致已有索引全部失效。
+    match content_fingerprint {
+        Some(content) => json_fingerprint(&json!([summary, search_text, stamps, content])),
+        None => json_fingerprint(&json!([summary, search_text, stamps])),
+    }
+}
+
 pub(super) fn json_fingerprint(value: &Value) -> String {
     let mut hasher = Sha256::new();
     hasher.update(serde_json::to_vec(value).unwrap_or_default());
@@ -2745,19 +3032,7 @@ fn paginate(mut sessions: Vec<Value>, query: &HashMap<String, String>, mut base:
     }
     base
 }
-fn search_snippet(text: &str, needle: &str) -> String {
-    let Some(byte_index) = text
-        .find(needle)
-        .or_else(|| needle.split_whitespace().find_map(|term| text.find(term)))
-    else {
-        return String::new();
-    };
-    let char_index = text[..byte_index].chars().count();
-    text.chars()
-        .skip(char_index.saturating_sub(60))
-        .take(160)
-        .collect()
-}
+#[cfg(test)]
 fn search_query_matches(text: &str, query: &str) -> bool {
     let text = text.to_lowercase();
     query
@@ -2815,6 +3090,44 @@ fn error_text(error: impl std::fmt::Display) -> String {
 mod tests {
     use std::io::Write;
 
+    #[test]
+    fn 普通来源保留旧搜索指纹并复用已有索引() {
+        let summary = serde_json::json!({"id":"s", "title":"测试"});
+        let stamps = vec!["file:100:mtime".to_string()];
+        let old = super::json_fingerprint(&serde_json::json!([summary, "正文", stamps]));
+        let current = super::search_fingerprint(&summary, "正文", &stamps, None);
+        assert_eq!(old, current);
+        let index = crate::search::SearchIndex::open(None).unwrap();
+        index
+            .refresh("s", &old, |visit| {
+                visit(&serde_json::json!({"text":"正文"}));
+                Ok(())
+            })
+            .unwrap();
+        index
+            .refresh("s", &current, |_| panic!("未变化的来源不应重新解析"))
+            .unwrap();
+        assert_ne!(
+            current,
+            super::search_fingerprint(&summary, "新正文", &stamps, None)
+        );
+    }
+
+    #[test]
+    fn 数据库来源保留四元素内容指纹() {
+        let summary = serde_json::json!({"id":"s"});
+        let stamps = Vec::<String>::new();
+        let current = super::search_fingerprint(&summary, "正文", &stamps, Some("hash1"));
+        assert_eq!(
+            current,
+            super::json_fingerprint(&serde_json::json!([summary, "正文", stamps, "hash1"]))
+        );
+        assert_ne!(
+            current,
+            super::search_fingerprint(&summary, "正文", &stamps, Some("hash2"))
+        );
+    }
+
     use serde_json::{json, Value};
     use tempfile::tempdir;
 
@@ -2856,6 +3169,77 @@ mod tests {
     #[test]
     fn summary_text_has_limit() {
         assert_eq!(compact("abcdefgh", 6), "abc...");
+    }
+
+    #[test]
+    fn 全文搜索覆盖中间消息并合并备注标签和排序() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("long.jsonl");
+        let mut lines = vec![json!({"type":"session_meta","payload":{"id":"long","cwd":"/project"},"timestamp":"2026-01-01T00:00:00Z"}).to_string()];
+        for i in 0..1200 {
+            lines.push(json!({"type":"event_msg","payload":{"type":"user_message","message":if i==600 {"HTTP_404 更新 useEffect(".to_string()}else{"普通正文".repeat(40)}}}).to_string());
+        }
+        std::fs::write(&path, lines.join("\n")).unwrap();
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+        store.refresh().unwrap();
+        let mut workspace = crate::workspace::WorkspaceSnapshot::default();
+        let query = HashMap::from([("q".into(), "HTTP_404 更新".into())]);
+        let result = store.search(&query, &workspace).unwrap();
+        assert_eq!(result["total"], 1);
+        let hit = &result["sessions"][0]["search_hits"][0];
+        let context = store
+            .search_context(
+                "codex:long",
+                hit["ordinal"].as_i64().unwrap(),
+                hit["message_key"].as_str(),
+                "HTTP_404",
+            )
+            .unwrap();
+        assert!(context["conversation_messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["text"].as_str().unwrap().contains("HTTP_404")));
+        assert!(
+            !store.detail("codex:long").unwrap()["conversation_messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m["text"].as_str().unwrap_or_default().contains("HTTP_404"))
+        );
+        workspace.sessions.insert(
+            "codex:long".into(),
+            crate::workspace::SessionWorkspace {
+                note: "特别备注".into(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            store
+                .search(
+                    &HashMap::from([("q".into(), "特别备注 更新".into())]),
+                    &workspace
+                )
+                .unwrap()["total"],
+            1
+        );
+        assert_eq!(
+            store
+                .search(&HashMap::from([("q".into(), "不存在".into())]), &workspace)
+                .unwrap()["total"],
+            0
+        );
+        std::fs::remove_file(&path).unwrap();
+        store.refresh().unwrap();
+        assert_eq!(store.search(&query, &workspace).unwrap()["total"], 0);
     }
 
     #[test]
@@ -3001,6 +3385,10 @@ mod tests {
         )
         .unwrap();
         std::fs::write(claude_root.join("sessions/broken.json"), "{broken").unwrap();
+        std::fs::write(codex_root.join("healthy.jsonl"),format!("{}\n{}\n",
+            json!({"type":"session_meta","payload":{"id":"healthy"}}),
+            json!({"type":"event_msg","payload":{"type":"user_message","message":"healthy-search-token"}})
+        )).unwrap();
 
         let mut store = SessionStore {
             summaries: Vec::new(),
@@ -3025,9 +3413,141 @@ mod tests {
 
         assert!(store.records.contains_key("codex:valid"));
         let diagnostics = store.diagnostics();
-        assert_eq!(diagnostics["sources"]["codex"]["indexed_sessions"], 1);
+        assert_eq!(diagnostics["sources"]["codex"]["indexed_sessions"], 2);
         assert_eq!(diagnostics["sources"]["claude"]["error_count"], 1);
         assert!(diagnostics["sources"]["claude"]["last_error"].is_string());
+
+        // 模拟摘要扫描完成后，来源文件在详情索引前消失。
+        std::fs::remove_file(codex_root.join("valid.jsonl")).unwrap();
+        assert!(store.rebuild_summaries().is_ok());
+        assert_eq!(store.diagnostics()["sources"]["codex"]["error_count"], 1);
+        assert_eq!(
+            store
+                .search(
+                    &HashMap::from([("q".into(), "healthy-search-token".into())]),
+                    &crate::workspace::WorkspaceSnapshot::default()
+                )
+                .unwrap()["total"],
+            1
+        );
+    }
+
+    #[test]
+    fn 索引未完成时会话列表仍可读取() {
+        let directory = tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("s.jsonl"),
+            format!(
+                "{}\n{}\n{}\n",
+                json!({ "type": "session_meta", "payload": { "id": "s1" } }),
+                json!({ "type": "event_msg", "payload": { "type": "user_message", "message": "普通提问" } }),
+                json!({ "type": "event_msg", "payload": { "type": "agent_message", "message": "needle-token" } })
+            ),
+        )
+        .unwrap();
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+        // 首次扫描分两步：摘要发布后列表立即可读（scanning 结束），
+        // 全文索引可以仍在构建。
+        store.refresh_metadata().unwrap();
+        let workspace = crate::workspace::WorkspaceSnapshot::default();
+        let list = store.list(&HashMap::new(), &workspace);
+        assert_eq!(list["sessions"].as_array().unwrap().len(), 1);
+        assert_eq!(list["scanning"], false);
+        // 索引未建成时搜索不阻塞也不报错，只是暂时没有消息命中。
+        let query = HashMap::from([("q".into(), "needle-token".into())]);
+        assert_eq!(store.search(&query, &workspace).unwrap()["total"], 0);
+        for _ in 0..2 {
+            let mut progress = Vec::new();
+            store
+                .rebuild_search_index_with_progress(|done, total| {
+                    progress.push((done, total));
+                    Ok(())
+                })
+                .unwrap();
+            assert_eq!(progress, vec![(0, 1), (1, 1)]);
+        }
+        assert_eq!(store.search(&query, &workspace).unwrap()["total"], 1);
+    }
+
+    #[test]
+    fn 增量刷新单文件失败不丢弃同批其他变更() {
+        let directory = tempdir().unwrap();
+        let claude_root = directory.path().join("claude-home");
+        let projects = claude_root.join("projects");
+        let sessions = claude_root.join("sessions");
+        std::fs::create_dir_all(&projects).unwrap();
+        std::fs::create_dir_all(&sessions).unwrap();
+        let keep = projects.join("keep.jsonl");
+        let broken = sessions.join("broken.json");
+        let session = |message: &str| {
+            format!(
+                "{}\n{}\n",
+                json!({ "type": "session_meta", "payload": { "id": "keep" } }),
+                json!({ "type": "event_msg", "payload": { "type": "user_message", "message": message } })
+            )
+        };
+        std::fs::write(&keep, session("v1")).unwrap();
+        std::fs::write(
+            &broken,
+            json!({ "sessionId": "broken", "prompt": "完整", "cwd": "/x", "startedAt": 1_766_016_000_000_i64 })
+                .to_string(),
+        )
+        .unwrap();
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config: crate::config::SourceRoots {
+                claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
+                codex: Some(Vec::new()),
+                codex_archived: Some(Vec::new()),
+                gemini: Some(Vec::new()),
+                pi: Some(Vec::new()),
+                kimi: Some(Vec::new()),
+                opencode: Some(Vec::new()),
+                zcode: Some(Vec::new()),
+            },
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+        store.refresh().unwrap();
+        assert!(store.records.contains_key("claude_code:broken"));
+
+        // 同一批事件里 keep 正常更新、broken 被写坏（写入到一半触发监听）。
+        // Claude 来源回退到全量刷新：单个损坏文件只记录诊断，
+        // 不能让同批次其他文件的更新一起丢失。
+        std::fs::write(&keep, session("v2")).unwrap();
+        std::fs::write(&broken, "{broken").unwrap();
+        let changed = store
+            .refresh_paths(&BTreeSet::from([keep.clone(), broken.clone()]))
+            .unwrap();
+
+        assert!(changed);
+        assert!(store.records["claude_code:keep"].search_text.contains("v2"));
+        assert!(!store.records.contains_key("claude_code:broken"));
+        assert_eq!(store.diagnostics()["sources"]["claude"]["error_count"], 1);
+
+        // 下次事件恢复正常后错误清除、记录恢复。
+        std::fs::write(
+            &broken,
+            json!({ "sessionId": "broken", "prompt": "重写完整", "cwd": "/x", "startedAt": 1_766_016_000_000_i64 })
+                .to_string(),
+        )
+        .unwrap();
+        store
+            .refresh_paths(&BTreeSet::from([broken.clone()]))
+            .unwrap();
+        assert!(store.records.contains_key("claude_code:broken"));
+        assert_eq!(store.diagnostics()["sources"]["claude"]["error_count"], 0);
     }
 
     #[test]

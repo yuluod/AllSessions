@@ -46,6 +46,11 @@ pub struct WorkspaceSnapshot {
 }
 
 impl WorkspaceSnapshot {
+    pub fn message_removed(&self, session: &str, message: &str) -> bool {
+        self.removed_messages
+            .get(session)
+            .is_some_and(|keys| keys.contains(message))
+    }
     pub fn decorate_summary(&self, summary: &mut Value) {
         let Some(key) = summary["_key"].as_str() else {
             return;

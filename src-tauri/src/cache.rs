@@ -3,6 +3,7 @@ use std::{
     fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
+    sync::Arc,
     time::UNIX_EPOCH,
 };
 
@@ -17,6 +18,8 @@ use serde_json::Value;
 const CACHE_VERSION: i32 = 1;
 
 pub struct IndexCache {
+    /// Arc 共享的全文索引：搜索在会话锁之外克隆句柄执行查询。
+    pub search: Arc<crate::search::SearchIndex>,
     connection: Option<Connection>,
     path: Option<PathBuf>,
 }
@@ -30,6 +33,7 @@ impl IndexCache {
     #[cfg(test)]
     pub fn disabled() -> Self {
         Self {
+            search: Arc::new(crate::search::SearchIndex::open(None).unwrap()),
             connection: None,
             path: None,
         }
@@ -39,12 +43,14 @@ impl IndexCache {
     pub fn open_at(path: &Path) -> Self {
         match open_database(path) {
             Ok(connection) => Self {
+                search: Arc::new(crate::search::SearchIndex::open(Some(path)).unwrap()),
                 connection: Some(connection),
                 path: Some(path.to_path_buf()),
             },
             Err(error) => {
                 eprintln!("打开测试缓存失败：{error}");
                 Self {
+                    search: Arc::new(crate::search::SearchIndex::open(None).unwrap()),
                     connection: None,
                     path: None,
                 }
@@ -57,6 +63,7 @@ impl IndexCache {
             == Some(std::ffi::OsStr::new("1"))
         {
             return Ok(Self {
+                search: Arc::new(crate::search::SearchIndex::open(None)?),
                 connection: None,
                 path: None,
             });
@@ -71,10 +78,18 @@ impl IndexCache {
             },
             None => (None, None),
         };
-        Ok(Self { connection, path })
+        let search = Arc::new(crate::search::SearchIndex::open(path.as_deref())?);
+        Ok(Self {
+            connection,
+            path,
+            search,
+        })
     }
 
     pub fn clear(&self) {
+        if let Err(error) = self.search.prune(&BTreeSet::new()) {
+            eprintln!("清空搜索索引失败：{error}");
+        }
         if let Some(connection) = &self.connection {
             if let Err(error) = connection.execute("delete from sessions", []) {
                 eprintln!("清空会话索引缓存失败：{error}");

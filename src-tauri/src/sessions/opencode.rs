@@ -6,6 +6,7 @@ use std::{
 
 use rusqlite::{Connection, OpenFlags, Row};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use super::{
     append_limited, attach_message_key, message_value, summary_search_text, timestamp_from_millis,
@@ -29,6 +30,7 @@ pub(super) struct ParsedSession {
 pub(super) struct DetailLocator {
     database_path: PathBuf,
     session_id: String,
+    pub(super) content_fingerprint: String,
 }
 
 struct SessionRow {
@@ -59,6 +61,7 @@ struct PartRow {
 struct SessionAccumulator {
     row: SessionRow,
     state: ParseState,
+    content_hash: Sha256,
 }
 
 fn database_path(root: &Path) -> PathBuf {
@@ -429,13 +432,33 @@ pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
     let mut accumulators = BTreeMap::new();
     for row in rows {
         let state = initial_state(&path, &row)?;
-        accumulators.insert(row.id.clone(), SessionAccumulator { row, state });
+        accumulators.insert(
+            row.id.clone(),
+            SessionAccumulator {
+                row,
+                state,
+                content_hash: Sha256::new(),
+            },
+        );
     }
     visit_parts(&connection, None, |message, part| {
         if message.session_id != part.session_id {
             return Ok(());
         }
         if let Some(accumulator) = accumulators.get_mut(&part.session_id) {
+            // 摘要扫描已读取全部分片，顺便记录内容指纹，覆盖原地编辑和删除。
+            accumulator.content_hash.update(
+                json!([
+                    message.time_created,
+                    message.data,
+                    part.id,
+                    part.message_id,
+                    part.time_created,
+                    part.data
+                ])
+                .to_string()
+                .as_bytes(),
+            );
             accept_part(&mut accumulator.state, &message, &part);
         }
         Ok(())
@@ -453,6 +476,12 @@ pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
                 detail_locator: DetailLocator {
                     database_path: path.clone(),
                     session_id,
+                    content_fingerprint: accumulator
+                        .content_hash
+                        .finalize()
+                        .iter()
+                        .map(|byte| format!("{byte:02x}"))
+                        .collect(),
                 },
             }
         })
@@ -482,6 +511,14 @@ fn raw_payload(message: &MessageRow, part: &PartRow) -> Value {
 }
 
 pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<Value, String> {
+    visit_detail(source, locator, &mut |_| {})
+}
+
+pub(super) fn visit_detail(
+    source: &Source,
+    locator: &DetailLocator,
+    visitor: &mut dyn FnMut(&Value),
+) -> Result<Value, String> {
     let connection = open_database(&locator.database_path)?;
     validate_projector_tables(&connection)?;
     let row = load_session(&connection, &locator.session_id)?;
@@ -499,6 +536,7 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
                     "part_id": part.id,
                 }),
             );
+            visitor(&value);
             truncate_message(&mut value);
             messages.push(value);
         }
@@ -720,6 +758,42 @@ mod tests {
             archived: false,
         };
         (directory, source)
+    }
+
+    #[test]
+    fn 会话指纹隔离其他会话并识别正文尾部编辑和删除() {
+        let (_directory, source) = fixture();
+        let connection = Connection::open(&source.root).unwrap();
+        let fingerprint = || {
+            parse_source(&source)
+                .unwrap()
+                .sessions
+                .into_iter()
+                .find(|s| s.summary["id"] == "ses_main")
+                .unwrap()
+                .detail_locator
+                .content_fingerprint
+        };
+        let before = fingerprint();
+        connection
+            .execute(
+                "update session set title='其他会话更新' where id='ses_child'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(before, fingerprint());
+        let text = "长正文".repeat(30_000);
+        let replace = |suffix: &str| {
+            connection.execute("update part set data=?1 where id=(select id from part where session_id='ses_main' order by id limit 1)",
+                [json!({"type":"text","text":format!("{text}{suffix}")}).to_string()]).unwrap();
+        };
+        replace("旧内容");
+        let long = fingerprint();
+        replace("新内容");
+        assert_ne!(long, fingerprint());
+        let edited = fingerprint();
+        connection.execute("delete from part where id=(select id from part where session_id='ses_main' order by id limit 1)",[]).unwrap();
+        assert_ne!(edited, fingerprint());
     }
 
     #[test]

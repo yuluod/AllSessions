@@ -281,15 +281,21 @@ fn envelope_messages(record: &Value) -> Vec<Value> {
     }
 }
 
-struct MessageCollector {
+struct MessageCollector<'a> {
+    visitor: &'a mut dyn FnMut(&Value),
     state: ParseState,
     messages: Option<HeadTail<Value>>,
     pending: Option<(Value, usize)>,
     sequence: usize,
 }
 
-impl MessageCollector {
-    fn new(path: &Path, layout: &SessionLayout, collect_messages: bool) -> Self {
+impl<'a> MessageCollector<'a> {
+    fn new(
+        path: &Path,
+        layout: &SessionLayout,
+        collect_messages: bool,
+        visitor: &'a mut dyn FnMut(&Value),
+    ) -> Self {
         let mut state = ParseState::new(path);
         state.id = layout.id.clone();
         state.cwd = layout.cwd.clone();
@@ -301,6 +307,7 @@ impl MessageCollector {
         };
         state.parent_session_id = layout.parent_session_id.clone();
         Self {
+            visitor,
             state,
             messages: collect_messages.then(|| HeadTail::new(DETAIL_MESSAGE_LIMIT)),
             pending: None,
@@ -319,16 +326,10 @@ impl MessageCollector {
                 if pending["role"] == message["role"]
                     && pending["source_subtype"] == message["source_subtype"]
                 {
-                    let mut text = pending["text"].as_str().unwrap_or_default().to_string();
                     let incoming = message["text"].as_str().unwrap_or_default();
-                    if text.chars().count() < SEARCH_TEXT_LIMIT {
-                        text.extend(
-                            incoming
-                                .chars()
-                                .take(SEARCH_TEXT_LIMIT - text.chars().count()),
-                        );
+                    if let Value::String(text) = &mut pending["text"] {
+                        text.push_str(incoming);
                     }
-                    pending["text"] = Value::String(text);
                     return;
                 }
             }
@@ -355,6 +356,7 @@ impl MessageCollector {
                     "message_index": self.sequence,
                 }),
             );
+            (self.visitor)(&visible);
             truncate_message(&mut visible);
             messages.push(visible);
         }
@@ -364,9 +366,14 @@ impl MessageCollector {
 
 type ParsedWire = (ParseState, Option<HeadTail<Value>>, Option<HeadTail<Value>>);
 
-fn parse_wire(path: &Path, source: &Source, collect_detail: bool) -> Result<ParsedWire, String> {
+fn parse_wire(
+    path: &Path,
+    source: &Source,
+    collect_detail: bool,
+    visitor: &mut dyn FnMut(&Value),
+) -> Result<ParsedWire, String> {
     let layout = session_layout(path, source);
-    let mut collector = MessageCollector::new(path, &layout, collect_detail);
+    let mut collector = MessageCollector::new(path, &layout, collect_detail, visitor);
     let mut events = collect_detail.then(|| HeadTail::new(DETAIL_EVENT_LIMIT));
     let mut tool_names = HashMap::<String, String>::new();
 
@@ -446,7 +453,7 @@ fn build_summary(path: &Path, source: &Source, state: &ParseState) -> Value {
 }
 
 pub(super) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
-    let (state, _, _) = parse_wire(path, source, false)?;
+    let (state, _, _) = parse_wire(path, source, false, &mut |_| {})?;
     let summary = build_summary(path, source, &state);
     let mut search = summary_search_text(&summary);
     append_limited(&mut search, &[&state.search_text], SEARCH_TEXT_LIMIT);
@@ -454,7 +461,15 @@ pub(super) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
 }
 
 pub(super) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
-    let (state, messages, events) = parse_wire(path, source, true)?;
+    visit_detail(path, source, &mut |_| {})
+}
+
+pub(super) fn visit_detail(
+    path: &Path,
+    source: &Source,
+    visitor: &mut dyn FnMut(&Value),
+) -> Result<Value, String> {
+    let (state, messages, events) = parse_wire(path, source, true, visitor)?;
     let (mut message_values, omitted_messages, total_messages) =
         messages.expect("详情解析必须收集消息").finish(json!({
             "role": "system",

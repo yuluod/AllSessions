@@ -534,6 +534,85 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
     })
 }
 
+pub(super) fn visit_detail(
+    source: &Source,
+    locator: &DetailLocator,
+    visitor: &mut dyn FnMut(&Value),
+) -> Result<Value, String> {
+    let mut state = ParseState::new(&locator.primary_path);
+    // 使用临时 SQLite 排序完整日志，避免为长会话保留无界记录数组。
+    let records = rusqlite::Connection::open("").map_err(error_text)?;
+    records.execute_batch("create table records(message_id integer, timestamp text, payload text, path text, record_index integer); begin").map_err(error_text)?;
+    for path in &locator.paths {
+        let mut index = 0;
+        let mut failure = None;
+        visit_log_records(path, |record| {
+            let record_index = index;
+            index += 1;
+            if record["sessionId"].as_str() != Some(locator.session_id.as_str()) {
+                return;
+            }
+            if failure.is_none() {
+                if let Err(error) = records.execute(
+                    "insert into records values(?1,?2,?3,?4,?5)",
+                    rusqlite::params![
+                        record["messageId"].as_i64().unwrap_or_default(),
+                        record["timestamp"].as_str().unwrap_or_default(),
+                        record.to_string(),
+                        path.to_string_lossy(),
+                        record_index
+                    ],
+                ) {
+                    failure = Some(error.to_string());
+                }
+            }
+        })?;
+        if let Some(error) = failure {
+            return Err(error);
+        }
+    }
+    records.execute_batch("commit").map_err(error_text)?;
+    let mut ordered = records
+        .prepare(
+            "select payload,path,record_index from records order by message_id,timestamp,rowid",
+        )
+        .map_err(error_text)?;
+    let mut rows = ordered.query([]).map_err(error_text)?;
+    while let Some(row) = rows.next().map_err(error_text)? {
+        let payload: String = row.get(0).map_err(error_text)?;
+        let record: Value = serde_json::from_str(&payload).map_err(error_text)?;
+        let path: String = row.get(1).map_err(error_text)?;
+        let record_index: i64 = row.get(2).map_err(error_text)?;
+        for (message_index, mut message) in state.accept(&record).into_iter().enumerate() {
+            attach_message_delete_ref(
+                &mut message,
+                json!({"kind":"gemini_log","path":path,"record_index":record_index,"message_index":message_index,"record_fingerprint":json_fingerprint(&record)}),
+            );
+            visitor(&message);
+        }
+    }
+    visit_brain_messages(
+        &source.root,
+        &locator.session_id,
+        |role, text, timestamp, subtype, path| {
+            if role == "user"
+                && locator
+                    .duplicate_user_keys
+                    .contains(&DuplicateUserKey::from_text(text))
+            {
+                return;
+            }
+            let mut message = json!({"role":role,"text":text,"timestamp":nullable_string(timestamp),"source_type":"artifact","source_subtype":subtype,"synthetic_context":false});
+            attach_message_delete_ref(
+                &mut message,
+                json!({"kind":"gemini_artifact","path":path.to_string_lossy(),"content_fingerprint":json_fingerprint(&Value::String(text.to_string()))}),
+            );
+            visitor(&message);
+        },
+    );
+    Ok(json!({}))
+}
+
 pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<Value, String> {
     let path = if locator.primary_path.as_os_str().is_empty() {
         locator.paths.first().cloned().unwrap_or_else(|| {

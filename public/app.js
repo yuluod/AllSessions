@@ -1,4 +1,6 @@
 import { t, getLang, translateBackendError, updateStaticI18n } from "./i18n.js";
+import { highlightMatches } from "./search-view.js";
+import { createIndexProgressPoller } from "./index-progress.js";
 import {
   DESKTOP_RUNTIME_REQUIRED,
   fetchJson as requestJson,
@@ -76,6 +78,8 @@ const state = {
   hasMore: false,
   nextCursor: null,
   searchQuery: "",
+  searchSort: "relevance",
+  selectedSearchHit: null,
   showArchived: false,
   showCodexArchived: false,
   showHidden: false,
@@ -806,7 +810,28 @@ function renderWorkspaceStatus() {
 
   if (elements.statusHealthButton && elements.statusHealthText) {
     const diagnostics = state.diagnostics?.sources;
-    if (!diagnostics) {
+    const indexing = state.indexProgress;
+    elements.statusHealthButton.title = indexing?.error || "";
+    const progress = document.querySelector("#index-progress");
+    if (progress) {
+      progress.hidden = indexing?.phase !== "indexing";
+      progress.max = Math.max(1, indexing?.total || 0);
+      progress.value = indexing?.processed || 0;
+      progress.setAttribute("aria-label", t("indexProgressLabel"));
+    }
+    if (indexing?.phase === "scanning" || indexing?.phase === "indexing") {
+      elements.statusHealthButton.dataset.state = "loading";
+      elements.statusHealthText.textContent =
+        indexing.phase === "scanning"
+          ? t("scanningSessions")
+          : t("indexProgress", indexing);
+    } else if (indexing?.phase === "error") {
+      elements.statusHealthButton.dataset.state = "warning";
+      elements.statusHealthText.textContent = t("indexProgressError");
+    } else if (indexing?.phase === "unavailable") {
+      elements.statusHealthButton.dataset.state = "unavailable";
+      elements.statusHealthText.textContent = t("indexProgressUnavailable");
+    } else if (!diagnostics) {
       elements.statusHealthButton.dataset.state = "unavailable";
       elements.statusHealthText.textContent = t("scanHealthUnavailable");
     } else {
@@ -1121,6 +1146,7 @@ function buildSessionsUrl({ cursor } = {}) {
 function buildSearchUrl({ cursor } = {}) {
   const params = new URLSearchParams(buildSessionQuery());
   params.set("q", state.searchQuery);
+  params.set("sort", state.searchSort);
   params.set("limit", String(PAGE_LIMIT));
   if (cursor) params.set("cursor", cursor);
   return `/api/search?${params.toString()}`;
@@ -1416,11 +1442,41 @@ function appendSessionItems(sessions) {
     button.addEventListener("click", () => {
       selectSession(session._key, button);
     });
+    if (session.search_hits?.length) {
+      const hits = document.createElement("div");
+      hits.className = "search-hit-list";
+      previewEl.classList.add("hidden");
+      for (const hit of session.search_hits) {
+        const link = document.createElement("button");
+        link.type = "button";
+        link.className = "search-hit";
+        const label = document.createElement("span");
+        label.className = "search-hit-field";
+        label.textContent = t(`searchField_${hit.field}`);
+        const excerpt = document.createElement("span");
+        excerpt.textContent = hit.snippet;
+        highlightMatches(excerpt, state.searchQuery);
+        link.append(label, excerpt);
+        link.addEventListener("click", () =>
+          selectSession(session._key, button, hit)
+        );
+        hits.append(link);
+      }
+      row.append(hits);
+    }
     elements.sessionList.append(fragment);
   });
 }
 
-function selectSession(key, buttonEl) {
+function selectSession(key, buttonEl, hit = null) {
+  const selectedHit =
+    hit ||
+    state.sessions
+      .find((session) => session._key === key)
+      ?.search_hits?.find((item) => Number.isInteger(item.ordinal));
+  state.selectedSearchHit = selectedHit
+    ? { ...selectedHit, sessionKey: key }
+    : null;
   state.selectedSessionKey = key;
   state.currentDetail = null;
   setPropsPlaceholder(t("loading"));
@@ -1491,7 +1547,10 @@ function renderSessionList() {
   let currentGroupKey = "";
   visible.forEach((session) => {
     const group = formatDateGroup(sessionTimestamp(session));
-    if (group.key !== currentGroupKey) {
+    if (
+      (!state.searchQuery || state.searchSort === "recent") &&
+      group.key !== currentGroupKey
+    ) {
       currentGroupKey = group.key;
       appendSessionGroupHeader(group.label, groupCounts.get(group.key) || 0);
     }
@@ -1712,7 +1771,8 @@ function openDeleteDialog({ kind, message = null }) {
   elements.deleteConfirmBtn.classList.add("hidden");
   elements.deletePermanentBtn.classList.toggle(
     "hidden",
-    state.currentDetail?.summary?.source_read_only === true
+    state.currentDetail?.summary?.source_read_only === true ||
+      (kind === "message" && state.currentDetail?.search_context === true)
   );
   elements.deleteSoftBtn.classList.remove("hidden");
   elements.deleteSoftBtn.textContent = t(
@@ -2019,15 +2079,25 @@ function setDetailPlaceholder(title, description = "") {
 async function loadSessionDetail(id, { silent = false } = {}) {
   const request = detailRequestGate.begin();
   try {
-    const detail = await fetchJson(`/api/sessions/${encodeURIComponent(id)}`, {
-      signal: request.signal,
-    });
+    const around =
+      state.searchQuery && state.selectedSearchHit?.sessionKey === id
+        ? state.selectedSearchHit.ordinal
+        : null;
+    const suffix = Number.isInteger(around)
+      ? `?${new URLSearchParams({ around: String(around), message: state.selectedSearchHit.message_key || "", term: state.selectedSearchHit.term || "" })}`
+      : "";
+    const detail = await fetchJson(
+      `/api/sessions/${encodeURIComponent(id)}${suffix}`,
+      {
+        signal: request.signal,
+      }
+    );
     if (!request.isCurrent() || state.selectedSessionKey !== id) return false;
     state.currentDetail = detail;
     state.roleFilter = "";
-    state.detailQuery = "";
+    state.detailQuery = state.searchQuery;
     if (elements.detailSearchInput) {
-      elements.detailSearchInput.value = "";
+      elements.detailSearchInput.value = state.detailQuery;
     }
     if (elements.showToolsToggle) {
       elements.showToolsToggle.checked = state.showTools;
@@ -2051,6 +2121,26 @@ async function loadSessionDetail(id, { silent = false } = {}) {
     syncSessionDeleteButton();
     renderPropsPanel(detail.summary, detail.conversation_messages);
     conversationView.renderConversation(detail.conversation_messages);
+    document
+      .querySelector("#search-full-session")
+      ?.classList.toggle("hidden", !detail.search_context);
+    for (const button of [elements.exportMdBtn, elements.exportJsonBtn]) {
+      if (button) {
+        button.disabled = Boolean(detail.search_context);
+        button.title = detail.search_context ? t("searchContextExport") : "";
+      }
+    }
+    if (detail.search_context) {
+      const targetIndex = detail.conversation_messages.findIndex(
+        (message) => message.search_ordinal === detail.search_target
+      );
+      const target = elements.conversationList.querySelector(
+        `#message-${targetIndex + 1}`
+      );
+      if (target?.classList.contains("collapsed"))
+        target.querySelector(".message-toggle")?.click();
+      target?.scrollIntoView({ block: "center" });
+    }
     renderRawEvents(detail.raw_events);
     updateTabs();
     if (state._initialized && window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {
@@ -2104,6 +2194,19 @@ async function loadSessions({ reportError = true, background = false } = {}) {
       state.facets = { ...state.facets, session_roots: data.session_roots };
     }
     state.scanning = data.scanning === true;
+    document
+      .querySelector("#search-sort")
+      ?.classList.toggle("hidden", !state.searchQuery);
+    document
+      .querySelector("#list-sort-label")
+      ?.classList.toggle("hidden", Boolean(state.searchQuery));
+    const searchCount = document.querySelector("#search-result-count");
+    if (searchCount)
+      searchCount.textContent = state.searchQuery
+        ? state.scanning
+          ? t("searchIndexing")
+          : t("searchSessionCount", { n: data.total || 0 })
+        : "";
     syncSessionRoot();
 
     const selectedMissing = Boolean(
@@ -2242,6 +2345,23 @@ async function loadWorkspaceDiagnostics() {
   renderWorkspaceStatus();
 }
 
+const indexProgressPoller = createIndexProgressPoller({
+  read: () => fetchJson("/api/index-status"),
+  isVisible: () => !document.hidden,
+  render: (status) => {
+    state.indexProgress = status;
+    renderWorkspaceStatus();
+  },
+  onError: (error) => {
+    console.warn("读取索引进度失败", error);
+    state.indexProgress = { phase: "unavailable" };
+    renderWorkspaceStatus();
+  },
+});
+document.addEventListener("visibilitychange", () => {
+  if (state._initialized) void indexProgressPoller.refresh();
+});
+
 async function loadCapabilities() {
   try {
     state.capabilities = await fetchJson("/api/capabilities");
@@ -2328,6 +2448,7 @@ async function bindTauriSessionEventsOnce() {
   try {
     await bindTauriSessionEvents({
       refresh: async () => {
+        void indexProgressPoller.refresh();
         await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
         await Promise.all([loadSessions({ background: true }), loadStats()]);
       },
@@ -2353,6 +2474,10 @@ async function bindTauriSessionEventsOnce() {
 }
 
 async function loadInitialWorkspace() {
+  if (!state._initialized) {
+    state.scanning = true;
+    renderSessionList();
+  }
   try {
     // 后端首次扫描在后台进行，先订阅事件再拉取，避免漏掉扫描完成通知。
     await bindTauriSessionEventsOnce();
@@ -2367,6 +2492,7 @@ async function loadInitialWorkspace() {
       throw state.lastSessionError || new Error(t("loadListFailed"));
     }
     state._initialized = true;
+    void indexProgressPoller.refresh();
     state.workspaceLoadError = null;
     void loadStats();
     openRecoverySettingsOnce();
@@ -2831,14 +2957,30 @@ async function initialize() {
   });
 
   let searchDebounce = null;
+  document
+    .querySelector("#search-sort")
+    ?.addEventListener("change", (event) => {
+      state.searchSort = event.target.value;
+      void loadSessions();
+    });
+  document
+    .querySelector("#search-full-session")
+    ?.addEventListener("click", () => {
+      state.selectedSearchHit = null;
+      void loadSessionDetail(state.selectedSessionKey);
+    });
   elements.searchInput?.addEventListener("input", (event) => {
+    const query = event.target.value.trim();
     clearTimeout(searchDebounce);
+    sessionRequestGate.cancel();
+    detailRequestGate.cancel();
+    state.selectedSearchHit = null;
     searchDebounce = setTimeout(async () => {
       const switchedView = state.activeView !== "list";
       if (switchedView) {
         await activateWorkspaceView("list");
       }
-      state.searchQuery = event.target.value.trim();
+      state.searchQuery = query;
       syncUrl();
       await loadSessions();
       if (switchedView && window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {

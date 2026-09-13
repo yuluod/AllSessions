@@ -16,6 +16,23 @@ const messages = [
   { role: "user", text: "<environment_context>", synthetic_context: true },
 ];
 
+test("搜索定位仅临时显示目标工具消息且不改变偏好", () => {
+  const tools = [
+    { role: "tool", text: "其他工具", search_ordinal: 5 },
+    { role: "tool", text: "目标工具", search_ordinal: 6 },
+  ];
+  const options = { showTools: false, searchTargetOrdinal: 6 };
+  assert.deepEqual(
+    filterConversationMessages(tools, options).map((m) => m.search_ordinal),
+    [6]
+  );
+  assert.equal(options.showTools, false);
+  assert.deepEqual(
+    filterConversationMessages(tools, { showTools: options.showTools }),
+    []
+  );
+});
+
 test("会话过滤同时执行角色、工具、上下文和关键词条件", () => {
   const result = filterConversationMessages(messages, {
     query: "完成",

@@ -992,7 +992,71 @@ body.is-resizing {
   flex: 0 0 auto;
 }
 
+.search-hit-list {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 0.25rem 0.75rem 0.65rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.search-hit {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+  text-align: start;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.35rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.search-hit:hover {
+  background: var(--surface-sunken);
+}
+.search-hit > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-hit-field {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.search-highlight {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.current-match {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.detail-search-box {
+  flex-wrap: wrap;
+}
+#detail-search-count,
+#search-result-count {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+#search-sort {
+  max-width: 9rem;
+  font-size: 0.8125rem;
+}
+
 .session-row {
+  position: relative;
+  min-width: 0;
+}
+
+/* 会话卡片与复选框的定位锚；搜索命中列表追加在 row 内、位于 main 之后。 */
+.session-main {
   position: relative;
   min-width: 0;
 }
@@ -2668,6 +2732,13 @@ body.is-resizing {
   flex: 0 0 auto;
   border-radius: 50%;
   background: var(--muted);
+}
+
+#index-progress {
+  width: 4rem;
+  height: 0.3rem;
+  flex-shrink: 0;
+  accent-color: var(--text-secondary);
 }
 
 .status-bar__health[data-state="ready"] .status-bar__indicator {

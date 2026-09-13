@@ -7,7 +7,13 @@ export function filterConversationMessages(messages, options = {}) {
   return messages
     .map((message, index) => ({ ...message, _origIdx: index }))
     .filter((message) => options.showRemoved || message._removed !== true)
-    .filter((message) => options.showTools || message.role !== "tool")
+    .filter(
+      (message) =>
+        options.showTools ||
+        message.role !== "tool" ||
+        (Number.isInteger(options.searchTargetOrdinal) &&
+          message.search_ordinal === options.searchTargetOrdinal)
+    )
     .filter(
       (message) => options.showContext || message.synthetic_context !== true
     )

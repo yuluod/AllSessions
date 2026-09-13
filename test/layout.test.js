@@ -495,7 +495,7 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
     /state\.conversationDesc \? \[\.\.\.visible\]\.reverse\(\) : visible/
   );
   assert.match(view, /createMessageNavSection/);
-  assert.match(filter, /showTools \|\| message\.role !== "tool"/);
+  assert.match(filter, /showTools\s*\|\|\s*message\.role !== "tool"/);
   assert.match(filter, /showContext \|\| message\.synthetic_context !== true/);
   assert.match(css, /\.conversation-toolbar\b/);
   assert.match(css, /\.message-nav-list\b/);

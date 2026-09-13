@@ -521,7 +521,24 @@
                 >
                   选择当前页
                 </button>
-                <span data-i18n="sortDesc">按时间倒序</span>
+                <span id="list-sort-label" data-i18n="sortDesc"
+                  >按时间倒序</span
+                >
+                <select
+                  id="search-sort"
+                  class="hidden"
+                  aria-label="搜索排序"
+                  data-i18n="searchSort"
+                  data-i18n-attr="aria-label"
+                >
+                  <option value="relevance" data-i18n="searchRelevance">
+                    相关度
+                  </option>
+                  <option value="recent" data-i18n="searchRecent">
+                    最近活动
+                  </option>
+                </select>
+                <span id="search-result-count" role="status"></span>
               </div>
               <label class="session-list-header__favorite">
                 <input id="favorite-only-toggle" type="checkbox" />
@@ -776,6 +793,33 @@
                         placeholder="搜索当前会话..."
                         data-i18n-placeholder="detailSearchPlaceholder"
                       />
+                      <span id="detail-search-count" role="status"></span>
+                      <button
+                        id="search-previous"
+                        type="button"
+                        class="ghost-button"
+                        data-i18n="searchPrevious"
+                        disabled
+                      >
+                        上一处
+                      </button>
+                      <button
+                        id="search-next"
+                        type="button"
+                        class="ghost-button"
+                        data-i18n="searchNext"
+                        disabled
+                      >
+                        下一处
+                      </button>
+                      <button
+                        id="search-full-session"
+                        type="button"
+                        class="ghost-button hidden"
+                        data-i18n="searchFullSession"
+                      >
+                        返回会话概览
+                      </button>
                     </div>
                     <div class="conversation-display-options">
                       <div class="conversation-display-options-body">
@@ -1446,6 +1490,7 @@
           <span id="status-health-text" data-i18n="scanHealthLoading"
             >正在读取扫描状态</span
           >
+          <progress id="index-progress" hidden max="1" value="0"></progress>
         </button>
         <div class="status-bar__filter">
           <span data-i18n="statusFilterLabel">当前过滤</span>
@@ -2210,32 +2255,36 @@
     </dialog>
 
     <template id="session-item-template">
+      <!-- session-main 是复选框的定位锚：搜索命中列表追加在 row 内时，
+           复选框仍相对会话卡片本身垂直居中，而不是相对整行。 -->
       <div class="session-row">
-        <label class="session-select-control">
-          <input class="session-select-checkbox" type="checkbox" />
-          <span class="visually-hidden" data-i18n="selectSessionForBulk"
-            >选择会话用于批量操作</span
-          >
-        </label>
-        <button class="session-item" type="button">
-          <span class="session-item__meta">
-            <span class="session-time"></span>
-            <span class="session-source-kind"></span>
-            <span class="session-message-count"></span>
-          </span>
-          <span class="session-title-cell">
-            <strong class="session-title"></strong>
-            <span class="session-preview"></span>
-          </span>
-          <span class="session-tertiary">
-            <strong class="session-provider"></strong>
-            <span class="session-source"></span>
-          </span>
-          <span class="session-directory-cell">
-            <span class="session-cwd session-cwd-main"></span>
-            <span class="session-cwd-path"></span>
-          </span>
-        </button>
+        <div class="session-main">
+          <label class="session-select-control">
+            <input class="session-select-checkbox" type="checkbox" />
+            <span class="visually-hidden" data-i18n="selectSessionForBulk"
+              >选择会话用于批量操作</span
+            >
+          </label>
+          <button class="session-item" type="button">
+            <span class="session-item__meta">
+              <span class="session-time"></span>
+              <span class="session-source-kind"></span>
+              <span class="session-message-count"></span>
+            </span>
+            <span class="session-title-cell">
+              <strong class="session-title"></strong>
+              <span class="session-preview"></span>
+            </span>
+            <span class="session-tertiary">
+              <strong class="session-provider"></strong>
+              <span class="session-source"></span>
+            </span>
+            <span class="session-directory-cell">
+              <span class="session-cwd session-cwd-main"></span>
+              <span class="session-cwd-path"></span>
+            </span>
+          </button>
+        </div>
       </div>
     </template>
 

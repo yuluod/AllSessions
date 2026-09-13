@@ -3,6 +3,7 @@ import { markdownToPlainText, renderMarkdown } from "./markdown.js";
 import { compactText, formatTimestamp } from "./session-format.js";
 import { displayMessageText } from "./session-export.js";
 import { filterConversationMessages } from "./conversation-filter.js";
+import { highlightMatches, bindMatchNavigation } from "./search-view.js";
 
 const ROLE_LABELS = {
   user: "user",
@@ -32,8 +33,11 @@ export function createConversationView({
       _removed: isMessageRemoved?.(message) === true,
     }));
     return filterConversationMessages(decorated, {
-      query: state.detailQuery,
+      query: "",
       showTools: state.showTools,
+      searchTargetOrdinal: state.currentDetail?.search_context
+        ? state.currentDetail.search_target
+        : null,
       showContext: state.showContext,
       showRemoved: state.showRemoved,
       roleFilter: state.roleFilter,
@@ -130,6 +134,7 @@ export function createConversationView({
     renderMessageNavigation(messages);
 
     if (!visibleMessages.length) {
+      bindMatchNavigation(elements.conversationList);
       const empty = document.createElement("p");
       empty.className = "hero-copy";
       empty.textContent = t("noConversations");
@@ -166,6 +171,7 @@ export function createConversationView({
       const messageContent = fragment.querySelector(".message-text");
       messageContent.id = `message-content-${message._origIdx + 1}`;
       renderMarkdown(messageContent, messageText);
+      highlightMatches(messageContent, state.detailQuery);
 
       const shouldCollapse =
         message.role === "tool" ||
@@ -228,6 +234,7 @@ export function createConversationView({
       }
       elements.conversationList.append(fragment);
     });
+    bindMatchNavigation(elements.conversationList);
   }
 
   return { createMessageNavSection, renderConversation };

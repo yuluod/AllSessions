@@ -37,7 +37,8 @@ fn cmd_quote(value: &str) -> String {
 /// 会话 ID 只允许安全字符，避免它在各平台终端里被二次解释。
 fn is_safe_session_id(id: &str) -> bool {
     !id.is_empty()
-        && id.chars()
+        && id
+            .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/'))
 }
 
@@ -122,11 +123,7 @@ fn terminal_option_values() -> &'static [(&'static str, &'static str)] {
 /// `terminal` 来自常规设置；"auto" 或未知值按平台默认顺序探测，
 /// "custom" 使用 `custom` 指定的应用名称或可执行文件路径。
 /// 返回实际下发的命令文本，供前端展示。
-pub fn resume_session(
-    summary: &Value,
-    terminal: &str,
-    custom: &str,
-) -> Result<Value, ApiError> {
+pub fn resume_session(summary: &Value, terminal: &str, custom: &str) -> Result<Value, ApiError> {
     let kind = summary["source_kind"].as_str().unwrap_or_default();
     let id = summary["id"].as_str().unwrap_or_default();
     let cwd = summary["cwd"].as_str().unwrap_or_default();
@@ -134,8 +131,8 @@ pub fn resume_session(
     if !is_safe_session_id(id) {
         return Err(ApiError::invalid("会话 ID 包含无法安全传递的字符"));
     }
-    let command = resume_command(kind, id)
-        .ok_or_else(|| ApiError::invalid("该来源不支持恢复会话"))?;
+    let command =
+        resume_command(kind, id).ok_or_else(|| ApiError::invalid("该来源不支持恢复会话"))?;
 
     if terminal == "custom" && custom.trim().is_empty() {
         return Err(ApiError::invalid("请先在设置中填写自定义终端"));
@@ -219,11 +216,13 @@ fn spawn_custom_macos(line: &str, app: &str) -> Result<(), ApiError> {
 #[cfg(target_os = "macos")]
 fn spawn_via_command_file(line: &str, app: &str) -> Result<(), ApiError> {
     use std::os::unix::fs::PermissionsExt;
-    let path = std::env::temp_dir().join(format!(
-        "allsessions-resume-{}.command",
-        std::process::id()
-    ));
-    let script = format!("#!/bin/sh\n{}\nrm -f {}\n", line, shell_quote(&path.to_string_lossy()));
+    let path =
+        std::env::temp_dir().join(format!("allsessions-resume-{}.command", std::process::id()));
+    let script = format!(
+        "#!/bin/sh\n{}\nrm -f {}\n",
+        line,
+        shell_quote(&path.to_string_lossy())
+    );
     std::fs::write(&path, script)
         .map_err(|error| ApiError::from(format!("无法创建恢复脚本：{error}")))?;
     let mut permissions = std::fs::metadata(&path)

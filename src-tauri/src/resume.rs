@@ -24,6 +24,8 @@ fn resume_command(kind: &str, id: &str) -> Option<String> {
 }
 
 /// POSIX shell 单引号转义：' → '\''。
+/// 仅 Unix 终端分支使用；Windows 下缺失此门控会因死代码被 -D warnings 拒绝。
+#[cfg(unix)]
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -401,6 +403,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn shell_引号转义单引号() {
         assert_eq!(shell_quote("/a/b c"), "'/a/b c'");
         assert_eq!(shell_quote("a'b"), "'a'\\''b'");

@@ -34,7 +34,10 @@ AllSessions combines local Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, Op
 - Refresh through native filesystem watching and Tauri events
 - Inspect per-source scan health and copy sanitized diagnostics without session content or local paths
 - Hide subagents, sidechains, thinking, and injected context by default
-- Bound large-history memory with streaming summaries, capped search text, head/tail detail windows, and a 64 MB LRU
+- Search long sessions with a per-message SQLite full-text index while retaining head/tail detail windows and a 64 MB LRU
+
+Search combines whitespace-separated terms with AND across titles, paths, tags, notes, and parsed message text. One- and two-character terms use substring matching; longer terms use a local trigram index. Results support relevance or recent-activity ordering. Click a match to open nearby messages beyond the overview's head/tail window; in-session highlighting and previous/next navigation cover the currently loaded messages. The rebuildable local index requires additional time and disk space on the first scan, without cloud services or models.
+
 - Persist the incremental index in SQLite and import the previous `session-index.json` on upgrade
 - Start with safe defaults when configuration is damaged, then guide the user to repair source settings
 - Back up the affected local source records before a confirmed permanent deletion

@@ -1467,7 +1467,7 @@ test("个人工作台数据独立持久化并提供整理与可选脱敏导出",
   assert.match(app, /exportSessionCollection/);
   assert.match(
     html,
-    /id="active-filter-bar"[\s\S]*id="bulk-toolbar"[\s\S]*class="session-list-header"/
+    /id="bulk-toolbar"[\s\S]*class="session-list-header"[\s\S]*id="active-filter-bar"[\s\S]*<div\s+id="session-list"/
   );
   assert.match(
     html,

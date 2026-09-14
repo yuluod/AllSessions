@@ -1029,7 +1029,10 @@ function syncFilterControls() {
     elements.showRemovedToggle.checked = state.showRemoved;
   }
   if (elements.favoriteOnlyToggle) {
-    elements.favoriteOnlyToggle.checked = state.favoriteOnly;
+    elements.favoriteOnlyToggle.setAttribute(
+      "aria-pressed",
+      state.favoriteOnly ? "true" : "false"
+    );
   }
   renderProjectNav();
   renderWorkspaceStatus();
@@ -2765,8 +2768,9 @@ async function initialize() {
     });
   }
 
-  elements.favoriteOnlyToggle?.addEventListener("change", async () => {
-    state.favoriteOnly = elements.favoriteOnlyToggle.checked;
+  elements.favoriteOnlyToggle?.addEventListener("click", async () => {
+    state.favoriteOnly = !state.favoriteOnly;
+    syncFilterControls();
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);
   });

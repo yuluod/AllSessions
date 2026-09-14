@@ -593,6 +593,7 @@ const elements = {
   settingsRecoveryMessage: document.querySelector("#settings-recovery-message"),
   settingsDiagnosticsMeta: document.querySelector("#settings-diagnostics-meta"),
   settingsCopyDiagnostics: document.querySelector("#settings-copy-diagnostics"),
+  settingsRescan: document.querySelector("#settings-rescan"),
   settingsCachePath: document.querySelector("#settings-cache-path"),
   settingsCacheSize: document.querySelector("#settings-cache-size"),
   settingsDeletionBackupPath: document.querySelector(
@@ -812,6 +813,8 @@ function renderWorkspaceStatus() {
   if (elements.statusHealthButton && elements.statusHealthText) {
     const diagnostics = state.diagnostics?.sources;
     const indexing = state.indexProgress;
+    const issues = document.querySelector("#status-health-issues");
+    if (issues) issues.hidden = true;
     elements.statusHealthButton.title = indexing?.error || "";
     const progress = document.querySelector("#index-progress");
     if (progress) {
@@ -836,9 +839,6 @@ function renderWorkspaceStatus() {
       elements.statusHealthButton.dataset.state = "unavailable";
       elements.statusHealthText.textContent = t("scanHealthUnavailable");
     } else {
-      const sourceCount = SOURCE_RAIL_AGENTS.filter(({ kinds }) =>
-        kinds.some((kind) => diagnostics[kind]?.enabled)
-      ).length;
       const indexedSessions = SOURCE_RAIL_AGENTS.reduce(
         (total, { kinds }) => total + sourceDiagnosticCount(kinds),
         0
@@ -847,16 +847,18 @@ function renderWorkspaceStatus() {
         (total, diagnostic) => total + Number(diagnostic?.error_count || 0),
         0
       );
-      const warning = errorCount > 0;
-      elements.statusHealthButton.dataset.state = warning ? "warning" : "ready";
-      elements.statusHealthText.textContent = t(
-        warning ? "scanHealthWarning" : "scanHealthReady",
-        {
-          sources: sourceCount,
-          sessions: indexedSessions,
-          errors: errorCount,
-        }
-      );
+      elements.statusHealthButton.dataset.state = errorCount
+        ? "partial"
+        : "ready";
+      elements.statusHealthText.textContent = t("scanHealthReady", {
+        sessions: indexedSessions,
+      });
+      if (issues && errorCount > 0) {
+        issues.hidden = false;
+        issues.dataset.kind = "error";
+        issues.textContent = t("scanHealthWarning", { errors: errorCount });
+        elements.statusHealthButton.title = t("scanHealthViewIssues");
+      }
     }
   }
 

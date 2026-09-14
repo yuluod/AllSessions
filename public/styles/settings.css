@@ -630,6 +630,80 @@ html.settings-modal-open body {
   background: var(--danger-soft);
 }
 
+/* 「部分记录暂不支持」是预期内状态，使用中性强调色而非错误红。 */
+.settings-source-health[data-state="unsupported"] .settings-health-badge {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.settings-source-counts {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-weight: 650;
+}
+
+.settings-source-entries {
+  margin: 6px 0 0;
+}
+
+.settings-source-entries summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.settings-entries-hint {
+  margin: 4px 0 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.settings-source-entries ul {
+  display: grid;
+  max-height: 10rem;
+  overflow-y: auto;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  gap: 4px;
+}
+
+.settings-source-entries li {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.68rem;
+}
+
+.settings-entry-path {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-entry-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-entry-error .settings-entry-message {
+  color: var(--danger);
+}
+
+.settings-entry-more {
+  color: var(--muted);
+}
+
 .settings-source-error {
   min-width: 0;
   overflow: hidden;

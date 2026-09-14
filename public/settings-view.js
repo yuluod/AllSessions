@@ -108,6 +108,7 @@ export function createSettingsController({
   function sourceHealthState(diagnostic) {
     if (!diagnostic?.enabled) return "disabled";
     if ((diagnostic.error_count || 0) > 0) return "warning";
+    if ((diagnostic.unsupported_count || 0) > 0) return "unsupported";
     if ((diagnostic.available_roots || 0) === 0) return "missing";
     return "ready";
   }
@@ -120,6 +121,56 @@ export function createSettingsController({
     if (key === "opencode") return t("settingsOpenCodeReadFailed");
     if (key === "zcode") return t("settingsZCodeReadFailed");
     return error;
+  }
+
+  // 渲染逐条原因的折叠列表：每条「文件名 + 原因」，超出展示上限时提示剩余数量。
+  function appendDiagnosticEntries(
+    block,
+    title,
+    entries,
+    total,
+    itemClassName,
+    hint = ""
+  ) {
+    if (!Array.isArray(entries) || !entries.length) return;
+    const details = document.createElement("details");
+    details.className = "settings-source-entries";
+    const summary = document.createElement("summary");
+    summary.textContent = title;
+    details.append(summary);
+    if (hint) {
+      const note = document.createElement("p");
+      note.className = "settings-entries-hint";
+      note.textContent = hint;
+      details.append(note);
+    }
+    const list = document.createElement("ul");
+    for (const entry of entries) {
+      const item = document.createElement("li");
+      item.className = itemClassName;
+      const path = document.createElement("span");
+      path.className = "settings-entry-path";
+      path.textContent = entry.path || "";
+      path.title = entry.path || "";
+      if (entry.session_id) {
+        path.textContent += ` · ${entry.session_id}`;
+        path.title = path.textContent;
+      }
+      const message = document.createElement("span");
+      message.className = "settings-entry-message";
+      message.textContent = entry.message || "";
+      item.append(path, message);
+      list.append(item);
+    }
+    const hidden = Number(total || 0) - entries.length;
+    if (hidden > 0) {
+      const more = document.createElement("li");
+      more.className = "settings-entry-more";
+      more.textContent = t("settingsEntriesMore", { n: hidden });
+      list.append(more);
+    }
+    details.append(list);
+    block.append(details);
   }
 
   async function chooseSourcePath(key, currentPath) {
@@ -166,6 +217,19 @@ export function createSettingsController({
       files: diagnostic?.discovered_files || 0,
     });
     health.append(badge, summary);
+    const errorCount = diagnostic?.error_count || 0;
+    const unsupportedCount = diagnostic?.unsupported_count || 0;
+    if (errorCount > 0 || unsupportedCount > 0) {
+      const counts = document.createElement("span");
+      counts.className = "settings-source-counts";
+      const parts = [];
+      if (errorCount > 0)
+        parts.push(t("settingsErrorCount", { n: errorCount }));
+      if (unsupportedCount > 0)
+        parts.push(t("settingsUnsupportedCount", { n: unsupportedCount }));
+      counts.textContent = parts.join(" · ");
+      health.append(counts);
+    }
     if (diagnostic?.last_error) {
       const error = document.createElement("span");
       error.className = "settings-source-error";
@@ -174,6 +238,22 @@ export function createSettingsController({
       health.append(error);
     }
     block.append(health);
+    // 逐条原因集中在设置里：损坏记录与暂不支持的记录分开列出。
+    appendDiagnosticEntries(
+      block,
+      t("settingsErrorEntriesTitle"),
+      diagnostic?.error_entries,
+      errorCount,
+      "settings-entry-error"
+    );
+    appendDiagnosticEntries(
+      block,
+      t("settingsUnsupportedEntriesTitle"),
+      diagnostic?.unsupported_entries,
+      unsupportedCount,
+      "settings-entry-unsupported",
+      t("settingsUnsupportedHint")
+    );
   }
 
   function renderSources(payload) {
@@ -703,6 +783,24 @@ export function createSettingsController({
     }
   }
 
+  // 重新扫描：整体扫描或索引构建失败后的显式重试入口。
+  // 扫描期间状态栏会经 sessions-changed 事件恢复进度轮询。
+  async function rescanSources() {
+    if (elements.settingsRescan) elements.settingsRescan.disabled = true;
+    setStatus(t("settingsRescanning"));
+    try {
+      await fetchJson("/api/refresh");
+      latestPayload = await fetchJson("/api/settings");
+      renderSources(latestPayload);
+      renderDiagnostics(latestPayload);
+      setStatus(t("settingsRescanDone"));
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      if (elements.settingsRescan) elements.settingsRescan.disabled = false;
+    }
+  }
+
   async function checkForUpdates() {
     if (elements.settingsCheckUpdate)
       elements.settingsCheckUpdate.disabled = true;
@@ -738,6 +836,7 @@ export function createSettingsController({
     });
     elements.settingsSaveBtn?.addEventListener("click", save);
     elements.settingsClearCache?.addEventListener("click", clearCache);
+    elements.settingsRescan?.addEventListener("click", rescanSources);
     elements.settingsCopyDiagnostics?.addEventListener(
       "click",
       copyDiagnostics

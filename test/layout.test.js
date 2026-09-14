@@ -9,6 +9,57 @@ const rootDir = path.resolve(
   ".."
 );
 
+test("局部扫描异常单独展示且保留来源详情入口", async () => {
+  const app = await readProjectFile("public/app.js");
+  const html = await readProjectFile("public/index.html");
+  assert.match(html, /id="status-health-issues"[^>]*hidden/);
+  assert.match(app, /dataset.state =\s*errorCount\s*\? "partial"\s*: "ready"/);
+  assert.match(app, /if \(issues\) issues.hidden = true/);
+  assert.match(
+    app,
+    /statusHealthButton\?\.addEventListener\("click", \(\) => \{\s*void settingsController.open\("sources"\)/
+  );
+});
+
+test("暂不支持的记录与读取异常分级展示并提供重新扫描", async () => {
+  const app = await readProjectFile("public/app.js");
+  const html = await readProjectFile("public/index.html");
+  const css = await readProjectFile("public/styles/workspace.css");
+  const settingsCss = await readProjectFile("public/styles/settings.css");
+  const settingsView = await readProjectFile("public/settings-view.js");
+  const i18n = await readProjectFile("public/i18n.js");
+
+  // 状态栏：个别读取异常只有指示点转黄；「暂不支持」用中性徽章，不计入异常。
+  assert.match(css, /\[data-state="partial"\] \.status-bar__indicator/);
+  assert.match(css, /\.status-bar__issues\[data-kind="unsupported"\]/);
+  assert.doesNotMatch(app, /dataset\.kind = "unsupported"/);
+  assert.doesNotMatch(app, /unsupported_count/);
+
+  // 设置：暂不支持的健康状态、逐条原因列表和重新扫描重试。
+  assert.match(
+    settingsView,
+    /unsupported_count \|\| 0\) > 0\) return "unsupported"/
+  );
+  assert.match(settingsView, /error_entries/);
+  assert.match(settingsView, /unsupported_entries/);
+  assert.match(settingsView, /"\/api\/refresh"/);
+  assert.match(settingsCss, /\.settings-source-entries/);
+  assert.match(html, /id="settings-rescan"/);
+
+  // 中英文文案齐全（每个键应出现两次）。
+  for (const key of [
+    "scanHealthUnsupported",
+    "scanHealthUnsupportedTitle",
+    "settingsSourceHealth_unsupported",
+    "settingsErrorEntriesTitle",
+    "settingsUnsupportedEntriesTitle",
+    "settingsUnsupportedHint",
+    "settingsRescan",
+  ]) {
+    assert.equal((i18n.match(new RegExp(`${key}:`, "g")) || []).length, 2, key);
+  }
+});
+
 async function readProjectFile(relativePath) {
   const source = await fs.readFile(path.join(rootDir, relativePath), "utf8");
   if (relativePath !== "public/styles.css") return source;

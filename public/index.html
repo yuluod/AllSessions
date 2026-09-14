@@ -1502,6 +1502,11 @@
             >正在读取扫描状态</span
           >
           <progress id="index-progress" hidden max="1" value="0"></progress>
+          <span
+            id="status-health-issues"
+            class="status-bar__issues"
+            hidden
+          ></span>
         </button>
         <div class="status-bar__filter">
           <span data-i18n="statusFilterLabel">当前过滤</span>
@@ -2097,6 +2102,14 @@
             <div id="settings-sources" class="settings-sources"></div>
             <div class="settings-diagnostics-footer">
               <span id="settings-diagnostics-meta">-</span>
+              <button
+                id="settings-rescan"
+                class="ghost-button"
+                type="button"
+                data-i18n="settingsRescan"
+              >
+                重新扫描
+              </button>
               <button
                 id="settings-copy-diagnostics"
                 class="ghost-button"

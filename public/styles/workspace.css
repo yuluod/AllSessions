@@ -2745,8 +2745,25 @@ body.is-resizing {
   background: var(--success);
 }
 
+/* 个别记录读取异常：整体文字保持常规色，只有指示点转黄，保持低调。 */
+.status-bar__health[data-state="partial"] .status-bar__indicator {
+  background: var(--warning);
+}
+
 .status-bar__health[data-state="warning"] {
   color: var(--signal);
+}
+
+.status-bar__issues {
+  color: var(--warning);
+  white-space: nowrap;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+}
+
+/* 「暂不支持」是预期内情况，用中性色弱化，与读取异常区分。 */
+.status-bar__issues[data-kind="unsupported"] {
+  color: var(--muted);
 }
 
 .status-bar__health[data-state="warning"] .status-bar__indicator {

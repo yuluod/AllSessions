@@ -9,6 +9,7 @@ const AGENT_PRESENTATION = {
   kimi: { label: "Kimi Code CLI", color: "#b42318" },
   opencode: { label: "OpenCode", color: "#16794f" },
   zcode: { label: "ZCode", color: "#3b6ea5" },
+  cursor: { label: "Cursor", color: "#52525b" },
 };
 
 function renderBar(label, count, max, displayLabel = label) {

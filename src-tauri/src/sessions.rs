@@ -16,6 +16,7 @@ use walkdir::WalkDir;
 use crate::cache::IndexCache;
 use crate::error::ApiError;
 
+mod cursor;
 mod gemini;
 mod kimi;
 mod opencode;
@@ -47,6 +48,7 @@ enum SourceFormat {
     Kimi,
     OpenCode,
     ZCode,
+    Cursor,
 }
 
 #[derive(Clone)]
@@ -54,6 +56,7 @@ enum DetailLocator {
     Gemini(gemini::DetailLocator),
     OpenCode(opencode::DetailLocator),
     ZCode(zcode::DetailLocator),
+    Cursor(cursor::DetailLocator),
 }
 
 #[derive(Clone)]
@@ -68,7 +71,10 @@ struct StoredSession {
 #[derive(Clone, Default)]
 struct SourceScanDiagnostic {
     discovered_paths: BTreeSet<PathBuf>,
-    errors: BTreeMap<PathBuf, String>,
+    errors: BTreeMap<(PathBuf, String), String>,
+    /// 格式暂不支持等预期内的良性情况（如 Cursor 新版正文格式），
+    /// 与真实读取异常分开展示，不计入「扫描错误」。
+    unsupported: BTreeMap<(PathBuf, String), String>,
     last_error: Option<String>,
 }
 
@@ -99,20 +105,36 @@ impl ScanDiagnostics {
     }
 
     fn record_error(&mut self, kind: &str, path: &Path, error: &str) {
+        self.record_session_error(kind, path, "", error);
+    }
+
+    fn record_session_error(&mut self, kind: &str, path: &Path, id: &str, error: &str) {
         let diagnostic = self.sources.entry(kind.to_string()).or_default();
         diagnostic
             .errors
-            .insert(path.to_path_buf(), error.to_string());
+            .insert((path.to_path_buf(), id.to_string()), error.to_string());
         diagnostic.last_error = Some(error.to_string());
+    }
+
+    fn record_unsupported(&mut self, kind: &str, path: &Path, id: &str, reason: &str) {
+        self.sources
+            .entry(kind.to_string())
+            .or_default()
+            .unsupported
+            .insert((path.to_path_buf(), id.to_string()), reason.to_string());
     }
 
     fn clear_error(&mut self, kind: &str, path: &Path) {
         let Some(diagnostic) = self.sources.get_mut(kind) else {
             return;
         };
-        if diagnostic.errors.remove(path).is_some() {
-            diagnostic.last_error = diagnostic.errors.values().next_back().cloned();
-        }
+        diagnostic
+            .unsupported
+            .retain(|(candidate, _), _| candidate != path);
+        diagnostic
+            .errors
+            .retain(|(candidate, _), _| candidate != path);
+        diagnostic.last_error = diagnostic.errors.values().next_back().cloned();
     }
 
     fn remove_path(&mut self, kind: &str, path: &Path, include_descendants: bool) {
@@ -125,12 +147,32 @@ impl ScanDiagnostics {
         diagnostic
             .discovered_paths
             .retain(|candidate| !matches(candidate));
-        let removed_error = diagnostic.errors.keys().any(&matches);
-        diagnostic.errors.retain(|candidate, _| !matches(candidate));
+        diagnostic
+            .unsupported
+            .retain(|(candidate, _), _| !matches(candidate));
+        let removed_error = diagnostic
+            .errors
+            .keys()
+            .any(|(candidate, _)| matches(candidate));
+        diagnostic
+            .errors
+            .retain(|(candidate, _), _| !matches(candidate));
         if removed_error {
             diagnostic.last_error = diagnostic.errors.values().next_back().cloned();
         }
     }
+}
+
+/// 诊断逐条原因的展示上限；剩余条数由前端按 error_count 差值提示。
+const DIAGNOSTIC_ENTRY_LIMIT: usize = 20;
+
+fn diagnostic_entries(errors: &BTreeMap<(PathBuf, String), String>) -> Value {
+    errors
+        .iter()
+        .take(DIAGNOSTIC_ENTRY_LIMIT)
+        .map(|((path, id), message)| json!({ "path": path.to_string_lossy(), "session_id": id, "message": message }))
+        .collect::<Vec<_>>()
+        .into()
 }
 
 pub struct SessionStore {
@@ -176,6 +218,8 @@ impl SessionStore {
             "pi",
             "kimi",
             "opencode",
+            "zcode",
+            "cursor",
         ] {
             let enabled = self
                 .sources_config
@@ -190,6 +234,9 @@ impl SessionStore {
                     "discovered_files": 0,
                     "indexed_sessions": 0,
                     "error_count": 0,
+                    "unsupported_count": 0,
+                    "error_entries": [],
+                    "unsupported_entries": [],
                     "last_error": Value::Null,
                 }),
             );
@@ -203,15 +250,17 @@ impl SessionStore {
             ("pi", lists.pi.as_slice()),
             ("kimi", lists.kimi.as_slice()),
             ("opencode", lists.opencode.as_slice()),
+            ("zcode", lists.zcode.as_slice()),
+            ("cursor", lists.cursor.as_slice()),
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());
             entry["available_roots"] = json!(roots
                 .iter()
-                .filter(|root| if kind == "opencode" {
-                    root.is_file()
-                } else {
-                    root.is_dir()
+                .filter(|root| match kind {
+                    "opencode" | "zcode" => root.is_file(),
+                    "cursor" => root.is_file() || root.is_dir(),
+                    _ => root.is_dir(),
                 })
                 .count());
         }
@@ -226,6 +275,10 @@ impl SessionStore {
             if let Some(entry) = sources.get_mut(kind) {
                 entry["discovered_files"] = json!(diagnostic.discovered_paths.len());
                 entry["error_count"] = json!(diagnostic.errors.len());
+                entry["unsupported_count"] = json!(diagnostic.unsupported.len());
+                // 逐条原因只用于设置页展示，数量封顶避免诊断体积失控。
+                entry["error_entries"] = diagnostic_entries(&diagnostic.errors);
+                entry["unsupported_entries"] = diagnostic_entries(&diagnostic.unsupported);
                 entry["last_error"] = diagnostic
                     .last_error
                     .as_ref()
@@ -292,6 +345,32 @@ impl SessionStore {
                         path: session.path,
                         detail_locator: Some(DetailLocator::Gemini(session.detail_locator)),
                     });
+                }
+                continue;
+            }
+            if matches!(source.format, SourceFormat::Cursor) {
+                if !source.root.exists() {
+                    continue;
+                }
+                match cursor::parse_source(source) {
+                    Ok(parsed) => {
+                        for (path, id, error) in parsed.errors {
+                            diagnostics.record_session_error(&diagnostic_kind, &path, &id, &error);
+                        }
+                        for (path, id, reason) in parsed.unsupported {
+                            diagnostics.record_unsupported(&diagnostic_kind, &path, &id, &reason);
+                        }
+                        for record in parsed.records {
+                            diagnostics.discover(&diagnostic_kind, &record.path);
+                            active_paths.insert(record.path.to_string_lossy().into_owned());
+                            let key = record.summary["_key"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string();
+                            next.entry(key).or_insert(record);
+                        }
+                    }
+                    Err(error) => diagnostics.record_error(&diagnostic_kind, &source.root, &error),
                 }
                 continue;
             }
@@ -435,18 +514,20 @@ impl SessionStore {
         // 单路径更新无法可靠重建聚合结果或来源优先级，因此复用缓存全量刷新。
         if paths.iter().any(|path| {
             self.sources.iter().any(|source| {
-                let belongs_to_source =
-                    if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
-                        opencode_event_matches(&source.root, path)
-                    } else {
-                        path.starts_with(&source.root)
-                    };
+                let belongs_to_source = if matches!(source.format, SourceFormat::Cursor) {
+                    cursor::matches_path(&source.root, path)
+                } else if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
+                    opencode_event_matches(&source.root, path)
+                } else {
+                    path.starts_with(&source.root)
+                };
                 (matches!(
                     source.format,
                     SourceFormat::Gemini
                         | SourceFormat::Claude
                         | SourceFormat::OpenCode
                         | SourceFormat::ZCode
+                        | SourceFormat::Cursor
                 ) || matches!(source.format, SourceFormat::Kimi)
                     && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl"))
                     && belongs_to_source
@@ -465,7 +546,10 @@ impl SessionStore {
                 .find(|source| {
                     !matches!(
                         source.format,
-                        SourceFormat::Gemini | SourceFormat::OpenCode | SourceFormat::ZCode
+                        SourceFormat::Gemini
+                            | SourceFormat::OpenCode
+                            | SourceFormat::ZCode
+                            | SourceFormat::Cursor
                     ) && path.starts_with(&source.root)
                 })
                 .cloned()
@@ -588,6 +672,7 @@ impl SessionStore {
             let content_fingerprint = match &record.detail_locator {
                 Some(DetailLocator::OpenCode(locator)) => Some(&locator.content_fingerprint),
                 Some(DetailLocator::ZCode(locator)) => Some(&locator.content_fingerprint),
+                Some(DetailLocator::Cursor(locator)) => Some(&locator.content_fingerprint),
                 _ => None,
             };
             let paths = match &record.detail_locator {
@@ -644,6 +729,9 @@ impl SessionStore {
                         }
                         Some(DetailLocator::ZCode(locator)) => {
                             zcode::visit_detail(&record.source, locator, visitor)
+                        }
+                        Some(DetailLocator::Cursor(locator)) => {
+                            cursor::visit_detail(&record.source, locator, visitor)
                         }
                         None => visit_detail(&record.path, &record.source, visitor),
                     }
@@ -762,6 +850,9 @@ impl SessionStore {
                     opencode::parse_detail(&record.source, locator).ok()
                 }
                 DetailLocator::ZCode(locator) => zcode::parse_detail(&record.source, locator).ok(),
+                DetailLocator::Cursor(locator) => {
+                    cursor::visit_detail(&record.source, locator, &mut |_| {}).ok()
+                }
             }
         } else {
             parse_detail(&record.path, &record.source).ok()
@@ -812,7 +903,9 @@ impl SessionStore {
                     gemini::session_backup_paths(&record.source, locator)?
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) => return Err(read_only_source_error()),
+                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) => {
+                    return Err(read_only_source_error())
+                }
             }
         } else {
             session_backup_paths(&record.path)
@@ -828,7 +921,9 @@ impl SessionStore {
             match locator {
                 DetailLocator::Gemini(locator) => gemini::delete_session(&record.source, locator)?,
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) => return Err(read_only_source_error()),
+                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) => {
+                    return Err(read_only_source_error())
+                }
             }
         } else {
             if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -879,7 +974,11 @@ impl SessionStore {
             .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
         if matches!(
             record.source.format,
-            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode | SourceFormat::ZCode
+            SourceFormat::Pi
+                | SourceFormat::Kimi
+                | SourceFormat::OpenCode
+                | SourceFormat::ZCode
+                | SourceFormat::Cursor
         ) {
             return Err(read_only_source_error());
         }
@@ -890,7 +989,11 @@ impl SessionStore {
         let (resolved, record) = self.resolve_writable_record(key)?;
         if matches!(
             record.source.format,
-            SourceFormat::Pi | SourceFormat::Kimi | SourceFormat::OpenCode | SourceFormat::ZCode
+            SourceFormat::Pi
+                | SourceFormat::Kimi
+                | SourceFormat::OpenCode
+                | SourceFormat::ZCode
+                | SourceFormat::Cursor
         ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
         }
@@ -913,7 +1016,9 @@ impl SessionStore {
                     gemini::message_backup_paths(&record.source, locator, &delete_ref)?
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) => return Err(read_only_source_error()),
+                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) => {
+                    return Err(read_only_source_error())
+                }
             }
         } else {
             message_backup_paths(&record.path, &delete_ref)?
@@ -931,7 +1036,9 @@ impl SessionStore {
                     gemini::delete_message(&record.source, locator, &delete_ref)?;
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) => return Err(read_only_source_error()),
+                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) => {
+                    return Err(read_only_source_error())
+                }
             }
         } else if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
             delete_legacy_message(&record.path, &delete_ref)?;
@@ -1396,6 +1503,7 @@ impl ParseState {
                 SourceFormat::Kimi => "unknown",
                 SourceFormat::OpenCode => "unknown",
                 SourceFormat::ZCode => "unknown",
+                SourceFormat::Cursor => "unknown",
             }
         } else {
             &self.provider
@@ -1409,6 +1517,7 @@ impl ParseState {
                 SourceFormat::Kimi => "kimi_code_cli",
                 SourceFormat::OpenCode => "opencode",
                 SourceFormat::ZCode => "zcode",
+                SourceFormat::Cursor => "cursor",
             }
         } else {
             &self.originator
@@ -1630,6 +1739,7 @@ pub(crate) struct RootLists {
     pub kimi: Vec<PathBuf>,
     pub opencode: Vec<PathBuf>,
     pub zcode: Vec<PathBuf>,
+    pub cursor: Vec<PathBuf>,
 }
 
 fn resolve_kind(
@@ -1751,6 +1861,23 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
     } else {
         (vec![zcode_cli_dir.join("db").join("db.sqlite")], "default")
     };
+    let cursor = config
+        .cursor
+        .as_ref()
+        .map(|roots| {
+            roots
+                .iter()
+                .map(|root| expand_tilde(PathBuf::from(root)))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| {
+            vec![
+                dirs::config_dir()
+                    .unwrap_or_else(|| home.clone())
+                    .join("Cursor/User"),
+                home.join(".cursor/projects"),
+            ]
+        });
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -1760,6 +1887,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         "kimi": { "roots": kimi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kimi_origin },
         "opencode": { "roots": opencode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": opencode_origin },
         "zcode": { "roots": zcode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": zcode_origin },
+        "cursor": { "roots": cursor.iter().map(|path|path.to_string_lossy()).collect::<Vec<_>>(), "origin": if config.cursor.is_some() { "config" } else { "default" } },
     });
     (
         RootLists {
@@ -1771,6 +1899,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             kimi,
             opencode,
             zcode,
+            cursor,
         },
         description,
     )
@@ -1839,6 +1968,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "kimi": describe_protected_source_roots(config.kimi.as_deref().unwrap_or_default(), &inherited.kimi),
         "opencode": describe_protected_source_roots(config.opencode.as_deref().unwrap_or_default(), &inherited.opencode),
         "zcode": describe_protected_source_roots(config.zcode.as_deref().unwrap_or_default(), &inherited.zcode),
+        "cursor": describe_protected_source_roots(config.cursor.as_deref().unwrap_or_default(), &inherited.cursor),
     })
 }
 
@@ -1876,6 +2006,13 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
         display_name: "ZCode",
         root: root.clone(),
         format: SourceFormat::ZCode,
+        archived: false,
+    }));
+    sources.extend(lists.cursor.iter().map(|root| Source {
+        kind: "cursor",
+        display_name: "Cursor",
+        root: root.clone(),
+        format: SourceFormat::Cursor,
         archived: false,
     }));
     sources
@@ -2009,6 +2146,9 @@ fn discover_files(source: &Source) -> Vec<PathBuf> {
 }
 
 fn source_matches_path(source: &Source, path: &Path) -> bool {
+    if matches!(source.format, SourceFormat::Cursor) {
+        return cursor::matches_path(&source.root, path);
+    }
     if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
         return opencode_event_matches(&source.root, path);
     }
@@ -2031,10 +2171,11 @@ fn opencode_event_matches(database: &Path, path: &Path) -> bool {
     let Some(database_name) = database.file_name().and_then(|value| value.to_str()) else {
         return false;
     };
+    // 只读连接也可能更新共享内存，不能用 -shm 变化触发再次扫描。
     path.parent() == database.parent()
         && matches!(
             path.file_name().and_then(|value| value.to_str()),
-            Some(name) if name == format!("{database_name}-wal") || name == format!("{database_name}-shm")
+            Some(name) if name == format!("{database_name}-wal")
         )
 }
 
@@ -3163,6 +3304,7 @@ mod tests {
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
             zcode: Some(Vec::new()),
+            cursor: Some(Vec::new()),
         }
     }
 
@@ -3403,6 +3545,7 @@ mod tests {
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
                 zcode: Some(Vec::new()),
+                cursor: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3416,6 +3559,21 @@ mod tests {
         assert_eq!(diagnostics["sources"]["codex"]["indexed_sessions"], 2);
         assert_eq!(diagnostics["sources"]["claude"]["error_count"], 1);
         assert!(diagnostics["sources"]["claude"]["last_error"].is_string());
+        // 逐条原因带路径进入诊断；暂不支持桶默认为空。
+        let entries = diagnostics["sources"]["claude"]["error_entries"]
+            .as_array()
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0]["path"].as_str().unwrap().contains("broken.json"));
+        assert!(entries[0]["message"].as_str().is_some());
+        assert_eq!(diagnostics["sources"]["claude"]["unsupported_count"], 0);
+        assert_eq!(
+            diagnostics["sources"]["claude"]["unsupported_entries"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
 
         // 模拟摘要扫描完成后，来源文件在详情索引前消失。
         std::fs::remove_file(codex_root.join("valid.jsonl")).unwrap();
@@ -3514,6 +3672,7 @@ mod tests {
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
                 zcode: Some(Vec::new()),
+                cursor: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3567,6 +3726,7 @@ mod tests {
                 kimi: Some(Vec::new()),
                 opencode: Some(vec![database.to_string_lossy().into_owned()]),
                 zcode: Some(Vec::new()),
+                cursor: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3623,6 +3783,7 @@ mod tests {
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
                 zcode: Some(Vec::new()),
+                cursor: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3669,7 +3830,7 @@ mod tests {
             &database,
             &directory.path().join("opencode.db-wal")
         ));
-        assert!(opencode_event_matches(
+        assert!(!opencode_event_matches(
             &database,
             &directory.path().join("opencode.db-shm")
         ));
@@ -4315,6 +4476,7 @@ mod tests {
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
                 zcode: Some(Vec::new()),
+                cursor: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

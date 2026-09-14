@@ -58,6 +58,7 @@ const SOURCE_RAIL_AGENTS = [
   { agent: "kimi", kinds: ["kimi"] },
   { agent: "opencode", kinds: ["opencode"] },
   { agent: "zcode", kinds: ["zcode"] },
+  { agent: "cursor", kinds: ["cursor"] },
 ];
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";

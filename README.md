@@ -56,6 +56,12 @@ Search combines whitespace-separated terms with AND across titles, paths, tags, 
 | OpenCode       | `~/.local/share/opencode/opencode.db` | Reads the SQLite schema used by the latest stable release; supports messages, reasoning, tools, subagents, raw events, search, and WAL-based live refresh; source data is read-only                                   |
 | ZCode          | `~/.zcode/cli/db/db.sqlite`           | Reads the SQLite schema used by ZCode CLI; supports messages, reasoning, tools, compaction markers, raw events, search, and WAL-based live refresh; subagent sessions are excluded; source data is read-only          |
 
+### Cursor (read-only)
+
+Supports IDE inline `conversation` records, ordered `fullConversationHeadersOnly` / `bubbleId` messages, and `~/.cursor/projects/**/agent-transcripts/**/*.jsonl`. Discovery uses the Cursor user-data directory (`~/Library/Application Support/Cursor/User` on macOS, `%APPDATA%/Cursor/User` on Windows, `~/.config/Cursor/User` on Linux) plus transcripts. Readable database sessions take priority over transcripts with the same ID.
+
+Cursor settings accept a user-data directory, a `state.vscdb` file, or a transcripts root. Browsing, search, statistics, export, and local removal are supported; source mutation and resume are not. Unsupported `agentKv` bodies are reported in source diagnostics. CLI `store.db`, legacy TXT transcripts, and complete raw events are not supported. Missing timestamps, models, and project paths are not inferred.
+
 ## Install and run
 
 Download the installer for your platform from GitHub Releases. End users do not need Node.js, pnpm, Rust, or a source checkout.

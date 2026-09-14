@@ -16,6 +16,7 @@ const SOURCE_KINDS = [
   { key: "kimi", agent: "kimi", label: "Kimi Code CLI" },
   { key: "opencode", agent: "opencode", label: "OpenCode" },
   { key: "zcode", agent: "zcode", label: "ZCode" },
+  { key: "cursor", agent: "cursor", label: "Cursor" },
 ];
 
 export function summarizeSourceSupport(payload) {

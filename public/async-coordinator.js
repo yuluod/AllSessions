@@ -1,3 +1,25 @@
+// 尽量让点击反馈先绘制；窗口隐藏或动画帧暂停时不无限等待。
+export function nextPaint() {
+  return new Promise((resolve) => {
+    if (
+      typeof requestAnimationFrame !== "function" ||
+      globalThis.document?.hidden
+    ) {
+      setTimeout(resolve, 0);
+      return;
+    }
+    let frame;
+    const finish = () => {
+      clearTimeout(fallback);
+      if (typeof cancelAnimationFrame === "function")
+        cancelAnimationFrame(frame);
+      resolve();
+    };
+    const fallback = setTimeout(finish, 100);
+    frame = requestAnimationFrame(() => setTimeout(finish, 0));
+  });
+}
+
 export function createLatestRequestGate() {
   let generation = 0;
   let controller = null;

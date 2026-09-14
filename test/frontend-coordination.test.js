@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   createLatestRequestGate,
   mapWithConcurrency,
+  nextPaint,
 } from "../public/async-coordinator.js";
 import { DESKTOP_RUNTIME_REQUIRED, fetchJson } from "../public/api-client.js";
 import {
@@ -31,6 +32,67 @@ class FakeEventBridge {
     }
   }
 }
+
+test("nextPaint 会等待一帧绘制后再继续", async () => {
+  const order = [];
+  globalThis.requestAnimationFrame = (callback) => {
+    order.push("frame");
+    setTimeout(callback, 0);
+    return 1;
+  };
+  try {
+    const pending = nextPaint().then(() => order.push("resume"));
+    order.push("sync");
+    await pending;
+  } finally {
+    delete globalThis.requestAnimationFrame;
+  }
+  assert.deepEqual(order, ["frame", "sync", "resume"]);
+});
+
+test("nextPaint 在没有 requestAnimationFrame 时退化为宏任务", async () => {
+  assert.equal(typeof globalThis.requestAnimationFrame, "undefined");
+  let resumed = false;
+  const pending = nextPaint().then(() => {
+    resumed = true;
+  });
+  await Promise.resolve();
+  assert.equal(resumed, false);
+  await pending;
+  assert.equal(resumed, true);
+});
+
+test("nextPaint 在动画帧暂停时仍能结束等待", async () => {
+  globalThis.requestAnimationFrame = () => 42;
+  let canceled;
+  globalThis.cancelAnimationFrame = (id) => {
+    canceled = id;
+  };
+  try {
+    const completed = await Promise.race([
+      nextPaint().then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 300)),
+    ]);
+    assert.equal(completed, true);
+    assert.equal(canceled, 42);
+  } finally {
+    delete globalThis.requestAnimationFrame;
+    delete globalThis.cancelAnimationFrame;
+  }
+});
+
+test("nextPaint 在隐藏窗口中不请求动画帧", async () => {
+  globalThis.document = { hidden: true };
+  globalThis.requestAnimationFrame = () => {
+    assert.fail("隐藏窗口不应等待动画帧");
+  };
+  try {
+    await nextPaint();
+  } finally {
+    delete globalThis.document;
+    delete globalThis.requestAnimationFrame;
+  }
+});
 
 test("后发请求会使先前请求失效并中止其网络信号", () => {
   const gate = createLatestRequestGate();

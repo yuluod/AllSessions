@@ -142,6 +142,7 @@ export function createConversationView({
       return;
     }
 
+    const batch = document.createDocumentFragment();
     visibleMessages.forEach((message) => {
       const fragment =
         elements.conversationItemTemplate.content.cloneNode(true);
@@ -232,8 +233,9 @@ export function createConversationView({
         );
         header.append(deleteButton);
       }
-      elements.conversationList.append(fragment);
+      batch.append(fragment);
     });
+    elements.conversationList.append(batch);
     bindMatchNavigation(elements.conversationList);
   }
 

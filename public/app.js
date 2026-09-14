@@ -9,6 +9,7 @@ import {
   createLatestRequestGate,
   isAbortError,
   mapWithConcurrency,
+  nextPaint,
 } from "./async-coordinator.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import {
@@ -2095,6 +2096,9 @@ async function loadSessionDetail(id, { silent = false } = {}) {
         signal: request.signal,
       }
     );
+    if (!request.isCurrent() || state.selectedSessionKey !== id) return false;
+    // 本地 IPC 常在一帧内返回，先让列表高亮与加载占位绘制出来，再做重渲染。
+    await nextPaint();
     if (!request.isCurrent() || state.selectedSessionKey !== id) return false;
     state.currentDetail = detail;
     state.roleFilter = "";

@@ -610,6 +610,11 @@
                     class="ghost-button session-favorite-button"
                     type="button"
                     aria-pressed="false"
+                    aria-label="收藏"
+                    title="收藏"
+                    data-i18n="favorite"
+                    data-i18n-attr="aria-label"
+                    data-i18n-title="favorite"
                   >
                     <svg
                       aria-hidden="true"
@@ -625,7 +630,6 @@
                         stroke-linejoin="round"
                       />
                     </svg>
-                    <span data-i18n="favorite">收藏</span>
                   </button>
                   <details
                     id="session-organize-menu"
@@ -704,7 +708,7 @@
                     aria-expanded="false"
                     data-i18n="sessionInspector"
                   >
-                    会话信息
+                    信息
                   </button>
                   <div
                     class="tabs"
@@ -723,7 +727,7 @@
                       aria-controls="conversation-tab"
                       data-i18n="tabConversation"
                     >
-                      对话视图
+                      对话
                     </button>
                     <button
                       id="raw-tab-button"
@@ -736,7 +740,7 @@
                       tabindex="-1"
                       data-i18n="tabRaw"
                     >
-                      原始事件流
+                      原始事件
                     </button>
                   </div>
                   <details class="export-menu">
@@ -776,7 +780,7 @@
                     type="button"
                     data-i18n="archive"
                   >
-                    归档此会话
+                    归档
                   </button>
                   <button
                     id="session-delete-btn"
@@ -784,7 +788,7 @@
                     type="button"
                     data-i18n="deleteSession"
                   >
-                    删除会话
+                    删除
                   </button>
                 </div>
               </div>
@@ -798,31 +802,69 @@
                 >
                   <div class="conversation-toolbar">
                     <div class="detail-search-box">
-                      <input
-                        id="detail-search-input"
-                        type="search"
-                        placeholder="搜索当前会话..."
-                        data-i18n-placeholder="detailSearchPlaceholder"
-                      />
-                      <span id="detail-search-count" role="status"></span>
-                      <button
-                        id="search-previous"
-                        type="button"
-                        class="ghost-button"
-                        data-i18n="searchPrevious"
-                        disabled
-                      >
-                        上一处
-                      </button>
-                      <button
-                        id="search-next"
-                        type="button"
-                        class="ghost-button"
-                        data-i18n="searchNext"
-                        disabled
-                      >
-                        下一处
-                      </button>
+                      <div class="detail-search-field">
+                        <input
+                          id="detail-search-input"
+                          type="search"
+                          placeholder="搜索当前会话..."
+                          data-i18n-placeholder="detailSearchPlaceholder"
+                        />
+                        <span id="detail-search-count" role="status"></span>
+                        <button
+                          id="search-previous"
+                          type="button"
+                          class="search-nav-button"
+                          data-i18n="searchPrevious"
+                          data-i18n-attr="aria-label"
+                          data-i18n-title="searchPrevious"
+                          aria-label="上一处"
+                          title="上一处"
+                          disabled
+                        >
+                          <svg
+                            aria-hidden="true"
+                            viewBox="0 0 24 24"
+                            width="13"
+                            height="13"
+                          >
+                            <path
+                              d="m6 14.5 6-6 6 6"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2.2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          id="search-next"
+                          type="button"
+                          class="search-nav-button"
+                          data-i18n="searchNext"
+                          data-i18n-attr="aria-label"
+                          data-i18n-title="searchNext"
+                          aria-label="下一处"
+                          title="下一处"
+                          disabled
+                        >
+                          <svg
+                            aria-hidden="true"
+                            viewBox="0 0 24 24"
+                            width="13"
+                            height="13"
+                          >
+                            <path
+                              d="m6 9.5 6 6 6-6"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2.2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                       <button
                         id="search-full-session"
                         type="button"
@@ -1467,7 +1509,7 @@
           data-view-panel="list"
         >
           <div class="props-header">
-            <h2 id="props-eyebrow" data-i18n="sessionInspector">会话信息</h2>
+            <h2 id="props-eyebrow" data-i18n="sessionInspector">信息</h2>
             <button
               id="props-close-btn"
               class="ghost-button props-close-btn"

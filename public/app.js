@@ -24,6 +24,7 @@ import {
   formatDateGroup,
   formatListTimestamp,
   formatTimestamp,
+  providerLabel,
   sessionTimestamp,
 } from "./session-format.js";
 import {
@@ -397,9 +398,9 @@ function syncSessionWorkspaceControls(summary) {
     "aria-pressed",
     favorite ? "true" : "false"
   );
-  const favoriteLabel = elements.sessionFavoriteBtn?.querySelector("span");
-  if (favoriteLabel)
-    favoriteLabel.textContent = t(favorite ? "unfavorite" : "favorite");
+  const favoriteText = t(favorite ? "unfavorite" : "favorite");
+  elements.sessionFavoriteBtn?.setAttribute("aria-label", favoriteText);
+  elements.sessionFavoriteBtn?.setAttribute("title", favoriteText);
   if (elements.sessionTagsInput) {
     elements.sessionTagsInput.value = (workspace.tags || []).join(", ");
   }
@@ -896,6 +897,7 @@ function renderProjectNav() {
 
   const projects = state.facets?.projects || [];
   elements.projectList.innerHTML = "";
+  elements.projectNav?.querySelector(".project-more")?.remove();
 
   const allButton = document.createElement("button");
   allButton.className = "project-item";
@@ -924,7 +926,10 @@ function renderProjectNav() {
     button.className = "project-item";
     button.type = "button";
     button.classList.toggle("active", state.filters.cwd === project.path);
-    button.title = project.path;
+    button.setAttribute(
+      "aria-label",
+      `${project.name || project.path} · ${t("projectSessionCount", { n: project.count })} · ${project.path}`
+    );
 
     const name = document.createElement("span");
     name.className = "project-name";
@@ -932,7 +937,8 @@ function renderProjectNav() {
 
     const meta = document.createElement("span");
     meta.className = "project-meta";
-    meta.textContent = t("projectSessionCount", { n: project.count });
+    meta.textContent = String(project.count);
+    meta.setAttribute("aria-hidden", "true");
 
     const pathEl = document.createElement("span");
     pathEl.className = "project-path";
@@ -952,14 +958,19 @@ function renderProjectNav() {
     const moreButton = document.createElement("button");
     moreButton.className = "project-item project-more";
     moreButton.type = "button";
+    moreButton.setAttribute("aria-expanded", String(state.showAllProjects));
+    moreButton.setAttribute("aria-controls", "project-list");
     moreButton.textContent = state.showAllProjects
       ? t("showFewerProjects")
       : t("showMoreProjects", { n: projects.length - PROJECT_PREVIEW_LIMIT });
     moreButton.addEventListener("click", () => {
       state.showAllProjects = !state.showAllProjects;
       renderProjectNav();
+      elements.projectNav
+        ?.querySelector(".project-more")
+        ?.focus({ preventScroll: true });
     });
-    elements.projectList.append(moreButton);
+    elements.projectNav?.append(moreButton);
   }
 }
 
@@ -1370,7 +1381,7 @@ function appendSessionItems(sessions) {
     timeEl.textContent = formatListTimestamp(sessionTimestamp(session));
     timeEl.title = formatTimestamp(sessionTimestamp(session));
     button.querySelector(".session-provider").textContent =
-      session.model_provider || "unknown";
+      providerLabel(session);
     const pathParts = cwdParts(session.cwd);
     const cwdMain = button.querySelector(".session-cwd-main");
     const cwdPath = button.querySelector(".session-cwd-path");
@@ -1615,7 +1626,7 @@ function renderDetailTags(summary) {
       icon: "calendar",
       cls: "tag-time",
     },
-    { text: summary.model_provider || "unknown", cls: "tag-provider" },
+    { text: providerLabel(summary), cls: "tag-provider" },
     {
       text: displaySourceLabel(summary),
       cls: "tag-source",
@@ -1894,7 +1905,7 @@ async function confirmPermanentDeletion() {
 // ── 属性面板 ────────────────────────────────────────────────────────────────────
 function renderPropsPanel(summary, messages = []) {
   const basic = [
-    { label: "Provider", value: summary.model_provider || "unknown" },
+    { label: "Provider", value: providerLabel(summary) },
     { label: t("source"), value: displaySourceLabel(summary) || "-" },
     { label: t("visibility"), value: visibilityLabel(summary) },
     { label: t("messages"), value: String(summary.message_count || 0) },

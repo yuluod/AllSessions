@@ -224,7 +224,7 @@
 }
 
 [data-theme="pixel"] * {
-  scrollbar-color: var(--accent-strong) var(--surface-sunken);
+  scrollbar-color: var(--line) var(--surface-sunken);
   scrollbar-width: auto;
 }
 
@@ -234,7 +234,7 @@
 }
 
 [data-theme="pixel"] *::-webkit-scrollbar-track {
-  border: 2px solid var(--line-strong);
+  border: 2px solid color-mix(in srgb, var(--line) 55%, var(--surface-sunken));
   background: var(--surface-sunken);
   box-shadow: inset 0 0 0 1px var(--surface-raised);
 }
@@ -244,8 +244,7 @@
   min-height: 40px;
   border: 3px solid var(--surface-sunken);
   border-radius: 0;
-  background: var(--accent-strong);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
+  background: var(--line);
 }
 
 [data-theme="pixel"] *::-webkit-scrollbar-thumb:hover {
@@ -259,6 +258,6 @@
 }
 
 [data-theme="pixel"] *::-webkit-scrollbar-corner {
-  border: 2px solid var(--line-strong);
+  border: 2px solid color-mix(in srgb, var(--line) 55%, var(--surface-sunken));
   background: var(--surface-sunken);
 }

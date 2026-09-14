@@ -414,6 +414,7 @@
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   container-name: rail;
   container-type: inline-size;
 }
@@ -686,19 +687,26 @@ body.is-resizing {
 }
 
 .project-nav {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 96px;
+  flex: 0 0 auto;
+  display: block;
+  padding-bottom: 8px;
 }
 
 .project-list {
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 2px;
-  flex: 1 1 auto;
   min-height: 0;
+  max-height: min(28rem, 50vh);
   padding: 0 8px 9px;
   overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.project-list::-webkit-scrollbar {
+  width: 6px;
 }
 
 .project-item {
@@ -745,6 +753,7 @@ body.is-resizing {
   color: var(--muted);
   font-size: 0.68rem;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .project-path {
@@ -755,6 +764,10 @@ body.is-resizing {
   display: block;
   color: var(--muted);
   text-align: center;
+  flex: none;
+  width: calc(100% - 16px);
+  margin: 8px 8px 0;
+  border-color: var(--line);
 }
 
 .visibility-panel {
@@ -964,6 +977,7 @@ body.is-resizing {
   gap: 6px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .session-group-header {
@@ -1041,6 +1055,7 @@ body.is-resizing {
 }
 #detail-search-count,
 #search-result-count {
+  flex: none;
   font-size: 0.75rem;
   color: var(--muted);
   white-space: nowrap;
@@ -1446,6 +1461,13 @@ body.is-resizing {
   margin-right: auto;
 }
 
+.session-favorite-button {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  padding: 7px;
+}
+
 .session-favorite-button[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--warning) 42%, var(--surface));
   color: var(--warning);
@@ -1669,13 +1691,65 @@ body.is-resizing {
 }
 
 .detail-search-box {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   min-width: 180px;
   flex: 1;
 }
 
-.detail-search-box input {
+/* 输入框外壳：边框/背景在 field 上，内部 input 透明，计数与上下箭头嵌在框内。 */
+.detail-search-field {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
   min-height: 32px;
+  padding-right: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface-subtle);
+}
+
+.detail-search-field:focus-within {
+  border-color: var(--line-accent);
+  background: var(--surface);
+}
+
+.detail-search-box .detail-search-field input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 30px;
+  padding: 5px 4px 5px 9px;
+  border: 0;
   font-size: 0.77rem;
+  background: transparent;
+}
+
+.search-nav-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.search-nav-button:hover:not(:disabled) {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.search-nav-button:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 .tool-toggle-label {
@@ -2218,6 +2292,7 @@ body.is-resizing {
   padding: 13px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   box-shadow: none;
 }
 
@@ -2547,11 +2622,12 @@ body.is-resizing {
   margin-left: auto;
 }
 
-.session-item:hover {
+/* 与斑马纹同优先级并靠后声明，确保 hover/选中背景不被 :nth-child(of .session-row) 覆盖。 */
+.session-list > .session-row .session-item:hover {
   background: color-mix(in srgb, var(--accent-soft) 48%, var(--stripe-a));
 }
 
-.session-item.active {
+.session-list > .session-row .session-item.active {
   background: var(--accent-soft);
   box-shadow: inset 3px 0 0 var(--accent);
 }
@@ -2689,6 +2765,7 @@ body.is-resizing {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .props-panel {

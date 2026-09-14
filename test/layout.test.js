@@ -9,6 +9,19 @@ const rootDir = path.resolve(
   ".."
 );
 
+test("项目展开列表限制高度并把收起按钮放在滚动区外", async () => {
+  const app = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles/workspace.css");
+  assert.match(
+    css,
+    /\.project-list\s*\{[^}]*align-content: start;[^}]*max-height: min\(28rem, 50vh\)/
+  );
+  assert.match(app, /projectNav\?\.append\(moreButton\)/);
+  assert.doesNotMatch(app, /projectList.append\(moreButton\)/);
+  assert.match(app, /moreButton.setAttribute\("aria-expanded"/);
+  assert.doesNotMatch(app, /button.title = project.path/);
+});
+
 test("局部扫描异常单独展示且保留来源详情入口", async () => {
   const app = await readProjectFile("public/app.js");
   const html = await readProjectFile("public/index.html");
@@ -187,7 +200,11 @@ test("像素主题的选中行和滚动条保持高对比硬边样式", async ()
   assert.match(pixel, /\*::-webkit-scrollbar \{[\s\S]*width: 18px/);
   assert.match(
     pixel,
-    /\*::-webkit-scrollbar-thumb \{[\s\S]*border-radius: 0[\s\S]*background: var\(--accent-strong\)/
+    /\*::-webkit-scrollbar-thumb \{[\s\S]*border-radius: 0[\s\S]*background: var\(--line\)/
+  );
+  assert.match(
+    pixel,
+    /\*::-webkit-scrollbar-thumb:hover \{[\s\S]*background: var\(--accent\)/
   );
   assert.match(pixel, /\*::-webkit-scrollbar-button \{[\s\S]*display: none/);
 });
@@ -512,8 +529,11 @@ test("页面提供项目导航入口并复用 cwd 筛选", async () => {
   );
   assert.match(source, /function renderProjectNav\(\)/);
   assert.match(source, /PROJECT_PREVIEW_LIMIT = 12/);
-  assert.match(css, /\.project-nav\s*\{[^}]*flex: 1 1 auto/);
-  assert.match(css, /\.project-list\s*\{[^}]*flex: 1 1 auto/);
+  assert.match(
+    css,
+    /\.project-nav\s*\{[^}]*flex: 0 0 auto;[^}]*display: block;[^}]*padding-bottom: 8px/
+  );
+  assert.match(css, /\.project-more\s*\{[^}]*margin: 8px 8px 0/);
   assert.doesNotMatch(css, /max-height: 184px/);
   assert.match(source, /async function setCwdFilter\(cwd\)/);
   assert.match(source, /state\.filters\.cwd = cwd/);

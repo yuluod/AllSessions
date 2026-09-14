@@ -1,5 +1,5 @@
 import { t } from "./i18n.js";
-import { formatTimestamp } from "./session-format.js";
+import { formatTimestamp, providerLabel } from "./session-format.js";
 
 function downloadBlob(content, filename, type) {
   const blob = new Blob([content], { type });
@@ -73,7 +73,7 @@ function sessionMarkdown(detail) {
     `# ${t("session")}: ${summary.cwd || summary.id}`,
     "",
     `- **${t("startTime")}**: ${formatTimestamp(summary.timestamp)}`,
-    `- **Provider**: ${summary.model_provider || "unknown"}`,
+    `- **Provider**: ${providerLabel(summary)}`,
     `- **${t("source")}**: ${summary.source || summary.originator || "-"}`,
     `- **${t("sessionId")}**: ${summary.id}`,
   ];

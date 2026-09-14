@@ -34,6 +34,16 @@ export function sessionTimestamp(session) {
   return session.last_timestamp || session.timestamp || "";
 }
 
+// 部分来源（如 Cursor）不记录 Provider 但记录模型名，展示时回退到模型名。
+export function providerLabel(summary) {
+  const provider = summary?.model_provider;
+  if (provider && provider !== "unknown") return provider;
+  const model = summary?.model;
+  if (typeof model === "string" && model)
+    return t("modelFallbackLabel", { model });
+  return provider || "unknown";
+}
+
 function localDateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");

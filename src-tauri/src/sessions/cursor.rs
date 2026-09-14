@@ -210,6 +210,9 @@ fn visit(locator: &DetailLocator, visitor: &mut dyn FnMut(Value)) -> Result<(), 
                 visitor,
             );
         }
+    } else if locator.id == "empty-state-draft" {
+        // 仅跳过没有正文的内置草稿；有正文时仍走上面的消息分支。
+        return Ok(());
     } else if metadata["conversationState"]
         .as_str()
         .is_some_and(|v| !v.is_empty())
@@ -503,6 +506,28 @@ mod tests {
     }
 
     #[test]
+    fn 空草稿不计入诊断但有正文的草稿仍保留() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = fixture(directory.path());
+        put(
+            &db,
+            "composerData:empty-state-draft",
+            json!({"conversationState":"~"}),
+        );
+        put(&db, "composerData:real", json!({"conversationState":"~"}));
+        let parsed = parse_source(&source(directory.path())).unwrap();
+        assert_eq!(parsed.unsupported.len(), 1);
+        assert_eq!(parsed.unsupported[0].1, "real");
+        put(
+            &db,
+            "composerData:empty-state-draft",
+            json!({"conversation":[{"type":1,"text":"实际正文"}]}),
+        );
+        let parsed = parse_source(&source(directory.path())).unwrap();
+        assert_eq!(parsed.records.len(), 1);
+    }
+
+    #[test]
     fn 损坏会话头不丢弃正文且诊断按会话区分() {
         let directory = tempfile::tempdir().unwrap();
         let db = fixture(directory.path());
@@ -618,7 +643,7 @@ mod tests {
         );
         let parsed = parse_source(&source(directory.path())).unwrap();
         assert_eq!(parsed.records.len(), 1);
-        // 新版 agentKv 属于「格式暂不支持」，与损坏记录分开统计。
+        // 未找到可读正文时单独统计，不推断格式或数据完整性。
         assert_eq!(parsed.unsupported.len(), 1);
         assert_eq!(parsed.unsupported[0].2, UNSUPPORTED_AGENTKV);
         assert_eq!(parsed.errors.len(), 1);

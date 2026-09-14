@@ -61,7 +61,7 @@ AllSessions 将 Codex、Claude Code、Gemini CLI、Pi、Kimi Code CLI、OpenCode
 
 支持 IDE 旧式内嵌 `conversation`、按 `fullConversationHeadersOnly` 顺序关联的 `bubbleId` 消息，以及 `~/.cursor/projects/**/agent-transcripts/**/*.jsonl`。默认同时扫描 Cursor 用户数据目录（macOS 为 `~/Library/Application Support/Cursor/User`，Windows 为 `%APPDATA%/Cursor/User`，Linux 为 `~/.config/Cursor/User`）和 transcripts；数据库中可读的同 ID 会话优先，避免重复。
 
-设置中的 Cursor 可添加用户数据目录、`state.vscdb` 文件或 transcripts 根目录。支持浏览、搜索、统计、导出和本地移除；不支持修改原始数据或直接恢复到 Cursor。尚未支持的新 `agentKv` 正文会在来源诊断中提示；不包含独立 CLI 的 `store.db`、旧 TXT transcripts 或完整原始事件。缺失的时间、模型与项目路径不推测。
+设置中的 Cursor 可添加用户数据目录、`state.vscdb` 文件或 transcripts 根目录。支持浏览、搜索、统计、导出和本地移除；不支持修改原始数据或直接恢复到 Cursor。存在元数据但未找到受支持正文的记录会在设置中提示，仅凭状态字段不判断格式或数据完整性；没有正文的内置草稿不计入诊断。不包含独立 CLI 的 `store.db`、旧 TXT transcripts 或完整原始事件。缺失的时间、模型与项目路径不推测。
 
 ## 安装包与运行
 

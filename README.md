@@ -60,7 +60,7 @@ Search combines whitespace-separated terms with AND across titles, paths, tags, 
 
 Supports IDE inline `conversation` records, ordered `fullConversationHeadersOnly` / `bubbleId` messages, and `~/.cursor/projects/**/agent-transcripts/**/*.jsonl`. Discovery uses the Cursor user-data directory (`~/Library/Application Support/Cursor/User` on macOS, `%APPDATA%/Cursor/User` on Windows, `~/.config/Cursor/User` on Linux) plus transcripts. Readable database sessions take priority over transcripts with the same ID.
 
-Cursor settings accept a user-data directory, a `state.vscdb` file, or a transcripts root. Browsing, search, statistics, export, and local removal are supported; source mutation and resume are not. Unsupported `agentKv` bodies are reported in source diagnostics. CLI `store.db`, legacy TXT transcripts, and complete raw events are not supported. Missing timestamps, models, and project paths are not inferred.
+Cursor settings accept a user-data directory, a `state.vscdb` file, or a transcripts root. Browsing, search, statistics, export, and local removal are supported; source mutation and resume are not. Records with metadata but no supported body are reported in settings; the state field alone does not establish the format or data completeness. Empty built-in drafts are excluded. CLI `store.db`, legacy TXT transcripts, and complete raw events are not supported. Missing timestamps, models, and project paths are not inferred.
 
 ## Install and run
 

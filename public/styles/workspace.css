@@ -2400,7 +2400,7 @@ body.is-resizing {
 
 .source-tree__item {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -2444,38 +2444,43 @@ body.is-resizing {
 }
 
 .source-tree__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  mask: url("../assets/agents/all.svg") center / contain no-repeat;
 }
 
 .source-tree__item[data-source-agent="codex"] .source-tree__dot {
-  background: var(--src-codex);
+  mask-image: url("../assets/agents/openai.svg");
 }
 
 .source-tree__item[data-source-agent="claude"] .source-tree__dot {
-  background: var(--src-claude);
+  mask-image: url("../assets/agents/claude.svg");
 }
 
 .source-tree__item[data-source-agent="gemini"] .source-tree__dot {
-  background: var(--src-gemini);
+  mask-image: url("../assets/agents/gemini.svg");
 }
 
 .source-tree__item[data-source-agent="pi"] .source-tree__dot {
-  background: var(--src-pi);
+  mask-image: url("../assets/agents/pi.svg");
 }
 
 .source-tree__item[data-source-agent="kimi"] .source-tree__dot {
-  background: var(--src-kimi);
+  mask-image: url("../assets/agents/kimi.svg");
 }
 
 .source-tree__item[data-source-agent="opencode"] .source-tree__dot {
-  background: var(--src-opencode);
+  mask-image: url("../assets/agents/opencode.svg");
 }
 
 .source-tree__item[data-source-agent="zcode"] .source-tree__dot {
-  background: var(--src-zcode);
+  mask: none;
+  background: url("../assets/agents/zcode.png") center / contain no-repeat;
+}
+
+.source-tree__item[data-source-agent="cursor"] .source-tree__dot {
+  mask-image: url("../assets/agents/cursor.svg");
 }
 
 .session-pane {

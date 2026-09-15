@@ -17,6 +17,7 @@ use crate::cache::IndexCache;
 use crate::error::ApiError;
 
 mod cursor;
+mod devin;
 mod gemini;
 mod kimi;
 mod opencode;
@@ -49,6 +50,7 @@ enum SourceFormat {
     OpenCode,
     ZCode,
     Cursor,
+    Devin,
 }
 
 #[derive(Clone)]
@@ -57,6 +59,7 @@ enum DetailLocator {
     OpenCode(opencode::DetailLocator),
     ZCode(zcode::DetailLocator),
     Cursor(cursor::DetailLocator),
+    Devin(devin::DetailLocator),
 }
 
 #[derive(Clone)]
@@ -220,6 +223,7 @@ impl SessionStore {
             "opencode",
             "zcode",
             "cursor",
+            "devin",
         ] {
             let enabled = self
                 .sources_config
@@ -252,6 +256,7 @@ impl SessionStore {
             ("opencode", lists.opencode.as_slice()),
             ("zcode", lists.zcode.as_slice()),
             ("cursor", lists.cursor.as_slice()),
+            ("devin", lists.devin.as_slice()),
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());
@@ -438,6 +443,38 @@ impl SessionStore {
                 }
                 continue;
             }
+            if matches!(source.format, SourceFormat::Devin) {
+                if !source.root.exists() {
+                    continue;
+                }
+                match devin::parse_source(source) {
+                    Ok(parsed) => {
+                        for (path, id, error) in parsed.errors {
+                            diagnostics.record_session_error(&diagnostic_kind, &path, &id, &error);
+                        }
+                        for path in &parsed.active_paths {
+                            diagnostics.discover(&diagnostic_kind, Path::new(path));
+                            active_paths.insert(path.clone());
+                            active_paths.insert(path_identity(Path::new(path)));
+                        }
+                        for session in parsed.sessions {
+                            let key = session.summary["_key"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string();
+                            next.entry(key).or_insert_with(|| StoredSession {
+                                search_text: session.search_text,
+                                summary: session.summary,
+                                source: source.clone(),
+                                path: session.path,
+                                detail_locator: Some(DetailLocator::Devin(session.detail_locator)),
+                            });
+                        }
+                    }
+                    Err(error) => diagnostics.record_error(&diagnostic_kind, &source.root, &error),
+                }
+                continue;
+            }
             for path in discover_files(source) {
                 diagnostics.discover(&diagnostic_kind, &path);
                 let path_key = path_identity(&path);
@@ -516,6 +553,8 @@ impl SessionStore {
             self.sources.iter().any(|source| {
                 let belongs_to_source = if matches!(source.format, SourceFormat::Cursor) {
                     cursor::matches_path(&source.root, path)
+                } else if matches!(source.format, SourceFormat::Devin) {
+                    devin::matches_path(&source.root, path)
                 } else if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
                     opencode_event_matches(&source.root, path)
                 } else {
@@ -528,6 +567,7 @@ impl SessionStore {
                         | SourceFormat::OpenCode
                         | SourceFormat::ZCode
                         | SourceFormat::Cursor
+                        | SourceFormat::Devin
                 ) || matches!(source.format, SourceFormat::Kimi)
                     && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl"))
                     && belongs_to_source
@@ -550,6 +590,7 @@ impl SessionStore {
                             | SourceFormat::OpenCode
                             | SourceFormat::ZCode
                             | SourceFormat::Cursor
+                            | SourceFormat::Devin
                     ) && path.starts_with(&source.root)
                 })
                 .cloned()
@@ -673,6 +714,7 @@ impl SessionStore {
                 Some(DetailLocator::OpenCode(locator)) => Some(&locator.content_fingerprint),
                 Some(DetailLocator::ZCode(locator)) => Some(&locator.content_fingerprint),
                 Some(DetailLocator::Cursor(locator)) => Some(&locator.content_fingerprint),
+                Some(DetailLocator::Devin(locator)) => Some(&locator.content_fingerprint),
                 _ => None,
             };
             let paths = match &record.detail_locator {
@@ -732,6 +774,9 @@ impl SessionStore {
                         }
                         Some(DetailLocator::Cursor(locator)) => {
                             cursor::visit_detail(&record.source, locator, visitor)
+                        }
+                        Some(DetailLocator::Devin(locator)) => {
+                            devin::visit_detail(&record.source, locator, visitor)
                         }
                         None => visit_detail(&record.path, &record.source, visitor),
                     }
@@ -853,6 +898,7 @@ impl SessionStore {
                 DetailLocator::Cursor(locator) => {
                     cursor::visit_detail(&record.source, locator, &mut |_| {}).ok()
                 }
+                DetailLocator::Devin(locator) => devin::parse_detail(&record.source, locator).ok(),
             }
         } else {
             parse_detail(&record.path, &record.source).ok()
@@ -903,7 +949,7 @@ impl SessionStore {
                     gemini::session_backup_paths(&record.source, locator)?
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) => {
+                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) | DetailLocator::Devin(_) => {
                     return Err(read_only_source_error())
                 }
             }
@@ -921,7 +967,7 @@ impl SessionStore {
             match locator {
                 DetailLocator::Gemini(locator) => gemini::delete_session(&record.source, locator)?,
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) => {
+                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) | DetailLocator::Devin(_) => {
                     return Err(read_only_source_error())
                 }
             }
@@ -979,6 +1025,7 @@ impl SessionStore {
                 | SourceFormat::OpenCode
                 | SourceFormat::ZCode
                 | SourceFormat::Cursor
+                | SourceFormat::Devin
         ) {
             return Err(read_only_source_error());
         }
@@ -994,6 +1041,7 @@ impl SessionStore {
                 | SourceFormat::OpenCode
                 | SourceFormat::ZCode
                 | SourceFormat::Cursor
+                | SourceFormat::Devin
         ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
         }
@@ -1016,7 +1064,7 @@ impl SessionStore {
                     gemini::message_backup_paths(&record.source, locator, &delete_ref)?
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) => {
+                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) | DetailLocator::Devin(_) => {
                     return Err(read_only_source_error())
                 }
             }
@@ -1036,7 +1084,7 @@ impl SessionStore {
                     gemini::delete_message(&record.source, locator, &delete_ref)?;
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) => {
+                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) | DetailLocator::Devin(_) => {
                     return Err(read_only_source_error())
                 }
             }
@@ -1504,6 +1552,9 @@ impl ParseState {
                 SourceFormat::OpenCode => "unknown",
                 SourceFormat::ZCode => "unknown",
                 SourceFormat::Cursor => "unknown",
+                // Devin 的模型（如 swe-2-high、claude-opus-5-*）记录在消息库
+                // configOptions 里，未记录时不做推断。
+                SourceFormat::Devin => "unknown",
             }
         } else {
             &self.provider
@@ -1518,6 +1569,7 @@ impl ParseState {
                 SourceFormat::OpenCode => "opencode",
                 SourceFormat::ZCode => "zcode",
                 SourceFormat::Cursor => "cursor",
+                SourceFormat::Devin => "devin",
             }
         } else {
             &self.originator
@@ -1532,6 +1584,7 @@ fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过聚合来源解析".into()),
+        SourceFormat::Devin => return Err("Devin 消息库必须通过聚合来源解析".into()),
         _ => {}
     }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -1572,6 +1625,7 @@ fn visit_detail(
         SourceFormat::Kimi => return kimi::visit_detail(path, source, visitor),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过详情定位器解析".into()),
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过详情定位器解析".into()),
+        SourceFormat::Devin => return Err("Devin 消息库必须通过详情定位器解析".into()),
         _ => {}
     }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -1740,6 +1794,7 @@ pub(crate) struct RootLists {
     pub opencode: Vec<PathBuf>,
     pub zcode: Vec<PathBuf>,
     pub cursor: Vec<PathBuf>,
+    pub devin: Vec<PathBuf>,
 }
 
 fn resolve_kind(
@@ -1878,6 +1933,14 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
                 home.join(".cursor/projects"),
             ]
         });
+    let (devin, devin_origin) = resolve_kind(
+        config.get("devin"),
+        &["DEVIN_SESSIONS_DIR"],
+        dirs::config_dir()
+            .unwrap_or_else(|| home.clone())
+            .join("Devin")
+            .join("User"),
+    );
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -1888,6 +1951,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         "opencode": { "roots": opencode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": opencode_origin },
         "zcode": { "roots": zcode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": zcode_origin },
         "cursor": { "roots": cursor.iter().map(|path|path.to_string_lossy()).collect::<Vec<_>>(), "origin": if config.cursor.is_some() { "config" } else { "default" } },
+        "devin": { "roots": devin.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": devin_origin },
     });
     (
         RootLists {
@@ -1900,6 +1964,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             opencode,
             zcode,
             cursor,
+            devin,
         },
         description,
     )
@@ -1969,6 +2034,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "opencode": describe_protected_source_roots(config.opencode.as_deref().unwrap_or_default(), &inherited.opencode),
         "zcode": describe_protected_source_roots(config.zcode.as_deref().unwrap_or_default(), &inherited.zcode),
         "cursor": describe_protected_source_roots(config.cursor.as_deref().unwrap_or_default(), &inherited.cursor),
+        "devin": describe_protected_source_roots(config.devin.as_deref().unwrap_or_default(), &inherited.devin),
     })
 }
 
@@ -2013,6 +2079,13 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
         display_name: "Cursor",
         root: root.clone(),
         format: SourceFormat::Cursor,
+        archived: false,
+    }));
+    sources.extend(lists.devin.iter().map(|root| Source {
+        kind: "devin",
+        display_name: "Devin",
+        root: root.clone(),
+        format: SourceFormat::Devin,
         archived: false,
     }));
     sources
@@ -2115,7 +2188,10 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
         .collect()
 }
 fn discover_files(source: &Source) -> Vec<PathBuf> {
-    if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
+    if matches!(
+        source.format,
+        SourceFormat::OpenCode | SourceFormat::ZCode | SourceFormat::Devin
+    ) {
         return source
             .root
             .exists()
@@ -2148,6 +2224,9 @@ fn discover_files(source: &Source) -> Vec<PathBuf> {
 fn source_matches_path(source: &Source, path: &Path) -> bool {
     if matches!(source.format, SourceFormat::Cursor) {
         return cursor::matches_path(&source.root, path);
+    }
+    if matches!(source.format, SourceFormat::Devin) {
+        return devin::matches_path(&source.root, path);
     }
     if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
         return opencode_event_matches(&source.root, path);
@@ -3305,6 +3384,7 @@ mod tests {
             opencode: Some(Vec::new()),
             zcode: Some(Vec::new()),
             cursor: Some(Vec::new()),
+            devin: Some(Vec::new()),
         }
     }
 
@@ -3546,6 +3626,7 @@ mod tests {
                 opencode: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
+                devin: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3673,6 +3754,7 @@ mod tests {
                 opencode: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
+                devin: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3727,6 +3809,7 @@ mod tests {
                 opencode: Some(vec![database.to_string_lossy().into_owned()]),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
+                devin: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3784,6 +3867,7 @@ mod tests {
                 opencode: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
+                devin: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -4477,6 +4561,7 @@ mod tests {
                 opencode: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
+                devin: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

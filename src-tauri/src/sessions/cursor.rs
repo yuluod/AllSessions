@@ -728,6 +728,7 @@ mod tests {
                     directory.path().to_string_lossy().into_owned(),
                     projects.to_string_lossy().into_owned(),
                 ]),
+                devin: Some(vec![]),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: s::DetailCache::new(s::DETAIL_CACHE_BYTES),

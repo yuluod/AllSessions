@@ -48,10 +48,13 @@ const MESSAGESTORE_PREFIX: &str = "windsurf.acp.messageStore.session.";
 /// 原始事件正文超过该字符数时只保留元信息，图片 base64 不进详情。
 const RAW_PAYLOAD_LIMIT: usize = 10_000;
 
+/// 单库/单会话级错误：（路径，会话标识，错误描述）。
+type ScanError = (PathBuf, String, String);
+
 pub(super) struct ParsedSource {
     pub sessions: Vec<ParsedSession>,
     pub active_paths: BTreeSet<String>,
-    pub errors: Vec<(PathBuf, String, String)>,
+    pub errors: Vec<ScanError>,
 }
 
 pub(super) struct ParsedSession {
@@ -987,7 +990,7 @@ fn scan_cli_session(
 fn scan_cli(
     database: &Path,
     source: &Source,
-) -> Result<(Vec<ParsedSession>, Vec<(PathBuf, String, String)>), String> {
+) -> Result<(Vec<ParsedSession>, Vec<ScanError>), String> {
     let connection = open_database(database)?;
     validate_cli_tables(&connection)?;
     let mut sessions = Vec::new();

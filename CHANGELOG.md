@@ -10,6 +10,7 @@
 
 - 增加 Cursor 会话来源：解析 IDE 内联 `conversation` 记录并按 `fullConversationHeadersOnly` 排序；支持浏览、搜索、统计、导出和本地移除，来源保持只读。
 - 增加 Devin 桌面版只读会话来源：聚合 `acp-messages/<uuid>.db` 消息库并结合 `state.vscdb` 索引补全标题与时间戳；文本、Thinking、工具调用和计划归一化为消息，云端会话与未发送草稿不计入。
+- Devin 来源同时接入 CLI 会话：读取 `devin/cli/sessions.db` 聚合库，消息树按当前活动分支重建；桌面版镜像的 CLI 会话自动去重并以 CLI 库为准。
 - 顶栏搜索升级为全文搜索：空格分隔多词匹配标题、路径、标签、备注和消息正文，可按相关度或最近活动排序；点击命中片段跳转至附近消息，会话内提供高亮与上一处/下一处导航，并显示索引进度。
 - 会话详情增加终端恢复按钮，在会话工作目录打开终端并执行对应 Agent 的恢复命令；macOS、Windows 和 Linux 均可在设置中选择终端应用或自定义可执行文件。
 
@@ -18,6 +19,7 @@
 - 排除 Cursor 无正文的内置草稿，并澄清 Cursor 正文兼容范围。
 - 降低来源扫描异常对界面的干扰，重新扫描时保留未保存的设置草稿。
 - 修复 Windows 下 `shell_quote` 导致的 Clippy 检查失败。
+- 修复 Windows 上路径分隔符不一致导致的测试断言失败。
 
 ### 变更
 
@@ -27,6 +29,7 @@
 - 优化会话列表渲染：点击反馈优先绘制，消息节点批量插入。
 - 补充 line-clamp 标准属性以兼容更多浏览器。
 - 开发工具链升级至 Node.js 24.20 与 pnpm 12，并刷新前端依赖。
+- 补齐并精简 `docs/sources` 来源文档，新增 Cursor、ZCode、Gemini CLI 说明；`source-adapters.md` 模块边界与代码保持一致；Codex Provider 修复文档仅保留中文版。
 
 ## [0.1.1] - 2026-09-11
 

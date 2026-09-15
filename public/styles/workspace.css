@@ -2564,6 +2564,10 @@ body.is-resizing {
   mask-image: url("../assets/agents/cursor.svg");
 }
 
+.source-tree__item[data-source-agent="devin"] .source-tree__dot {
+  mask-image: url("../assets/agents/devin.svg");
+}
+
 .session-pane {
   display: flex;
   min-width: 0;

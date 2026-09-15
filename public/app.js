@@ -61,6 +61,7 @@ const SOURCE_RAIL_AGENTS = [
   { agent: "opencode", kinds: ["opencode"] },
   { agent: "zcode", kinds: ["zcode"] },
   { agent: "cursor", kinds: ["cursor"] },
+  { agent: "devin", kinds: ["devin"] },
 ];
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";

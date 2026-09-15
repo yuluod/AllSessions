@@ -10,6 +10,7 @@ const AGENT_PRESENTATION = {
   opencode: { label: "OpenCode", color: "#16794f" },
   zcode: { label: "ZCode", color: "#3b6ea5" },
   cursor: { label: "Cursor", color: "#52525b" },
+  devin: { label: "Devin", color: "#0891b2" },
 };
 
 function renderBar(label, count, max, displayLabel = label) {

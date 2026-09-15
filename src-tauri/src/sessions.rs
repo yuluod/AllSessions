@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
     env,
     ffi::OsStr,
     fs::{self, File},
@@ -462,13 +462,31 @@ impl SessionStore {
                                 .as_str()
                                 .unwrap_or_default()
                                 .to_string();
-                            next.entry(key).or_insert_with(|| StoredSession {
+                            let cli = session.detail_locator.cli;
+                            let record = StoredSession {
                                 search_text: session.search_text,
                                 summary: session.summary,
                                 source: source.clone(),
                                 path: session.path,
                                 detail_locator: Some(DetailLocator::Devin(session.detail_locator)),
-                            });
+                            };
+                            match next.entry(key) {
+                                Entry::Vacant(slot) => {
+                                    slot.insert(record);
+                                }
+                                Entry::Occupied(mut slot) => {
+                                    // 桌面版镜像的 CLI 会话与 CLI 库记录冲突时，
+                                    // 以 CLI 聚合库为准（镜像可能滞后）。
+                                    let mirror_only = matches!(
+                                        slot.get().detail_locator,
+                                        Some(DetailLocator::Devin(ref locator))
+                                            if !locator.cli
+                                    );
+                                    if cli && mirror_only {
+                                        slot.insert(record);
+                                    }
+                                }
+                            }
                         }
                     }
                     Err(error) => diagnostics.record_error(&diagnostic_kind, &source.root, &error),
@@ -1800,7 +1818,7 @@ pub(crate) struct RootLists {
 fn resolve_kind(
     config_roots: Option<&Vec<String>>,
     env_keys: &[&str],
-    fallback: PathBuf,
+    fallback: Vec<PathBuf>,
 ) -> (Vec<PathBuf>, &'static str) {
     if let Some(roots) = config_roots {
         return (
@@ -1817,7 +1835,7 @@ fn resolve_kind(
             return (split_path_list(&value), "env");
         }
     }
-    (vec![fallback], "default")
+    (fallback, "default")
 }
 
 fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
@@ -1829,22 +1847,22 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
     let (codex, codex_origin) = resolve_kind(
         config.get("codex"),
         &["CODEX_SESSIONS_DIR"],
-        codex_home.join("sessions"),
+        vec![codex_home.join("sessions")],
     );
     let (codex_archived, codex_archived_origin) = resolve_kind(
         config.get("codex_archived"),
         &["CODEX_ARCHIVED_SESSIONS_DIR"],
-        codex_home.join("archived_sessions"),
+        vec![codex_home.join("archived_sessions")],
     );
     let (claude, claude_origin) = resolve_kind(
         config.get("claude"),
         &["CLAUDE_SESSIONS_DIR"],
-        home.join(".claude"),
+        vec![home.join(".claude")],
     );
     let (gemini, gemini_origin) = resolve_kind(
         config.get("gemini"),
         &["GEMINI_SESSIONS_DIR"],
-        home.join(".gemini"),
+        vec![home.join(".gemini")],
     );
     let pi_agent_dir = env::var_os("PI_CODING_AGENT_DIR")
         .map(PathBuf::from)
@@ -1856,7 +1874,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
     let (pi, mut pi_origin) = resolve_kind(
         config.get("pi"),
         &["PI_SESSIONS_DIR", "PI_CODING_AGENT_SESSION_DIR"],
-        pi_fallback,
+        vec![pi_fallback],
     );
     if pi_origin == "default" && pi_agent_dir.is_some() {
         pi_origin = "env";
@@ -1864,7 +1882,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
     let (kimi, kimi_origin) = resolve_kind(
         config.get("kimi"),
         &["KIMI_SESSIONS_DIR", "KIMI_SHARE_DIR"],
-        home.join(".kimi"),
+        vec![home.join(".kimi")],
     );
     let opencode_data = env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -1929,17 +1947,20 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             vec![
                 dirs::config_dir()
                     .unwrap_or_else(|| home.clone())
-                    .join("Cursor/User"),
-                home.join(".cursor/projects"),
+                    .join("Cursor").join("User"),
+                home.join(".cursor").join("projects"),
             ]
         });
     let (devin, devin_origin) = resolve_kind(
         config.get("devin"),
         &["DEVIN_SESSIONS_DIR"],
-        dirs::config_dir()
-            .unwrap_or_else(|| home.clone())
-            .join("Devin")
-            .join("User"),
+        vec![
+            dirs::config_dir()
+                .unwrap_or_else(|| home.clone())
+                .join("Devin")
+                .join("User"),
+            devin_cli_root(&home),
+        ],
     );
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
@@ -1968,6 +1989,23 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         },
         description,
     )
+}
+
+/// Devin CLI 数据根：Unix 为 `$XDG_DATA_HOME/devin/cli`（默认
+/// `~/.local/share/devin/cli`），Windows 为 `%LOCALAPPDATA%/devin/cli`。
+fn devin_cli_root(home: &Path) -> PathBuf {
+    if cfg!(windows) {
+        return dirs::data_local_dir()
+            .unwrap_or_else(|| home.to_path_buf())
+            .join("devin")
+            .join("cli");
+    }
+    env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .map(expand_tilde)
+        .unwrap_or_else(|| home.join(".local").join("share"))
+        .join("devin")
+        .join("cli")
 }
 
 pub(crate) fn describe_sources(config: &crate::config::SourceRoots) -> Value {
@@ -3606,7 +3644,7 @@ mod tests {
             ),
         )
         .unwrap();
-        std::fs::write(claude_root.join("sessions/broken.json"), "{broken").unwrap();
+        std::fs::write(claude_root.join("sessions").join("broken.json"), "{broken").unwrap();
         std::fs::write(codex_root.join("healthy.jsonl"),format!("{}\n{}\n",
             json!({"type":"session_meta","payload":{"id":"healthy"}}),
             json!({"type":"event_msg","payload":{"type":"user_message","message":"healthy-search-token"}})
@@ -3968,7 +4006,7 @@ mod tests {
         let (roots, origin) = resolve_kind(
             Some(&configured),
             &["CODEX_SESSIONS_DIR"],
-            PathBuf::from("/fallback"),
+            vec![PathBuf::from("/fallback")],
         );
         assert_eq!(origin, "config");
         assert_eq!(roots, vec![dirs::home_dir().unwrap().join("custom-codex")]);
@@ -4010,7 +4048,7 @@ mod tests {
         let (roots, origin) = resolve_kind(
             Some(&Vec::new()),
             &["CODEX_SESSIONS_DIR"],
-            PathBuf::from("/fallback"),
+            vec![PathBuf::from("/fallback")],
         );
         assert_eq!(origin, "config");
         assert!(roots.is_empty());
@@ -4426,7 +4464,7 @@ mod tests {
         let joined = std::env::join_paths(["~/codex/sessions"]).unwrap();
         let paths = split_path_list(joined.as_os_str());
         let home = dirs::home_dir().unwrap();
-        assert_eq!(paths, vec![home.join("codex/sessions")]);
+        assert_eq!(paths, vec![home.join("codex").join("sessions")]);
     }
 
     #[cfg(windows)]

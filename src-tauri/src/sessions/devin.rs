@@ -1,6 +1,6 @@
-//! Devin 桌面版 ACP 会话适配器（只读）。
+//! Devin 会话适配器（只读），覆盖桌面版与 CLI 两种存储。
 //!
-//! 数据布局（root 指向 VS Code fork 的用户目录 `Devin/User`）：
+//! 桌面版数据布局（root 指向 VS Code fork 的用户目录 `Devin/User`）：
 //! - `acp-messages/<uuid>.db`：每会话一个 SQLite。`meta` 存元数据 JSON
 //!   （title、configOptions 里的模式与模型），`messages` 按 position 存
 //!   ACP JSON 消息（user_message / agent_message / agent_thought /
@@ -10,11 +10,23 @@
 //!   `windsurf.acp.messageStore.session.*` 把 `acp/<connector>/<name>`
 //!   形式的会话键映射回消息库 uuid。
 //!
-//! 云端会话（devin-cloud）没有本地消息库，与未发送草稿一样因 messages
-//! 为 0 被排除。来源整体只读，不生成 `_delete_ref`。
+//! CLI 数据布局（root 可为 `devin/cli` 目录、`devin` 数据根或
+//! `sessions.db` 文件本身）：
+//! - `sessions`：slug 会话 id、标题、工作目录、模型与 epoch 秒时间戳；
+//!   `hidden` 会话跳过。
+//! - `message_nodes`：`parent_node_id` 链成的消息森林，chat_message 为
+//!   OpenAI 风格 JSON（system/user/assistant/tool，assistant 含
+//!   thinking 与 tool_calls）。当前会话取 `main_chain_id` 所在链
+//!   沿最深子节点延伸后的最新末端，回溯到根得到有序消息。
+//!
+//! 桌面版会把在桌面打开的 CLI 会话镜像进 acp-messages
+//! （sessionId 为 `acp/devin-cli/<slug>`）；此类会话统一用 slug 作 id，
+//! 与 CLI 库记录去重，先扫描到的根保留。云端会话（devin-cloud）没有本地
+//! 消息库，与未发送草稿一样因无消息被排除。来源整体只读，不生成
+//! `_delete_ref`。
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     io::ErrorKind,
     path::{Path, PathBuf},
@@ -26,8 +38,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use super::{
-    append_limited, attach_message_key, message_value, summary_search_text, truncate_message,
-    HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    append_limited, attach_message_key, message_value, summary_search_text, timestamp_from_millis,
+    truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+    SEARCH_TEXT_LIMIT,
 };
 
 const SESSIONINFO_PREFIX: &str = "windsurf.acp.sessioninfo.session.";
@@ -54,6 +67,8 @@ pub(super) struct DetailLocator {
     session_id: String,
     /// state.vscdb sessioninfo（明文 title/cwd/时间戳），可能缺失。
     metadata: Value,
+    /// true 表示定位到 CLI 的 sessions.db 聚合库，而不是 acp-messages 单库。
+    pub(super) cli: bool,
     pub(super) content_fingerprint: String,
 }
 
@@ -382,6 +397,13 @@ fn session_state(
 ) -> ParseState {
     let mut state = ParseState::new(path);
     state.id = uuid.to_string();
+    // 桌面端镜像的 CLI 会话统一用 slug 作 id，与 CLI 库中的记录去重。
+    if let Some(slug) = index["info"]["sessionId"]
+        .as_str()
+        .and_then(|value| value.strip_prefix("acp/devin-cli/"))
+    {
+        state.id = slug.to_string();
+    }
     state.originator = "devin".into();
     state.provider = "unknown".into();
     if let (Some(created), Some(updated)) = (
@@ -474,6 +496,7 @@ fn scan_session(
                 database_path: path.to_path_buf(),
                 session_id: uuid.clone(),
                 metadata: index.clone(),
+                cli: false,
                 content_fingerprint: content_hash
                     .finalize()
                     .iter()
@@ -491,43 +514,51 @@ pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
     let mut sessions = Vec::new();
     let mut active_paths = BTreeSet::new();
     let mut errors = Vec::new();
-    let entries = match fs::read_dir(&directory) {
-        Ok(entries) => entries,
-        // 目录尚未创建（如刚安装 Devin）不算错误，留待后续刷新发现。
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            return Ok(ParsedSource {
-                sessions,
-                active_paths,
-                errors,
-            })
+    match fs::read_dir(&directory) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file()
+                    || path.extension().and_then(|value| value.to_str()) != Some("db")
+                {
+                    continue;
+                }
+                active_paths.insert(path.to_string_lossy().into_owned());
+                let uuid = path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                match scan_session(&path, index.get(&uuid).unwrap_or(&Value::Null), source) {
+                    Ok(Some(session)) => sessions.push(session),
+                    Ok(None) => {}
+                    Err((id, error)) => errors.push((path, id, error)),
+                }
+            }
         }
+        // 目录尚未创建（如刚安装 Devin）不算错误，留待后续刷新发现；
+        // root 直接指向 sessions.db 文件时同理。
+        Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {}
         Err(error) => {
             return Err(format!(
                 "无法读取 Devin 会话目录（{}）：{error}",
                 directory.display()
             ))
         }
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("db") {
-            continue;
-        }
-        active_paths.insert(path.to_string_lossy().into_owned());
-        let uuid = path
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default()
-            .to_string();
-        match scan_session(&path, index.get(&uuid).unwrap_or(&Value::Null), source) {
-            Ok(Some(session)) => sessions.push(session),
-            Ok(None) => {}
-            Err((id, error)) => errors.push((path, id, error)),
-        }
     }
     let state_db = source.root.join("globalStorage").join("state.vscdb");
     if state_db.is_file() {
         active_paths.insert(state_db.to_string_lossy().into_owned());
+    }
+    for database in cli_databases(&source.root) {
+        active_paths.insert(database.to_string_lossy().into_owned());
+        match scan_cli(&database, source) {
+            Ok((mut cli_sessions, mut cli_errors)) => {
+                sessions.append(&mut cli_sessions);
+                errors.append(&mut cli_errors);
+            }
+            Err(error) => errors.push((database, "sessions.db".into(), error)),
+        }
     }
     Ok(ParsedSource {
         sessions,
@@ -536,9 +567,23 @@ pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
     })
 }
 
-/// 监听规则：acp-messages 下的消息库与全局索引库；-shm 变化不触发
-/// （只读连接也可能更新共享内存）。
+/// 监听规则：acp-messages 下的消息库、全局索引库与 CLI 聚合库；
+/// -shm 变化不触发（只读连接也可能更新共享内存）。
 pub(super) fn matches_path(root: &Path, path: &Path) -> bool {
+    // CLI 库候选：root/sessions.db、root/cli/sessions.db、root 本身是库文件。
+    for candidate in [
+        root.join("sessions.db"),
+        root.join("cli").join("sessions.db"),
+    ] {
+        if super::opencode_event_matches(&candidate, path) {
+            return true;
+        }
+    }
+    if root.file_name().and_then(|value| value.to_str()) == Some("sessions.db")
+        && super::opencode_event_matches(root, path)
+    {
+        return true;
+    }
     if !path.starts_with(root) {
         return false;
     }
@@ -563,6 +608,497 @@ fn raw_payload(row: &MessageRow) -> Value {
     }
 }
 
+// ---------- Devin CLI（sessions.db 聚合库） ----------
+
+/// root 可为 `devin/cli` 目录、`devin` 数据根或 `sessions.db` 文件本身。
+fn cli_databases(root: &Path) -> Vec<PathBuf> {
+    let mut candidates = vec![
+        root.join("sessions.db"),
+        root.join("cli").join("sessions.db"),
+    ];
+    if root.extension().and_then(|value| value.to_str()) == Some("db") {
+        candidates.push(root.to_path_buf());
+    }
+    candidates
+        .into_iter()
+        .filter(|path| path.is_file())
+        .collect()
+}
+
+fn validate_cli_tables(connection: &Connection) -> Result<(), String> {
+    for table in ["sessions", "message_nodes"] {
+        let count = connection
+            .query_row(
+                "select count(*) from sqlite_master where type = 'table' and name = ?1",
+                [table],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|error| format!("无法检查 Devin CLI 会话库结构：{error}"))?;
+        if count != 1 {
+            return Err("不是受支持的 Devin CLI 会话库（缺少 sessions/message_nodes 表）".into());
+        }
+    }
+    Ok(())
+}
+
+struct CliSessionRow {
+    id: String,
+    title: String,
+    cwd: String,
+    model: String,
+    created_at: i64,
+    last_activity_at: i64,
+    main_chain_id: Option<i64>,
+}
+
+struct CliNode {
+    node_id: i64,
+    parent: Option<i64>,
+    created_at: i64,
+    raw: String,
+    chat: Value,
+}
+
+const CLI_SESSION_COLUMNS: &str =
+    "id, title, working_directory, model, created_at, last_activity_at, main_chain_id";
+
+fn cli_session_row(row: &Row<'_>) -> rusqlite::Result<CliSessionRow> {
+    Ok(CliSessionRow {
+        id: row.get(0)?,
+        title: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+        cwd: row.get(2)?,
+        model: row.get(3)?,
+        created_at: row.get(4)?,
+        last_activity_at: row.get(5)?,
+        main_chain_id: row.get(6)?,
+    })
+}
+
+fn load_cli_sessions(connection: &Connection) -> Result<Vec<CliSessionRow>, String> {
+    let mut statement = connection
+        .prepare(&format!(
+            "select {CLI_SESSION_COLUMNS} from sessions \
+             where hidden = 0 order by last_activity_at desc, id"
+        ))
+        .map_err(|error| format!("Devin CLI 会话库不是受支持的格式：{error}"))?;
+    let rows = statement
+        .query_map([], cli_session_row)
+        .map_err(|error| format!("无法查询 Devin CLI 会话：{error}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("无法读取 Devin CLI 会话：{error}"))
+}
+
+fn load_cli_session(connection: &Connection, id: &str) -> Result<CliSessionRow, String> {
+    connection
+        .query_row(
+            &format!(
+                "select {CLI_SESSION_COLUMNS} from sessions \
+                 where id = ?1 and hidden = 0"
+            ),
+            [id],
+            cli_session_row,
+        )
+        .map_err(|error| format!("无法读取 Devin CLI 会话 {id}：{error}"))
+}
+
+fn load_cli_nodes(connection: &Connection, session_id: &str) -> Result<Vec<CliNode>, String> {
+    let mut statement = connection
+        .prepare(
+            "select node_id, parent_node_id, created_at, chat_message \
+             from message_nodes where session_id = ?1 order by node_id",
+        )
+        .map_err(|error| format!("Devin CLI 会话库不是受支持的格式：{error}"))?;
+    let mut rows = statement
+        .query([session_id])
+        .map_err(|error| format!("无法查询 Devin CLI 消息：{error}"))?;
+    let mut nodes = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .map_err(|error| format!("无法读取 Devin CLI 消息：{error}"))?
+    {
+        let raw = row.get::<_, String>(3).unwrap_or_default();
+        nodes.push(CliNode {
+            node_id: row.get::<_, i64>(0).unwrap_or_default(),
+            parent: row.get::<_, Option<i64>>(1).unwrap_or_default(),
+            created_at: row.get::<_, i64>(2).unwrap_or_default(),
+            chat: serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null),
+            raw,
+        });
+    }
+    Ok(nodes)
+}
+
+/// 当前会话链：从 main_chain_id 出发沿最深子节点延伸到最新末端
+/// （会话进行中 main_chain_id 可能滞后于最新写入），再回溯到根；
+/// 无 main_chain_id 时取最新节点回溯。废弃分支自然不在链上。
+fn cli_chain(nodes: &[CliNode], main_chain_id: Option<i64>) -> Vec<usize> {
+    if nodes.is_empty() {
+        return Vec::new();
+    }
+    let by_id: HashMap<i64, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.node_id, index))
+        .collect();
+    let mut deepest_child: HashMap<i64, i64> = HashMap::new();
+    for node in nodes {
+        if let Some(parent) = node.parent {
+            let entry = deepest_child.entry(parent).or_insert(node.node_id);
+            if node.node_id > *entry {
+                *entry = node.node_id;
+            }
+        }
+    }
+    let mut tip = main_chain_id
+        .filter(|id| by_id.contains_key(id))
+        .unwrap_or_else(|| nodes.last().map(|node| node.node_id).unwrap_or_default());
+    while let Some(&next) = deepest_child.get(&tip) {
+        tip = next;
+    }
+    let mut chain = Vec::new();
+    let mut current = Some(tip);
+    while let Some(id) = current {
+        let Some(&index) = by_id.get(&id) else {
+            break;
+        };
+        chain.push(index);
+        current = nodes[index].parent;
+    }
+    chain.reverse();
+    chain
+}
+
+fn cli_timestamp(seconds: i64) -> String {
+    timestamp_from_millis(seconds.saturating_mul(1000)).unwrap_or_default()
+}
+
+fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec<Value> {
+    let chat = &node.chat;
+    let timestamp = cli_timestamp(node.created_at);
+    let mut messages = Vec::new();
+    match chat["role"].as_str() {
+        Some("system") => {
+            if let Some(text) = chat["content"]
+                .as_str()
+                .filter(|text| !text.trim().is_empty())
+            {
+                messages.push(message_value(
+                    "system",
+                    text,
+                    &timestamp,
+                    "devin_cli",
+                    "context",
+                    true,
+                ));
+            }
+        }
+        Some("user") => {
+            // is_user_input 区分真实输入与注入的 user 角色上下文
+            //（如 Lint 反馈、压缩摘要提示）。
+            let input = chat["metadata"]["is_user_input"].as_bool() == Some(true);
+            if let Some(text) = chat["content"]
+                .as_str()
+                .filter(|text| !text.trim().is_empty())
+            {
+                messages.push(message_value(
+                    "user",
+                    text,
+                    &timestamp,
+                    "devin_cli",
+                    if input { "text" } else { "context" },
+                    !input,
+                ));
+            }
+        }
+        Some("assistant") => {
+            // thinking 是 JSON 字符串（{"thinking": "...", "signature": ...}）。
+            let thinking = chat["thinking"].as_str().and_then(|raw| {
+                serde_json::from_str::<Value>(raw)
+                    .ok()
+                    .and_then(|value| value["thinking"].as_str().map(str::to_string))
+                    .or_else(|| Some(raw.to_string()))
+            });
+            if let Some(text) = thinking.as_deref().filter(|text| !text.trim().is_empty()) {
+                messages.push(message_value(
+                    "assistant",
+                    text,
+                    &timestamp,
+                    "devin_cli",
+                    "thinking",
+                    true,
+                ));
+            }
+            if let Some(text) = chat["content"]
+                .as_str()
+                .filter(|text| !text.trim().is_empty())
+            {
+                messages.push(message_value(
+                    "assistant",
+                    text,
+                    &timestamp,
+                    "devin_cli",
+                    "text",
+                    false,
+                ));
+            }
+            for call in chat["tool_calls"].as_array().into_iter().flatten() {
+                let name = call["name"].as_str().unwrap_or("tool");
+                let call_id = call["id"].as_str().unwrap_or_default();
+                let arguments = &call["arguments"];
+                let text = if arguments.is_string() {
+                    arguments.as_str().unwrap_or_default().to_string()
+                } else {
+                    readable_json(arguments)
+                };
+                let mut value =
+                    message_value("tool", &text, &timestamp, "devin_cli", "tool_call", false);
+                value["tool_name"] = Value::String(name.to_string());
+                value["tool_kind"] = Value::String("tool_call".into());
+                if !call_id.is_empty() {
+                    value["tool_call_id"] = Value::String(call_id.to_string());
+                    tool_names.insert(call_id.to_string(), name.to_string());
+                }
+                messages.push(value);
+            }
+        }
+        Some("tool") => {
+            let text = chat["content"].as_str().unwrap_or_default();
+            if text.trim().is_empty() {
+                return messages;
+            }
+            let mut value =
+                message_value("tool", text, &timestamp, "devin_cli", "tool_result", false);
+            value["tool_kind"] = Value::String("tool_result".into());
+            if let Some(call_id) = chat["tool_call_id"].as_str() {
+                value["tool_call_id"] = Value::String(call_id.to_string());
+                if let Some(name) = tool_names.get(call_id) {
+                    value["tool_name"] = Value::String(name.clone());
+                }
+            }
+            let success =
+                chat["metadata"]["extensions"]["chisel/tool_result_meta"]["success"].as_bool();
+            if success == Some(false) {
+                value["is_error"] = Value::Bool(true);
+            }
+            messages.push(value);
+        }
+        _ => {}
+    }
+    messages
+}
+
+fn cli_state(database: &Path, row: &CliSessionRow) -> ParseState {
+    let mut state = ParseState::new(database);
+    state.id = row.id.clone();
+    state.originator = "devin".into();
+    // CLI 直接记录模型名（如 swe-2-max），不推测 Provider。
+    state.provider = if row.model.is_empty() {
+        "unknown".into()
+    } else {
+        row.model.clone()
+    };
+    state.timestamp = cli_timestamp(row.created_at);
+    state.last_timestamp = cli_timestamp(row.last_activity_at);
+    state.cwd = row.cwd.clone();
+    state
+}
+
+fn cli_summary(
+    state: &ParseState,
+    row: &CliSessionRow,
+    database: &Path,
+    source: &Source,
+) -> (Value, String) {
+    let mut summary = state.summary(database, source);
+    if !row.title.trim().is_empty() {
+        summary["title"] = Value::String(row.title.clone());
+    }
+    summary["source_read_only"] = Value::Bool(true);
+    let mut search_text = summary_search_text(&summary);
+    append_limited(&mut search_text, &[&state.search_text], SEARCH_TEXT_LIMIT);
+    (summary, search_text)
+}
+
+fn scan_cli_session(
+    connection: &Connection,
+    database: &Path,
+    row: &CliSessionRow,
+    source: &Source,
+) -> Result<Option<ParsedSession>, String> {
+    let nodes = load_cli_nodes(connection, &row.id)?;
+    let chain = cli_chain(&nodes, row.main_chain_id);
+    if chain.is_empty() {
+        return Ok(None);
+    }
+    let mut state = cli_state(database, row);
+    let mut content_hash = Sha256::new();
+    content_hash.update(
+        json!([
+            row.title,
+            row.cwd,
+            row.model,
+            row.created_at,
+            row.last_activity_at,
+            row.main_chain_id
+        ])
+        .to_string()
+        .as_bytes(),
+    );
+    let mut tool_names = HashMap::new();
+    for &index in &chain {
+        let node = &nodes[index];
+        // 内容指纹覆盖链上全部原始节点，识别原地编辑与删除。
+        content_hash.update(node.node_id.to_string().as_bytes());
+        content_hash.update([0]);
+        content_hash.update(
+            node.parent
+                .map(|parent| parent.to_string())
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        content_hash.update([0]);
+        content_hash.update(node.raw.as_bytes());
+        for message in cli_messages(node, &mut tool_names) {
+            state.accept_message(message);
+        }
+    }
+    if state.message_count == 0 {
+        return Ok(None);
+    }
+    let (summary, search_text) = cli_summary(&state, row, database, source);
+    Ok(Some(ParsedSession {
+        summary,
+        search_text,
+        path: database.to_path_buf(),
+        detail_locator: DetailLocator {
+            database_path: database.to_path_buf(),
+            session_id: row.id.clone(),
+            metadata: Value::Null,
+            cli: true,
+            content_fingerprint: content_hash
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect(),
+        },
+    }))
+}
+
+fn scan_cli(
+    database: &Path,
+    source: &Source,
+) -> Result<(Vec<ParsedSession>, Vec<(PathBuf, String, String)>), String> {
+    let connection = open_database(database)?;
+    validate_cli_tables(&connection)?;
+    let mut sessions = Vec::new();
+    let mut errors = Vec::new();
+    for row in load_cli_sessions(&connection)? {
+        match scan_cli_session(&connection, database, &row, source) {
+            Ok(Some(session)) => sessions.push(session),
+            Ok(None) => {}
+            Err(error) => errors.push((database.to_path_buf(), row.id.clone(), error)),
+        }
+    }
+    Ok((sessions, errors))
+}
+
+fn cli_raw_payload(node: &CliNode) -> Value {
+    if node.chat.is_null() || node.raw.chars().count() > RAW_PAYLOAD_LIMIT {
+        json!({
+            "truncated": true,
+            "original_chars": node.raw.chars().count(),
+            "role": node.chat["role"],
+        })
+    } else {
+        node.chat.clone()
+    }
+}
+
+fn visit_cli_detail(
+    source: &Source,
+    locator: &DetailLocator,
+    visitor: &mut dyn FnMut(&Value),
+) -> Result<Value, String> {
+    let connection = open_database(&locator.database_path)?;
+    validate_cli_tables(&connection)?;
+    let row = load_cli_session(&connection, &locator.session_id)?;
+    let nodes = load_cli_nodes(&connection, &locator.session_id)?;
+    let chain = cli_chain(&nodes, row.main_chain_id);
+    let mut state = cli_state(&locator.database_path, &row);
+    let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
+    let mut events = HeadTail::new(DETAIL_EVENT_LIMIT);
+    let mut tool_names = HashMap::new();
+    for &index in &chain {
+        let node = &nodes[index];
+        for mut value in cli_messages(node, &mut tool_names)
+            .into_iter()
+            .filter_map(|value| state.accept_message(value))
+        {
+            attach_message_key(
+                &mut value,
+                json!({
+                    "source_kind": "devin",
+                    "session_id": locator.session_id,
+                    "node_id": node.node_id,
+                }),
+            );
+            visitor(&value);
+            truncate_message(&mut value);
+            messages.push(value);
+        }
+        events.push(json!({
+            "line_number": node.node_id,
+            "timestamp": cli_timestamp(node.created_at),
+            "type": node.chat["role"].as_str().unwrap_or("unknown"),
+            "payload": cli_raw_payload(node),
+        }));
+    }
+    let (mut message_values, omitted_messages, total_messages) = messages.finish(json!({
+        "role": "system",
+        "text": "",
+        "timestamp": Value::Null,
+        "source_type": "viewer",
+        "source_subtype": "truncation",
+        "is_truncation_marker": true,
+    }));
+    if omitted_messages > 0 {
+        if let Some(marker) = message_values
+            .iter_mut()
+            .find(|value| value["is_truncation_marker"] == true)
+        {
+            marker["omitted_count"] = json!(omitted_messages);
+        }
+    }
+    let (mut event_values, omitted_events, total_events) = events.finish(json!({
+        "line_number": Value::Null,
+        "timestamp": Value::Null,
+        "type": "viewer_truncation",
+        "payload": { "omitted_events": 0 },
+    }));
+    if omitted_events > 0 {
+        if let Some(marker) = event_values
+            .iter_mut()
+            .find(|value| value["type"] == "viewer_truncation")
+        {
+            marker["payload"]["omitted_events"] = json!(omitted_events);
+        }
+    }
+    let (mut summary, _) = cli_summary(&state, &row, &locator.database_path, source);
+    if omitted_messages + omitted_events > 0 {
+        summary["detail_truncated"] = Value::Bool(true);
+    }
+    Ok(json!({
+        "summary": summary,
+        "conversation_messages": message_values,
+        "raw_events": event_values,
+        "truncation": {
+            "truncated": omitted_messages + omitted_events > 0,
+            "messages": { "total": total_messages, "omitted": omitted_messages },
+            "raw_events": { "total": total_events, "omitted": omitted_events },
+        },
+    }))
+}
+
 pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<Value, String> {
     visit_detail(source, locator, &mut |_| {})
 }
@@ -572,6 +1108,9 @@ pub(super) fn visit_detail(
     locator: &DetailLocator,
     visitor: &mut dyn FnMut(&Value),
 ) -> Result<Value, String> {
+    if locator.cli {
+        return visit_cli_detail(source, locator, visitor);
+    }
     let connection = open_database(&locator.database_path)?;
     validate_tables(&connection)?;
     let meta = meta_rows(&connection);
@@ -662,7 +1201,7 @@ pub(super) fn visit_detail(
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use rusqlite::{params, Connection};
     use serde_json::{json, Value};
@@ -685,7 +1224,7 @@ mod tests {
     fn fixture(root: &Path) {
         std::fs::create_dir_all(root.join("acp-messages")).unwrap();
         std::fs::create_dir_all(root.join("globalStorage")).unwrap();
-        let session = Connection::open(root.join("acp-messages/ses-main.db")).unwrap();
+        let session = Connection::open(root.join("acp-messages").join("ses-main.db")).unwrap();
         session
             .execute_batch(
                 "create table meta (key text primary key, value text not null);
@@ -755,14 +1294,14 @@ mod tests {
         }
         drop(session);
         // 空草稿库，应被排除。
-        Connection::open(root.join("acp-messages/ses-draft.db"))
+        Connection::open(root.join("acp-messages").join("ses-draft.db"))
             .unwrap()
             .execute_batch(
                 "create table meta (key text primary key, value text not null);
                  create table messages (position integer primary key, kind text not null, payload text not null);",
             )
             .unwrap();
-        let index = Connection::open(root.join("globalStorage/state.vscdb")).unwrap();
+        let index = Connection::open(root.join("globalStorage").join("state.vscdb")).unwrap();
         index
             .execute_batch("create table ItemTable (key text primary key, value blob);")
             .unwrap();
@@ -808,7 +1347,8 @@ mod tests {
         let parsed = parse_source(&source(root)).unwrap();
         assert_eq!(parsed.sessions.len(), 1);
         let session = &parsed.sessions[0];
-        assert_eq!(session.summary["id"], "ses-main");
+        // 桌面端镜像的 CLI 会话统一用 slug 作 id，便于与 CLI 库去重。
+        assert_eq!(session.summary["id"], "trusted-judo");
         // 索引元数据优先：title/cwd/时间来自 state.vscdb。
         assert_eq!(session.summary["title"], "会话标题");
         assert_eq!(session.summary["cwd"], "/work/project");
@@ -822,7 +1362,7 @@ mod tests {
         assert_eq!(session.summary["source_read_only"], true);
         assert!(session.search_text.contains("请修复登录页"));
         assert!(parsed.active_paths.contains(
-            root.join("acp-messages/ses-main.db")
+            root.join("acp-messages").join("ses-main.db")
                 .to_string_lossy()
                 .as_ref()
         ));
@@ -833,7 +1373,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let root = directory.path();
         std::fs::create_dir_all(root.join("acp-messages")).unwrap();
-        let session = Connection::open(root.join("acp-messages/orphan.db")).unwrap();
+        let session = Connection::open(root.join("acp-messages").join("orphan.db")).unwrap();
         session
             .execute_batch(
                 "create table meta (key text primary key, value text not null);
@@ -929,7 +1469,7 @@ mod tests {
                 .content_fingerprint
         };
         let before = fingerprint();
-        let connection = Connection::open(root.join("acp-messages/ses-main.db")).unwrap();
+        let connection = Connection::open(root.join("acp-messages").join("ses-main.db")).unwrap();
         connection
             .execute(
                 "update messages set payload = ?1 where position = 3",
@@ -949,43 +1489,265 @@ mod tests {
         assert!(empty.sessions.is_empty());
         assert!(empty.errors.is_empty());
         std::fs::create_dir_all(root.join("acp-messages")).unwrap();
-        Connection::open(root.join("acp-messages/not-devin.db")).unwrap();
+        Connection::open(root.join("acp-messages").join("not-devin.db")).unwrap();
         let parsed = parse_source(&source(root)).unwrap();
         assert!(parsed.sessions.is_empty());
         assert_eq!(parsed.errors.len(), 1);
         assert!(parsed.errors[0].2.contains("不是受支持的 Devin 消息库"));
     }
 
+    /// 构造 CLI 聚合库：主链含 system/user/assistant(thinking+tool_calls)/
+    /// tool/注入 user；外加废弃分支、隐藏会话与空会话。
+    fn cli_fixture(root: &Path) -> PathBuf {
+        let directory = root.join("cli");
+        std::fs::create_dir_all(&directory).unwrap();
+        let database = directory.join("sessions.db");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "create table sessions (
+                    id text primary key, working_directory text not null,
+                    backend_type text not null, model text not null,
+                    agent_mode text not null, created_at integer not null,
+                    last_activity_at integer not null, title text,
+                    main_chain_id integer, hidden integer not null default 0);
+                 create table message_nodes (
+                    row_id integer primary key autoincrement,
+                    session_id text not null, node_id integer not null,
+                    parent_node_id integer, chat_message text not null,
+                    created_at integer not null, metadata text,
+                    unique(session_id, node_id));",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "insert into sessions values ('brisk-otter','/work/cli','windsurf','swe-2-max','smart',1789450000,1789450100,'CLI 标题',3,0)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "insert into sessions values ('ghost-mode','/work/hidden','windsurf','swe-2-max','smart',1789450000,1789450100,'隐藏会话',null,1)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "insert into sessions values ('empty-deer','/work/empty','windsurf','swe-2-max','smart',1789450000,1789450100,'空会话',null,0)",
+                [],
+            )
+            .unwrap();
+        let nodes: [(i64, Option<i64>, i64, Value); 7] = [
+            (
+                0,
+                None,
+                1789450001,
+                json!({"role":"system","content":"系统提示"}),
+            ),
+            (
+                1,
+                Some(0),
+                1789450002,
+                json!({"role":"user","content":"修复登录页","metadata":{"is_user_input":true}}),
+            ),
+            (
+                2,
+                Some(1),
+                1789450003,
+                json!({"role":"assistant","content":"先复现问题","thinking":"{\"thinking\":\"想一下\"}","tool_calls":[{"id":"call_1","name":"exec","arguments":{"command":"ls"}}]}),
+            ),
+            (
+                3,
+                Some(2),
+                1789450004,
+                json!({"role":"tool","content":"README.md","tool_call_id":"call_1","metadata":{"extensions":{"chisel/tool_result_meta":{"success":true}}}}),
+            ),
+            // 2 的废弃分支，不出现在主链。
+            (
+                4,
+                Some(2),
+                1789450005,
+                json!({"role":"assistant","content":"废弃分支"}),
+            ),
+            (
+                5,
+                Some(3),
+                1789450006,
+                json!({"role":"user","content":"Lint errors detected.","metadata":{"is_user_input":null}}),
+            ),
+            (
+                6,
+                Some(5),
+                1789450007,
+                json!({"role":"assistant","content":"已修复"}),
+            ),
+        ];
+        for (node_id, parent, created_at, chat) in nodes {
+            connection
+                .execute(
+                    "insert into message_nodes (session_id, node_id, parent_node_id, chat_message, created_at) values ('brisk-otter', ?1, ?2, ?3, ?4)",
+                    rusqlite::params![node_id, parent, chat.to_string(), created_at],
+                )
+                .unwrap();
+        }
+        // 隐藏会话有一条消息但仍应被排除。
+        connection
+            .execute(
+                "insert into message_nodes (session_id, node_id, parent_node_id, chat_message, created_at) values ('ghost-mode', 0, null, ?1, 1789450001)",
+                rusqlite::params![json!({"role":"user","content":"hi","metadata":{"is_user_input":true}}).to_string()],
+            )
+            .unwrap();
+        drop(connection);
+        database
+    }
+
     #[test]
-    fn 监听规则覆盖消息库与索引库() {
+    fn cli_聚合会话摘要并排除隐藏与空会话() {
+        let directory = tempdir().unwrap();
+        let root = directory.path();
+        cli_fixture(root);
+        let parsed = parse_source(&source(root)).unwrap();
+        assert_eq!(parsed.errors, Vec::new());
+        assert_eq!(parsed.sessions.len(), 1);
+        let session = &parsed.sessions[0];
+        assert_eq!(session.summary["title"], "CLI 标题");
+        assert_eq!(session.summary["cwd"], "/work/cli");
+        assert_eq!(session.summary["model_provider"], "swe-2-max");
+        assert_eq!(session.summary["originator"], "devin");
+        assert_eq!(session.summary["source_read_only"], true);
+        assert!(session.summary["timestamp"].is_string());
+        assert!(session.search_text.contains("修复登录页"));
+        assert!(parsed
+            .active_paths
+            .contains(root.join("cli").join("sessions.db").to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn cli_详情按主链重建消息并映射角色() {
+        let directory = tempdir().unwrap();
+        let root = directory.path();
+        let database = cli_fixture(root);
+        let parsed = parse_source(&source(root)).unwrap();
+        let session = parsed.sessions.into_iter().next().unwrap();
+        let detail = parse_detail(&source(root), &session.detail_locator).unwrap();
+        let messages = detail["conversation_messages"].as_array().unwrap();
+        let texts: Vec<&str> = messages
+            .iter()
+            .filter_map(|message| message["text"].as_str())
+            .collect();
+        // 废弃分支不进详情。
+        assert!(!texts.contains(&"废弃分支"));
+        assert!(texts.contains(&"已修复"));
+        let user = messages
+            .iter()
+            .find(|message| message["text"] == "修复登录页")
+            .unwrap();
+        assert_eq!(user["role"], "user");
+        assert_eq!(user["synthetic_context"], false);
+        // 注入的 user 消息标记为合成上下文。
+        let injected = messages
+            .iter()
+            .find(|message| message["text"] == "Lint errors detected.")
+            .unwrap();
+        assert_eq!(injected["synthetic_context"], true);
+        let thinking = messages
+            .iter()
+            .find(|message| message["source_subtype"] == "thinking")
+            .unwrap();
+        assert_eq!(thinking["text"], "想一下");
+        let call = messages
+            .iter()
+            .find(|message| message["tool_kind"] == "tool_call")
+            .unwrap();
+        assert_eq!(call["tool_name"], "exec");
+        assert_eq!(call["tool_call_id"], "call_1");
+        let result = messages
+            .iter()
+            .find(|message| message["tool_kind"] == "tool_result")
+            .unwrap();
+        assert_eq!(result["tool_name"], "exec");
+        assert_eq!(result["is_error"], Value::Null);
+        // 原始事件覆盖主链全部节点。
+        let events = detail["raw_events"].as_array().unwrap();
+        assert_eq!(events.len(), 6);
+        assert_eq!(events[1]["type"], "user");
+        assert_eq!(events[1]["payload"]["content"], "修复登录页");
+        // sessions.db 文件本身也可直接作为来源根。
+        let file_source = Source {
+            root: database.clone(),
+            ..source(root)
+        };
+        let reparsed = parse_source(&file_source).unwrap();
+        assert_eq!(reparsed.sessions.len(), 1);
+        assert_eq!(reparsed.sessions[0].summary["id"], "brisk-otter");
+    }
+
+    #[test]
+    fn cli_内容指纹识别主链节点变化() {
+        let directory = tempdir().unwrap();
+        let root = directory.path();
+        let database = cli_fixture(root);
+        let fingerprint = |root: &Path| {
+            parse_source(&source(root)).unwrap().sessions[0]
+                .detail_locator
+                .content_fingerprint
+                .clone()
+        };
+        let before = fingerprint(root);
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "update message_nodes set chat_message = ?1 where session_id = 'brisk-otter' and node_id = 6",
+                rusqlite::params![json!({"role":"assistant","content":"已重写"}).to_string()],
+            )
+            .unwrap();
+        drop(connection);
+        assert_ne!(fingerprint(root), before);
+    }
+
+    #[test]
+    fn 监听规则覆盖消息库_索引库与_cli_库() {
         let root = Path::new("/data/Devin/User");
-        assert!(matches_path(root, &root.join("acp-messages/a.db")));
-        assert!(matches_path(root, &root.join("acp-messages/a.db-wal")));
-        assert!(matches_path(root, &root.join("globalStorage/state.vscdb")));
+        assert!(matches_path(root, &root.join("acp-messages").join("a.db")));
+        assert!(matches_path(root, &root.join("acp-messages").join("a.db-wal")));
+        assert!(matches_path(root, &root.join("globalStorage").join("state.vscdb")));
         assert!(matches_path(
             root,
-            &root.join("globalStorage/state.vscdb-wal")
+            &root.join("globalStorage").join("state.vscdb-wal")
         ));
-        assert!(!matches_path(root, &root.join("acp-messages/a.db-shm")));
-        assert!(!matches_path(root, &root.join("globalStorage/other.dbx")));
+        assert!(!matches_path(root, &root.join("acp-messages").join("a.db-shm")));
+        assert!(!matches_path(root, &root.join("globalStorage").join("other.dbx")));
         assert!(!matches_path(
             root,
             Path::new("/data/Devin/User-other/a.db")
+        ));
+        let cli_root = Path::new("/data/devin/cli");
+        assert!(matches_path(cli_root, &cli_root.join("sessions.db")));
+        assert!(matches_path(cli_root, &cli_root.join("sessions.db-wal")));
+        assert!(!matches_path(cli_root, &cli_root.join("sessions.db-shm")));
+        let data_root = Path::new("/data/devin");
+        assert!(matches_path(data_root, &data_root.join("cli").join("sessions.db")));
+        assert!(matches_path(
+            Path::new("/data/devin/cli/sessions.db"),
+            Path::new("/data/devin/cli/sessions.db-wal")
         ));
     }
 
     #[test]
     #[ignore = "本机 Devin 只读验证，只输出数量"]
     fn 本机只读验证() {
-        let root = dirs::config_dir().unwrap().join("Devin").join("User");
-        let parsed = parse_source(&source(&root)).unwrap();
-        eprintln!(
-            "Devin 可读会话 {}，消息库 {}，诊断 {}",
-            parsed.sessions.len(),
-            parsed.active_paths.len(),
-            parsed.errors.len()
-        );
-        for session in &parsed.sessions {
+        let home = dirs::home_dir().unwrap();
+        let desktop = dirs::config_dir().unwrap().join("Devin").join("User");
+        let cli = home.join(".local").join("share").join("devin").join("cli");
+        let mut sessions = Vec::new();
+        let mut errors = Vec::new();
+        for root in [desktop, cli] {
+            let parsed = parse_source(&source(&root)).unwrap();
+            sessions.extend(parsed.sessions);
+            errors.extend(parsed.errors);
+        }
+        eprintln!("Devin 可读会话 {}，诊断 {}", sessions.len(), errors.len());
+        for session in &sessions {
             eprintln!(
                 "  {} · {} · {} 条消息",
                 session.summary["id"].as_str().unwrap_or_default(),
@@ -993,7 +1755,7 @@ mod tests {
                 session.summary["message_count"]
             );
         }
-        for (path, id, error) in &parsed.errors {
+        for (path, id, error) in &errors {
             eprintln!("  错误 {} · {} · {}", path.display(), id, error);
         }
     }

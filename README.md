@@ -62,6 +62,12 @@ Supports IDE inline `conversation` records, ordered `fullConversationHeadersOnly
 
 Cursor settings accept a user-data directory, a `state.vscdb` file, or a transcripts root. Browsing, search, statistics, export, and local removal are supported; source mutation and resume are not. Records with metadata but no supported body are reported in settings; the state field alone does not establish the format or data completeness. Empty built-in drafts are excluded. CLI `store.db`, legacy TXT transcripts, and complete raw events are not supported. Missing timestamps, models, and project paths are not inferred.
 
+### Devin (read-only)
+
+Supports the Devin desktop app's per-session SQLite message stores (`acp-messages/<uuid>.db`, ACP JSON messages) together with the `globalStorage/state.vscdb` session index that carries plaintext titles, working directories, and timestamps, including legacy UUID-keyed entries. Discovery uses the Devin user-data directory (`~/Library/Application Support/Devin/User` on macOS, `%APPDATA%/Devin/User` on Windows, `~/.config/Devin/User` on Linux).
+
+Devin settings accept that user-data directory. Browsing, search, statistics, export, and local removal are supported; source mutation and resume are not. User/assistant text, thinking, tool calls, and plans are mapped to normalized messages; images appear as placeholders and oversized raw payloads are truncated. Sessions without local messages — cloud sessions and unsent drafts — are excluded. Models are shown as recorded in the session metadata (e.g. `swe-2-high`), not mapped to provider names.
+
 ## Install and run
 
 Download the installer for your platform from GitHub Releases. End users do not need Node.js, pnpm, Rust, or a source checkout.
@@ -94,11 +100,12 @@ Set these before starting the desktop app (values are read once at startup):
 | `KIMI_SHARE_DIR`               | Kimi Code CLI's official data directory  | `~/.kimi`                                    |
 | `OPENCODE_DB`                  | OpenCode's official SQLite database path | `~/.local/share/opencode/opencode.db`        |
 | `ZCODE_DB`                     | ZCode's official SQLite database path    | `~/.zcode/cli/db/db.sqlite`                  |
+| `DEVIN_SESSIONS_DIR`           | Devin user-data roots (path list)        | `<OS config dir>/Devin/User`                 |
 | `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite index directory              | Platform cache directory under `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset                                        |
 | `ALLSESSIONS_WORKSPACE_DB`     | AllSessions user-data SQLite path        | Platform app-data directory                  |
 
-The six `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator (`:` on macOS/Linux, `;` on Windows), e.g. `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`. A leading `~` expands to the home directory, so lists also work when the app is launched from Finder/Dock. Pi and Kimi's official variables are used when their AllSessions-specific variable is unset. `OPENCODE_DB` follows OpenCode's own behavior: an absolute path is used directly, while a relative path is resolved under OpenCode's data directory. Non-existent roots are skipped. If the same session id appears in several roots of one kind, only the first-listed root is kept (a backup copy shows once). Note: the Codex provider maintenance tool only covers the primary `CODEX_HOME` session directories, not additional listed roots.
+The seven `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator (`:` on macOS/Linux, `;` on Windows), e.g. `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`. A leading `~` expands to the home directory, so lists also work when the app is launched from Finder/Dock. Pi and Kimi's official variables are used when their AllSessions-specific variable is unset. `OPENCODE_DB` follows OpenCode's own behavior: an absolute path is used directly, while a relative path is resolved under OpenCode's data directory. Non-existent roots are skipped. If the same session id appears in several roots of one kind, only the first-listed root is kept (a backup copy shows once). Note: the Codex provider maintenance tool only covers the primary `CODEX_HOME` session directories, not additional listed roots.
 
 ## Privacy and security
 

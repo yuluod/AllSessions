@@ -10,6 +10,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/kimi.rs`：Kimi `wire.jsonl` 解析、流式内容合并、工作目录/标题关联和子 Agent 识别。
 - `sessions/opencode.rs`：OpenCode 最新正式版 SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新。
 - `sessions/zcode.rs`：ZCode CLI SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新；排除 subagent_child 会话。
+- `sessions/devin.rs`：Devin 桌面版 ACP 消息库的只读聚合、按需详情解析与刷新；结合 `state.vscdb` 会话索引补充标题与时间戳。
 - `cache.rs`：以路径、文件大小和修改时间为指纹的 SQLite 摘要/搜索缓存；负责导入旧版 JSON 索引。
 - `config.rs`：设置对话框持久化的应用配置（`AllSessions/config.json`），按来源覆盖根目录列表，优先级高于环境变量。
 - `watcher.rs`：监听来源目录，去抖后刷新索引并发送 Tauri 事件；设置保存后通过 `rewatch` 重挂监听。
@@ -29,7 +30,9 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 
 Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合。每个日志文件只缓存有界摘要贡献，完整消息和原始事件在用户打开会话时重新流式读取，并应用与其他来源相同的首尾窗口。Kimi 以 `wire.jsonl` 作为会话事件流，但工作目录和标题分别来自根目录 `kimi.json` 与相邻 `state.json`；这两个元数据文件变化时必须重新解析摘要，不能只依赖 `wire.jsonl` 指纹缓存。OpenCode 的一份 `opencode.db` 包含多条会话，摘要通过批量查询聚合，详情按会话 ID 查询；`opencode.db`、`-wal` 或 `-shm` 变化时均全量刷新该聚合来源。
 
-Pi、Kimi Code CLI、OpenCode 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。
+Pi、Kimi Code CLI、OpenCode 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor 与 Devin 同为只读来源。
+
+Devin 的一份来源包含多个按会话拆分的 `acp-messages/<uuid>.db` 消息库，摘要逐库聚合，标题与时间戳优先取 `globalStorage/state.vscdb` 索引；任一消息库或索引库变化时全量刷新该聚合来源。详细边界见 [Devin 来源说明](./sources/devin.md)。
 
 OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 存储，也不读取开发频道的带频道名数据库。详细边界见 [OpenCode 来源说明](./sources/opencode.md)。
 

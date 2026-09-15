@@ -63,6 +63,12 @@ AllSessions 将 Codex、Claude Code、Gemini CLI、Pi、Kimi Code CLI、OpenCode
 
 设置中的 Cursor 可添加用户数据目录、`state.vscdb` 文件或 transcripts 根目录。支持浏览、搜索、统计、导出和本地移除；不支持修改原始数据或直接恢复到 Cursor。存在元数据但未找到受支持正文的记录会在设置中提示，仅凭状态字段不判断格式或数据完整性；没有正文的内置草稿不计入诊断。不包含独立 CLI 的 `store.db`、旧 TXT transcripts 或完整原始事件。缺失的时间、模型与项目路径不推测。
 
+### Devin（只读）
+
+支持 Devin 桌面版按会话拆分的 SQLite 消息库（`acp-messages/<uuid>.db`，ACP JSON 消息），以及提供明文标题、工作目录和时间戳的 `globalStorage/state.vscdb` 会话索引，兼容旧版以 UUID 直接作为键的条目。默认扫描 Devin 用户数据目录（macOS 为 `~/Library/Application Support/Devin/User`，Windows 为 `%APPDATA%/Devin/User`，Linux 为 `~/.config/Devin/User`）。
+
+设置中的 Devin 可添加用户数据目录。支持浏览、搜索、统计、导出和本地移除；不支持修改原始数据或直接恢复会话。用户/助手文本、Thinking、工具调用和计划会归一化为消息；图片以占位符展示，超大的原始事件正文会被截断。没有本地消息的会话（云端会话与未发送草稿）不计入。模型按会话元数据中的记录展示（如 `swe-2-high`），不推测 Provider 名称。
+
 ## 安装包与运行
 
 从 GitHub Releases 下载当前平台安装包。普通用户不需要安装 Node.js、pnpm 或 Rust。
@@ -95,11 +101,12 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 | `KIMI_SHARE_DIR`               | Kimi Code CLI 官方数据目录           | `~/.kimi`                             |
 | `OPENCODE_DB`                  | OpenCode 官方 SQLite 数据库路径      | `~/.local/share/opencode/opencode.db` |
 | `ZCODE_DB`                     | ZCode 官方 SQLite 数据库路径         | `~/.zcode/cli/db/db.sqlite`           |
+| `DEVIN_SESSIONS_DIR`           | Devin 用户数据根目录（路径列表）     | 系统配置目录下的 `Devin/User`         |
 | `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录             | 系统用户缓存目录下的 `AllSessions`    |
 | `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存              | 未设置                                |
 | `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径     | 系统应用数据目录                      |
 
-六个 `*_SESSIONS_DIR` 变量支持用系统路径分隔符（macOS/Linux 为 `:`，Windows 为 `;`）分隔的多个路径，例如 `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`。路径支持前导 `~` 展开为用户主目录，从 Finder/Dock 启动（无 shell 展开环境变量）时同样生效。未设置 AllSessions 专用变量时，Pi 与 Kimi 会继续采用各自的官方变量。`OPENCODE_DB` 遵循 OpenCode 自身规则：绝对路径直接使用，相对路径基于 OpenCode 数据目录解析。不存在的根会被跳过；同一类来源的多个根中出现相同会话 id 时，只保留列表中靠前的根（备份副本只显示一次）。注意：Codex Provider 可见性修复工具只覆盖主 `CODEX_HOME` 下的会话目录，不包含额外列出的根。
+七个 `*_SESSIONS_DIR` 变量支持用系统路径分隔符（macOS/Linux 为 `:`，Windows 为 `;`）分隔的多个路径，例如 `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`。路径支持前导 `~` 展开为用户主目录，从 Finder/Dock 启动（无 shell 展开环境变量）时同样生效。未设置 AllSessions 专用变量时，Pi 与 Kimi 会继续采用各自的官方变量。`OPENCODE_DB` 遵循 OpenCode 自身规则：绝对路径直接使用，相对路径基于 OpenCode 数据目录解析。不存在的根会被跳过；同一类来源的多个根中出现相同会话 id 时，只保留列表中靠前的根（备份副本只显示一次）。注意：Codex Provider 可见性修复工具只覆盖主 `CODEX_HOME` 下的会话目录，不包含额外列出的根。
 
 ## 隐私与安全
 

@@ -10,8 +10,14 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/kimi.rs`：Kimi `wire.jsonl` 解析、流式内容合并、工作目录/标题关联和子 Agent 识别。
 - `sessions/opencode.rs`：OpenCode 最新正式版 SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新。
 - `sessions/zcode.rs`：ZCode CLI SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新；排除 subagent_child 会话。
-- `sessions/devin.rs`：Devin 桌面版 ACP 消息库的只读聚合、按需详情解析与刷新；结合 `state.vscdb` 会话索引补充标题与时间戳。
+- `sessions/cursor.rs`：Cursor `state.vscdb` 元数据/正文引用与 `agent-transcripts` JSONL 的只读解析。
+- `sessions/devin.rs`：Devin 桌面版 ACP 消息库与 CLI `sessions.db` 聚合库的只读聚合、按需详情解析与刷新；结合 `state.vscdb` 会话索引补充标题与时间戳。
 - `cache.rs`：以路径、文件大小和修改时间为指纹的 SQLite 摘要/搜索缓存；负责导入旧版 JSON 索引。
+- `search.rs`：全文搜索索引连接，在会话锁之外执行耗时的全文查询。
+- `workspace.rs`：`workspace.sqlite` 中的收藏、标签、备注、归档与软移除等工作区状态。
+- `deletion_backup.rs`：永久删除前的会话备份与备份清理。
+- `resume.rs`：按来源白名单构造命令在系统终端恢复会话，不接受前端传入的任意命令。
+- `updater.rs`：应用更新检查与安装。
 - `config.rs`：设置对话框持久化的应用配置（`AllSessions/config.json`），按来源覆盖根目录列表，优先级高于环境变量。
 - `watcher.rs`：监听来源目录，去抖后刷新索引并发送 Tauri 事件；设置保存后通过 `rewatch` 重挂监听。
 - `backend.rs`：前端唯一 IPC 边界，将稳定的请求契约路由到 Rust 领域模块。
@@ -32,13 +38,28 @@ Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合
 
 Pi、Kimi Code CLI、OpenCode 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor 与 Devin 同为只读来源。
 
-Devin 的一份来源包含多个按会话拆分的 `acp-messages/<uuid>.db` 消息库，摘要逐库聚合，标题与时间戳优先取 `globalStorage/state.vscdb` 索引；任一消息库或索引库变化时全量刷新该聚合来源。详细边界见 [Devin 来源说明](./sources/devin.md)。
+Devin 来源同时覆盖桌面版与 CLI 两种布局：桌面版按会话拆分 `acp-messages/<uuid>.db` 消息库，摘要逐库聚合，标题与时间戳优先取 `globalStorage/state.vscdb` 索引；CLI 的 `sessions.db` 是单库聚合，`sessions` 表提供元数据，`message_nodes` 的消息森林按 `main_chain_id` 所在链重建。桌面版镜像的 CLI 会话（`acp/devin-cli/<slug>`）与 CLI 库记录按 slug 去重，`devin:<slug>` 键冲突时保留 CLI 记录。任一消息库、索引库或 `sessions.db` 变化时全量刷新该聚合来源。详细边界见 [Devin 来源说明](./sources/devin.md)。
 
 OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 存储，也不读取开发频道的带频道名数据库。详细边界见 [OpenCode 来源说明](./sources/opencode.md)。
 
 来源列表会保留尚不存在的声明目录，以便后续刷新发现新创建的数据；监听器会回溯到最近的现有父目录，但不会监听用户主目录或文件系统根。设置对话框保存根目录后会重建来源并重挂监听，无需重启。每个 Claude 根目录会同时注册 `projects` 与 `sessions` 布局；旧版 `history.jsonl` 只会在解析对应旧版会话详情时作为补充数据读取，它本身不是独立监听目标。
 
 同一类来源可声明多个根。根列表按 `config.json` 设置（设置对话框实时生效）→ `*_SESSIONS_DIR` 环境变量（启动时读取一次，路径列表，支持 `~` 展开）→ 系统默认路径的顺序解析，逐来源独立判定。多根按声明顺序去重：同一物理文件只索引一次（归属首个前缀匹配的根）；相同 `${source_kind}:${id}` 出现在多个根时保留首个根的记录，`_key` 格式保持稳定以兼容前端已保存状态。
+
+## 来源文档
+
+各来源的数据布局与边界详见：
+
+- [Claude Code](./sources/claude-code.md)
+- [Gemini CLI](./sources/gemini-cli.md)
+- [Pi](./sources/pi.md)
+- [Kimi Code CLI](./sources/kimi-code-cli.md)
+- [OpenCode](./sources/opencode.md)
+- [ZCode](./sources/zcode.md)
+- [Cursor](./sources/cursor.md)
+- [Devin](./sources/devin.md)
+
+Codex 作为内置参考来源没有单独文档，其维护能力见 README 的 Codex Provider 章节。
 
 ## 增加新来源
 

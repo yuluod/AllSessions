@@ -4,138 +4,283 @@
 
 # AllSessions
 
-<p>A local-first desktop workspace for AI coding-agent sessions.</p>
+**A local-first desktop workspace for AI coding-agent sessions**
 
-<p><a href="./README.zh-CN.md">简体中文</a> · <a href="#features">Features</a> · <a href="#development">Development</a></p>
+Browse, search, organize, and manage local sessions from multiple AI coding agents in one place.
+
+<p>
+  <a href="./README.zh-CN.md">简体中文</a>
+  ·
+  <a href="#features">Features</a>
+  ·
+  <a href="#supported-sources">Supported sources</a>
+  ·
+  <a href="#install-and-run">Install</a>
+  ·
+  <a href="#development">Development</a>
+</p>
 
 <p>
   <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" />
   <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white" />
   <img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" />
+  <img alt="i18n" src="https://img.shields.io/badge/i18n-ZH%20%7C%20EN-7B61FF" />
 </p>
 
 </div>
 
-AllSessions combines local Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, and ZCode history in one Tauri desktop app. Rust owns session discovery, parsing, search, caching, file watching, and maintenance. The WebView is a presentation layer: no HTTP server is opened and no Node.js runtime is bundled.
+AllSessions brings local sessions from **Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, ZCode, Cursor, and Devin** into a single desktop app.
 
-> AllSessions is an independent community project. It is not affiliated with, sponsored by, or endorsed by the maintainers or vendors of the supported agents. Product names are used only to identify compatible local data sources.
+Instead of hunting through different tools and directories for past history, you can browse sessions, run full-text search, inspect tool calls, organize favorites and tags, review usage statistics, and export sessions — all in one interface.
+
+AllSessions is built on Tauri 2. Session discovery, parsing, search, caching, file watching, and maintenance are implemented in Rust; the WebView frontend only renders the UI. The app opens no local HTTP server and bundles no Node.js runtime.
+
+> [!NOTE]
+> AllSessions is an independent community project. It is not affiliated with, sponsored by, or endorsed by the maintainers or vendors of the supported agents. Product and company names are used only to identify compatible local data sources.
 
 ## Features
 
-- Browse Codex, archived Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, and ZCode sessions together
-- Filter and search by source, provider, date, project, and working directory
-- Inspect normalized conversations, tool activity, and raw events
-- Compare session, message, tool, activity, provider, and working-directory statistics by Agent
-- Organize sessions with favorites, tags, notes, local archive/removal state, and reusable filters
-- Select loaded sessions for JSON or Markdown export, with optional path and session-ID redaction
-- Reveal a session source file or project directory in the system file manager
-- Choose from five visual themes with light, dark, or system color schemes
-- Navigate primary views, settings sections, and conversations with keyboard shortcuts
-- Refresh through native filesystem watching and Tauri events
-- Inspect per-source scan health and copy sanitized diagnostics without session content or local paths
+### Unified multi-agent sessions
+
+- Browse local sessions from multiple AI coding agents in one interface
+- Filter by source, provider, date, project, and working directory
+- Inspect normalized conversations, thinking, tool calls, and raw events
 - Hide subagents, sidechains, thinking, and injected context by default
-- Search long sessions with a per-message SQLite full-text index while retaining head/tail detail windows and a 64 MB LRU
+- Watch source files and refresh automatically
 
-Search combines whitespace-separated terms with AND across titles, paths, tags, notes, and parsed message text. One- and two-character terms use substring matching; longer terms use a local trigram index. Results support relevance or recent-activity ordering. Click a match to open nearby messages beyond the overview's head/tail window; in-session highlighting and previous/next navigation cover the currently loaded messages. The rebuildable local index requires additional time and disk space on the first scan, without cloud services or models.
+### Full-text search
 
-- Persist the incremental index in SQLite and import the previous `session-index.json` on upgrade
-- Start with safe defaults when configuration is damaged, then guide the user to repair source settings
-- Back up the affected local source records before a confirmed permanent deletion
-- Repair Codex provider visibility through an opt-in, fingerprinted, field-level rollback workflow
+- Search titles, paths, tags, notes, and message text together
+- Whitespace-separated multi-term matching; every term must hit
+- One- and two-character terms use substring matching; longer terms use a local trigram index
+- Order results by relevance or recent activity
+- Click a match snippet to jump to the surrounding messages
+- In-session highlighting with previous/next navigation
+
+Full-text search uses a per-message SQLite index. The index lives entirely on your machine — no cloud services or models — though the first scan takes extra time and disk space.
+
+Long sessions keep bounded head/tail detail windows and a 64 MB LRU cache; matched messages load on demand beyond the overview window.
+
+### Organize and statistics
+
+- Favorite sessions and attach tags and notes
+- Save reusable filters
+- Manage local archive/removal state
+- Compare session, message, tool, activity, provider, and working-directory statistics by agent
+- Batch-select loaded sessions and export as JSON or Markdown
+- Optional export redaction, off by default
+
+### Desktop integration
+
+- Reveal a session source file or project directory in the system file manager
+- Open a system terminal in the session's working directory
+- Resume the session in the corresponding agent (Cursor and Devin are read-only sources and do not support resume)
+- Pick a terminal app or configure a custom executable
+- Five visual themes
+- Light, dark, and system color schemes
+- Keyboard shortcuts for primary views, settings sections, and conversations
+
+### Local-first
+
+- Parsing, search, and caching all happen locally
+- Incremental SQLite index cache
+- Imports the legacy `session-index.json` on first upgrade
+- Starts with safe defaults when the configuration is damaged and guides you to repair source settings
+- Per-source scan health status
+- Copyable sanitized diagnostics without session content or local paths
+- Local backup before permanently deleting original records
 
 ## Supported sources
 
-| Source         | Default path                          | Coverage                                                                                                                                                                                                              |
-| -------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Codex          | `~/.codex/sessions`                   | Metadata, messages, tools, raw events, search, live refresh                                                                                                                                                           |
-| Codex Archived | `~/.codex/archived_sessions`          | Browse, search, and permanently delete archived sessions; files are not moved and archive state cannot be restored                                                                                                    |
-| Claude Code    | `~/.claude/{projects,sessions}`       | Concurrently scans modern `projects/**/*.jsonl` and legacy `sessions/*.json`; supports messages, thinking, tools/results, search, and live refresh, with `history.jsonl` enrichment for legacy details when available |
-| Gemini CLI     | `~/.gemini/tmp/*/logs.json`           | Streaming scan, per-file incremental cache, session aggregation, and bounded on-demand details                                                                                                                        |
-| Pi             | `~/.pi/agent/sessions`                | Rebuilds the current branch from v1-v3 JSONL trees; supports messages, thinking, tools, summaries, raw events, search, and live refresh                                                                               |
-| Kimi Code CLI  | `~/.kimi/sessions`                    | Reads `wire.jsonl`, maps working directories and custom titles, merges streamed content, and exposes subagents, tools, raw events, search, and live refresh                                                           |
-| OpenCode       | `~/.local/share/opencode/opencode.db` | Reads the SQLite schema used by the latest stable release; supports messages, reasoning, tools, subagents, raw events, search, and WAL-based live refresh; source data is read-only                                   |
-| ZCode          | `~/.zcode/cli/db/db.sqlite`           | Reads the SQLite schema used by ZCode CLI; supports messages, reasoning, tools, compaction markers, raw events, search, and WAL-based live refresh; subagent sessions are excluded; source data is read-only          |
+| Source | Default path | Coverage |
+| --- | --- | --- |
+| **Codex** | `~/.codex/sessions` | Metadata, messages, tools, raw events, search, live refresh |
+| **Codex Archived** | `~/.codex/archived_sessions` | Browse, search, permanently delete archived sessions; files are not moved and archive state is not restored |
+| **Claude Code** | `~/.claude/{projects,sessions}` | `projects/**/*.jsonl` and legacy `sessions/*.json`; conversations, thinking, tools/results, search, live refresh, with `history.jsonl` enrichment for legacy details when available |
+| **Gemini CLI** | `~/.gemini/tmp/*/logs.json` | Streaming scan, per-`sessionId` aggregation, per-file incremental cache, bounded on-demand details |
+| **Pi** | `~/.pi/agent/sessions` | Rebuilds the current branch from v1-v3 JSONL trees; messages, thinking, tools, summaries, raw events, search, live refresh |
+| **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`, working directories, custom titles, streamed content, subagents, tools, raw events, search, live refresh |
+| **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source |
+| **ZCode** | `~/.zcode/cli/db/db.sqlite` | SQLite; messages, thinking, tools, compaction markers, raw events, search, WAL live refresh; subagent sessions excluded; read-only source |
+| **Cursor** | `Cursor/User` under the OS config dir | IDE `conversation` records and agent transcripts; browsing, search, statistics, export, local removal; read-only source |
+| **Devin** | `Devin/User` under the OS config dir and `~/.local/share/devin/cli` | Desktop `acp-messages`/`state.vscdb` and CLI `sessions.db`; browsing, search, statistics, export, local removal; read-only source |
 
-### Cursor (read-only)
-
-Supports IDE inline `conversation` records, ordered `fullConversationHeadersOnly` / `bubbleId` messages, and `~/.cursor/projects/**/agent-transcripts/**/*.jsonl`. Discovery uses the Cursor user-data directory (`~/Library/Application Support/Cursor/User` on macOS, `%APPDATA%/Cursor/User` on Windows, `~/.config/Cursor/User` on Linux) plus transcripts. Readable database sessions take priority over transcripts with the same ID.
-
-Cursor settings accept a user-data directory, a `state.vscdb` file, or a transcripts root. Browsing, search, statistics, export, and local removal are supported; source mutation and resume are not. Records with metadata but no supported body are reported in settings; the state field alone does not establish the format or data completeness. Empty built-in drafts are excluded. CLI `store.db`, legacy TXT transcripts, and complete raw events are not supported. Missing timestamps, models, and project paths are not inferred.
-
-### Devin (read-only)
-
-Supports the Devin desktop app's per-session SQLite message stores (`acp-messages/<uuid>.db`, ACP JSON messages) together with the `globalStorage/state.vscdb` session index that carries plaintext titles, working directories, and timestamps, including legacy UUID-keyed entries. Discovery uses the Devin user-data directory (`~/Library/Application Support/Devin/User` on macOS, `%APPDATA%/Devin/User` on Windows, `~/.config/Devin/User` on Linux).
-
-Devin settings accept that user-data directory. Browsing, search, statistics, export, and local removal are supported; source mutation and resume are not. User/assistant text, thinking, tool calls, and plans are mapped to normalized messages; images appear as placeholders and oversized raw payloads are truncated. Sessions without local messages — cloud sessions and unsent drafts — are excluded. Models are shown as recorded in the session metadata (e.g. `swe-2-high`), not mapped to provider names.
+For read-only sources, AllSessions never modifies the agent's original data. You can still remove records locally inside AllSessions; deleting the original records must be done in the corresponding agent.
 
 ## Install and run
 
-Download the installer for your platform from GitHub Releases. End users do not need Node.js, pnpm, Rust, or a source checkout.
+Download the installer for your platform from GitHub Releases.
 
-| Platform                | Release file              |
-| ----------------------- | ------------------------- |
-| Windows x64             | `*-windows-x64-setup.exe` |
-| macOS ARM64 / x64       | `*-mac-<arch>.dmg`        |
-| Debian/Ubuntu Linux x64 | `*-linux-x64.deb`         |
+End users **do not need Node.js, pnpm, or Rust**.
 
-All platforms use the same Tauri 2 shell, tray actions, and signed updater. GNOME may require an AppIndicator/KStatusNotifierItem extension. macOS builds are not notarized yet, so Gatekeeper may require explicit local approval.
+| Platform | Release file |
+| --- | --- |
+| Windows x64 | `*-windows-x64-setup.exe` |
+| macOS ARM64 / x64 | `*-mac-<arch>.dmg` |
+| Debian / Ubuntu Linux x64 | `*-linux-x64.deb` |
+
+Windows, macOS, and Linux share the same Tauri 2 app shell, system tray, and signed update flow.
+
+> [!NOTE]
+> Some GNOME desktops require an AppIndicator/KStatusNotifierItem extension.
+>
+> macOS builds are not notarized yet; you may need to allow the app in system security settings on first launch.
 
 ## Configuration
 
-The toolbar **Settings** button opens a dialog for switching the UI language and appearance, editing per-source paths (with `~` expansion), inspecting source health, copying sanitized diagnostics, and reviewing local index and deletion-backup storage. Appearance settings include five themes plus light, dark, and system color schemes. Source paths are persisted to `AllSessions/config.json` in the user config directory (override with `ALLSESSIONS_CONFIG_PATH`) and take effect immediately; a configured source no longer reads its environment variable, and "Restore default" falls back to the env var or system default path. If the configuration file is damaged, the app starts with safe defaults and opens Source Settings so it can be replaced without manual file editing.
+Click **Settings** in the toolbar to:
 
-Set these before starting the desktop app (values are read once at startup):
+- Switch language and appearance
+- Edit per-source session paths
+- Inspect source health status
+- Copy sanitized diagnostics
+- View and clear the index cache
+- Review the permanent-deletion backup location
 
-| Variable                       | Purpose                                  | Default                                      |
-| ------------------------------ | ---------------------------------------- | -------------------------------------------- |
-| `CODEX_HOME`                   | Codex data root (single path)            | `~/.codex`                                   |
-| `CODEX_SESSIONS_DIR`           | Codex session roots (path list)          | `$CODEX_HOME/sessions`                       |
-| `CODEX_ARCHIVED_SESSIONS_DIR`  | Archived Codex session roots (path list) | `$CODEX_HOME/archived_sessions`              |
-| `CLAUDE_SESSIONS_DIR`          | Claude Code roots (path list)            | `~/.claude`                                  |
-| `GEMINI_SESSIONS_DIR`          | Gemini CLI roots (path list)             | `~/.gemini`                                  |
-| `PI_SESSIONS_DIR`              | Pi session roots (path list)             | `~/.pi/agent/sessions`                       |
-| `PI_CODING_AGENT_SESSION_DIR`  | Pi's official session directory          | —                                            |
-| `PI_CODING_AGENT_DIR`          | Pi's official data directory             | `~/.pi/agent`                                |
-| `KIMI_SESSIONS_DIR`            | Kimi Code CLI data roots (path list)     | `~/.kimi`                                    |
-| `KIMI_SHARE_DIR`               | Kimi Code CLI's official data directory  | `~/.kimi`                                    |
-| `OPENCODE_DB`                  | OpenCode's official SQLite database path | `~/.local/share/opencode/opencode.db`        |
-| `ZCODE_DB`                     | ZCode's official SQLite database path    | `~/.zcode/cli/db/db.sqlite`                  |
-| `DEVIN_SESSIONS_DIR`           | Devin user-data roots (path list)        | `<OS config dir>/Devin/User`                 |
-| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite index directory              | Platform cache directory under `AllSessions` |
-| `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset                                        |
-| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions user-data SQLite path        | Platform app-data directory                  |
+Source paths support `~` expansion.
 
-The seven `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator (`:` on macOS/Linux, `;` on Windows), e.g. `CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions`. A leading `~` expands to the home directory, so lists also work when the app is launched from Finder/Dock. Pi and Kimi's official variables are used when their AllSessions-specific variable is unset. `OPENCODE_DB` follows OpenCode's own behavior: an absolute path is used directly, while a relative path is resolved under OpenCode's data directory. Non-existent roots are skipped. If the same session id appears in several roots of one kind, only the first-listed root is kept (a backup copy shows once). Note: the Codex provider maintenance tool only covers the primary `CODEX_HOME` session directories, not additional listed roots.
+Configuration is stored at the following location under the user config directory:
+
+```text
+AllSessions/config.json
+```
+
+You can also point `ALLSESSIONS_CONFIG_PATH` elsewhere.
+
+Saved configuration takes effect immediately. Once a source has an explicit configured path, it no longer reads its environment variable; choosing "Restore default" falls back to the environment variable or the system default path.
+
+If the configuration file is damaged, AllSessions starts with safe defaults and opens Source Settings automatically — no manual file editing required.
+
+### Environment variables
+
+Set environment variables before starting the desktop app; they are read once at startup.
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CODEX_HOME` | Codex data root (single path) | `~/.codex` |
+| `CODEX_SESSIONS_DIR` | Codex session roots (path list) | `$CODEX_HOME/sessions` |
+| `CODEX_ARCHIVED_SESSIONS_DIR` | Archived Codex session roots (path list) | `$CODEX_HOME/archived_sessions` |
+| `CLAUDE_SESSIONS_DIR` | Claude Code roots (path list) | `~/.claude` |
+| `GEMINI_SESSIONS_DIR` | Gemini CLI roots (path list) | `~/.gemini` |
+| `PI_SESSIONS_DIR` | Pi session roots (path list) | `~/.pi/agent/sessions` |
+| `PI_CODING_AGENT_SESSION_DIR` | Pi's official session directory | — |
+| `PI_CODING_AGENT_DIR` | Pi's official data directory | `~/.pi/agent` |
+| `KIMI_SESSIONS_DIR` | Kimi Code CLI data roots (path list) | `~/.kimi` |
+| `KIMI_SHARE_DIR` | Kimi Code CLI's official data directory | `~/.kimi` |
+| `OPENCODE_DB` | OpenCode's official SQLite database path | `~/.local/share/opencode/opencode.db` |
+| `ZCODE_DB` | ZCode's official SQLite database path | `~/.zcode/cli/db/db.sqlite` |
+| `DEVIN_SESSIONS_DIR` | Devin data roots (path list) | `Devin/User` and `~/.local/share/devin/cli` |
+| `SESSION_VIEWER_CACHE_DIR` | Rust SQLite index directory | Platform cache directory under `AllSessions` |
+| `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset |
+| `ALLSESSIONS_WORKSPACE_DB` | AllSessions user-data SQLite path | Platform app-data directory |
+
+The seven `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator:
+
+- macOS / Linux: `:`
+- Windows: `;`
+
+For example:
+
+```bash
+CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions
+```
+
+A leading `~` expands to the home directory, which also works when the app is launched from Finder/Dock without a shell to expand it.
+
+When the AllSessions-specific variable is unset, Pi and Kimi keep using their official variables.
+
+`OPENCODE_DB` follows OpenCode's own path rules: an absolute path is used directly, while a relative path resolves under OpenCode's data directory.
+
+Non-existent source roots are skipped automatically. If the same session ID appears in several roots of one kind, only the first-listed root is kept, so a backup copy is shown once.
+
+> [!NOTE]
+> The Codex provider visibility repair tool only covers session directories under the primary `CODEX_HOME`, not additionally listed roots.
 
 ## Privacy and security
 
-Local agent history can contain prompts, tool output, source code, paths, and provider identifiers. Browsing, search, and export do not modify source data. Explicitly confirmed permanent deletion modifies the original Codex, Claude Code, or Gemini CLI record after creating a local backup; Codex provider maintenance also modifies Codex data after it is enabled and execution is confirmed. Pi, Kimi Code CLI, OpenCode, and ZCode are read-only sources in this release: AllSessions local removal remains available, but original records can only be deleted in the source agent.
+AllSessions works with local AI session data, which may contain:
 
-Favorites, tags, notes, reusable filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`; they never modify Agent source records and are not deleted when the rebuildable index cache is cleared. Export redaction is optional and off by default. When enabled, it removes known session identifiers and common local-path patterns, but exports should still be reviewed before sharing.
+- Prompts and responses
+- Tool output
+- Source code
+- Working directories
+- Provider identifiers
+- Other session context
 
-- Review exports, logs, screenshots, and issues before sharing.
-- Treat `workspace.sqlite`, index caches, deletion backups, and maintenance backups as sensitive local data. Backups contain original records and are not encrypted.
-- Never publish real sessions, databases, credentials, or unsanitized paths.
-- The app has no local listening port; UI/backend communication uses Tauri IPC and events only.
+Normal browsing, search, and export never modify agent source data.
 
-See [SECURITY.md](./SECURITY.md) for private vulnerability reporting and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for Rust dependency licenses.
+After explicit confirmation of permanent deletion, AllSessions creates a local backup before modifying the original Codex, Claude Code, or Gemini CLI records.
+
+The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
+
+Pi, Kimi Code CLI, OpenCode, ZCode, Cursor, and Devin are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
+
+Favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
+
+### Export and local data
+
+Export redaction is off by default.
+
+When enabled, AllSessions removes known session identifiers and common local-path patterns — but automatic redaction cannot cover every kind of sensitive information.
+
+> [!WARNING]
+> - Review and sanitize export files, logs, screenshots, and issues before sharing.
+> - Treat `workspace.sqlite`, index caches, deletion backups, and maintenance backups as sensitive local data.
+> - Backups contain original records and are not encrypted.
+> - Never publish real sessions, databases, caches, backups, credentials, or unsanitized local paths.
+
+AllSessions opens no local HTTP port; the frontend and backend communicate only through Tauri IPC and events.
+
+See [SECURITY.md](./SECURITY.md) for vulnerability reporting.
+
+See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for Rust dependency licenses.
 
 ## Codex provider maintenance
 
-Open **Tools** and enable maintenance mode to preview a third-party provider rebucket plan. Apply and rollback verify that Codex App is closed, reject stale plans, create backups before writes, and restore only `model_provider` fields so newer data remains intact. The tool does not modify `config.toml` or other agents' data.
+AllSessions ships an **off-by-default** Codex provider maintenance tool for previewing a third-party provider rebucket plan.
 
-See [Codex provider visibility repair](./docs/codex-provider-repair.md) for the full safety boundary.
+Open **Tools** and enable maintenance mode to preview the plan before deciding whether to apply it.
+
+On apply and rollback:
+
+- Verify Codex App has exited
+- Invalidate stale plans after data changes
+- Create a backup before writing
+- Restore only `model_provider` fields, preserving newer data
+
+The tool modifies neither `config.toml` nor other agents' data.
+
+See [Codex provider visibility repair](./docs/codex-provider-repair.zh-CN.md) (Chinese) for the full boundary.
 
 ## Development
 
-Requirements: Node.js 24, pnpm 11.10, Rust stable, and the current platform's [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/). Node.js is only a frontend build/release tool and is not part of the packaged runtime.
+### Requirements
+
+- Node.js 24
+- pnpm 12
+- Rust stable
+- [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform
+
+Node.js is used only for frontend builds and release scripts; it is not part of the packaged runtime.
+
+### Start development
 
 ```bash
 pnpm install
 pnpm desktop:dev
 ```
 
-Desktop development (`pnpm dev` / `pnpm desktop:dev`) loads the UI through the Vite dev server, so frontend changes hot-reload without restarting. For a UI-only browser preview, run `pnpm web:dev`. Desktop APIs and local session loading remain available only in the Tauri app.
+Desktop development (`pnpm dev` / `pnpm desktop:dev`) loads the UI through the Vite dev server. Frontend changes hot-reload without restarting the app.
+
+To preview the UI in a browser only:
+
+```bash
+pnpm web:dev
+```
+
+Desktop APIs and local session loading remain available only inside the Tauri app.
+
+### Verify and build
 
 ```bash
 pnpm test
@@ -146,7 +291,29 @@ pnpm licenses:check
 pnpm release:build
 ```
 
-The session store and normalized contract live in [`src-tauri/src/sessions.rs`](./src-tauri/src/sessions.rs); format-specific adapters live under `src-tauri/src/sessions/`. Caching, the Tauri boundary, and maintenance live in `cache.rs`, `backend.rs`, and `maintenance.rs`. Read the [source architecture](./docs/source-adapters.md) before adding an agent.
+### Project structure
+
+Session store and normalized contract:
+
+```text
+src-tauri/src/sessions.rs
+```
+
+Per-source format adapters:
+
+```text
+src-tauri/src/sessions/
+```
+
+Other core modules:
+
+```text
+cache.rs        # caching
+backend.rs      # Tauri boundary
+maintenance.rs  # maintenance operations
+```
+
+Read the [source architecture](./docs/source-adapters.md) before adding a new source.
 
 ## License
 

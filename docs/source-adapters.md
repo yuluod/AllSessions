@@ -12,6 +12,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/zcode.rs`：ZCode CLI SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新；排除 subagent_child 会话。
 - `sessions/cursor.rs`：Cursor `state.vscdb` 元数据/正文引用与 `agent-transcripts` JSONL 的只读解析。
 - `sessions/devin.rs`：Devin 桌面版 ACP 消息库与 CLI `sessions.db` 聚合库的只读聚合、按需详情解析与刷新；结合 `state.vscdb` 会话索引补充标题与时间戳。
+- `sessions/copilot.rs`：Copilot CLI `events.jsonl` 事件流与相邻 `workspace.yaml` 元数据的只读解析；toolRequests 与 execution_start 去重，execution_complete 经 toolCallId 映射回工具名。
 - `cache.rs`：以路径、文件大小和修改时间为指纹的 SQLite 摘要/搜索缓存；负责导入旧版 JSON 索引。
 - `search.rs`：全文搜索索引连接，在会话锁之外执行耗时的全文查询。
 - `workspace.rs`：`workspace.sqlite` 中的收藏、标签、备注、归档与软移除等工作区状态。
@@ -36,7 +37,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 
 Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合。每个日志文件只缓存有界摘要贡献，完整消息和原始事件在用户打开会话时重新流式读取，并应用与其他来源相同的首尾窗口。Kimi 以 `wire.jsonl` 作为会话事件流，但工作目录和标题分别来自根目录 `kimi.json` 与相邻 `state.json`；这两个元数据文件变化时必须重新解析摘要，不能只依赖 `wire.jsonl` 指纹缓存。OpenCode 的一份 `opencode.db` 包含多条会话，摘要通过批量查询聚合，详情按会话 ID 查询；`opencode.db`、`-wal` 或 `-shm` 变化时均全量刷新该聚合来源。
 
-Pi、Kimi Code CLI、OpenCode 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor 与 Devin 同为只读来源。
+Pi、Kimi Code CLI、OpenCode 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor、Devin 与 Copilot CLI 同为只读来源。
 
 Devin 来源同时覆盖桌面版与 CLI 两种布局：桌面版按会话拆分 `acp-messages/<uuid>.db` 消息库，摘要逐库聚合，标题与时间戳优先取 `globalStorage/state.vscdb` 索引；CLI 的 `sessions.db` 是单库聚合，`sessions` 表提供元数据，`message_nodes` 的消息森林按 `main_chain_id` 所在链重建。桌面版镜像的 CLI 会话（`acp/devin-cli/<slug>`）与 CLI 库记录按 slug 去重，`devin:<slug>` 键冲突时保留 CLI 记录。任一消息库、索引库或 `sessions.db` 变化时全量刷新该聚合来源。详细边界见 [Devin 来源说明](./sources/devin.md)。
 
@@ -58,6 +59,7 @@ OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 
 - [ZCode](./sources/zcode.md)
 - [Cursor](./sources/cursor.md)
 - [Devin](./sources/devin.md)
+- [GitHub Copilot CLI](./sources/copilot.md)
 
 Codex 作为内置参考来源没有单独文档，其维护能力见 README 的 Codex Provider 章节。
 

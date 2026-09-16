@@ -62,6 +62,7 @@ const SOURCE_RAIL_AGENTS = [
   { agent: "zcode", kinds: ["zcode"] },
   { agent: "cursor", kinds: ["cursor"] },
   { agent: "devin", kinds: ["devin"] },
+  { agent: "copilot", kinds: ["copilot"] },
 ];
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";
@@ -743,6 +744,8 @@ function resumeCommandForKind(kind, sessionId) {
       return `opencode resume ${sessionId}`;
     case "zcode":
       return `zcode --resume ${sessionId}`;
+    case "copilot":
+      return `copilot --resume ${sessionId}`;
     default:
       return null;
   }

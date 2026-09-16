@@ -18,6 +18,7 @@ fn resume_command(kind: &str, id: &str) -> Option<String> {
         "kimi" => "kimi --resume",
         "opencode" => "opencode resume",
         "zcode" => "zcode --resume",
+        "copilot" => "copilot --resume",
         _ => return None,
     };
     Some(format!("{template} {id}"))

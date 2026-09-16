@@ -16,6 +16,7 @@ use walkdir::WalkDir;
 use crate::cache::IndexCache;
 use crate::error::ApiError;
 
+mod copilot;
 mod cursor;
 mod devin;
 mod gemini;
@@ -51,6 +52,7 @@ enum SourceFormat {
     ZCode,
     Cursor,
     Devin,
+    Copilot,
 }
 
 #[derive(Clone)]
@@ -511,9 +513,11 @@ impl SessionStore {
                         continue;
                     }
                 };
-                let parsed = if matches!(source.format, SourceFormat::Kimi) {
+                let parsed = if matches!(source.format, SourceFormat::Kimi | SourceFormat::Copilot)
+                {
                     // Kimi 的标题保存在相邻 state.json，工作目录映射保存在 kimi.json；
-                    // 仅使用 wire.jsonl 指纹会让这些元数据变化后继续命中旧缓存。
+                    // Copilot 的标题/工作目录保存在相邻 workspace.yaml。
+                    // 仅使用事件文件指纹会让这些元数据变化后继续命中旧缓存。
                     parse_summary(&path, source)
                 } else {
                     self.index_cache
@@ -587,7 +591,10 @@ impl SessionStore {
                         | SourceFormat::Cursor
                         | SourceFormat::Devin
                 ) || matches!(source.format, SourceFormat::Kimi)
-                    && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl"))
+                    && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl")
+                    || matches!(source.format, SourceFormat::Copilot)
+                        && path.file_name().and_then(|value| value.to_str())
+                            == Some("workspace.yaml"))
                     && belongs_to_source
             })
         }) {
@@ -1044,6 +1051,7 @@ impl SessionStore {
                 | SourceFormat::ZCode
                 | SourceFormat::Cursor
                 | SourceFormat::Devin
+                | SourceFormat::Copilot
         ) {
             return Err(read_only_source_error());
         }
@@ -1060,6 +1068,7 @@ impl SessionStore {
                 | SourceFormat::ZCode
                 | SourceFormat::Cursor
                 | SourceFormat::Devin
+                | SourceFormat::Copilot
         ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
         }
@@ -1573,6 +1582,8 @@ impl ParseState {
                 // Devin 的模型（如 swe-2-high、claude-opus-5-*）记录在消息库
                 // configOptions 里，未记录时不做推断。
                 SourceFormat::Devin => "unknown",
+                // Copilot CLI 由 GitHub 代理模型，事件里只有模型名没有 provider。
+                SourceFormat::Copilot => "github",
             }
         } else {
             &self.provider
@@ -1588,6 +1599,7 @@ impl ParseState {
                 SourceFormat::ZCode => "zcode",
                 SourceFormat::Cursor => "cursor",
                 SourceFormat::Devin => "devin",
+                SourceFormat::Copilot => "copilot_cli",
             }
         } else {
             &self.originator
@@ -1600,6 +1612,7 @@ fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String
     match source.format {
         SourceFormat::Pi => return pi::parse_summary(path, source),
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
+        SourceFormat::Copilot => return copilot::parse_summary(path, source),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过聚合来源解析".into()),
@@ -1628,6 +1641,7 @@ fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
     match source.format {
         SourceFormat::Pi => return pi::parse_detail(path, source),
         SourceFormat::Kimi => return kimi::parse_detail(path, source),
+        SourceFormat::Copilot => return copilot::parse_detail(path, source),
         _ => {}
     }
     visit_detail(path, source, &mut |_| {})
@@ -1641,6 +1655,7 @@ fn visit_detail(
     match source.format {
         SourceFormat::Pi => return pi::visit_detail(path, source, visitor),
         SourceFormat::Kimi => return kimi::visit_detail(path, source, visitor),
+        SourceFormat::Copilot => return copilot::visit_detail(path, source, visitor),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过详情定位器解析".into()),
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过详情定位器解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过详情定位器解析".into()),
@@ -1813,6 +1828,7 @@ pub(crate) struct RootLists {
     pub zcode: Vec<PathBuf>,
     pub cursor: Vec<PathBuf>,
     pub devin: Vec<PathBuf>,
+    pub copilot: Vec<PathBuf>,
 }
 
 fn resolve_kind(
@@ -1947,7 +1963,8 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             vec![
                 dirs::config_dir()
                     .unwrap_or_else(|| home.clone())
-                    .join("Cursor").join("User"),
+                    .join("Cursor")
+                    .join("User"),
                 home.join(".cursor").join("projects"),
             ]
         });
@@ -1962,6 +1979,11 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             devin_cli_root(&home),
         ],
     );
+    let (copilot, copilot_origin) = resolve_kind(
+        config.get("copilot"),
+        &["COPILOT_SESSIONS_DIR"],
+        vec![home.join(".copilot").join("session-state")],
+    );
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -1973,6 +1995,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         "zcode": { "roots": zcode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": zcode_origin },
         "cursor": { "roots": cursor.iter().map(|path|path.to_string_lossy()).collect::<Vec<_>>(), "origin": if config.cursor.is_some() { "config" } else { "default" } },
         "devin": { "roots": devin.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": devin_origin },
+        "copilot": { "roots": copilot.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": copilot_origin },
     });
     (
         RootLists {
@@ -1986,6 +2009,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             zcode,
             cursor,
             devin,
+            copilot,
         },
         description,
     )
@@ -2073,6 +2097,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "zcode": describe_protected_source_roots(config.zcode.as_deref().unwrap_or_default(), &inherited.zcode),
         "cursor": describe_protected_source_roots(config.cursor.as_deref().unwrap_or_default(), &inherited.cursor),
         "devin": describe_protected_source_roots(config.devin.as_deref().unwrap_or_default(), &inherited.devin),
+        "copilot": describe_protected_source_roots(config.copilot.as_deref().unwrap_or_default(), &inherited.copilot),
     })
 }
 
@@ -2124,6 +2149,13 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
         display_name: "Devin",
         root: root.clone(),
         format: SourceFormat::Devin,
+        archived: false,
+    }));
+    sources.extend(lists.copilot.iter().map(|root| Source {
+        kind: "copilot",
+        display_name: "Copilot CLI",
+        root: root.clone(),
+        format: SourceFormat::Copilot,
         archived: false,
     }));
     sources
@@ -2240,6 +2272,9 @@ fn discover_files(source: &Source) -> Vec<PathBuf> {
     if matches!(source.format, SourceFormat::Kimi) {
         return kimi::discover_files(source);
     }
+    if matches!(source.format, SourceFormat::Copilot) {
+        return copilot::discover_files(source);
+    }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
             "json"
@@ -2271,6 +2306,9 @@ fn source_matches_path(source: &Source, path: &Path) -> bool {
     }
     if matches!(source.format, SourceFormat::Kimi) {
         return kimi::matches_path(path);
+    }
+    if matches!(source.format, SourceFormat::Copilot) {
+        return copilot::matches_path(&source.root, path);
     }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
@@ -3423,6 +3461,7 @@ mod tests {
             zcode: Some(Vec::new()),
             cursor: Some(Vec::new()),
             devin: Some(Vec::new()),
+            copilot: Some(Vec::new()),
         }
     }
 
@@ -3665,6 +3704,7 @@ mod tests {
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
+                copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3793,6 +3833,7 @@ mod tests {
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
+                copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3848,6 +3889,7 @@ mod tests {
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
+                copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3906,6 +3948,7 @@ mod tests {
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
+                copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -4600,6 +4643,7 @@ mod tests {
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
+                copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

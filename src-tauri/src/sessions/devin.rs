@@ -1365,7 +1365,8 @@ mod tests {
         assert_eq!(session.summary["source_read_only"], true);
         assert!(session.search_text.contains("请修复登录页"));
         assert!(parsed.active_paths.contains(
-            root.join("acp-messages").join("ses-main.db")
+            root.join("acp-messages")
+                .join("ses-main.db")
                 .to_string_lossy()
                 .as_ref()
         ));
@@ -1620,9 +1621,12 @@ mod tests {
         assert_eq!(session.summary["source_read_only"], true);
         assert!(session.summary["timestamp"].is_string());
         assert!(session.search_text.contains("修复登录页"));
-        assert!(parsed
-            .active_paths
-            .contains(root.join("cli").join("sessions.db").to_string_lossy().as_ref()));
+        assert!(parsed.active_paths.contains(
+            root.join("cli")
+                .join("sessions.db")
+                .to_string_lossy()
+                .as_ref()
+        ));
     }
 
     #[test]
@@ -1712,14 +1716,26 @@ mod tests {
     fn 监听规则覆盖消息库_索引库与_cli_库() {
         let root = Path::new("/data/Devin/User");
         assert!(matches_path(root, &root.join("acp-messages").join("a.db")));
-        assert!(matches_path(root, &root.join("acp-messages").join("a.db-wal")));
-        assert!(matches_path(root, &root.join("globalStorage").join("state.vscdb")));
+        assert!(matches_path(
+            root,
+            &root.join("acp-messages").join("a.db-wal")
+        ));
+        assert!(matches_path(
+            root,
+            &root.join("globalStorage").join("state.vscdb")
+        ));
         assert!(matches_path(
             root,
             &root.join("globalStorage").join("state.vscdb-wal")
         ));
-        assert!(!matches_path(root, &root.join("acp-messages").join("a.db-shm")));
-        assert!(!matches_path(root, &root.join("globalStorage").join("other.dbx")));
+        assert!(!matches_path(
+            root,
+            &root.join("acp-messages").join("a.db-shm")
+        ));
+        assert!(!matches_path(
+            root,
+            &root.join("globalStorage").join("other.dbx")
+        ));
         assert!(!matches_path(
             root,
             Path::new("/data/Devin/User-other/a.db")
@@ -1729,7 +1745,10 @@ mod tests {
         assert!(matches_path(cli_root, &cli_root.join("sessions.db-wal")));
         assert!(!matches_path(cli_root, &cli_root.join("sessions.db-shm")));
         let data_root = Path::new("/data/devin");
-        assert!(matches_path(data_root, &data_root.join("cli").join("sessions.db")));
+        assert!(matches_path(
+            data_root,
+            &data_root.join("cli").join("sessions.db")
+        ));
         assert!(matches_path(
             Path::new("/data/devin/cli/sessions.db"),
             Path::new("/data/devin/cli/sessions.db-wal")

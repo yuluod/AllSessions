@@ -483,7 +483,7 @@ mod tests {
     fn source(root: &Path) -> Source {
         Source {
             kind: "copilot",
-            display_name: "Copilot CLI",
+            display_name: "GitHub Copilot",
             root: root.into(),
             format: SourceFormat::Copilot,
             archived: false,

@@ -1,6 +1,6 @@
-# GitHub Copilot CLI 来源说明
+# GitHub Copilot 来源说明
 
-只读接入 Copilot CLI 本地会话记录。默认根目录 `~/.copilot/session-state`；设置中的来源目录或 `COPILOT_SESSIONS_DIR` 可覆盖。
+只读接入 GitHub Copilot CLI 本地会话记录。默认根目录 `~/.copilot/session-state`；设置中的来源目录或 `COPILOT_SESSIONS_DIR` 可覆盖。
 
 - 每个会话一个目录 `<session-id>/`，内含 `events.jsonl` 事件流与 `workspace.yaml` 元数据；发现规则只匹配会话目录下的 `events.jsonl`，`checkpoints/` 等子目录不算。
 - 会话 ID 依次取 `session.start` 的 `sessionId`、`workspace.yaml` 的 `id`、目录名；工作目录取 `workspace.yaml` 的 `cwd`/`git_root` 或 `session.start` 的 `context.cwd`/`gitRoot`。

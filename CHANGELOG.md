@@ -6,7 +6,7 @@
 
 ### 新增
 
-- 增加 GitHub Copilot CLI 只读会话来源：解析 `~/.copilot/session-state/<id>/` 下的 `events.jsonl` 事件流与 `workspace.yaml` 元数据；支持浏览、搜索、统计、导出、本地移除和 `copilot --resume` 终端恢复。
+- 增加 GitHub Copilot 只读会话来源：解析 `~/.copilot/session-state/<id>/` 下的 `events.jsonl` 事件流与 `workspace.yaml` 元数据；支持浏览、搜索、统计、导出、本地移除和 `copilot --resume` 终端恢复。
 
 ## [0.1.2] - 2026-09-15
 

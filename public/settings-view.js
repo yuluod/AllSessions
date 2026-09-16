@@ -18,7 +18,7 @@ const SOURCE_KINDS = [
   { key: "zcode", agent: "zcode", label: "ZCode" },
   { key: "cursor", agent: "cursor", label: "Cursor" },
   { key: "devin", agent: "devin", label: "Devin" },
-  { key: "copilot", agent: "copilot", label: "Copilot CLI" },
+  { key: "copilot", agent: "copilot", label: "GitHub Copilot" },
 ];
 
 export function summarizeSourceSupport(payload) {

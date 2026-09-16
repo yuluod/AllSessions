@@ -1582,7 +1582,7 @@ impl ParseState {
                 // Devin 的模型（如 swe-2-high、claude-opus-5-*）记录在消息库
                 // configOptions 里，未记录时不做推断。
                 SourceFormat::Devin => "unknown",
-                // Copilot CLI 由 GitHub 代理模型，事件里只有模型名没有 provider。
+                // GitHub Copilot 由 GitHub 代理模型，事件里只有模型名没有 provider。
                 SourceFormat::Copilot => "github",
             }
         } else {
@@ -2153,7 +2153,7 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
     }));
     sources.extend(lists.copilot.iter().map(|root| Source {
         kind: "copilot",
-        display_name: "Copilot CLI",
+        display_name: "GitHub Copilot",
         root: root.clone(),
         format: SourceFormat::Copilot,
         archived: false,

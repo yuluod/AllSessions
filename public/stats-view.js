@@ -11,6 +11,7 @@ const AGENT_PRESENTATION = {
   zcode: { label: "ZCode", color: "#3b6ea5" },
   cursor: { label: "Cursor", color: "#52525b" },
   devin: { label: "Devin", color: "#0891b2" },
+  copilot: { label: "GitHub Copilot", color: "#6f42c1" },
 };
 
 function renderBar(label, count, max, displayLabel = label) {

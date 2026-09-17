@@ -4,9 +4,16 @@
 
 ## [未发布]
 
+## [0.1.3] - 2026-09-17
+
 ### 新增
 
 - 增加 GitHub Copilot 只读会话来源：解析 `~/.copilot/session-state/<id>/` 下的 `events.jsonl` 事件流与 `workspace.yaml` 元数据；支持浏览、搜索、统计、导出、本地移除和 `copilot --resume` 终端恢复。
+
+### 修复
+
+- Devin CLI 消息链重建增加成环防护，避免损坏数据挂死扫描线程。
+- 统计页补充 GitHub Copilot 的图例名称与颜色。
 
 ## [0.1.2] - 2026-09-15
 

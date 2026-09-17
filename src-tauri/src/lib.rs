@@ -4,6 +4,7 @@ mod config;
 mod deletion_backup;
 mod error;
 mod maintenance;
+mod platform;
 mod resume;
 mod search;
 mod sessions;

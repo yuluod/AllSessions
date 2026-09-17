@@ -73,9 +73,17 @@ fn option_installed(value: &str) -> bool {
 #[cfg(target_os = "windows")]
 fn option_installed(value: &str) -> bool {
     match value {
-        "wt" => command_exists("wt"),
+        "wt" => wt_installed(),
         _ => true,
     }
+}
+
+/// terminal_options 会随每次设置读取重建，而探测 wt 需要派生 where 子进程；
+/// 结果缓存到进程生命周期，避免反复派生（新装 wt 后需重启应用才会出现）。
+#[cfg(target_os = "windows")]
+fn wt_installed() -> bool {
+    static INSTALLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *INSTALLED.get_or_init(|| command_exists("wt"))
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -292,7 +300,10 @@ fn spawn_in_terminal(
         args.push("cmd".to_string());
         args.push("/k".to_string());
         args.push(command.to_string());
-        Command::new("cmd").args(&args).spawn().map(|_| ())
+        let mut console = Command::new("cmd");
+        // start 会为恢复的会话单独创建新终端窗口，外层 cmd 自身保持静默。
+        crate::platform::hide_console(&mut console);
+        console.args(&args).spawn().map(|_| ())
     };
     let result = match terminal {
         "wt" => spawn_wt(),
@@ -371,7 +382,9 @@ fn command_exists(name: &str) -> bool {
 
 #[cfg(target_os = "windows")]
 fn command_exists(name: &str) -> bool {
-    Command::new("where")
+    let mut command = Command::new("where");
+    crate::platform::hide_console(&mut command);
+    command
         .arg(name)
         .output()
         .map(|output| output.status.success())

@@ -1050,10 +1050,14 @@ fn require_closed_confirmation(body: &Value) -> Result<(), String> {
 
 fn assert_codex_closed() -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    let output = Command::new("tasklist")
-        .args(["/fo", "csv", "/nh"])
-        .output()
-        .map_err(error_text)?;
+    let output = {
+        let mut command = Command::new("tasklist");
+        crate::platform::hide_console(&mut command);
+        command
+            .args(["/fo", "csv", "/nh"])
+            .output()
+            .map_err(error_text)?
+    };
     #[cfg(not(target_os = "windows"))]
     let output = Command::new("ps")
         .args(["-axo", "comm="])

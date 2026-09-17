@@ -63,6 +63,7 @@ const SOURCE_RAIL_AGENTS = [
   { agent: "cursor", kinds: ["cursor"] },
   { agent: "devin", kinds: ["devin"] },
   { agent: "copilot", kinds: ["copilot"] },
+  { agent: "hermes", kinds: ["hermes"] },
 ];
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";
@@ -746,6 +747,8 @@ function resumeCommandForKind(kind, sessionId) {
       return `zcode --resume ${sessionId}`;
     case "copilot":
       return `copilot --resume ${sessionId}`;
+    case "hermes":
+      return `hermes --resume ${sessionId}`;
     default:
       return null;
   }

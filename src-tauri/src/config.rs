@@ -10,7 +10,7 @@ use serde_json::Value;
 
 const ROOT_LIMIT_PER_KIND: usize = 16;
 const ROOT_TEXT_LIMIT: usize = 1024;
-const SOURCE_KINDS: [&str; 11] = [
+const SOURCE_KINDS: [&str; 12] = [
     "codex",
     "codex_archived",
     "claude",
@@ -22,6 +22,7 @@ const SOURCE_KINDS: [&str; 11] = [
     "cursor",
     "devin",
     "copilot",
+    "hermes",
 ];
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -79,6 +80,8 @@ pub struct SourceRoots {
     pub devin: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copilot: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hermes: Option<Vec<String>>,
 }
 
 impl SourceRoots {
@@ -95,6 +98,7 @@ impl SourceRoots {
             "cursor" => self.cursor.as_ref(),
             "devin" => self.devin.as_ref(),
             "copilot" => self.copilot.as_ref(),
+            "hermes" => self.hermes.as_ref(),
             _ => None,
         }
     }
@@ -112,6 +116,7 @@ impl SourceRoots {
             "cursor" => self.cursor = roots,
             "devin" => self.devin = roots,
             "copilot" => self.copilot = roots,
+            "hermes" => self.hermes = roots,
             _ => {}
         }
     }

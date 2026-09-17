@@ -19,6 +19,7 @@ fn resume_command(kind: &str, id: &str) -> Option<String> {
         "opencode" => "opencode resume",
         "zcode" => "zcode --resume",
         "copilot" => "copilot --resume",
+        "hermes" => "hermes --resume",
         _ => return None,
     };
     Some(format!("{template} {id}"))
@@ -424,6 +425,10 @@ mod tests {
         assert_eq!(
             resume_command("zcode", "abc"),
             Some("zcode --resume abc".to_string())
+        );
+        assert_eq!(
+            resume_command("hermes", "abc"),
+            Some("hermes --resume abc".to_string())
         );
         assert_eq!(resume_command("unknown", "abc"), None);
     }

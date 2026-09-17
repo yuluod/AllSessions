@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+### 新增
+
+- 增加 Hermes Agent 只读会话来源：解析 `~/.hermes`（Windows 为 `%LOCALAPPDATA%\hermes`）下的 `state.db` 聚合库，含 `profiles/<name>/` 命名库；按现存列自适应查询以兼容各 schema 版本，过滤就地压缩的 `active=0` 归档行并排除委托子代理会话；支持浏览、搜索、统计、导出、本地移除和 `hermes --resume` 终端恢复。
+
+### 修复
+
+- 来源健康诊断补充此前遗漏的 GitHub Copilot 条目，设置页「已检测来源」计数恢复正确。
+
 ## [0.1.4] - 2026-09-17
 
 ### 修复

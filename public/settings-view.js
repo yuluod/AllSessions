@@ -19,6 +19,7 @@ const SOURCE_KINDS = [
   { key: "cursor", agent: "cursor", label: "Cursor" },
   { key: "devin", agent: "devin", label: "Devin" },
   { key: "copilot", agent: "copilot", label: "GitHub Copilot" },
+  { key: "hermes", agent: "hermes", label: "Hermes Agent" },
 ];
 
 export function summarizeSourceSupport(payload) {

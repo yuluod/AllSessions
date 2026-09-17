@@ -12,6 +12,7 @@ const AGENT_PRESENTATION = {
   cursor: { label: "Cursor", color: "#52525b" },
   devin: { label: "Devin", color: "#0891b2" },
   copilot: { label: "GitHub Copilot", color: "#6f42c1" },
+  hermes: { label: "Hermes Agent", color: "#be185d" },
 };
 
 function renderBar(label, count, max, displayLabel = label) {

@@ -20,6 +20,7 @@ mod copilot;
 mod cursor;
 mod devin;
 mod gemini;
+mod hermes;
 mod kimi;
 mod opencode;
 mod pi;
@@ -53,6 +54,7 @@ enum SourceFormat {
     Cursor,
     Devin,
     Copilot,
+    Hermes,
 }
 
 #[derive(Clone)]
@@ -62,6 +64,7 @@ enum DetailLocator {
     ZCode(zcode::DetailLocator),
     Cursor(cursor::DetailLocator),
     Devin(devin::DetailLocator),
+    Hermes(hermes::DetailLocator),
 }
 
 #[derive(Clone)]
@@ -226,6 +229,8 @@ impl SessionStore {
             "zcode",
             "cursor",
             "devin",
+            "copilot",
+            "hermes",
         ] {
             let enabled = self
                 .sources_config
@@ -259,6 +264,8 @@ impl SessionStore {
             ("zcode", lists.zcode.as_slice()),
             ("cursor", lists.cursor.as_slice()),
             ("devin", lists.devin.as_slice()),
+            ("copilot", lists.copilot.as_slice()),
+            ("hermes", lists.hermes.as_slice()),
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());
@@ -495,6 +502,38 @@ impl SessionStore {
                 }
                 continue;
             }
+            if matches!(source.format, SourceFormat::Hermes) {
+                if !source.root.exists() {
+                    continue;
+                }
+                match hermes::parse_source(source) {
+                    Ok(parsed) => {
+                        for (path, id, error) in parsed.errors {
+                            diagnostics.record_session_error(&diagnostic_kind, &path, &id, &error);
+                        }
+                        for path in &parsed.active_paths {
+                            diagnostics.discover(&diagnostic_kind, Path::new(path));
+                            active_paths.insert(path.clone());
+                            active_paths.insert(path_identity(Path::new(path)));
+                        }
+                        for session in parsed.sessions {
+                            let key = session.summary["_key"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string();
+                            next.entry(key).or_insert_with(|| StoredSession {
+                                search_text: session.search_text,
+                                summary: session.summary,
+                                source: source.clone(),
+                                path: session.path,
+                                detail_locator: Some(DetailLocator::Hermes(session.detail_locator)),
+                            });
+                        }
+                    }
+                    Err(error) => diagnostics.record_error(&diagnostic_kind, &source.root, &error),
+                }
+                continue;
+            }
             for path in discover_files(source) {
                 diagnostics.discover(&diagnostic_kind, &path);
                 let path_key = path_identity(&path);
@@ -577,6 +616,8 @@ impl SessionStore {
                     cursor::matches_path(&source.root, path)
                 } else if matches!(source.format, SourceFormat::Devin) {
                     devin::matches_path(&source.root, path)
+                } else if matches!(source.format, SourceFormat::Hermes) {
+                    hermes::matches_path(&source.root, path)
                 } else if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
                     opencode_event_matches(&source.root, path)
                 } else {
@@ -590,6 +631,7 @@ impl SessionStore {
                         | SourceFormat::ZCode
                         | SourceFormat::Cursor
                         | SourceFormat::Devin
+                        | SourceFormat::Hermes
                 ) || matches!(source.format, SourceFormat::Kimi)
                     && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl")
                     || matches!(source.format, SourceFormat::Copilot)
@@ -616,6 +658,7 @@ impl SessionStore {
                             | SourceFormat::ZCode
                             | SourceFormat::Cursor
                             | SourceFormat::Devin
+                            | SourceFormat::Hermes
                     ) && path.starts_with(&source.root)
                 })
                 .cloned()
@@ -740,6 +783,7 @@ impl SessionStore {
                 Some(DetailLocator::ZCode(locator)) => Some(&locator.content_fingerprint),
                 Some(DetailLocator::Cursor(locator)) => Some(&locator.content_fingerprint),
                 Some(DetailLocator::Devin(locator)) => Some(&locator.content_fingerprint),
+                Some(DetailLocator::Hermes(locator)) => Some(&locator.content_fingerprint),
                 _ => None,
             };
             let paths = match &record.detail_locator {
@@ -802,6 +846,9 @@ impl SessionStore {
                         }
                         Some(DetailLocator::Devin(locator)) => {
                             devin::visit_detail(&record.source, locator, visitor)
+                        }
+                        Some(DetailLocator::Hermes(locator)) => {
+                            hermes::visit_detail(&record.source, locator, visitor)
                         }
                         None => visit_detail(&record.path, &record.source, visitor),
                     }
@@ -924,6 +971,9 @@ impl SessionStore {
                     cursor::visit_detail(&record.source, locator, &mut |_| {}).ok()
                 }
                 DetailLocator::Devin(locator) => devin::parse_detail(&record.source, locator).ok(),
+                DetailLocator::Hermes(locator) => {
+                    hermes::parse_detail(&record.source, locator).ok()
+                }
             }
         } else {
             parse_detail(&record.path, &record.source).ok()
@@ -974,7 +1024,10 @@ impl SessionStore {
                     gemini::session_backup_paths(&record.source, locator)?
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) | DetailLocator::Devin(_) => {
+                DetailLocator::ZCode(_)
+                | DetailLocator::Cursor(_)
+                | DetailLocator::Devin(_)
+                | DetailLocator::Hermes(_) => {
                     return Err(read_only_source_error())
                 }
             }
@@ -992,7 +1045,10 @@ impl SessionStore {
             match locator {
                 DetailLocator::Gemini(locator) => gemini::delete_session(&record.source, locator)?,
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) | DetailLocator::Devin(_) => {
+                DetailLocator::ZCode(_)
+                | DetailLocator::Cursor(_)
+                | DetailLocator::Devin(_)
+                | DetailLocator::Hermes(_) => {
                     return Err(read_only_source_error())
                 }
             }
@@ -1052,6 +1108,7 @@ impl SessionStore {
                 | SourceFormat::Cursor
                 | SourceFormat::Devin
                 | SourceFormat::Copilot
+                | SourceFormat::Hermes
         ) {
             return Err(read_only_source_error());
         }
@@ -1069,6 +1126,7 @@ impl SessionStore {
                 | SourceFormat::Cursor
                 | SourceFormat::Devin
                 | SourceFormat::Copilot
+                | SourceFormat::Hermes
         ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
         }
@@ -1091,7 +1149,10 @@ impl SessionStore {
                     gemini::message_backup_paths(&record.source, locator, &delete_ref)?
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) | DetailLocator::Devin(_) => {
+                DetailLocator::ZCode(_)
+                | DetailLocator::Cursor(_)
+                | DetailLocator::Devin(_)
+                | DetailLocator::Hermes(_) => {
                     return Err(read_only_source_error())
                 }
             }
@@ -1111,7 +1172,10 @@ impl SessionStore {
                     gemini::delete_message(&record.source, locator, &delete_ref)?;
                 }
                 DetailLocator::OpenCode(_) => return Err(read_only_source_error()),
-                DetailLocator::ZCode(_) | DetailLocator::Cursor(_) | DetailLocator::Devin(_) => {
+                DetailLocator::ZCode(_)
+                | DetailLocator::Cursor(_)
+                | DetailLocator::Devin(_)
+                | DetailLocator::Hermes(_) => {
                     return Err(read_only_source_error())
                 }
             }
@@ -1584,6 +1648,9 @@ impl ParseState {
                 SourceFormat::Devin => "unknown",
                 // GitHub Copilot 由 GitHub 代理模型，事件里只有模型名没有 provider。
                 SourceFormat::Copilot => "github",
+                // Hermes 的模型引用形如 anthropic/claude-*，adapter 已拆出 provider；
+                // 未记录时不做推断。
+                SourceFormat::Hermes => "unknown",
             }
         } else {
             &self.provider
@@ -1600,6 +1667,7 @@ impl ParseState {
                 SourceFormat::Cursor => "cursor",
                 SourceFormat::Devin => "devin",
                 SourceFormat::Copilot => "copilot_cli",
+                SourceFormat::Hermes => "hermes_agent",
             }
         } else {
             &self.originator
@@ -1616,6 +1684,7 @@ fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过聚合来源解析".into()),
+        SourceFormat::Hermes => return Err("Hermes 状态库必须通过聚合来源解析".into()),
         _ => {}
     }
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -1829,6 +1898,7 @@ pub(crate) struct RootLists {
     pub cursor: Vec<PathBuf>,
     pub devin: Vec<PathBuf>,
     pub copilot: Vec<PathBuf>,
+    pub hermes: Vec<PathBuf>,
 }
 
 fn resolve_kind(
@@ -1984,6 +2054,18 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         &["COPILOT_SESSIONS_DIR"],
         vec![home.join(".copilot").join("session-state")],
     );
+    let hermes_home = env::var_os("HERMES_HOME")
+        .map(PathBuf::from)
+        .map(expand_tilde)
+        .unwrap_or_else(default_hermes_root);
+    let (hermes, mut hermes_origin) = resolve_kind(
+        config.get("hermes"),
+        &["HERMES_SESSIONS_DIR"],
+        vec![hermes_home],
+    );
+    if hermes_origin == "default" && env::var_os("HERMES_HOME").is_some() {
+        hermes_origin = "env";
+    }
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -1996,6 +2078,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         "cursor": { "roots": cursor.iter().map(|path|path.to_string_lossy()).collect::<Vec<_>>(), "origin": if config.cursor.is_some() { "config" } else { "default" } },
         "devin": { "roots": devin.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": devin_origin },
         "copilot": { "roots": copilot.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": copilot_origin },
+        "hermes": { "roots": hermes.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": hermes_origin },
     });
     (
         RootLists {
@@ -2010,9 +2093,23 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             cursor,
             devin,
             copilot,
+            hermes,
         },
         description,
     )
+}
+
+/// Hermes Agent 数据根：Windows 为 `%LOCALAPPDATA%\hermes`，
+/// 其余平台为 `~/.hermes`（HERMES_HOME 由调用方处理）。
+fn default_hermes_root() -> PathBuf {
+    if cfg!(windows) {
+        return dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("hermes");
+    }
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".hermes")
 }
 
 /// Devin CLI 数据根：Unix 为 `$XDG_DATA_HOME/devin/cli`（默认
@@ -2098,6 +2195,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "cursor": describe_protected_source_roots(config.cursor.as_deref().unwrap_or_default(), &inherited.cursor),
         "devin": describe_protected_source_roots(config.devin.as_deref().unwrap_or_default(), &inherited.devin),
         "copilot": describe_protected_source_roots(config.copilot.as_deref().unwrap_or_default(), &inherited.copilot),
+        "hermes": describe_protected_source_roots(config.hermes.as_deref().unwrap_or_default(), &inherited.hermes),
     })
 }
 
@@ -2156,6 +2254,13 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
         display_name: "GitHub Copilot",
         root: root.clone(),
         format: SourceFormat::Copilot,
+        archived: false,
+    }));
+    sources.extend(lists.hermes.iter().map(|root| Source {
+        kind: "hermes",
+        display_name: "Hermes Agent",
+        root: root.clone(),
+        format: SourceFormat::Hermes,
         archived: false,
     }));
     sources
@@ -2260,7 +2365,10 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
 fn discover_files(source: &Source) -> Vec<PathBuf> {
     if matches!(
         source.format,
-        SourceFormat::OpenCode | SourceFormat::ZCode | SourceFormat::Devin
+        SourceFormat::OpenCode
+            | SourceFormat::ZCode
+            | SourceFormat::Devin
+            | SourceFormat::Hermes
     ) {
         return source
             .root
@@ -2300,6 +2408,9 @@ fn source_matches_path(source: &Source, path: &Path) -> bool {
     }
     if matches!(source.format, SourceFormat::Devin) {
         return devin::matches_path(&source.root, path);
+    }
+    if matches!(source.format, SourceFormat::Hermes) {
+        return hermes::matches_path(&source.root, path);
     }
     if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
         return opencode_event_matches(&source.root, path);
@@ -3462,6 +3573,7 @@ mod tests {
             cursor: Some(Vec::new()),
             devin: Some(Vec::new()),
             copilot: Some(Vec::new()),
+            hermes: Some(Vec::new()),
         }
     }
 
@@ -3705,6 +3817,7 @@ mod tests {
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
+                hermes: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3834,6 +3947,7 @@ mod tests {
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
+                hermes: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3890,6 +4004,7 @@ mod tests {
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
+                hermes: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3949,6 +4064,7 @@ mod tests {
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
+                hermes: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -4644,6 +4760,7 @@ mod tests {
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
+                hermes: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

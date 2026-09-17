@@ -86,12 +86,24 @@ fn wt_installed() -> bool {
     *INSTALLED.get_or_init(|| command_exists("wt"))
 }
 
+/// terminal_options 会随每次设置读取重建，而每项探测都要派生 which 子进程；
+/// 结果随候选列表整体缓存到进程生命周期，避免反复派生（新装终端后需重启
+/// 应用才会出现在选项里；恢复会话时的探测不走此缓存，保持即时感知）。
 #[cfg(all(unix, not(target_os = "macos")))]
 fn option_installed(value: &str) -> bool {
-    match value {
-        "auto" | "custom" => true,
-        name => command_exists(name),
+    static CACHE: std::sync::OnceLock<Vec<(&'static str, bool)>> = std::sync::OnceLock::new();
+    if matches!(value, "auto" | "custom") {
+        return true;
     }
+    let cache = CACHE.get_or_init(|| {
+        terminal_option_values()
+            .iter()
+            .map(|(name, _)| (*name, command_exists(name)))
+            .collect()
+    });
+    cache
+        .iter()
+        .any(|(name, installed)| *name == value && *installed)
 }
 
 #[cfg(target_os = "macos")]

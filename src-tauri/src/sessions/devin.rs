@@ -755,12 +755,20 @@ fn cli_chain(nodes: &[CliNode], main_chain_id: Option<i64>) -> Vec<usize> {
     let mut tip = main_chain_id
         .filter(|id| by_id.contains_key(id))
         .unwrap_or_else(|| nodes.last().map(|node| node.node_id).unwrap_or_default());
-    while let Some(&next) = deepest_child.get(&tip) {
+    // parent_node_id 若损坏成环（自环或互指），链长不可能超过节点总数，
+    // 两个循环都以节点数为步数上限保证终止。
+    for _ in 0..nodes.len() {
+        let Some(&next) = deepest_child.get(&tip) else {
+            break;
+        };
         tip = next;
     }
     let mut chain = Vec::new();
     let mut current = Some(tip);
-    while let Some(id) = current {
+    for _ in 0..nodes.len() {
+        let Some(id) = current else {
+            break;
+        };
         let Some(&index) = by_id.get(&id) else {
             break;
         };
@@ -1710,6 +1718,33 @@ mod tests {
             .unwrap();
         drop(connection);
         assert_ne!(fingerprint(root), before);
+    }
+
+    #[test]
+    fn cli_成环节点不会让链重建挂死() {
+        let directory = tempdir().unwrap();
+        let root = directory.path();
+        cli_fixture(root);
+        // 损坏数据：2↔3 互指成环，会话仍可解析且链有界。
+        let connection =
+            Connection::open(root.join("cli").join("sessions.db")).unwrap();
+        connection
+            .execute(
+                "update message_nodes set parent_node_id = 3 where session_id = 'brisk-otter' and node_id = 2",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "update message_nodes set parent_node_id = 2 where session_id = 'brisk-otter' and node_id = 3",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+        let parsed = parse_source(&source(root)).unwrap();
+        assert_eq!(parsed.sessions.len(), 1);
+        let detail = parse_detail(&source(root), &parsed.sessions[0].detail_locator).unwrap();
+        assert!(detail["raw_events"].as_array().unwrap().len() <= 7);
     }
 
     #[test]

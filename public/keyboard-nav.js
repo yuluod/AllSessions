@@ -43,8 +43,19 @@ export function resolveGlobalShortcut(event, context) {
     if (context.inspectorOpen) return { type: "close-inspector" };
     return null;
   }
-  if ((event.metaKey || event.ctrlKey) && key.toLowerCase() === "k") {
-    return { type: "focus-search" };
+  if (event.metaKey || event.ctrlKey) {
+    const lower = key.toLowerCase();
+    if (lower === "k" || lower === "f") return { type: "focus-search" };
+    if (key === ",") return { type: "toggle-settings" };
+    if (lower === "r") return { type: "refresh" };
+    if (context.dialogOpen) return null;
+    if (VIEW_SHORTCUTS[key]) {
+      return { type: "switch-view", view: VIEW_SHORTCUTS[key] };
+    }
+    if (!context.editableTarget && lower === "i") {
+      return { type: "toggle-inspector" };
+    }
+    return null;
   }
   if (context.editableTarget || context.dialogOpen) return null;
 

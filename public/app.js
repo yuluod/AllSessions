@@ -1086,19 +1086,22 @@ function rerenderLocalizedContent() {
     renderStats(state.stats, elements);
   }
   renderWorkspaceStatus();
+  syncShortcutHints();
   maintenanceController.renderLocalized();
   updateController.renderLocalized();
 }
 
-function syncSearchShortcut() {
-  if (!elements.searchShortcut) return;
+function syncShortcutHints() {
   const platform =
     navigator.userAgentData?.platform || navigator.platform || "";
-  elements.searchShortcut.textContent = /^(mac|iphone|ipad|ipod)/i.test(
-    platform
-  )
-    ? "⌘ K"
-    : "Ctrl K";
+  const isMac = /^(mac|iphone|ipad|ipod)/i.test(platform);
+  if (elements.searchShortcut) {
+    elements.searchShortcut.textContent = isMac ? "⌘ K" : "Ctrl K";
+  }
+  if (elements.settingsToggle) {
+    const hint = isMac ? "⌘," : "Ctrl+,";
+    elements.settingsToggle.title = `${t("settings")} (${hint})`;
+  }
 }
 
 function syncSchemeToggle() {
@@ -2622,6 +2625,29 @@ function moveSessionSelection(direction) {
   if (sessionKey) selectSession(sessionKey, next);
 }
 
+let refreshing = false;
+async function refreshSessions() {
+  if (refreshing) return;
+  refreshing = true;
+  if (elements.refreshBtn) {
+    elements.refreshBtn.disabled = true;
+    elements.refreshBtn.textContent = t("refreshing");
+  }
+  try {
+    await fetchJson("/api/refresh");
+    await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
+    await Promise.all([loadSessions({ background: true }), loadStats()]);
+  } catch (error) {
+    showError(`${t("refreshFailed")}: ${error.message}`);
+  } finally {
+    refreshing = false;
+    if (elements.refreshBtn) {
+      elements.refreshBtn.disabled = false;
+      elements.refreshBtn.textContent = t("refresh");
+    }
+  }
+}
+
 function closeTopDialogFromKeyboard() {
   const dialogs = Array.from(document.querySelectorAll("dialog[open]"));
   const dialog = dialogs.at(-1);
@@ -2726,22 +2752,9 @@ async function initialize() {
     await Promise.all([loadSessions(), loadStats()]);
   });
 
-  if (elements.refreshBtn) {
-    elements.refreshBtn.addEventListener("click", async () => {
-      elements.refreshBtn.disabled = true;
-      elements.refreshBtn.textContent = t("refreshing");
-      try {
-        await fetchJson("/api/refresh");
-        await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
-        await Promise.all([loadSessions({ background: true }), loadStats()]);
-      } catch (error) {
-        showError(`${t("refreshFailed")}: ${error.message}`);
-      } finally {
-        elements.refreshBtn.disabled = false;
-        elements.refreshBtn.textContent = t("refresh");
-      }
-    });
-  }
+  elements.refreshBtn?.addEventListener("click", () => {
+    void refreshSessions();
+  });
 
   if (elements.showArchivedToggle) {
     elements.showArchivedToggle.addEventListener("change", async () => {
@@ -3047,6 +3060,26 @@ async function initialize() {
         elements.searchInput?.focus();
         elements.searchInput?.select();
         break;
+      case "toggle-settings":
+        event.preventDefault();
+        if (elements.settingsDialog?.open) {
+          elements.settingsDialog.close();
+        } else if (!document.querySelector("dialog[open]")) {
+          void settingsController.open();
+        }
+        break;
+      case "refresh":
+        event.preventDefault();
+        void refreshSessions();
+        break;
+      case "toggle-inspector":
+        event.preventDefault();
+        setInspectorOpen(
+          !elements.propsContent
+            ?.closest(".props-panel")
+            ?.classList.contains("is-open")
+        );
+        break;
       case "switch-view":
         event.preventDefault();
         activateWorkspaceView(action.view).catch((error) => {
@@ -3087,7 +3120,7 @@ async function initialize() {
 
   updateStaticI18n();
   document.documentElement.lang = getLang() === "zh" ? "zh-CN" : "en";
-  syncSearchShortcut();
+  syncShortcutHints();
   maintenanceController.renderLocalized();
 
   settingsController.bind();

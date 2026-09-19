@@ -46,7 +46,7 @@ test("数字键切换工作区视图，带修饰键时不拦截", () => {
     type: "switch-view",
     view: "tools",
   });
-  assert.equal(resolveGlobalShortcut({ key: "1", metaKey: true }, idle), null);
+  assert.equal(resolveGlobalShortcut({ key: "1", altKey: true }, idle), null);
   assert.equal(resolveGlobalShortcut({ key: "4" }, idle), null);
 });
 
@@ -89,6 +89,60 @@ test("输入框或对话框打开时不响应导航快捷键，但保留 Escape 
   assert.deepEqual(resolveGlobalShortcut({ key: "Escape" }, dialog), {
     type: "close-dialog",
   });
+});
+
+test("Cmd/Ctrl 组合键触发应用级命令", () => {
+  assert.deepEqual(resolveGlobalShortcut({ key: ",", metaKey: true }, idle), {
+    type: "toggle-settings",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: ",", ctrlKey: true }, idle), {
+    type: "toggle-settings",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "r", metaKey: true }, idle), {
+    type: "refresh",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "f", metaKey: true }, idle), {
+    type: "focus-search",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "1", metaKey: true }, idle), {
+    type: "switch-view",
+    view: "list",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "3", ctrlKey: true }, idle), {
+    type: "switch-view",
+    view: "tools",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "i", metaKey: true }, idle), {
+    type: "toggle-inspector",
+  });
+  assert.equal(resolveGlobalShortcut({ key: "x", metaKey: true }, idle), null);
+});
+
+test("对话框打开时 Cmd 组合键仅保留设置/刷新/搜索，输入框中禁用检查器", () => {
+  const editing = { ...idle, editableTarget: true };
+  const dialog = { ...idle, dialogOpen: true };
+  assert.deepEqual(resolveGlobalShortcut({ key: ",", metaKey: true }, dialog), {
+    type: "toggle-settings",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "r", metaKey: true }, dialog), {
+    type: "refresh",
+  });
+  assert.equal(
+    resolveGlobalShortcut({ key: "1", metaKey: true }, dialog),
+    null
+  );
+  assert.equal(
+    resolveGlobalShortcut({ key: "i", metaKey: true }, dialog),
+    null
+  );
+  assert.equal(
+    resolveGlobalShortcut({ key: "i", metaKey: true }, editing),
+    null
+  );
+  assert.deepEqual(
+    resolveGlobalShortcut({ key: "1", metaKey: true }, editing),
+    { type: "switch-view", view: "list" }
+  );
 });
 
 test("Escape 优先关闭对话框，其次关闭属性面板，否则不处理", () => {

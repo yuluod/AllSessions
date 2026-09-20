@@ -36,3 +36,15 @@ walkdir = "2"
 
 [dev-dependencies]
 tempfile = "3"
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.test]
+debug = 1
+
+[profile.test.package."*"]
+debug = false

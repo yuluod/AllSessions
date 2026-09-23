@@ -723,6 +723,7 @@ mod tests {
                 pi: Some(vec![]),
                 kimi: Some(vec![]),
                 opencode: Some(vec![]),
+                kilo: Some(vec![]),
                 zcode: Some(vec![]),
                 cursor: Some(vec![
                     directory.path().to_string_lossy().into_owned(),

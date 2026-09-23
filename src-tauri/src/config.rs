@@ -10,7 +10,7 @@ use serde_json::Value;
 
 const ROOT_LIMIT_PER_KIND: usize = 16;
 const ROOT_TEXT_LIMIT: usize = 1024;
-const SOURCE_KINDS: [&str; 13] = [
+const SOURCE_KINDS: [&str; 14] = [
     "codex",
     "codex_archived",
     "claude",
@@ -18,6 +18,7 @@ const SOURCE_KINDS: [&str; 13] = [
     "pi",
     "kimi",
     "opencode",
+    "kilo",
     "zcode",
     "cursor",
     "devin",
@@ -74,6 +75,8 @@ pub struct SourceRoots {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opencode: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub kilo: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub zcode: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<Vec<String>>,
@@ -97,6 +100,7 @@ impl SourceRoots {
             "pi" => self.pi.as_ref(),
             "kimi" => self.kimi.as_ref(),
             "opencode" => self.opencode.as_ref(),
+            "kilo" => self.kilo.as_ref(),
             "zcode" => self.zcode.as_ref(),
             "cursor" => self.cursor.as_ref(),
             "devin" => self.devin.as_ref(),
@@ -116,6 +120,7 @@ impl SourceRoots {
             "pi" => self.pi = roots,
             "kimi" => self.kimi = roots,
             "opencode" => self.opencode = roots,
+            "kilo" => self.kilo = roots,
             "zcode" => self.zcode = roots,
             "cursor" => self.cursor = roots,
             "devin" => self.devin = roots,

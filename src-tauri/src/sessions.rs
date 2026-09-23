@@ -51,6 +51,7 @@ enum SourceFormat {
     Pi,
     Kimi,
     OpenCode,
+    Kilo,
     ZCode,
     Cursor,
     Devin,
@@ -228,6 +229,7 @@ impl SessionStore {
             "pi",
             "kimi",
             "opencode",
+            "kilo",
             "zcode",
             "cursor",
             "devin",
@@ -264,6 +266,7 @@ impl SessionStore {
             ("pi", lists.pi.as_slice()),
             ("kimi", lists.kimi.as_slice()),
             ("opencode", lists.opencode.as_slice()),
+            ("kilo", lists.kilo.as_slice()),
             ("zcode", lists.zcode.as_slice()),
             ("cursor", lists.cursor.as_slice()),
             ("devin", lists.devin.as_slice()),
@@ -276,7 +279,7 @@ impl SessionStore {
             entry["available_roots"] = json!(roots
                 .iter()
                 .filter(|root| match kind {
-                    "opencode" | "zcode" => root.is_file(),
+                    "opencode" | "kilo" | "zcode" => root.is_file(),
                     "cursor" => root.is_file() || root.is_dir(),
                     _ => root.is_dir(),
                 })
@@ -392,7 +395,7 @@ impl SessionStore {
                 }
                 continue;
             }
-            if matches!(source.format, SourceFormat::OpenCode) {
+            if matches!(source.format, SourceFormat::OpenCode | SourceFormat::Kilo) {
                 if !source.root.exists() {
                     continue;
                 }
@@ -400,7 +403,7 @@ impl SessionStore {
                     Ok(parsed) => parsed,
                     Err(error) => {
                         diagnostics.record_error(&diagnostic_kind, &source.root, &error);
-                        eprintln!("无法解析 OpenCode 来源：{error}");
+                        eprintln!("无法解析 {} 来源：{error}", source.display_name);
                         continue;
                     }
                 };
@@ -625,7 +628,10 @@ impl SessionStore {
                     devin::matches_path(&source.root, path)
                 } else if matches!(source.format, SourceFormat::Hermes) {
                     hermes::matches_path(&source.root, path)
-                } else if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
+                } else if matches!(
+                    source.format,
+                    SourceFormat::OpenCode | SourceFormat::Kilo | SourceFormat::ZCode
+                ) {
                     opencode_event_matches(&source.root, path)
                 } else {
                     path.starts_with(&source.root)
@@ -635,6 +641,7 @@ impl SessionStore {
                     SourceFormat::Gemini
                         | SourceFormat::Claude
                         | SourceFormat::OpenCode
+                        | SourceFormat::Kilo
                         | SourceFormat::ZCode
                         | SourceFormat::Cursor
                         | SourceFormat::Devin
@@ -685,6 +692,7 @@ impl SessionStore {
                         source.format,
                         SourceFormat::Gemini
                             | SourceFormat::OpenCode
+                            | SourceFormat::Kilo
                             | SourceFormat::ZCode
                             | SourceFormat::Cursor
                             | SourceFormat::Devin
@@ -1144,6 +1152,7 @@ impl SessionStore {
             SourceFormat::Pi
                 | SourceFormat::Kimi
                 | SourceFormat::OpenCode
+                | SourceFormat::Kilo
                 | SourceFormat::ZCode
                 | SourceFormat::Cursor
                 | SourceFormat::Devin
@@ -1162,6 +1171,7 @@ impl SessionStore {
             SourceFormat::Pi
                 | SourceFormat::Kimi
                 | SourceFormat::OpenCode
+                | SourceFormat::Kilo
                 | SourceFormat::ZCode
                 | SourceFormat::Cursor
                 | SourceFormat::Devin
@@ -1677,6 +1687,7 @@ impl ParseState {
                 // Kimi Code CLI 可配置不同模型 Provider；wire.jsonl 未记录时不做推断。
                 SourceFormat::Kimi => "unknown",
                 SourceFormat::OpenCode => "unknown",
+                SourceFormat::Kilo => "unknown",
                 SourceFormat::ZCode => "unknown",
                 SourceFormat::Cursor => "unknown",
                 // Devin 的模型（如 swe-2-high、claude-opus-5-*）记录在消息库
@@ -1701,6 +1712,7 @@ impl ParseState {
                 SourceFormat::Pi => "pi",
                 SourceFormat::Kimi => "kimi_code_cli",
                 SourceFormat::OpenCode => "opencode",
+                SourceFormat::Kilo => "kilo",
                 SourceFormat::ZCode => "zcode",
                 SourceFormat::Cursor => "cursor",
                 SourceFormat::Devin => "devin",
@@ -1721,7 +1733,9 @@ fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
         SourceFormat::Copilot => return copilot::parse_summary(path, source),
         SourceFormat::VsCodeCopilot => return vscode_copilot::parse_summary(path, source),
-        SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过聚合来源解析".into()),
+        SourceFormat::OpenCode | SourceFormat::Kilo => {
+            return Err("SQLite 数据库必须通过聚合来源解析".into())
+        }
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过聚合来源解析".into()),
         SourceFormat::Hermes => return Err("Hermes 状态库必须通过聚合来源解析".into()),
@@ -1767,7 +1781,9 @@ fn visit_detail(
         SourceFormat::Kimi => return kimi::visit_detail(path, source, visitor),
         SourceFormat::Copilot => return copilot::visit_detail(path, source, visitor),
         SourceFormat::VsCodeCopilot => return vscode_copilot::visit_detail(path, source, visitor),
-        SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过详情定位器解析".into()),
+        SourceFormat::OpenCode | SourceFormat::Kilo => {
+            return Err("SQLite 数据库必须通过详情定位器解析".into())
+        }
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过详情定位器解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过详情定位器解析".into()),
         _ => {}
@@ -1936,6 +1952,7 @@ pub(crate) struct RootLists {
     pub pi: Vec<PathBuf>,
     pub kimi: Vec<PathBuf>,
     pub opencode: Vec<PathBuf>,
+    pub kilo: Vec<PathBuf>,
     pub zcode: Vec<PathBuf>,
     pub cursor: Vec<PathBuf>,
     pub devin: Vec<PathBuf>,
@@ -2040,6 +2057,33 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
     } else {
         (vec![opencode_data.join("opencode.db")], "default")
     };
+    let kilo_data = env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .map(expand_tilde)
+        .unwrap_or_else(|| home.join(".local").join("share"))
+        .join("kilo");
+    let (kilo, kilo_origin) = if let Some(roots) = config.get("kilo") {
+        (
+            roots
+                .iter()
+                .map(|raw| expand_tilde(PathBuf::from(raw)))
+                .filter(|path| !path.as_os_str().is_empty())
+                .collect(),
+            "config",
+        )
+    } else if let Some(value) = env::var_os("KILO_DB") {
+        let path = expand_tilde(PathBuf::from(value));
+        (
+            vec![if path.is_absolute() {
+                path
+            } else {
+                kilo_data.join(path)
+            }],
+            "env",
+        )
+    } else {
+        (vec![kilo_data.join("kilo.db")], "default")
+    };
     let zcode_cli_dir = home.join(".zcode").join("cli");
     let (zcode, zcode_origin) = if let Some(roots) = config.get("zcode") {
         (
@@ -2131,6 +2175,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         "pi": { "roots": pi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": pi_origin },
         "kimi": { "roots": kimi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kimi_origin },
         "opencode": { "roots": opencode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": opencode_origin },
+        "kilo": { "roots": kilo.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kilo_origin },
         "zcode": { "roots": zcode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": zcode_origin },
         "cursor": { "roots": cursor.iter().map(|path|path.to_string_lossy()).collect::<Vec<_>>(), "origin": if config.cursor.is_some() { "config" } else { "default" } },
         "devin": { "roots": devin.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": devin_origin },
@@ -2147,6 +2192,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             pi,
             kimi,
             opencode,
+            kilo,
             zcode,
             cursor,
             devin,
@@ -2250,6 +2296,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "pi": describe_protected_source_roots(config.pi.as_deref().unwrap_or_default(), &inherited.pi),
         "kimi": describe_protected_source_roots(config.kimi.as_deref().unwrap_or_default(), &inherited.kimi),
         "opencode": describe_protected_source_roots(config.opencode.as_deref().unwrap_or_default(), &inherited.opencode),
+        "kilo": describe_protected_source_roots(config.kilo.as_deref().unwrap_or_default(), &inherited.kilo),
         "zcode": describe_protected_source_roots(config.zcode.as_deref().unwrap_or_default(), &inherited.zcode),
         "cursor": describe_protected_source_roots(config.cursor.as_deref().unwrap_or_default(), &inherited.cursor),
         "devin": describe_protected_source_roots(config.devin.as_deref().unwrap_or_default(), &inherited.devin),
@@ -2286,6 +2333,13 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
         display_name: "OpenCode",
         root: root.clone(),
         format: SourceFormat::OpenCode,
+        archived: false,
+    }));
+    sources.extend(lists.kilo.iter().map(|root| Source {
+        kind: "kilo",
+        display_name: "Kilo",
+        root: root.clone(),
+        format: SourceFormat::Kilo,
         archived: false,
     }));
     sources.extend(lists.zcode.iter().map(|root| Source {
@@ -2446,7 +2500,11 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
 fn discover_files(source: &Source) -> Vec<PathBuf> {
     if matches!(
         source.format,
-        SourceFormat::OpenCode | SourceFormat::ZCode | SourceFormat::Devin | SourceFormat::Hermes
+        SourceFormat::OpenCode
+            | SourceFormat::Kilo
+            | SourceFormat::ZCode
+            | SourceFormat::Devin
+            | SourceFormat::Hermes
     ) {
         return source
             .root
@@ -2493,7 +2551,10 @@ fn source_matches_path(source: &Source, path: &Path) -> bool {
     if matches!(source.format, SourceFormat::Hermes) {
         return hermes::matches_path(&source.root, path);
     }
-    if matches!(source.format, SourceFormat::OpenCode | SourceFormat::ZCode) {
+    if matches!(
+        source.format,
+        SourceFormat::OpenCode | SourceFormat::Kilo | SourceFormat::ZCode
+    ) {
         return opencode_event_matches(&source.root, path);
     }
     if matches!(source.format, SourceFormat::Kimi) {
@@ -3661,6 +3722,7 @@ mod tests {
             pi: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
+            kilo: Some(Vec::new()),
             zcode: Some(Vec::new()),
             cursor: Some(Vec::new()),
             devin: Some(Vec::new()),
@@ -3906,6 +3968,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
+                kilo: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
@@ -4037,6 +4100,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
+                kilo: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
@@ -4095,6 +4159,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(vec![database.to_string_lossy().into_owned()]),
+                kilo: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
@@ -4156,6 +4221,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
+                kilo: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),
@@ -4921,6 +4987,7 @@ mod tests {
                 pi: Some(Vec::new()),
                 kimi: Some(Vec::new()),
                 opencode: Some(Vec::new()),
+                kilo: Some(Vec::new()),
                 zcode: Some(Vec::new()),
                 cursor: Some(Vec::new()),
                 devin: Some(Vec::new()),

@@ -265,10 +265,15 @@ fn file_placeholder(part: &Value) -> String {
     }
 }
 
-fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
+fn part_messages(message: &MessageRow, part: &PartRow, source_kind: &str) -> Vec<Value> {
     let role = message.data["role"].as_str().unwrap_or("unknown");
     let timestamp = message_timestamp(message, part);
     let part_type = part.data["type"].as_str().unwrap_or("unknown");
+    let source_type = if source_kind == "kilo" {
+        "kilo_part"
+    } else {
+        "opencode_part"
+    };
     match part_type {
         "text" if part.data["ignored"].as_bool() == Some(true) => Vec::new(),
         "text" => {
@@ -281,7 +286,7 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
                 if synthetic { "system" } else { role },
                 text,
                 &timestamp,
-                "opencode_part",
+                source_type,
                 "text",
                 synthetic,
             )]
@@ -289,31 +294,29 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
         "reasoning" => part.data["text"]
             .as_str()
             .filter(|text| !text.trim().is_empty())
-            .map(|text| {
-                message_value(
-                    "assistant",
-                    text,
-                    &timestamp,
-                    "opencode_part",
-                    "thinking",
-                    true,
-                )
-            })
+            .map(|text| message_value("assistant", text, &timestamp, source_type, "thinking", true))
             .into_iter()
             .collect(),
         "file" => vec![message_value(
             role,
             &file_placeholder(&part.data),
             &timestamp,
-            "opencode_part",
+            source_type,
             "file",
             false,
         )],
         "compaction" => vec![message_value(
             "system",
-            "[OpenCode context compaction]",
+            &format!(
+                "[{} context compaction]",
+                if source_kind == "kilo" {
+                    "Kilo"
+                } else {
+                    "OpenCode"
+                }
+            ),
             &timestamp,
-            "opencode_part",
+            source_type,
             "compaction",
             true,
         )],
@@ -329,8 +332,7 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
             if text.is_empty() {
                 return Vec::new();
             }
-            let mut value =
-                message_value("tool", &text, &timestamp, "opencode_part", "subtask", true);
+            let mut value = message_value("tool", &text, &timestamp, source_type, "subtask", true);
             value["tool_name"] = Value::String(agent.to_string());
             value["tool_kind"] = Value::String("subtask".into());
             vec![value]
@@ -350,8 +352,7 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
                 (true, false) => result,
                 (true, true) => format!("[tool: {status}]"),
             };
-            let mut value =
-                message_value("tool", &text, &timestamp, "opencode_part", status, false);
+            let mut value = message_value("tool", &text, &timestamp, source_type, status, false);
             value["tool_name"] = Value::String(
                 part.data["tool"]
                     .as_str()
@@ -378,13 +379,13 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
     }
 }
 
-fn initial_state(path: &Path, row: &SessionRow) -> Result<ParseState, String> {
+fn initial_state(path: &Path, row: &SessionRow, source: &Source) -> Result<ParseState, String> {
     let mut state = ParseState::new(path);
     state.id = row.id.clone();
     state.cwd = row.directory.clone();
     state.timestamp = timestamp_from_millis(row.time_created).unwrap_or_default();
     state.last_timestamp = timestamp_from_millis(row.time_updated).unwrap_or_default();
-    state.originator = "opencode".into();
+    state.originator = source.kind.into();
     state.provider = model_provider(row)?.unwrap_or_else(|| "unknown".into());
     state.agent_id = row.agent.clone().unwrap_or_default();
     if let Some(parent_id) = &row.parent_id {
@@ -402,7 +403,7 @@ fn accept_part(state: &mut ParseState, message: &MessageRow, part: &PartRow) -> 
         }
     }
     state.event_count += 1;
-    part_messages(message, part)
+    part_messages(message, part, &state.originator)
         .into_iter()
         .filter_map(|value| state.accept_message(value))
         .collect()
@@ -431,7 +432,7 @@ pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
     let rows = load_sessions(&connection)?;
     let mut accumulators = BTreeMap::new();
     for row in rows {
-        let state = initial_state(&path, &row)?;
+        let state = initial_state(&path, &row, source)?;
         accumulators.insert(
             row.id.clone(),
             SessionAccumulator {
@@ -522,7 +523,7 @@ pub(super) fn visit_detail(
     let connection = open_database(&locator.database_path)?;
     validate_projector_tables(&connection)?;
     let row = load_session(&connection, &locator.session_id)?;
-    let mut state = initial_state(&locator.database_path, &row)?;
+    let mut state = initial_state(&locator.database_path, &row, source)?;
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
     let mut events = HeadTail::new(DETAIL_EVENT_LIMIT);
     visit_parts(&connection, Some(&locator.session_id), |message, part| {
@@ -530,7 +531,7 @@ pub(super) fn visit_detail(
             attach_message_key(
                 &mut value,
                 json!({
-                    "source_kind": "opencode",
+                    "source_kind": source.kind,
                     "session_id": locator.session_id,
                     "message_id": part.message_id,
                     "part_id": part.id,
@@ -758,6 +759,35 @@ mod tests {
             archived: false,
         };
         (directory, source)
+    }
+
+    #[test]
+    fn kilo_复用数据库解析但保持独立来源标识() {
+        let (_directory, mut source) = fixture();
+        source.kind = "kilo";
+        source.display_name = "Kilo";
+        source.format = SourceFormat::Kilo;
+        let parsed = parse_source(&source).unwrap();
+        let main = parsed
+            .sessions
+            .iter()
+            .find(|session| session.summary["id"] == "ses_main")
+            .unwrap();
+        assert_eq!(main.summary["_key"], "kilo:ses_main");
+        assert_eq!(main.summary["source_kind"], "kilo");
+        assert_eq!(main.summary["originator"], "kilo");
+        assert_eq!(main.summary["source_read_only"], true);
+        assert!(main.search_text.contains("请检查发布构建"));
+        let detail = parse_detail(&source, &main.detail_locator).unwrap();
+        assert_eq!(detail["summary"]["source_kind"], "kilo");
+        assert_eq!(
+            detail["conversation_messages"][0]["source_type"],
+            "kilo_part"
+        );
+        assert_eq!(
+            detail["conversation_messages"][0]["_delete_ref"],
+            serde_json::Value::Null
+        );
     }
 
     #[test]

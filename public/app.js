@@ -282,9 +282,9 @@ function renderSavedFilters() {
           method: "POST",
           body: { id: saved.id },
         });
-        state.workspace.saved_filters = filters.filter(
-          (filter) => filter.id !== saved.id
-        );
+        state.workspace.saved_filters = (
+          state.workspace.saved_filters || []
+        ).filter((filter) => filter.id !== saved.id);
         renderSavedFilters();
         announce(t("savedFilterDeleted"));
       } catch (error) {

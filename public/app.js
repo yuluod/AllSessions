@@ -62,7 +62,7 @@ const SOURCE_RAIL_AGENTS = [
   { agent: "zcode", kinds: ["zcode"] },
   { agent: "cursor", kinds: ["cursor"] },
   { agent: "devin", kinds: ["devin"] },
-  { agent: "copilot", kinds: ["copilot"] },
+  { agent: "copilot", kinds: ["copilot", "vscode_copilot"] },
   { agent: "hermes", kinds: ["hermes"] },
 ];
 const ARCHIVE_KEY = "codex_viewer_archived_sessions";
@@ -774,6 +774,7 @@ function sourceKindLabel(sourceKind) {
 function sourceAgentForKind(sourceKind) {
   if (sourceKind === "claude_code") return "claude";
   if (sourceKind === "codex_archived") return "codex";
+  if (sourceKind === "vscode_copilot") return "copilot";
   return sourceKind || "all";
 }
 

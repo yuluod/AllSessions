@@ -15,7 +15,7 @@ use serde_json::Value;
 
 /// 摘要缓存格式版本。当 parse_summary 的字段、隐藏规则或消息解析逻辑发生变化时
 /// 必须递增：版本不匹配的旧缓存会在打开时被整体清空，避免历史文件复用过期摘要。
-const CACHE_VERSION: i32 = 1;
+const CACHE_VERSION: i32 = 2;
 
 pub struct IndexCache {
     /// Arc 共享的全文索引：搜索在会话锁之外克隆句柄执行查询。

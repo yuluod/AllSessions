@@ -29,7 +29,7 @@ Browse, search, organize, and manage local sessions from multiple AI coding agen
 
 </div>
 
-AllSessions brings local sessions from **Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, ZCode, Cursor, Devin, GitHub Copilot, and Hermes Agent** into a single desktop app.
+AllSessions brings local sessions from **Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat** into a single desktop app.
 
 Instead of hunting through different tools and directories for past history, you can browse sessions, run full-text search, inspect tool calls, organize favorites and tags, review usage statistics, and export sessions — all in one interface.
 
@@ -74,7 +74,7 @@ Long sessions keep bounded head/tail detail windows and a 64 MB LRU cache; match
 
 - Reveal a session source file or project directory in the system file manager
 - Open a system terminal in the session's working directory
-- Resume the session in the corresponding agent (Cursor and Devin are read-only sources and do not support resume)
+- Resume the session in the corresponding agent (Cursor, Devin, and VS Code Copilot Chat are read-only sources and do not support resume)
 - Pick a terminal app or configure a custom executable
 - Five visual themes
 - Light, dark, and system color schemes
@@ -106,6 +106,7 @@ Long sessions keep bounded head/tail detail windows and a 64 MB LRU cache; match
 | **Devin** | `Devin/User` under the OS config dir and `~/.local/share/devin/cli` | Desktop `acp-messages`/`state.vscdb` and CLI `sessions.db`; browsing, search, statistics, export, local removal; read-only source |
 | **GitHub Copilot** | `~/.copilot/session-state` | Per-session `events.jsonl` plus `workspace.yaml` metadata; messages, thinking, tools, raw events, search, live refresh, resume; read-only source |
 | **Hermes Agent** | `~/.hermes` (macOS/Linux) or `%LOCALAPPDATA%\hermes` (Windows) | SQLite `state.db` including `profiles/<name>` databases; messages, thinking, tools, compaction-archive filtering, subagent exclusion, raw events, search, WAL live refresh, resume; read-only source |
+| **VS Code Copilot Chat** | `Code/User` and `Code - Insiders/User` under the OS config dir | Panel chat sessions (`workspaceStorage`/`globalStorage`, flat `.json` and 1.109+ `.jsonl` append logs); messages, thinking, tools, file edits, custom titles, search, live refresh; empty placeholder sessions excluded; read-only source |
 
 For read-only sources, AllSessions never modifies the agent's original data. You can still remove records locally inside AllSessions; deleting the original records must be done in the corresponding agent.
 
@@ -175,6 +176,7 @@ Set environment variables before starting the desktop app; they are read once at
 | `COPILOT_SESSIONS_DIR` | GitHub Copilot session roots (path list) | `~/.copilot/session-state` |
 | `HERMES_SESSIONS_DIR` | Hermes Agent data roots (path list) | `%LOCALAPPDATA%\hermes` (Windows) or `~/.hermes` |
 | `HERMES_HOME` | Hermes' official data root (single path) | same as above |
+| `VSCODE_COPILOT_SESSIONS_DIR` | VS Code Copilot Chat data roots (path list) | `Code/User` and `Code - Insiders/User` under the OS config dir |
 | `SESSION_VIEWER_CACHE_DIR` | Rust SQLite index directory | Platform cache directory under `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset |
 | `ALLSESSIONS_WORKSPACE_DB` | AllSessions user-data SQLite path | Platform app-data directory |
@@ -218,7 +220,7 @@ After explicit confirmation of permanent deletion, AllSessions creates a local b
 
 The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
 
-Pi, Kimi Code CLI, OpenCode, ZCode, Cursor, Devin, GitHub Copilot, and Hermes Agent are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
+Pi, Kimi Code CLI, OpenCode, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
 
 Favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
 

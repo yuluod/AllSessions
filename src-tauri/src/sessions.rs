@@ -24,6 +24,7 @@ mod hermes;
 mod kimi;
 mod opencode;
 mod pi;
+mod vscode_copilot;
 mod zcode;
 
 const PAGE_LIMIT: usize = 50;
@@ -55,6 +56,7 @@ enum SourceFormat {
     Devin,
     Copilot,
     Hermes,
+    VsCodeCopilot,
 }
 
 #[derive(Clone)]
@@ -231,6 +233,7 @@ impl SessionStore {
             "devin",
             "copilot",
             "hermes",
+            "vscode_copilot",
         ] {
             let enabled = self
                 .sources_config
@@ -266,6 +269,7 @@ impl SessionStore {
             ("devin", lists.devin.as_slice()),
             ("copilot", lists.copilot.as_slice()),
             ("hermes", lists.hermes.as_slice()),
+            ("vscode_copilot", lists.vscode_copilot.as_slice()),
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());
@@ -569,6 +573,9 @@ impl SessionStore {
                     Ok((summary, search_text)) => {
                         self.index_cache
                             .put(&path, source.kind, &metadata, &summary, &search_text);
+                        if is_placeholder_session(source, &summary) {
+                            continue;
+                        }
                         let key = summary["_key"].as_str().unwrap_or_default().to_string();
                         next.entry(key).or_insert_with(|| StoredSession {
                             summary,
@@ -636,10 +643,33 @@ impl SessionStore {
                     && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl")
                     || matches!(source.format, SourceFormat::Copilot)
                         && path.file_name().and_then(|value| value.to_str())
-                            == Some("workspace.yaml"))
+                            == Some("workspace.yaml")
+                    || matches!(source.format, SourceFormat::VsCodeCopilot)
+                        && path.file_name().and_then(|value| value.to_str())
+                            == Some("workspace.json"))
                     && belongs_to_source
             })
         }) {
+            // VS Code Copilot Chat 的 cwd 取自会话同级 workspace.json，
+            // 事件文件指纹不覆盖它；全量重建前按目录失效对应缓存。
+            for path in paths {
+                if path.file_name().and_then(|v| v.to_str()) != Some("workspace.json")
+                    || !self.sources.iter().any(|source| {
+                        matches!(source.format, SourceFormat::VsCodeCopilot)
+                            && path.starts_with(&source.root)
+                    })
+                {
+                    continue;
+                }
+                let Some(dir) = path.parent() else {
+                    continue;
+                };
+                for record in self.records.values() {
+                    if record.path.starts_with(dir) {
+                        self.index_cache.remove(&record.path);
+                    }
+                }
+            }
             self.refresh_metadata()?;
             return Ok(true);
         }
@@ -666,11 +696,20 @@ impl SessionStore {
                 continue;
             };
             let diagnostic_kind = diagnostic_source_kind(source.kind);
+            // VsCodeCopilot 的 .jsonl 追加日志取代同 id 的 .json 平铺文件；
+            // 旧记录的路径不等于当前 path，需要一并纳入受影响集合。
+            let shadowed = if matches!(source.format, SourceFormat::VsCodeCopilot) {
+                vscode_copilot::shadowed_flat_path(path)
+            } else {
+                None
+            };
             let affected = self
                 .records
                 .iter()
                 .filter(|(_, record)| {
-                    record.path == *path || (!path.exists() && record.path.starts_with(path))
+                    record.path == *path
+                        || shadowed.as_deref() == Some(record.path.as_path())
+                        || (!path.exists() && record.path.starts_with(path))
                 })
                 .map(|(key, record)| (key.clone(), record.path.clone()))
                 .collect::<Vec<_>>();
@@ -708,12 +747,17 @@ impl SessionStore {
                 }
             };
             self.scan_diagnostics.clear_error(diagnostic_kind, path);
-            for (key, record_path) in affected {
-                self.records.remove(&key);
-                self.index_cache.remove(&record_path);
+            for (key, record_path) in &affected {
+                self.records.remove(key);
+                self.index_cache.remove(record_path);
             }
             self.index_cache
                 .put(path, source.kind, &metadata, &summary, &search_text);
+            // 占位会话不进列表；若顶掉了旧记录仍需标记变更。
+            if is_placeholder_session(&source, &summary) {
+                changed |= !affected.is_empty();
+                continue;
+            }
             let key = summary["_key"].as_str().unwrap_or_default().to_string();
             self.records.entry(key).or_insert_with(|| StoredSession {
                 summary,
@@ -1643,6 +1687,8 @@ impl ParseState {
                 // Hermes 的模型引用形如 anthropic/claude-*，adapter 已拆出 provider；
                 // 未记录时不做推断。
                 SourceFormat::Hermes => "unknown",
+                // VS Code Copilot Chat 同样由 GitHub 代理模型。
+                SourceFormat::VsCodeCopilot => "github",
             }
         } else {
             &self.provider
@@ -1660,6 +1706,7 @@ impl ParseState {
                 SourceFormat::Devin => "devin",
                 SourceFormat::Copilot => "copilot_cli",
                 SourceFormat::Hermes => "hermes_agent",
+                SourceFormat::VsCodeCopilot => "vscode_copilot_chat",
             }
         } else {
             &self.originator
@@ -1673,6 +1720,7 @@ fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String
         SourceFormat::Pi => return pi::parse_summary(path, source),
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
         SourceFormat::Copilot => return copilot::parse_summary(path, source),
+        SourceFormat::VsCodeCopilot => return vscode_copilot::parse_summary(path, source),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过聚合来源解析".into()),
@@ -1703,6 +1751,7 @@ fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
         SourceFormat::Pi => return pi::parse_detail(path, source),
         SourceFormat::Kimi => return kimi::parse_detail(path, source),
         SourceFormat::Copilot => return copilot::parse_detail(path, source),
+        SourceFormat::VsCodeCopilot => return vscode_copilot::parse_detail(path, source),
         _ => {}
     }
     visit_detail(path, source, &mut |_| {})
@@ -1717,6 +1766,7 @@ fn visit_detail(
         SourceFormat::Pi => return pi::visit_detail(path, source, visitor),
         SourceFormat::Kimi => return kimi::visit_detail(path, source, visitor),
         SourceFormat::Copilot => return copilot::visit_detail(path, source, visitor),
+        SourceFormat::VsCodeCopilot => return vscode_copilot::visit_detail(path, source, visitor),
         SourceFormat::OpenCode => return Err("OpenCode 数据库必须通过详情定位器解析".into()),
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过详情定位器解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过详情定位器解析".into()),
@@ -1891,6 +1941,7 @@ pub(crate) struct RootLists {
     pub devin: Vec<PathBuf>,
     pub copilot: Vec<PathBuf>,
     pub hermes: Vec<PathBuf>,
+    pub vscode_copilot: Vec<PathBuf>,
 }
 
 fn resolve_kind(
@@ -2058,6 +2109,20 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
     if hermes_origin == "default" && env::var_os("HERMES_HOME").is_some() {
         hermes_origin = "env";
     }
+    let vscode_user_dirs = ["Code", "Code - Insiders"]
+        .iter()
+        .map(|app| {
+            dirs::config_dir()
+                .unwrap_or_else(|| home.clone())
+                .join(app)
+                .join("User")
+        })
+        .collect();
+    let (vscode_copilot, vscode_copilot_origin) = resolve_kind(
+        config.get("vscode_copilot"),
+        &["VSCODE_COPILOT_SESSIONS_DIR"],
+        vscode_user_dirs,
+    );
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -2071,6 +2136,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
         "devin": { "roots": devin.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": devin_origin },
         "copilot": { "roots": copilot.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": copilot_origin },
         "hermes": { "roots": hermes.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": hermes_origin },
+        "vscode_copilot": { "roots": vscode_copilot.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": vscode_copilot_origin },
     });
     (
         RootLists {
@@ -2086,6 +2152,7 @@ fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Value) {
             devin,
             copilot,
             hermes,
+            vscode_copilot,
         },
         description,
     )
@@ -2188,6 +2255,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "devin": describe_protected_source_roots(config.devin.as_deref().unwrap_or_default(), &inherited.devin),
         "copilot": describe_protected_source_roots(config.copilot.as_deref().unwrap_or_default(), &inherited.copilot),
         "hermes": describe_protected_source_roots(config.hermes.as_deref().unwrap_or_default(), &inherited.hermes),
+        "vscode_copilot": describe_protected_source_roots(config.vscode_copilot.as_deref().unwrap_or_default(), &inherited.vscode_copilot),
     })
 }
 
@@ -2253,6 +2321,13 @@ fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Source> {
         display_name: "Hermes Agent",
         root: root.clone(),
         format: SourceFormat::Hermes,
+        archived: false,
+    }));
+    sources.extend(lists.vscode_copilot.iter().map(|root| Source {
+        kind: "vscode_copilot",
+        display_name: "VS Code Copilot Chat",
+        root: root.clone(),
+        format: SourceFormat::VsCodeCopilot,
         archived: false,
     }));
     sources
@@ -2386,6 +2461,9 @@ fn discover_files(source: &Source) -> Vec<PathBuf> {
     if matches!(source.format, SourceFormat::Copilot) {
         return copilot::discover_files(source);
     }
+    if matches!(source.format, SourceFormat::VsCodeCopilot) {
+        return vscode_copilot::discover_files(source);
+    }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
             "json"
@@ -2423,6 +2501,9 @@ fn source_matches_path(source: &Source, path: &Path) -> bool {
     }
     if matches!(source.format, SourceFormat::Copilot) {
         return copilot::matches_path(&source.root, path);
+    }
+    if matches!(source.format, SourceFormat::VsCodeCopilot) {
+        return vscode_copilot::matches_path(&source.root, path);
     }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
@@ -3473,8 +3554,16 @@ fn agent_kind(source_kind: &Value) -> Option<&str> {
     match source_kind.as_str()? {
         "codex_archived" => Some("codex"),
         "claude_code" => Some("claude"),
+        "vscode_copilot" => Some("copilot"),
         value => Some(value),
     }
+}
+
+/// VS Code 打开 Copilot Chat 面板就会生成空会话文件；
+/// 没有消息的占位会话不进入列表。
+fn is_placeholder_session(source: &Source, summary: &Value) -> bool {
+    matches!(source.format, SourceFormat::VsCodeCopilot)
+        && summary["message_count"].as_u64() == Some(0)
 }
 fn diagnostic_source_kind(kind: &str) -> &str {
     match kind {
@@ -3577,6 +3666,7 @@ mod tests {
             devin: Some(Vec::new()),
             copilot: Some(Vec::new()),
             hermes: Some(Vec::new()),
+            vscode_copilot: Some(Vec::new()),
         }
     }
 
@@ -3821,6 +3911,7 @@ mod tests {
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
                 hermes: Some(Vec::new()),
+                vscode_copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -3951,6 +4042,7 @@ mod tests {
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
                 hermes: Some(Vec::new()),
+                vscode_copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -4008,6 +4100,7 @@ mod tests {
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
                 hermes: Some(Vec::new()),
+                vscode_copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -4068,6 +4161,7 @@ mod tests {
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
                 hermes: Some(Vec::new()),
+                vscode_copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -4121,6 +4215,56 @@ mod tests {
             existing_watch_root_within(&app.join("User"), &blocked),
             Some(app)
         );
+    }
+
+    #[test]
+    fn vscode_copilot_占位会话被过滤且_jsonl_取代同名_json() {
+        let directory = tempdir().unwrap();
+        let user_dir = directory.path();
+        let chat = user_dir
+            .join("workspaceStorage")
+            .join("h1")
+            .join("chatSessions");
+        std::fs::create_dir_all(&chat).unwrap();
+        let flat = chat.join("s-1.json");
+        std::fs::write(
+            &flat,
+            r#"{"version":3,"sessionId":"s-1","creationDate":1760514473246,"customTitle":"平铺标题","requests":[{"requestId":"r1","message":"你好","timestamp":1760514475000,"response":[]}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            chat.join("empty.json"),
+            r#"{"version":3,"sessionId":"empty","creationDate":1760514473246,"requests":[]}"#,
+        )
+        .unwrap();
+        let mut sources_config = codex_roots_config(&[]);
+        sources_config.vscode_copilot = Some(vec![user_dir.to_string_lossy().into_owned()]);
+        let mut store = SessionStore {
+            summaries: Vec::new(),
+            records: HashMap::new(),
+            sources: Vec::new(),
+            sources_config,
+            index_cache: crate::cache::IndexCache::disabled(),
+            detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+            scan_diagnostics: ScanDiagnostics::default(),
+        };
+        store.refresh_metadata().unwrap();
+        // 空会话是占位会话，不进入列表。
+        assert_eq!(store.records.len(), 1);
+        assert!(store.records.contains_key("vscode_copilot:s-1"));
+
+        // 写入同 id 的 .jsonl 后增量刷新：旧 .json 记录被取代而不是并存。
+        let log = chat.join("s-1.jsonl");
+        std::fs::write(
+            &log,
+            r#"{"kind":0,"v":{"version":3,"sessionId":"s-1","creationDate":1760514473246,"customTitle":"日志标题","requests":[{"requestId":"r1","message":"你好","timestamp":1760514475000,"response":[]}]}}"#,
+        )
+        .unwrap();
+        store.refresh_paths(&BTreeSet::from([log.clone()])).unwrap();
+        assert_eq!(store.records.len(), 1);
+        let record = &store.records["vscode_copilot:s-1"];
+        assert_eq!(record.path, log);
+        assert_eq!(record.summary["title"], "日志标题");
     }
 
     #[test]
@@ -4782,6 +4926,7 @@ mod tests {
                 devin: Some(Vec::new()),
                 copilot: Some(Vec::new()),
                 hermes: Some(Vec::new()),
+                vscode_copilot: Some(Vec::new()),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

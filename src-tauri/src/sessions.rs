@@ -2330,14 +2330,28 @@ pub(crate) fn path_identity(path: &Path) -> String {
         .unwrap_or_else(|_| path.to_string_lossy().into_owned())
 }
 fn existing_watch_root(path: &Path) -> Option<PathBuf> {
-    let home = dirs::home_dir();
+    let blocked: Vec<PathBuf> = [
+        dirs::home_dir(),
+        dirs::config_dir(),
+        dirs::data_dir(),
+        dirs::data_local_dir(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    existing_watch_root_within(path, &blocked)
+}
+
+fn existing_watch_root_within(path: &Path, blocked: &[PathBuf]) -> Option<PathBuf> {
     let mut current = path;
     loop {
         if current.is_dir() {
             // 目录不存在时向上回溯到最近的现有父目录（如 ~/.codex/sessions
-            // 尚未创建时监听 ~/.codex），但绝不监听用户主目录或文件系统根，
+            // 尚未创建时监听 ~/.codex），但绝不回溯到 blocked 中的目录
+            // （主目录、系统配置/数据目录等，如 ~/Library/Application Support
+            // 会连带递归监听 Cursor/Devin 的默认根）或文件系统根，
             // 递归监听这些目录的代价过高。
-            if current.parent().is_none() || home.as_deref() == Some(current) {
+            if current.parent().is_none() || blocked.iter().any(|b| b == current) {
                 return None;
             }
             return Some(current.into());
@@ -3533,11 +3547,11 @@ mod tests {
     use super::{
         compact, delete_jsonl_message, delete_legacy_session, describe_inherited_sources,
         describe_protected_source_roots, describe_sources, existing_watch_root,
-        generic_conversation_message, is_synthetic_context, local_date_key, matches_filters,
-        opencode_event_matches, parse_detail, parse_summary, resolve_kind, search_query_matches,
-        sources_from_paths, split_path_list, timestamp_of, watch_roots_for, DetailCache, HeadTail,
-        ScanDiagnostics, SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES,
-        DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+        existing_watch_root_within, generic_conversation_message, is_synthetic_context,
+        local_date_key, matches_filters, opencode_event_matches, parse_detail, parse_summary,
+        resolve_kind, search_query_matches, sources_from_paths, split_path_list, timestamp_of,
+        watch_roots_for, DetailCache, HeadTail, ScanDiagnostics, SessionStore, Source,
+        SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
@@ -4088,6 +4102,24 @@ mod tests {
         assert_eq!(
             watch_roots_for(&codex_roots_config(std::slice::from_ref(&child))),
             vec![base.path()]
+        );
+    }
+
+    #[test]
+    fn watch_root_within_stops_at_blocked_boundary() {
+        let base = tempdir().unwrap();
+        let app = base.path().join("app");
+        let blocked = vec![base.path().to_path_buf()];
+        // base 在 blocked 中：回溯越过边界则放弃。
+        assert_eq!(
+            existing_watch_root_within(&app.join("User"), &blocked),
+            None
+        );
+        // 边界内存在目录时正常返回。
+        std::fs::create_dir(&app).unwrap();
+        assert_eq!(
+            existing_watch_root_within(&app.join("User"), &blocked),
+            Some(app)
         );
     }
 

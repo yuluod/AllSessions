@@ -1027,9 +1027,7 @@ impl SessionStore {
                 DetailLocator::ZCode(_)
                 | DetailLocator::Cursor(_)
                 | DetailLocator::Devin(_)
-                | DetailLocator::Hermes(_) => {
-                    return Err(read_only_source_error())
-                }
+                | DetailLocator::Hermes(_) => return Err(read_only_source_error()),
             }
         } else {
             session_backup_paths(&record.path)
@@ -1048,9 +1046,7 @@ impl SessionStore {
                 DetailLocator::ZCode(_)
                 | DetailLocator::Cursor(_)
                 | DetailLocator::Devin(_)
-                | DetailLocator::Hermes(_) => {
-                    return Err(read_only_source_error())
-                }
+                | DetailLocator::Hermes(_) => return Err(read_only_source_error()),
             }
         } else {
             if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
@@ -1152,9 +1148,7 @@ impl SessionStore {
                 DetailLocator::ZCode(_)
                 | DetailLocator::Cursor(_)
                 | DetailLocator::Devin(_)
-                | DetailLocator::Hermes(_) => {
-                    return Err(read_only_source_error())
-                }
+                | DetailLocator::Hermes(_) => return Err(read_only_source_error()),
             }
         } else {
             message_backup_paths(&record.path, &delete_ref)?
@@ -1175,9 +1169,7 @@ impl SessionStore {
                 DetailLocator::ZCode(_)
                 | DetailLocator::Cursor(_)
                 | DetailLocator::Devin(_)
-                | DetailLocator::Hermes(_) => {
-                    return Err(read_only_source_error())
-                }
+                | DetailLocator::Hermes(_) => return Err(read_only_source_error()),
             }
         } else if record.path.extension().and_then(|value| value.to_str()) == Some("json") {
             delete_legacy_message(&record.path, &delete_ref)?;
@@ -2365,10 +2357,7 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
 fn discover_files(source: &Source) -> Vec<PathBuf> {
     if matches!(
         source.format,
-        SourceFormat::OpenCode
-            | SourceFormat::ZCode
-            | SourceFormat::Devin
-            | SourceFormat::Hermes
+        SourceFormat::OpenCode | SourceFormat::ZCode | SourceFormat::Devin | SourceFormat::Hermes
     ) {
         return source
             .root

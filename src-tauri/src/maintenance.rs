@@ -154,13 +154,17 @@ pub fn apply(body: &Value) -> Result<Value, String> {
             Err(rollback_error) => Err(format!("{error}；自动回滚失败：{rollback_error}")),
         };
     }
-    metadata.status = "completed".into();
-    write_metadata(&backup_dir, &metadata)?;
     let mut summary = plan.summary;
     summary["dryRun"] = Value::Bool(false);
     summary["backupDir"] = Value::String(backup_dir.to_string_lossy().into_owned());
     summary["verification"] =
         json!({ "ok": true, "remainingThreadMatches": 0, "remainingJsonlReplacements": 0 });
+    metadata.status = "completed".into();
+    if let Err(error) = write_metadata(&backup_dir, &metadata) {
+        summary["metadataWarning"] = Value::String(format!(
+            "修复已验证完成，但备份状态更新失败：{error}；仍可使用备份目录回滚"
+        ));
+    }
     Ok(summary)
 }
 
@@ -193,7 +197,14 @@ fn build_plan(
     selected: Option<Vec<String>>,
     cancellation: Option<&AtomicBool>,
 ) -> Result<MigrationPlan, String> {
-    let codex_home = codex_home();
+    build_plan_for_home(codex_home(), selected, cancellation)
+}
+
+fn build_plan_for_home(
+    codex_home: PathBuf,
+    selected: Option<Vec<String>>,
+    cancellation: Option<&AtomicBool>,
+) -> Result<MigrationPlan, String> {
     let backup_root = codex_home.join("backups");
     let config_path = codex_home.join("config.toml");
     let config_text = fs::read_to_string(&config_path).ok();
@@ -254,15 +265,14 @@ fn build_plan(
     };
 
     let mut databases = Vec::new();
-    for path in state_database_candidates(&codex_home, config.as_ref()) {
-        if path.is_file() {
-            databases.push(read_database_plan(path)?);
-        }
+    let state_path = active_state_database(&codex_home, config.as_ref());
+    if state_path.is_file() {
+        databases.push(read_database_plan(state_path.clone())?);
     }
     if databases.is_empty() {
-        warnings.push(diagnostic(
+        blockers.push(diagnostic(
             "codex_state_db_missing",
-            "未找到 Codex state_5.sqlite",
+            format!("未找到 Codex 状态库：{}", state_path.display()),
         ));
     }
     for database in &databases {
@@ -463,12 +473,15 @@ fn scan_jsonl(
         if !root.exists() {
             continue;
         }
+        if !root.is_dir() {
+            return Err(format!("会话目录不是文件夹：{}", root.display()));
+        }
         for entry in WalkDir::new(root)
             .follow_links(false)
             .max_depth(16)
             .into_iter()
-            .filter_map(Result::ok)
         {
+            let entry = entry.map_err(|error| format!("扫描会话目录失败：{error}"))?;
             if cancellation.is_some_and(|enabled| !enabled.load(Ordering::SeqCst)) {
                 return Err("维护预览已取消".into());
             }
@@ -1017,20 +1030,25 @@ fn atomic_write(path: &Path, content: &[u8]) -> Result<(), String> {
     fs::rename(&temp, path).map_err(error_text)
 }
 
-fn state_database_candidates(codex_home: &Path, config: Option<&toml::Value>) -> Vec<PathBuf> {
-    let mut paths = vec![codex_home.join("state_5.sqlite")];
+fn active_state_database(codex_home: &Path, config: Option<&toml::Value>) -> PathBuf {
     let custom = config
         .and_then(|value| value.get("sqlite_home"))
         .and_then(toml::Value::as_str)
         .map(expand_user_path)
         .or_else(|| env::var_os("CODEX_SQLITE_HOME").map(PathBuf::from));
-    if let Some(home) = custom {
-        let path = home.join("state_5.sqlite");
-        if !paths.contains(&path) {
-            paths.push(path);
-        }
+    custom
+        .unwrap_or_else(|| codex_home.to_path_buf())
+        .join("state_5.sqlite")
+}
+
+fn state_database_candidates(codex_home: &Path, config: Option<&toml::Value>) -> Vec<PathBuf> {
+    let default = codex_home.join("state_5.sqlite");
+    let active = active_state_database(codex_home, config);
+    if active == default {
+        vec![default]
+    } else {
+        vec![default, active]
     }
-    paths
 }
 
 fn config_defines_provider(config: Option<&toml::Value>, provider: &str) -> bool {
@@ -1063,6 +1081,12 @@ fn assert_codex_closed() -> Result<(), String> {
         .args(["-axo", "comm="])
         .output()
         .map_err(error_text)?;
+    if !output.status.success() {
+        return Err(format!(
+            "无法检查 Codex App 进程：{}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
     let processes = String::from_utf8_lossy(&output.stdout);
     if contains_codex_process(&processes, cfg!(target_os = "windows")) {
         Err("检测到 Codex App 仍在运行，请完全退出后再执行".into())
@@ -1196,12 +1220,87 @@ fn error_text(error: impl std::fmt::Display) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use tempfile::tempdir;
 
     use super::{
-        assignment_from_line, contains_codex_process, hash_raw, parse_providers, rewrite_jsonl,
-        valid_provider, ProviderAssignment,
+        active_state_database, assignment_from_line, build_plan_for_home, contains_codex_process,
+        hash_raw, parse_providers, rewrite_jsonl, scan_jsonl, valid_provider, Connection,
+        ProviderAssignment,
     };
+
+    #[test]
+    fn missing_state_database_blocks_jsonl_only_repair() {
+        let directory = tempdir().unwrap();
+        fs::write(
+            directory.path().join("config.toml"),
+            "model_provider = 'current'\n[model_providers.current]\nname = 'Current'\nbase_url = 'https://example.com'\n",
+        )
+        .unwrap();
+        let sessions = directory.path().join("sessions");
+        fs::create_dir(&sessions).unwrap();
+        fs::write(
+            sessions.join("session.jsonl"),
+            "{\"type\":\"session_meta\",\"payload\":{\"model_provider\":\"legacy\"}}\n",
+        )
+        .unwrap();
+        let plan = build_plan_for_home(
+            directory.path().to_path_buf(),
+            Some(vec!["legacy".into()]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(plan.summary["hasChanges"], true);
+        assert_eq!(plan.summary["canApply"], false);
+        assert_eq!(
+            plan.summary["blockers"][0]["code"],
+            "codex_state_db_missing"
+        );
+    }
+
+    #[test]
+    fn session_root_must_be_a_directory() {
+        let directory = tempdir().unwrap();
+        fs::write(directory.path().join("sessions"), "not a directory").unwrap();
+        assert!(scan_jsonl(directory.path(), None)
+            .err()
+            .unwrap()
+            .contains("会话目录不是文件夹"));
+    }
+
+    #[test]
+    fn custom_sqlite_home_is_the_only_active_database() {
+        let directory = tempdir().unwrap();
+        let custom = directory.path().join("custom");
+        fs::create_dir(&custom).unwrap();
+        let config_text = format!(
+            "sqlite_home = '{}'\nmodel_provider = 'current'\n[model_providers.current]\nname = 'Current'\nbase_url = 'https://example.com'\n",
+            custom.display()
+        );
+        fs::write(directory.path().join("config.toml"), &config_text).unwrap();
+        let config: toml::Value = toml::from_str(&config_text).unwrap();
+        assert_eq!(
+            active_state_database(directory.path(), Some(&config)),
+            custom.join("state_5.sqlite")
+        );
+        for path in [
+            directory.path().join("state_5.sqlite"),
+            custom.join("state_5.sqlite"),
+        ] {
+            let connection = Connection::open(path).unwrap();
+            connection.execute_batch("create table threads (id text primary key, model_provider text); insert into threads values ('thread', 'legacy');").unwrap();
+        }
+        let plan = build_plan_for_home(
+            directory.path().to_path_buf(),
+            Some(vec!["legacy".into()]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(plan.summary["threadMatches"], 1);
+        assert_eq!(plan.databases.len(), 1);
+        assert_eq!(plan.databases[0].path, custom.join("state_5.sqlite"));
+    }
 
     #[test]
     fn sha256_hash_remains_lowercase_hex() {

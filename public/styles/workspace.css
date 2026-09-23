@@ -1236,6 +1236,12 @@ body.is-resizing {
   color: var(--src-opencode);
   background: color-mix(in srgb, var(--src-opencode) 13%, var(--surface));
 }
+.session-source-kind[data-source-kind="kilo"],
+.detail-tag.tag-source[data-source-kind="kilo"] {
+  border-color: color-mix(in srgb, var(--src-opencode) 42%, var(--surface));
+  color: var(--src-opencode);
+  background: color-mix(in srgb, var(--src-opencode) 13%, var(--surface));
+}
 
 .session-source-kind[data-source-kind="zcode"],
 .detail-tag.tag-source[data-source-kind="zcode"] {
@@ -2553,6 +2559,9 @@ body.is-resizing {
 
 .source-tree__item[data-source-agent="opencode"] .source-tree__dot {
   mask-image: url("../assets/agents/opencode.svg");
+}
+.source-tree__item[data-source-agent="kilo"] .source-tree__dot {
+  mask-image: url("../assets/agents/kilo.svg");
 }
 
 .source-tree__item[data-source-agent="zcode"] .source-tree__dot {

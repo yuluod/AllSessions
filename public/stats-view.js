@@ -8,6 +8,7 @@ const AGENT_PRESENTATION = {
   pi: { label: "Pi", color: "#2563eb" },
   kimi: { label: "Kimi Code CLI", color: "#b42318" },
   opencode: { label: "OpenCode", color: "#16794f" },
+  kilo: { label: "Kilo", color: "#c45038" },
   zcode: { label: "ZCode", color: "#3b6ea5" },
   cursor: { label: "Cursor", color: "#52525b" },
   devin: { label: "Devin", color: "#0891b2" },

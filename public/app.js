@@ -59,6 +59,7 @@ const SOURCE_RAIL_AGENTS = [
   { agent: "pi", kinds: ["pi"] },
   { agent: "kimi", kinds: ["kimi"] },
   { agent: "opencode", kinds: ["opencode"] },
+  { agent: "kilo", kinds: ["kilo"] },
   { agent: "zcode", kinds: ["zcode"] },
   { agent: "cursor", kinds: ["cursor"] },
   { agent: "devin", kinds: ["devin"] },

@@ -530,6 +530,8 @@ const elements = {
   clearSelectionBtn: document.querySelector("#clear-selection-btn"),
   statusHealthButton: document.querySelector("#status-health-button"),
   statusHealthText: document.querySelector("#status-health-text"),
+  statusHealthIssues: document.querySelector("#status-health-issues"),
+  indexProgressBar: document.querySelector("#index-progress"),
   statusFilterText: document.querySelector("#status-filter-text"),
   statusLanguage: document.querySelector("#status-language"),
   detailEmpty: document.querySelector("#detail-empty"),
@@ -822,10 +824,10 @@ function renderWorkspaceStatus() {
   if (elements.statusHealthButton && elements.statusHealthText) {
     const diagnostics = state.diagnostics?.sources;
     const indexing = state.indexProgress;
-    const issues = document.querySelector("#status-health-issues");
+    const issues = elements.statusHealthIssues;
     if (issues) issues.hidden = true;
     elements.statusHealthButton.title = indexing?.error || "";
-    const progress = document.querySelector("#index-progress");
+    const progress = elements.indexProgressBar;
     if (progress) {
       progress.hidden = indexing?.phase !== "indexing";
       progress.max = Math.max(1, indexing?.total || 0);
@@ -1688,7 +1690,7 @@ function renderDetailTags(summary) {
       const copyText = resumeCmd || summary.id;
       navigator.clipboard.writeText(copyText).then(() => {
         const orig = idTag.textContent;
-        idTag.textContent = "✓";
+        idTag.textContent = t("copied");
         setTimeout(() => {
           idTag.textContent = orig;
         }, 1500);
@@ -1952,12 +1954,12 @@ function renderPropsPanel(summary, messages = []) {
       if (copyable && value) {
         const btn = document.createElement("button");
         btn.className = "prop-copy";
-        btn.textContent = "copy";
+        btn.textContent = t("copy");
         btn.addEventListener("click", () => {
           navigator.clipboard.writeText(value).then(() => {
-            btn.textContent = "✓";
+            btn.textContent = t("copied");
             setTimeout(() => {
-              btn.textContent = "copy";
+              btn.textContent = t("copy");
             }, 1500);
           });
         });
@@ -2537,8 +2539,7 @@ async function loadInitialWorkspace() {
   }
 }
 
-async function returnHome() {
-  detailRequestGate.cancel();
+function resetFilterState() {
   state.filters = {
     provider: "",
     source_kind: "",
@@ -2552,6 +2553,11 @@ async function returnHome() {
   state.showHidden = false;
   state.showRemoved = false;
   state.favoriteOnly = false;
+}
+
+async function returnHome() {
+  detailRequestGate.cancel();
+  resetFilterState();
   state.selectedSessionKey = null;
   state.currentDetail = null;
   state.activeTab = "conversation";
@@ -2734,19 +2740,7 @@ async function initialize() {
   });
 
   elements.resetFilters?.addEventListener("click", async () => {
-    state.filters = {
-      provider: "",
-      source_kind: "",
-      date: "",
-      cwd: "",
-      tag: "",
-    };
-    state.searchQuery = "";
-    state.showArchived = false;
-    state.showCodexArchived = false;
-    state.showHidden = false;
-    state.showRemoved = false;
-    state.favoriteOnly = false;
+    resetFilterState();
     syncFilterControls();
     syncUrl();
     await Promise.all([loadSessions(), loadStats()]);

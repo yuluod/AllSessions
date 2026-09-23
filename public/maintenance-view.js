@@ -482,11 +482,14 @@ export function createMaintenanceController({
         elements.providerList.textContent = t("migrationCompletedSources");
       }
       if (elements.confirm) elements.confirm.checked = false;
+      const appliedMessage = summary.backupDir
+        ? t("migrationAppliedWithBackup", { path: summary.backupDir })
+        : t("migrationApplied");
       setStatus(
-        summary.backupDir
-          ? t("migrationAppliedWithBackup", { path: summary.backupDir })
-          : t("migrationApplied"),
-        "ok"
+        summary.metadataWarning
+          ? `${appliedMessage} — ${summary.metadataWarning}`
+          : appliedMessage,
+        summary.metadataWarning ? "warning" : "ok"
       );
       await refreshData();
     } catch (error) {

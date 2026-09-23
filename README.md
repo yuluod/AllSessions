@@ -29,7 +29,7 @@ Browse, search, organize, and manage local sessions from multiple AI coding agen
 
 </div>
 
-AllSessions brings local sessions from **Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat** into a single desktop app.
+AllSessions brings local sessions from **Codex, Claude Code, Gemini CLI, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat** into a single desktop app.
 
 Instead of hunting through different tools and directories for past history, you can browse sessions, run full-text search, inspect tool calls, organize favorites and tags, review usage statistics, and export sessions — all in one interface.
 
@@ -101,6 +101,7 @@ Long sessions keep bounded head/tail detail windows and a 64 MB LRU cache; match
 | **Pi** | `~/.pi/agent/sessions` | Rebuilds the current branch from v1-v3 JSONL trees; messages, thinking, tools, summaries, raw events, search, live refresh |
 | **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`, working directories, custom titles, streamed content, subagents, tools, raw events, search, live refresh |
 | **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source |
+| **Kilo** | `~/.local/share/kilo/kilo.db` | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source |
 | **ZCode** | `~/.zcode/cli/db/db.sqlite` | SQLite; messages, thinking, tools, compaction markers, raw events, search, WAL live refresh; subagent sessions excluded; read-only source |
 | **Cursor** | `Cursor/User` under the OS config dir | IDE `conversation` records and agent transcripts; browsing, search, statistics, export, local removal; read-only source |
 | **Devin** | `Devin/User` under the OS config dir and `~/.local/share/devin/cli` | Desktop `acp-messages`/`state.vscdb` and CLI `sessions.db`; browsing, search, statistics, export, local removal; read-only source |
@@ -171,6 +172,7 @@ Set environment variables before starting the desktop app; they are read once at
 | `KIMI_SESSIONS_DIR` | Kimi Code CLI data roots (path list) | `~/.kimi` |
 | `KIMI_SHARE_DIR` | Kimi Code CLI's official data directory | `~/.kimi` |
 | `OPENCODE_DB` | OpenCode's official SQLite database path | `~/.local/share/opencode/opencode.db` |
+| `KILO_DB` | Kilo's SQLite database path | `~/.local/share/kilo/kilo.db` |
 | `ZCODE_DB` | ZCode's official SQLite database path | `~/.zcode/cli/db/db.sqlite` |
 | `DEVIN_SESSIONS_DIR` | Devin data roots (path list) | `Devin/User` and `~/.local/share/devin/cli` |
 | `COPILOT_SESSIONS_DIR` | GitHub Copilot session roots (path list) | `~/.copilot/session-state` |
@@ -198,6 +200,8 @@ When the AllSessions-specific variable is unset, Pi and Kimi keep using their of
 
 `OPENCODE_DB` follows OpenCode's own path rules: an absolute path is used directly, while a relative path resolves under OpenCode's data directory.
 
+`KILO_DB` accepts absolute paths and resolves relative paths under Kilo's data directory. By default, the stable-channel `kilo.db` is scanned.
+
 Non-existent source roots are skipped automatically. If the same session ID appears in several roots of one kind, only the first-listed root is kept, so a backup copy is shown once.
 
 > [!NOTE]
@@ -220,7 +224,7 @@ After explicit confirmation of permanent deletion, AllSessions creates a local b
 
 The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
 
-Pi, Kimi Code CLI, OpenCode, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
+Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
 
 Favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
 

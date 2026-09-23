@@ -29,7 +29,7 @@
 
 </div>
 
-AllSessions 将 **Codex、Claude Code、Gemini CLI、Pi、Kimi Code CLI、OpenCode、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent 和 VS Code Copilot Chat** 的本地会话集中到一个桌面应用中。
+AllSessions 将 **Codex、Claude Code、Gemini CLI、Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent 和 VS Code Copilot Chat** 的本地会话集中到一个桌面应用中。
 
 无需在不同工具和目录之间来回查找历史记录，你可以在一个界面中浏览会话、全文搜索、查看工具调用、整理收藏与标签、统计使用情况，并按需导出会话。
 
@@ -101,6 +101,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 | **Pi** | `~/.pi/agent/sessions` | 从 v1-v3 JSONL 树重建当前分支；消息、Thinking、工具、摘要、原始事件、搜索、实时刷新 |
 | **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`、工作目录、自定义标题、流式内容、子 Agent、工具、原始事件、搜索、实时刷新 |
 | **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读 |
+| **Kilo** | `~/.local/share/kilo/kilo.db` | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读 |
 | **ZCode** | `~/.zcode/cli/db/db.sqlite` | SQLite；消息、Thinking、工具、压缩标记、原始事件、搜索、WAL 实时刷新；排除子 Agent 会话；来源只读 |
 | **Cursor** | 系统配置目录下的 `Cursor/User` | IDE conversation 与 agent-transcripts；浏览、搜索、统计、导出、本地移除；来源只读 |
 | **Devin** | 系统配置目录下的 `Devin/User` 与 `~/.local/share/devin/cli` | 桌面版 `acp-messages`/`state.vscdb` 与 CLI `sessions.db`；浏览、搜索、统计、导出、本地移除；来源只读 |
@@ -171,6 +172,7 @@ AllSessions/config.json
 | `KIMI_SESSIONS_DIR` | Kimi Code CLI 数据根目录（路径列表） | `~/.kimi` |
 | `KIMI_SHARE_DIR` | Kimi Code CLI 官方数据目录 | `~/.kimi` |
 | `OPENCODE_DB` | OpenCode 官方 SQLite 数据库路径 | `~/.local/share/opencode/opencode.db` |
+| `KILO_DB` | Kilo SQLite 数据库路径 | `~/.local/share/kilo/kilo.db` |
 | `ZCODE_DB` | ZCode 官方 SQLite 数据库路径 | `~/.zcode/cli/db/db.sqlite` |
 | `DEVIN_SESSIONS_DIR` | Devin 数据根目录（路径列表） | `Devin/User` 与 `~/.local/share/devin/cli` |
 | `COPILOT_SESSIONS_DIR` | GitHub Copilot 会话根目录（路径列表） | `~/.copilot/session-state` |
@@ -198,6 +200,8 @@ CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions
 
 `OPENCODE_DB` 遵循 OpenCode 自身的路径规则：绝对路径直接使用，相对路径基于 OpenCode 数据目录解析。
 
+`KILO_DB` 同样支持绝对路径；相对路径基于 Kilo 数据目录解析。默认扫描正式通道的 `kilo.db`。
+
 不存在的来源根目录会被自动跳过。同一类来源的多个根目录中如果出现相同会话 ID，只保留列表中靠前的记录，因此备份副本不会重复显示。
 
 > [!NOTE]
@@ -220,7 +224,7 @@ AllSessions 处理的是本地 AI 会话数据，其中可能包含：
 
 Codex Provider 维护工具同样只有在用户主动启用维护模式并确认执行后才会修改 Codex 数据。
 
-Pi、Kimi Code CLI、OpenCode、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent 和 VS Code Copilot Chat 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
+Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent 和 VS Code Copilot Chat 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
 
 收藏、标签、备注、常用筛选以及本地归档 / 移除状态属于 AllSessions 自身的用户数据，独立保存在 `workspace.sqlite` 中。它们不会修改 Agent 的原始记录，也不会随着可重建的索引缓存一起清除。
 

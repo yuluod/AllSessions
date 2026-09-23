@@ -4,13 +4,24 @@
 
 ## [未发布]
 
+## [0.1.5] - 2026-09-23
+
 ### 新增
 
+- 增加 VS Code Copilot Chat 只读会话来源：扫描系统配置目录下 `Code/User` 与 `Code - Insiders/User` 的 `workspaceStorage/*/chatSessions` 与 `globalStorage/emptyWindowChatSessions`，同时支持平铺 `.json` 与 1.109 起的 `.jsonl` 追加日志；还原正文、Thinking、工具调用、文件编辑与请求错误，按相邻 `workspace.json` 映射项目目录；打开面板即生成的空会话不进入列表；支持浏览、搜索、统计、导出和本地移除，侧栏与统计并入 GitHub Copilot。
+- 新增 Cmd/Ctrl 全局快捷键：`,` 开关设置、`R` 刷新会话列表、`F`（或 `K`）聚焦搜索、`1`/`2`/`3` 切换列表/统计/工具视图、`I` 开关详情检查器。
 - 增加 Hermes Agent 只读会话来源：解析 `~/.hermes`（Windows 为 `%LOCALAPPDATA%\hermes`）下的 `state.db` 聚合库，含 `profiles/<name>/` 命名库；按现存列自适应查询以兼容各 schema 版本，过滤就地压缩的 `active=0` 归档行并排除委托子代理会话；支持浏览、搜索、统计、导出、本地移除和 `hermes --resume` 终端恢复。
 
 ### 修复
 
 - 来源健康诊断补充此前遗漏的 GitHub Copilot 条目，设置页「已检测来源」计数恢复正确。
+- 来源默认目录不存在时，文件监听不再回溯到 `~/Library/Application Support`（Linux `~/.config`、Windows `%APPDATA%`）等系统目录做递归监听，避免未安装 Cursor、Devin 等应用时产生大量无关文件事件。
+- 连续删除多个常用筛选时，已删除的筛选不再重新出现。
+
+### 变更
+
+- 会话列表「加载更多」改为增量追加，不再整表重绘。
+- 摘要缓存格式版本升级，升级后首次启动会重建一次索引。
 
 ## [0.1.4] - 2026-09-17
 

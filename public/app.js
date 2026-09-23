@@ -1347,6 +1347,66 @@ function renderActiveFilters() {
   });
 }
 
+let renderedSessionCount = 0;
+let lastRenderedGroupKey = "";
+
+function shouldGroupSessions() {
+  return !state.searchQuery || state.searchSort === "recent";
+}
+
+function sessionGroupCounts(sessions) {
+  const counts = new Map();
+  sessions.forEach((session) => {
+    const key = formatDateGroup(sessionTimestamp(session)).key;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return counts;
+}
+
+function appendSessionBatch(sessions, counts) {
+  sessions.forEach((session) => {
+    const group = formatDateGroup(sessionTimestamp(session));
+    if (shouldGroupSessions() && group.key !== lastRenderedGroupKey) {
+      lastRenderedGroupKey = group.key;
+      appendSessionGroupHeader(group.label, counts.get(group.key) || 0);
+    }
+    appendSessionItems([session]);
+  });
+}
+
+function renderSessionListFooter() {
+  renderLoadMoreButton();
+  updateSessionCount();
+  updateBulkToolbar();
+}
+
+function appendLoadedSessions(added) {
+  const visible = visibleSessions();
+  if (visible.length - added.length !== renderedSessionCount) {
+    renderSessionList();
+    return;
+  }
+  const counts = sessionGroupCounts(visible);
+  if (
+    shouldGroupSessions() &&
+    added.length &&
+    formatDateGroup(sessionTimestamp(added[0])).key === lastRenderedGroupKey
+  ) {
+    const headers = elements.sessionList.querySelectorAll(
+      ".session-group-header"
+    );
+    const lastHeader = headers[headers.length - 1];
+    if (lastHeader?.lastElementChild) {
+      lastHeader.lastElementChild.textContent = t("groupSessionCount", {
+        n: counts.get(lastRenderedGroupKey) || 0,
+      });
+    }
+  }
+  appendSessionBatch(added, counts);
+  renderedSessionCount = visible.length;
+  renderSessionListFooter();
+}
+
 function appendSessionGroupHeader(label, count) {
   const header = document.createElement("div");
   header.className = "session-group-header";
@@ -1553,6 +1613,8 @@ function renderLoadMoreButton() {
 
 function renderSessionList() {
   elements.sessionList.innerHTML = "";
+  renderedSessionCount = 0;
+  lastRenderedGroupKey = "";
   renderActiveFilters();
 
   const visible = visibleSessions();
@@ -1562,34 +1624,13 @@ function renderSessionList() {
     empty.className = "hero-copy";
     empty.textContent = t(state.scanning ? "scanningSessions" : "noResults");
     elements.sessionList.append(empty);
-    renderLoadMoreButton();
-    updateSessionCount();
-    updateBulkToolbar();
+    renderSessionListFooter();
     return;
   }
 
-  const groupCounts = new Map();
-  visible.forEach((session) => {
-    const group = formatDateGroup(sessionTimestamp(session));
-    groupCounts.set(group.key, (groupCounts.get(group.key) || 0) + 1);
-  });
-
-  let currentGroupKey = "";
-  visible.forEach((session) => {
-    const group = formatDateGroup(sessionTimestamp(session));
-    if (
-      (!state.searchQuery || state.searchSort === "recent") &&
-      group.key !== currentGroupKey
-    ) {
-      currentGroupKey = group.key;
-      appendSessionGroupHeader(group.label, groupCounts.get(group.key) || 0);
-    }
-    appendSessionItems([session]);
-  });
-
-  renderLoadMoreButton();
-  updateSessionCount();
-  updateBulkToolbar();
+  renderedSessionCount = visible.length;
+  appendSessionBatch(visible, sessionGroupCounts(visible));
+  renderSessionListFooter();
 }
 
 // ── 详情标签行 ──────────────────────────────────────────────────────────────────
@@ -2333,10 +2374,11 @@ async function loadMoreSessions() {
       signal: request.signal,
     });
     if (!request.isCurrent()) return false;
-    state.sessions = state.sessions.concat(data.sessions);
+    const added = data.sessions;
+    state.sessions = state.sessions.concat(added);
     state.hasMore = data.has_more;
     state.nextCursor = data.next_cursor;
-    renderSessionList();
+    appendLoadedSessions(added);
     return true;
   } catch (error) {
     if (isAbortError(error) || !request.isCurrent()) return false;

@@ -861,7 +861,11 @@ test("本地归档不会被初始自动选中，空页仍可继续加载", async
   );
   assert.match(
     source,
-    /if \(!visible\.length\) \{[\s\S]*renderLoadMoreButton\(\);[\s\S]*updateSessionCount\(\);[\s\S]*return;/
+    /if \(!visible\.length\) \{[\s\S]*renderSessionListFooter\(\);[\s\S]*return;/
+  );
+  assert.match(
+    source,
+    /function renderSessionListFooter\(\) \{[\s\S]*renderLoadMoreButton\(\);[\s\S]*updateSessionCount\(\);/
   );
 });
 

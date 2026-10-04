@@ -65,7 +65,7 @@ pub(super) struct ParsedSession {
 }
 
 #[derive(Clone)]
-pub(super) struct DetailLocator {
+pub(crate) struct DetailLocator {
     database_path: PathBuf,
     session_id: String,
     /// state.vscdb sessioninfo（明文 title/cwd/时间戳），可能缺失。
@@ -1726,8 +1726,7 @@ mod tests {
         let root = directory.path();
         cli_fixture(root);
         // 损坏数据：2↔3 互指成环，会话仍可解析且链有界。
-        let connection =
-            Connection::open(root.join("cli").join("sessions.db")).unwrap();
+        let connection = Connection::open(root.join("cli").join("sessions.db")).unwrap();
         connection
             .execute(
                 "update message_nodes set parent_node_id = 3 where session_id = 'brisk-otter' and node_id = 2",

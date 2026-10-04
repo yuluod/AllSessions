@@ -43,7 +43,7 @@ struct BrainMessage {
 }
 
 #[derive(Clone)]
-pub(super) struct DetailLocator {
+pub(crate) struct DetailLocator {
     session_id: String,
     primary_path: PathBuf,
     paths: Vec<PathBuf>,

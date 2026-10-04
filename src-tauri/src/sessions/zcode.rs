@@ -27,7 +27,7 @@ pub(super) struct ParsedSession {
 }
 
 #[derive(Clone)]
-pub(super) struct DetailLocator {
+pub(crate) struct DetailLocator {
     database_path: PathBuf,
     session_id: String,
     pub(super) content_fingerprint: String,

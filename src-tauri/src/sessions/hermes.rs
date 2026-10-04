@@ -62,7 +62,7 @@ pub(super) struct ParsedSession {
 }
 
 #[derive(Clone)]
-pub(super) struct DetailLocator {
+pub(crate) struct DetailLocator {
     database_path: PathBuf,
     session_id: String,
     pub(super) content_fingerprint: String,
@@ -180,12 +180,30 @@ fn session_row(row: &Row<'_>) -> SessionRow {
     SessionRow {
         id: row.get::<_, String>(0).unwrap_or_default(),
         source: row.get::<_, String>(1).unwrap_or_default(),
-        model: row.get::<_, Option<String>>(2).unwrap_or_default().unwrap_or_default(),
-        model_config: row.get::<_, Option<String>>(3).unwrap_or_default().unwrap_or_default(),
-        title: row.get::<_, Option<String>>(4).unwrap_or_default().unwrap_or_default(),
-        cwd: row.get::<_, Option<String>>(5).unwrap_or_default().unwrap_or_default(),
-        git_branch: row.get::<_, Option<String>>(6).unwrap_or_default().unwrap_or_default(),
-        git_repo_root: row.get::<_, Option<String>>(7).unwrap_or_default().unwrap_or_default(),
+        model: row
+            .get::<_, Option<String>>(2)
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        model_config: row
+            .get::<_, Option<String>>(3)
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        title: row
+            .get::<_, Option<String>>(4)
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        cwd: row
+            .get::<_, Option<String>>(5)
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        git_branch: row
+            .get::<_, Option<String>>(6)
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        git_repo_root: row
+            .get::<_, Option<String>>(7)
+            .unwrap_or_default()
+            .unwrap_or_default(),
         started_at: row.get::<_, f64>(8).unwrap_or_default(),
         ended_at: row.get::<_, Option<f64>>(9).unwrap_or_default(),
     }
@@ -205,7 +223,9 @@ fn message_select_sql(columns: &BTreeMap<String, usize>) -> String {
         columns.contains_key("reasoning"),
         columns.contains_key("reasoning_content"),
     ) {
-        (true, true) => "coalesce(nullif(reasoning, ''), nullif(reasoning_content, ''))".to_string(),
+        (true, true) => {
+            "coalesce(nullif(reasoning, ''), nullif(reasoning_content, ''))".to_string()
+        }
         (true, false) => column("reasoning"),
         (false, true) => column("reasoning_content"),
         (false, false) => "null".to_string(),
@@ -231,12 +251,27 @@ fn message_row(row: &Row<'_>) -> MessageRow {
     MessageRow {
         id: row.get::<_, i64>(0).unwrap_or_default(),
         role: row.get::<_, String>(1).unwrap_or_default(),
-        content: row.get::<_, Option<String>>(2).unwrap_or_default().unwrap_or_default(),
-        tool_call_id: row.get::<_, Option<String>>(3).unwrap_or_default().unwrap_or_default(),
-        tool_calls: row.get::<_, Option<String>>(4).unwrap_or_default().unwrap_or_default(),
-        tool_name: row.get::<_, Option<String>>(5).unwrap_or_default().unwrap_or_default(),
+        content: row
+            .get::<_, Option<String>>(2)
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        tool_call_id: row
+            .get::<_, Option<String>>(3)
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        tool_calls: row
+            .get::<_, Option<String>>(4)
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        tool_name: row
+            .get::<_, Option<String>>(5)
+            .unwrap_or_default()
+            .unwrap_or_default(),
         timestamp: row.get::<_, f64>(6).unwrap_or_default(),
-        reasoning: row.get::<_, Option<String>>(7).unwrap_or_default().unwrap_or_default(),
+        reasoning: row
+            .get::<_, Option<String>>(7)
+            .unwrap_or_default()
+            .unwrap_or_default(),
         codex_message_items: row
             .get::<_, Option<String>>(8)
             .unwrap_or_default()
@@ -369,7 +404,10 @@ fn tool_call_values(
             .or_else(|| call["name"].as_str())
             .unwrap_or("tool");
         let id = call["id"].as_str().unwrap_or_default();
-        let arguments = if function.get("arguments").is_some_and(|value| !value.is_null()) {
+        let arguments = if function
+            .get("arguments")
+            .is_some_and(|value| !value.is_null())
+        {
             &function["arguments"]
         } else {
             &call["arguments"]
@@ -1049,7 +1087,8 @@ mod tests {
         let parsed = parse_source(&source(root)).unwrap();
         assert_eq!(parsed.sessions.len(), 2);
         assert!(parsed.active_paths.contains(
-            &root.join("profiles")
+            &root
+                .join("profiles")
                 .join("coder")
                 .join("state.db")
                 .to_string_lossy()
@@ -1101,7 +1140,9 @@ mod tests {
             .execute(
                 "insert into messages (session_id, role, content, codex_message_items, timestamp) \
                  values ('s-codex', 'assistant', '', ?1, 1760000001.0)",
-                params![r#"[{"type":"message","content":[{"type":"output_text","text":"最终回复"}]}]"#],
+                params![
+                    r#"[{"type":"message","content":[{"type":"output_text","text":"最终回复"}]}]"#
+                ],
             )
             .unwrap();
         drop(connection);
@@ -1109,9 +1150,7 @@ mod tests {
         let parsed = parse_source(&source(root)).unwrap();
         let detail = parse_detail(&source(root), &parsed.sessions[0].detail_locator).unwrap();
         let messages = detail["conversation_messages"].as_array().unwrap();
-        assert!(messages
-            .iter()
-            .any(|message| message["text"] == "最终回复"));
+        assert!(messages.iter().any(|message| message["text"] == "最终回复"));
     }
 
     #[test]

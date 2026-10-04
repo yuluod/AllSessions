@@ -1402,7 +1402,8 @@ test("会话和消息同时支持可恢复移除与二次确认的永久删除",
   const conversation = await readProjectFile("public/conversation-view.js");
   const i18n = await readProjectFile("public/i18n.js");
   const backend = await readProjectFile("src-tauri/src/backend.rs");
-  const sessions = await readProjectFile("src-tauri/src/sessions.rs");
+  // delete_session/delete_message 现位于 sessions 的删除子模块
+  const sessions = await readProjectFile("src-tauri/src/sessions/mutation.rs");
 
   assert.match(html, /id="show-removed-toggle"/);
   assert.match(html, /id="session-delete-btn"/);

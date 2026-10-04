@@ -13,7 +13,7 @@ use std::{
 };
 
 #[derive(Clone)]
-pub(super) struct DetailLocator {
+pub(crate) struct DetailLocator {
     path: PathBuf,
     id: String,
     metadata: Value,

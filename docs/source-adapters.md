@@ -4,7 +4,15 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 
 ## 模块边界
 
-- `sessions.rs`：来源声明、文件发现、格式解析、统一摘要/详情、筛选、搜索和统计。
+- `sessions.rs`：统一契约与核心类型（`Source`/`SourceFormat`/`StoredSession`/`SessionStore` 生命周期）；扫描、解析、查询、删除等实现按 `sessions/` 下子模块组织，并经 `sessions.rs` 再导出保持 `super::` 引用路径稳定。
+- `sessions/roots.rs`：来源根目录的配置/环境变量/默认值三级回退、路径发现与监听根计算。
+- `sessions/parse.rs`：通用摘要/详情分发、`ParseState` 归约、消息构造、首尾截断与详情缓存。
+- `sessions/claude_legacy.rs`：旧版 Claude `sessions/*.json` 与 `history.jsonl` 解析。
+- `sessions/scan.rs`：全量/增量元数据刷新与搜索索引重建。
+- `sessions/query.rs`：列表、搜索计划（锁外全文查询）、搜索上下文与详情读取。
+- `sessions/mutation.rs`：永久删除、原子写回与备份路径。
+- `sessions/stats.rs`：筛选 facets 与按 Agent/日期/来源统计。
+- `sessions/helpers.rs`：文本截断、筛选、分页、统计聚合等跨模块小工具。
 - `sessions/gemini.rs`：Gemini 日志流式扫描、逐文件摘要缓存、跨文件会话合并和按需详情解析。
 - `sessions/pi.rs`：Pi JSONL 树的活动分支重建，以及消息、工具与扩展上下文归一化。
 - `sessions/kimi.rs`：Kimi `wire.jsonl` 解析、流式内容合并、工作目录/标题关联和子 Agent 识别。

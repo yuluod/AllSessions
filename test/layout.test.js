@@ -75,6 +75,20 @@ test("暂不支持的记录与读取异常分级展示并提供重新扫描", as
 
 async function readProjectFile(relativePath) {
   const source = await fs.readFile(path.join(rootDir, relativePath), "utf8");
+  if (relativePath === "public/app.js") {
+    // app.js 拆分为 public/app/ 下的模块后,断言仍描述整个前端装配:
+    // 读取入口并拼接其同目录模块,与 styles.css 的 @import 拼接同构。
+    const appDir = await fs.readdir(path.join(rootDir, "public/app"));
+    const modules = await Promise.all(
+      appDir
+        .filter((file) => file.endsWith(".js"))
+        .sort()
+        .map((file) =>
+          fs.readFile(path.join(rootDir, "public/app", file), "utf8")
+        )
+    );
+    return [source, ...modules].join("\n");
+  }
   if (relativePath !== "public/styles.css") return source;
 
   const imports = Array.from(

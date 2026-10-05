@@ -195,6 +195,7 @@ impl ParseState {
     ///   （input 已包含 cached），直接覆盖;
     /// - Claude Code:每条 assistant 行带本次响应的 usage（增量），按
     ///   message.id 去重累加（流式重复行的 usage 完全相同）。
+    ///
     /// 其他来源该函数不匹配任何分支，token 保持 0。
     fn accept_usage(&mut self, record: &Value) {
         let record_type = record.get("type").and_then(Value::as_str);

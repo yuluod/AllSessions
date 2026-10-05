@@ -203,6 +203,20 @@ fn visit_parts(
     Ok(())
 }
 
+/// 是否为尚未写入任何表的空库(0 字节文件或安装后未使用)。
+/// 这类库没有任何可解析的数据,也不构成格式证据,按「来源暂无数据」
+/// 处理;只有库里存在别的表却缺少必需表时,才是真正的格式不符。
+fn database_is_empty(connection: &Connection) -> Result<bool, String> {
+    let tables = connection
+        .query_row(
+            "select count(*) from sqlite_master where type = 'table'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| format!("无法检查 OpenCode 数据库结构：{error}"))?;
+    Ok(tables == 0)
+}
+
 fn validate_projector_tables(connection: &Connection) -> Result<(), String> {
     for table in ["session", "message", "part"] {
         let count = connection
@@ -428,6 +442,13 @@ fn finish_summary(
 pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
     let path = database_path(&source.root);
     let connection = open_database(&path)?;
+    // 空库(常见于安装后尚未使用)直接按无数据处理,不作为格式错误上报。
+    if database_is_empty(&connection)? {
+        return Ok(ParsedSource {
+            sessions: Vec::new(),
+            active_paths: BTreeSet::from([path.to_string_lossy().into_owned()]),
+        });
+    }
     validate_projector_tables(&connection)?;
     let rows = load_sessions(&connection)?;
     let mut accumulators = BTreeMap::new();
@@ -889,7 +910,12 @@ mod tests {
     fn 旧格式不会被当作最新_sqlite_格式读取() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("opencode.db");
-        Connection::open(&path).unwrap();
+        let connection = Connection::open(&path).unwrap();
+        // 带有别张表但缺少必需表,才是真正的旧格式/格式不符。
+        connection
+            .execute("create table legacy_item(id text primary key)", [])
+            .unwrap();
+        drop(connection);
         let source = Source {
             kind: "opencode",
             display_name: "OpenCode",
@@ -902,5 +928,22 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("缺少最新正式版所需的 session 表"));
+    }
+
+    #[test]
+    fn 空数据库按无数据处理而不是格式错误() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("opencode.db");
+        // 安装后尚未使用的常见形态:0 字节空文件,没有任何表。
+        std::fs::File::create(&path).unwrap();
+        let source = Source {
+            kind: "opencode",
+            display_name: "OpenCode",
+            root: path,
+            format: SourceFormat::OpenCode,
+            archived: false,
+        };
+        let parsed = parse_source(&source).unwrap();
+        assert!(parsed.sessions.is_empty());
     }
 }

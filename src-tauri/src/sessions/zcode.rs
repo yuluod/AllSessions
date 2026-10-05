@@ -243,6 +243,19 @@ fn visit_parts(
     Ok(())
 }
 
+/// 是否为尚未写入任何表的空库(0 字节文件或安装后未使用)。
+/// 与 OpenCode 同口径:空库按「来源暂无数据」处理,不算格式错误。
+fn database_is_empty(connection: &Connection) -> Result<bool, String> {
+    let tables = connection
+        .query_row(
+            "select count(*) from sqlite_master where type = 'table'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| format!("无法检查 ZCode 数据库结构：{error}"))?;
+    Ok(tables == 0)
+}
+
 fn validate_tables(connection: &Connection) -> Result<(), String> {
     for table in ["session", "message", "part"] {
         let count = connection
@@ -423,6 +436,13 @@ fn finish_summary(
 pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
     let path = database_path(&source.root);
     let connection = open_database(&path)?;
+    // 空库(常见于安装后尚未使用)直接按无数据处理,不作为格式错误上报。
+    if database_is_empty(&connection)? {
+        return Ok(ParsedSource {
+            sessions: Vec::new(),
+            active_paths: BTreeSet::from([path.to_string_lossy().into_owned()]),
+        });
+    }
     validate_tables(&connection)?;
     let rows = load_sessions(&connection)?;
     let turn_usage = load_turn_usage(&connection)?;
@@ -857,6 +877,21 @@ mod tests {
         assert_eq!(main.summary["cached_input_tokens"], 0);
     }
 
+    #[test]
+    fn 空数据库按无数据处理而不是格式错误() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("kilo.db");
+        std::fs::File::create(&path).unwrap();
+        let source = Source {
+            kind: "kilo",
+            display_name: "Kilo",
+            root: path,
+            format: SourceFormat::Kilo,
+            archived: false,
+        };
+        let parsed = parse_source(&source).unwrap();
+        assert!(parsed.sessions.is_empty());
+    }
 
     #[test]
     fn 详情会映射文本_思考和工具结果() {

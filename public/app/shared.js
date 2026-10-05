@@ -204,6 +204,7 @@ export const elements = {
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
   trendChartBody: document.querySelector("#trend-chart-body"),
+  tokenHeatmapBody: document.querySelector("#token-heatmap-body"),
   agentChartBody: document.querySelector("#agent-chart-body"),
   toolsDashboard: document.querySelector("#tools-dashboard"),
   openCodexArchiveBtn: document.querySelector("#open-codex-archive-btn"),

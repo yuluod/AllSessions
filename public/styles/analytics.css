@@ -49,7 +49,7 @@
 
 .stats-metrics {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   background: var(--surface-subtle);
 }
 
@@ -62,7 +62,7 @@
   border-left: 1px solid var(--line);
 }
 
-.metric-card:nth-child(6n + 1) {
+.metric-card:nth-child(7n + 1) {
   border-left: 0;
 }
 
@@ -322,4 +322,129 @@
   color: var(--muted);
   font-size: 0.71rem;
   text-align: right;
+}
+
+.stats-heatmap-card {
+  border-top: 1px solid var(--line);
+}
+
+.token-heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.token-heatmap-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 13px);
+  grid-auto-columns: 13px;
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.token-heatmap-cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: var(--surface-sunken);
+}
+
+/* 色阶用底色到强调色的显式混色,避免透明度方案在浅色主题下低档位不可辨认。 */
+.token-heatmap-cell[data-level="1"] {
+  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+}
+
+.token-heatmap-cell[data-level="2"] {
+  background: color-mix(in srgb, var(--accent) 70%, var(--surface));
+}
+
+.token-heatmap-cell[data-level="3"] {
+  background: color-mix(in srgb, var(--accent) 88%, var(--surface));
+}
+
+.token-heatmap-cell[data-level="4"] {
+  background: var(--accent-strong);
+}
+
+.token-heatmap-cell[data-level]:hover {
+  outline: 1px solid var(--accent-strong);
+}
+
+.token-heatmap-cell.is-empty {
+  background: transparent;
+}
+
+.token-heatmap-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.token-heatmap-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.token-heatmap-legend .token-heatmap-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.token-heatmap-tooltip {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+  pointer-events: none;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.token-heatmap-tooltip strong {
+  color: var(--accent-strong);
+  font-weight: 780;
+}
+
+.token-heatmap-tooltip-exact {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.agent-metric-toggle {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 14px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+}
+
+.agent-metric-option {
+  border: 0;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.agent-metric-option[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--text-inverse);
 }

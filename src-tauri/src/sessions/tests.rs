@@ -185,10 +185,10 @@ fn 工作台筛选默认隐藏归档移除并支持收藏标签() {
 fn 统计按_agent_归并归档和兼容来源() {
     let store = SessionStore {
         summaries: vec![
-            json!({ "source_kind": "codex", "archived": false, "message_count": 8, "tool_count": 3 }),
-            json!({ "source_kind": "codex_archived", "archived": true, "message_count": 5, "tool_count": 2 }),
+            json!({ "source_kind": "codex", "archived": false, "message_count": 8, "tool_count": 3, "input_tokens": 100, "output_tokens": 20, "cached_input_tokens": 50 }),
+            json!({ "source_kind": "codex_archived", "archived": true, "message_count": 5, "tool_count": 2, "input_tokens": 30, "output_tokens": 5, "cached_input_tokens": 0 }),
             json!({ "source_kind": "claude_code", "archived": false, "message_count": 4, "tool_count": 1 }),
-            json!({ "source_kind": "opencode", "archived": false, "message_count": 7, "tool_count": 4 }),
+            json!({ "source_kind": "opencode", "archived": false, "message_count": 7, "tool_count": 4, "input_tokens": 10, "output_tokens": 0, "cached_input_tokens": 0 }),
         ],
         records: HashMap::new(),
         sources: Vec::new(),
@@ -209,6 +209,15 @@ fn 统计按_agent_归并归档和兼容来源() {
             { "label": "opencode", "count": 1 }
         ])
     );
+    // token 维度同样按 agent 归并(输入+输出+缓存),无 token 数据的来源计 0。
+    assert_eq!(
+        stats["by_agent_tokens"],
+        json!([
+            { "label": "codex", "count": 205 },
+            { "label": "opencode", "count": 10 }
+        ])
+    );
+    assert_eq!(stats["total_tokens"], 215);
     assert_eq!(stats["total_messages"], 24);
     assert_eq!(stats["total_tools"], 10);
 }
@@ -412,6 +421,80 @@ fn 索引未完成时会话列表仍可读取() {
         assert_eq!(progress, vec![(0, 1), (1, 1)]);
     }
     assert_eq!(store.search(&query, &workspace).unwrap()["total"], 1);
+}
+
+#[test]
+fn codex会话摘要取最后一次token_count的累计值并扣除缓存() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("rollout.jsonl");
+    std::fs::write(
+        &path,
+        format!(
+            "{}\n{}\n{}\n",
+            json!({ "type": "session_meta", "payload": { "id": "s1", "cwd": "/work" } }),
+            json!({ "timestamp": "2026-09-01T10:00:00Z", "type": "event_msg", "payload": { "type": "token_count", "info": { "total_token_usage": { "input_tokens": 1000, "cached_input_tokens": 400, "output_tokens": 100, "total_tokens": 1100 } } } }),
+            json!({ "timestamp": "2026-09-01T10:01:00Z", "type": "event_msg", "payload": { "type": "token_count", "info": { "total_token_usage": { "input_tokens": 3000, "cached_input_tokens": 2400, "output_tokens": 260, "total_tokens": 3260 } } } })
+        ),
+    )
+    .unwrap();
+    let source = Source {
+        kind: "codex",
+        display_name: "Codex",
+        root: directory.path().to_path_buf(),
+        format: SourceFormat::Codex,
+        archived: false,
+    };
+    let (summary, _) = parse_summary(&path, &source).unwrap();
+    // 累计值覆盖而不是累加；input 扣除已含的 cached 后单列。
+    assert_eq!(summary["input_tokens"], 600);
+    assert_eq!(summary["cached_input_tokens"], 2400);
+    assert_eq!(summary["output_tokens"], 260);
+}
+
+#[test]
+fn claude会话usage按响应id去重累加() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("c.jsonl");
+    let assistant = |id: &str, input: u64, cache_read: u64, output: u64| {
+        json!({
+            "type": "assistant",
+            "message": {
+                "id": id,
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "回答" }],
+                "usage": {
+                    "input_tokens": input,
+                    "cache_read_input_tokens": cache_read,
+                    "cache_creation_input_tokens": 0,
+                    "output_tokens": output
+                }
+            }
+        })
+    };
+    // 同一响应 id 写三行（流式重复，usage 完全相同），只能计一次。
+    std::fs::write(
+        &path,
+        format!(
+            "{}\n{}\n{}\n{}\n{}\n",
+            json!({ "type": "user", "message": { "role": "user", "content": "问题" } }),
+            assistant("msg_a", 100, 700, 20),
+            assistant("msg_a", 100, 700, 20),
+            assistant("msg_a", 100, 700, 20),
+            assistant("msg_b", 50, 0, 10)
+        ),
+    )
+    .unwrap();
+    let source = Source {
+        kind: "claude_code",
+        display_name: "Claude Code",
+        root: directory.path().join("projects"),
+        format: SourceFormat::Claude,
+        archived: false,
+    };
+    let (summary, _) = parse_summary(&path, &source).unwrap();
+    assert_eq!(summary["input_tokens"], 150);
+    assert_eq!(summary["cached_input_tokens"], 700);
+    assert_eq!(summary["output_tokens"], 30);
 }
 
 #[test]

@@ -76,30 +76,64 @@ impl SessionStore {
         workspace: &crate::workspace::WorkspaceSnapshot,
     ) -> Value {
         let filtered = self.filtered(query, workspace);
-        let mut by_date = BTreeMap::new();
+        let mut by_date: BTreeMap<String, DayUsage> = BTreeMap::new();
         let mut by_agent = HashMap::new();
+        let mut by_agent_tokens: HashMap<String, u64> = HashMap::new();
         let mut by_source_kind = HashMap::new();
         let mut by_provider = HashMap::new();
         let mut by_cwd = HashMap::new();
         let mut total_events = 0_u64;
         let mut total_messages = 0_u64;
         let mut total_tools = 0_u64;
+        let mut total_input_tokens = 0_u64;
+        let mut total_output_tokens = 0_u64;
+        let mut total_cached_input_tokens = 0_u64;
         for summary in &filtered {
             total_events += summary["event_count"].as_u64().unwrap_or_default();
             total_messages += summary["message_count"].as_u64().unwrap_or_default();
             total_tools += summary["tool_count"].as_u64().unwrap_or_default();
+            let input = summary["input_tokens"].as_u64().unwrap_or_default();
+            let output = summary["output_tokens"].as_u64().unwrap_or_default();
+            let cached = summary["cached_input_tokens"].as_u64().unwrap_or_default();
+            total_input_tokens += input;
+            total_output_tokens += output;
+            total_cached_input_tokens += cached;
             if let Some(date) = local_date_key(timestamp_of(summary)) {
-                *by_date.entry(date).or_insert(0_u64) += 1;
+                let day = by_date.entry(date).or_default();
+                day.count += 1;
+                day.tokens += input + output + cached;
             }
             if let Some(agent) = agent_kind(&summary["source_kind"]) {
                 *by_agent.entry(agent.into()).or_default() += 1;
+                let tokens = input + output + cached;
+                // 不支持 token 统计的来源不进入 Token 维度,避免出现 0 占比扇区。
+                if tokens > 0 {
+                    *by_agent_tokens.entry(agent.into()).or_default() += tokens;
+                }
             }
             increment(&mut by_source_kind, &summary["source_kind"]);
             increment(&mut by_provider, &summary["model_provider"]);
             increment(&mut by_cwd, &summary["cwd"]);
         }
         let active_days = by_date.len();
-        json!({ "total": filtered.len(), "total_events": total_events, "total_messages": total_messages, "total_tools": total_tools, "active_days": active_days, "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) }, "by_date": by_date.into_iter().map(|(label, count)| json!({ "label": label, "count": count })).collect::<Vec<_>>(), "by_agent": count_values(by_agent, usize::MAX), "by_source_kind": count_values(by_source_kind, usize::MAX), "by_provider": count_values(by_provider, usize::MAX), "by_cwd": count_values(by_cwd, 16) })
+        json!({
+            "total": filtered.len(),
+            "total_events": total_events,
+            "total_messages": total_messages,
+            "total_tools": total_tools,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "total_cached_input_tokens": total_cached_input_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens + total_cached_input_tokens,
+            "active_days": active_days,
+            "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) },
+            "by_date": by_date.into_iter().map(|(label, day)| json!({ "label": label, "count": day.count, "tokens": day.tokens })).collect::<Vec<_>>(),
+            "by_agent": count_values(by_agent, usize::MAX),
+            "by_agent_tokens": count_values(by_agent_tokens, usize::MAX),
+            "by_source_kind": count_values(by_source_kind, usize::MAX),
+            "by_provider": count_values(by_provider, usize::MAX),
+            "by_cwd": count_values(by_cwd, 16)
+        })
     }
 
     pub(crate) fn filtered(
@@ -134,6 +168,13 @@ struct ProjectFacet {
     last_timestamp: String,
     providers: BTreeSet<String>,
     source_kinds: BTreeSet<String>,
+}
+
+/// 按日聚合的会话数与 token 用量（input + output + cached）。
+#[derive(Default)]
+struct DayUsage {
+    count: u64,
+    tokens: u64,
 }
 impl ProjectFacet {
     fn value(self) -> Value {

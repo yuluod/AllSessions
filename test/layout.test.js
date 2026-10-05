@@ -390,7 +390,12 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   assert.match(source, /value: formatCount\(stats\.total_tools\)/);
   assert.match(source, /\(stats\.by_date \|\| \[\]\)\.slice\(-14\)/);
   assert.match(source, /stats\.by_agent/);
+  assert.match(source, /stats\.by_agent_tokens/);
   assert.match(source, /function renderAgents\(stats, container\)/);
+  // 环形图支持会话数 / Token 两种度量切换,Token 模式显示紧凑量级。
+  assert.match(source, /agentMetric = "sessions"/);
+  assert.match(source, /agent-metric-toggle/);
+  assert.match(source, /aria-pressed/);
   assert.match(source, /codex:[\s\S]*label: "Codex"/);
   assert.doesNotMatch(source, /stats\.by_source_kind/);
   assert.match(html, /id="agent-chart-body"/);
@@ -409,9 +414,48 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   assert.match(css, /\.stats-empty\s*\{/);
   assert.match(
     css,
-    /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/
+    /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/
   );
   assert.match(css, /\.stats-section--daily \.stats-section__body/);
+});
+
+test("统计页提供 Token 热力图与每日用量视图", async () => {
+  const source = await readProjectFile("public/stats-view.js");
+  const html = await readProjectFile("public/index.html");
+  const i18n = await readProjectFile("public/i18n.js");
+  const css = await readProjectFile("public/styles/analytics.css");
+  const app = await readProjectFile("public/app.js");
+
+  // 后端契约：每日条目带 tokens，汇总拆分输入/输出/缓存。
+  assert.match(source, /stats\.total_tokens/);
+  assert.match(source, /stats\.total_input_tokens/);
+  assert.match(source, /stats\.total_output_tokens/);
+  assert.match(source, /stats\.total_cached_input_tokens/);
+  assert.match(source, /function renderHeatmap\(stats, container\)/);
+  assert.match(source, /function formatTokensCompact\(/);
+  assert.match(
+    source,
+    /elements\.tokenHeatmapBody[\s\S]*renderHeatmap\(stats, elements\.tokenHeatmapBody\)/
+  );
+  // 热力图颜色档位基于当日 token 相对峰值，0 档为空格。
+  assert.match(source, /function heatmapLevel\(tokens, max\)/);
+  assert.match(source, /dataset\.level/);
+  // 悬停浮层：立即显示当日 token 与会话数，替代原生 title 延迟提示。
+  assert.match(source, /function attachHeatmapTooltip\(grid\)/);
+  assert.match(source, /dataset\.date/);
+  assert.match(source, /token-heatmap-tooltip/);
+  assert.doesNotMatch(source, /cell\.title = /);
+  assert.match(html, /id="token-heatmap-body"/);
+  assert.match(html, /data-i18n="statsTokenHeatmap"/);
+  assert.match(i18n, /statsTokenTotal: "Token 总量"/);
+  assert.match(i18n, /statsTokenHeatmap: "Token 热力图"/);
+  assert.match(i18n, /statsSessionsShort: "会话"/);
+  assert.match(i18n, /statsHeatmapLess: "少"/);
+  assert.match(i18n, /statsHeatmapMore: "多"/);
+  assert.match(css, /\.token-heatmap-grid\s*\{/);
+  assert.match(css, /\.token-heatmap-cell\[data-level="4"\]/);
+  assert.match(css, /\.token-heatmap-tooltip\s*\{/);
+  assert.match(app, /tokenHeatmapBody: document\.querySelector/);
 });
 
 test("工具视图提供侧边栏导航并可切换各工具面板", async () => {

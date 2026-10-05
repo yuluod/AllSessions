@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -94,6 +94,53 @@ fn session_row(row: &Row<'_>) -> rusqlite::Result<SessionRow> {
         time_created: row.get(5)?,
         time_updated: row.get(6)?,
     })
+}
+
+/// 按会话聚合 `turn_usage` 的 token 用量：(input, output, cached)。
+/// `turn_usage` 是较新 schema 才有的表；缺失时所有会话按 0 处理。
+/// 各状态（completed/cancelled/error）的轮次都已产生真实消耗，全部计入。
+fn load_turn_usage(connection: &Connection) -> Result<HashMap<String, (u64, u64, u64)>, String> {
+    let present: i64 = connection
+        .query_row(
+            "select count(*) from sqlite_master where type = 'table' and name = 'turn_usage'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("无法检查 ZCode turn_usage 表：{error}"))?;
+    let mut usage = HashMap::new();
+    if present == 0 {
+        return Ok(usage);
+    }
+    let mut statement = connection
+        .prepare(
+            "select session_id, sum(input_tokens), sum(output_tokens), \
+                    sum(cache_creation_input_tokens + cache_read_input_tokens) \
+             from turn_usage group by session_id",
+        )
+        .map_err(|error| format!("ZCode 数据库不是受支持的最新格式：{error}"))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<i64>>(1)?.unwrap_or_default(),
+                row.get::<_, Option<i64>>(2)?.unwrap_or_default(),
+                row.get::<_, Option<i64>>(3)?.unwrap_or_default(),
+            ))
+        })
+        .map_err(|error| format!("无法查询 ZCode token 用量：{error}"))?;
+    for row in rows {
+        let (session_id, input, output, cached) =
+            row.map_err(|error| format!("无法读取 ZCode token 用量：{error}"))?;
+        usage.insert(
+            session_id,
+            (
+                input.max(0) as u64,
+                output.max(0) as u64,
+                cached.max(0) as u64,
+            ),
+        );
+    }
+    Ok(usage)
 }
 
 fn load_sessions(connection: &Connection) -> Result<Vec<SessionRow>, String> {
@@ -355,10 +402,17 @@ fn finish_summary(
     row: &SessionRow,
     path: &Path,
     source: &Source,
+    turn_usage: Option<(u64, u64, u64)>,
 ) -> (Value, String) {
     let mut summary = state.summary(path, source);
     if !row.title.trim().is_empty() {
         summary["title"] = Value::String(row.title.clone());
+    }
+    // turn_usage 的聚合值优先于流式累加（含被 ParseState 忽略的分片）。
+    if let Some((input, output, cached)) = turn_usage {
+        summary["input_tokens"] = json!(input);
+        summary["output_tokens"] = json!(output);
+        summary["cached_input_tokens"] = json!(cached);
     }
     summary["source_read_only"] = Value::Bool(true);
     let mut search_text = summary_search_text(&summary);
@@ -371,6 +425,7 @@ pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
     let connection = open_database(&path)?;
     validate_tables(&connection)?;
     let rows = load_sessions(&connection)?;
+    let turn_usage = load_turn_usage(&connection)?;
     let mut accumulators = BTreeMap::new();
     for row in rows {
         // ZCode 的 subagent_child 会话是子代理对话，默认排除。
@@ -412,8 +467,13 @@ pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
     let sessions = accumulators
         .into_values()
         .map(|accumulator| {
-            let (summary, search_text) =
-                finish_summary(&accumulator.state, &accumulator.row, &path, source);
+            let (summary, search_text) = finish_summary(
+                &accumulator.state,
+                &accumulator.row,
+                &path,
+                source,
+                turn_usage.get(&accumulator.row.id).copied(),
+            );
             let session_id = accumulator.row.id;
             ParsedSession {
                 summary,
@@ -524,7 +584,8 @@ pub(super) fn visit_detail(
             marker["payload"]["omitted_events"] = json!(omitted_events);
         }
     }
-    let (mut summary, _) = finish_summary(&state, &row, &locator.database_path, source);
+    // 详情路径只用于展示正文，token 以摘要扫描时的 turn_usage 聚合为准。
+    let (mut summary, _) = finish_summary(&state, &row, &locator.database_path, source, None);
     if omitted_messages + omitted_events > 0 {
         summary["detail_truncated"] = Value::Bool(true);
     }
@@ -749,6 +810,55 @@ mod tests {
     }
 
     #[test]
+    fn 摘要token取turn_usage按会话聚合() {
+        let (_directory, source) = fixture();
+        {
+            let connection = Connection::open(&source.root).unwrap();
+            connection
+                .execute_batch(
+                    "create table turn_usage (
+                        session_id text not null,
+                        turn_id text not null,
+                        status text not null,
+                        input_tokens integer not null default 0,
+                        output_tokens integer not null default 0,
+                        cache_creation_input_tokens integer not null default 0,
+                        cache_read_input_tokens integer not null default 0
+                    );
+                    insert into turn_usage values ('ses_main', 't1', 'completed', 100, 20, 5, 500);
+                    insert into turn_usage values ('ses_main', 't2', 'cancelled', 30, 4, 0, 60);
+                    insert into turn_usage values ('ses_other', 't1', 'completed', 999, 999, 0, 0);",
+                )
+                .unwrap();
+        }
+        let parsed = parse_source(&source).unwrap();
+        let main = parsed
+            .sessions
+            .iter()
+            .find(|session| session.summary["id"] == "ses_main")
+            .unwrap();
+        // 各状态的轮次都已产生真实消耗，全部计入；其他会话不串入。
+        assert_eq!(main.summary["input_tokens"], 130);
+        assert_eq!(main.summary["output_tokens"], 24);
+        assert_eq!(main.summary["cached_input_tokens"], 565);
+    }
+
+    #[test]
+    fn 无turn_usage表时token为零() {
+        let (_directory, source) = fixture();
+        let parsed = parse_source(&source).unwrap();
+        let main = parsed
+            .sessions
+            .iter()
+            .find(|session| session.summary["id"] == "ses_main")
+            .unwrap();
+        assert_eq!(main.summary["input_tokens"], 0);
+        assert_eq!(main.summary["output_tokens"], 0);
+        assert_eq!(main.summary["cached_input_tokens"], 0);
+    }
+
+
+    #[test]
     fn 详情会映射文本_思考和工具结果() {
         let (_directory, source) = fixture();
         let parsed = parse_source(&source).unwrap();
@@ -785,7 +895,12 @@ mod tests {
     fn 旧格式不会被当作最新_sqlite_格式读取() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("db.sqlite");
-        Connection::open(&path).unwrap();
+        let connection = Connection::open(&path).unwrap();
+        // 带有别张表但缺少必需表,才是真正的旧格式/格式不符。
+        connection
+            .execute("create table legacy_item(id text primary key)", [])
+            .unwrap();
+        drop(connection);
         let source = Source {
             kind: "zcode",
             display_name: "ZCode",

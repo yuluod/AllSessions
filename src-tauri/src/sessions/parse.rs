@@ -1,5 +1,5 @@
 //! 通用会话解析:摘要/详情分发、ParseState 归约、消息构造与长会话截断。
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -34,6 +34,9 @@ pub(crate) struct ParseState {
     pub(crate) event_count: usize,
     pub(crate) message_count: u64,
     pub(crate) context_count: u64,
+    pub(crate) input_tokens: u64,
+    pub(crate) output_tokens: u64,
+    pub(crate) cached_input_tokens: u64,
     pub(crate) roles: BTreeMap<String, u64>,
     pub(crate) first_user: String,
     pub(crate) first_assistant: String,
@@ -41,6 +44,9 @@ pub(crate) struct ParseState {
     pub(crate) search_text: String,
     pub(crate) tool_names: HashMap<String, String>,
     pub(crate) previous_message: Option<(String, String, String)>,
+    /// Claude 流式会把同一次 API 响应写多行（usage 完全相同），
+    /// 按 message.id 去重避免重复计数。
+    pub(crate) counted_response_ids: BTreeSet<String>,
 }
 
 impl ParseState {
@@ -71,6 +77,9 @@ impl ParseState {
             event_count: 0,
             message_count: 0,
             context_count: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            cached_input_tokens: 0,
             roles: BTreeMap::new(),
             first_user: String::new(),
             first_assistant: String::new(),
@@ -78,6 +87,7 @@ impl ParseState {
             search_text: String::new(),
             tool_names: HashMap::new(),
             previous_message: None,
+            counted_response_ids: BTreeSet::new(),
         }
     }
     pub(crate) fn accept(&mut self, record: &Value) -> Vec<Value> {
@@ -171,6 +181,7 @@ impl ParseState {
         ) {
             self.saw_primary = true;
         }
+        self.accept_usage(record);
         let mut accepted = Vec::new();
         for message in conversation_messages(record, &stamp, &mut self.tool_names) {
             if let Some(message) = self.accept_message(message) {
@@ -178,6 +189,46 @@ impl ParseState {
             }
         }
         accepted
+    }
+    /// 从通用 JSONL 记录里累计 token 用量。两个已知来源:
+    /// - Codex:`event_msg`/`token_count` 的 `total_token_usage` 是会话累计值
+    ///   （input 已包含 cached），直接覆盖;
+    /// - Claude Code:每条 assistant 行带本次响应的 usage（增量），按
+    ///   message.id 去重累加（流式重复行的 usage 完全相同）。
+    /// 其他来源该函数不匹配任何分支，token 保持 0。
+    fn accept_usage(&mut self, record: &Value) {
+        let record_type = record.get("type").and_then(Value::as_str);
+        if record_type == Some("event_msg") {
+            let payload = &record["payload"];
+            if payload["type"].as_str() != Some("token_count") {
+                return;
+            }
+            let total = &payload["info"]["total_token_usage"];
+            if !total.is_object() {
+                return;
+            }
+            let input = total["input_tokens"].as_u64().unwrap_or(0);
+            let cached = total["cached_input_tokens"].as_u64().unwrap_or(0);
+            self.input_tokens = input.saturating_sub(cached);
+            self.cached_input_tokens = cached;
+            self.output_tokens = total["output_tokens"].as_u64().unwrap_or(0);
+            return;
+        }
+        if record_type == Some("assistant") {
+            let message = &record["message"];
+            let usage = &message["usage"];
+            if !usage.is_object() {
+                return;
+            }
+            let response_id = string_at(message, &["id"]).unwrap_or_default();
+            if !response_id.is_empty() && !self.counted_response_ids.insert(response_id) {
+                return;
+            }
+            self.input_tokens += usage["input_tokens"].as_u64().unwrap_or(0);
+            self.cached_input_tokens += usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+                + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+            self.output_tokens += usage["output_tokens"].as_u64().unwrap_or(0);
+        }
     }
     pub(crate) fn accept_message(&mut self, message: Value) -> Option<Value> {
         let role = message["role"].as_str().unwrap_or("unknown");
@@ -278,7 +329,7 @@ impl ParseState {
         } else {
             &self.originator
         };
-        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
+        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
     }
 }
 pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {

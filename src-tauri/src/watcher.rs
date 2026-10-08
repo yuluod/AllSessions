@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
     sync::{mpsc, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -11,6 +11,31 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use crate::backend::BackendState;
+
+const DEBOUNCE: Duration = Duration::from_millis(350);
+const MAX_BATCH_WAIT: Duration = Duration::from_secs(2);
+
+// 保留去抖，但连续写入也必须定期交付，不能无限等待安静窗口。
+fn collect_paths(
+    first: PathBuf,
+    mut receive: impl FnMut(Duration) -> Option<PathBuf>,
+    mut elapsed: impl FnMut() -> Duration,
+) -> BTreeSet<PathBuf> {
+    let mut paths = BTreeSet::from([first]);
+    loop {
+        let remaining = MAX_BATCH_WAIT.saturating_sub(elapsed());
+        if remaining.is_zero() {
+            break;
+        }
+        match receive(DEBOUNCE.min(remaining)) {
+            Some(path) => {
+                paths.insert(path);
+            }
+            None => break,
+        }
+    }
+    paths
+}
 
 pub struct WatcherState {
     sender: mpsc::Sender<PathBuf>,
@@ -116,10 +141,12 @@ pub fn start(app: &AppHandle) -> WatcherState {
     let app_handle = app.clone();
     thread::spawn(move || {
         while let Ok(first_path) = receiver.recv() {
-            let mut paths = BTreeSet::<PathBuf>::from([first_path]);
-            while let Ok(path) = receiver.recv_timeout(Duration::from_millis(350)) {
-                paths.insert(path);
-            }
+            let started = Instant::now();
+            let paths = collect_paths(
+                first_path,
+                |timeout| receiver.recv_timeout(timeout).ok(),
+                || started.elapsed(),
+            );
             if let Err(error) = app_handle
                 .state::<BackendState>()
                 .refresh_paths_and_emit(&app_handle, &paths)
@@ -132,5 +159,46 @@ pub fn start(app: &AppHandle) -> WatcherState {
         sender,
         watcher: Mutex::new(watcher),
         last_error: Mutex::new(last_error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn 连续事件达到上限即刷新且后续事件留给下一批() {
+        let clock = Cell::new(Duration::ZERO);
+        let received = Cell::new(0);
+        let paths = collect_paths(
+            PathBuf::from("first"),
+            |timeout| {
+                assert!(timeout <= DEBOUNCE);
+                clock.set(clock.get() + timeout.min(Duration::from_millis(100)));
+                received.set(received.get() + 1);
+                Some(PathBuf::from("changed"))
+            },
+            || clock.get(),
+        );
+        assert_eq!(clock.get(), MAX_BATCH_WAIT);
+        assert_eq!(received.get(), 20);
+        assert_eq!(
+            paths,
+            BTreeSet::from([PathBuf::from("first"), PathBuf::from("changed")])
+        );
+    }
+
+    #[test]
+    fn 安静窗口结束后立即交付首个事件() {
+        let paths = collect_paths(
+            PathBuf::from("first"),
+            |timeout| {
+                assert_eq!(timeout, DEBOUNCE);
+                None
+            },
+            || Duration::ZERO,
+        );
+        assert_eq!(paths, BTreeSet::from([PathBuf::from("first")]));
     }
 }

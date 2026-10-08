@@ -8,6 +8,7 @@ globalThis.localStorage = {
 
 const { prepareExportDetail, sessionMarkdown } =
   await import("../public/session-export.js");
+const { translateBackendError } = await import("../public/i18n.js");
 
 test("长会话导出注明省略范围且不把占位符算作消息", () => {
   const detail = detailFixture();
@@ -39,12 +40,19 @@ test("单条正文截断和搜索片段均不能标记为完整导出", () => {
   assert.equal(prepareExportDetail(detail).export_info.total_messages, null);
 });
 
-test("普通导出记录消息数量", () => {
+test("普通导出记录消息数量且读取错误保留实际原因", () => {
   const prepared = prepareExportDetail(detailFixture());
   assert.equal(prepared.export_info.partial, false);
   assert.equal(prepared.export_info.message_count, 1);
   assert.match(sessionMarkdown(prepared), /包含 1 条消息/);
-
+  assert.match(
+    translateBackendError("session_read_failed", "database is locked"),
+    /database is locked/
+  );
+  assert.match(
+    translateBackendError("session_read_failed", "权限不足"),
+    /无法读取会话详情/
+  );
 });
 
 test("仅原始事件载荷被截断时也标记部分导出", () => {

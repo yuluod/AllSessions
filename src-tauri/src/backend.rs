@@ -610,9 +610,7 @@ fn route_request(
                     query.get("term").map(String::as_str).unwrap_or_default(),
                 )?
             } else {
-                store
-                    .detail(&key)
-                    .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?
+                store.detail(&key)?
             };
             drop(store);
             state.workspace_snapshot()?.decorate_detail(&mut detail);

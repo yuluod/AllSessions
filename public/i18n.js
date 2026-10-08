@@ -303,6 +303,8 @@ const DICT = {
     exportPartialNotice:
       "部分内容导出：包含 {n} 条已加载消息；消息、正文或原始事件存在省略，不是完整会话备份。",
     exportLoadedNotice: "已加载内容导出：包含 {n} 条消息。",
+    backendError_session_read_failed:
+      "无法读取会话详情，请重试或在来源设置中检查诊断信息",
     viewCodexArchived: "在会话页查看归档",
     localSourcesCount: "本机 · {n} 个来源",
     providerLabel: "Provider",
@@ -876,6 +878,8 @@ const DICT = {
     exportPartialNotice:
       "Partial export: {n} loaded messages. Messages, text, or raw events are omitted; this is not a complete session backup.",
     exportLoadedNotice: "Loaded content export: {n} messages.",
+    backendError_session_read_failed:
+      "Unable to read session details. Retry or check diagnostics in source settings",
     viewCodexArchived: "View archives in Sessions",
     localSourcesCount: "Local · {n} sources",
     providerLabel: "Provider",
@@ -1149,9 +1153,12 @@ const DICT = {
 let currentLang = localStorage.getItem(LANG_KEY) || "zh";
 
 // 将后端错误码翻译为当前语言；未知错误码返回 null 以便调用方回退到原始文案。
-export function translateBackendError(code) {
+export function translateBackendError(code, raw) {
   const key = `backendError_${code}`;
-  return DICT[currentLang]?.[key] ?? DICT.zh[key] ?? null;
+  const translated = DICT[currentLang]?.[key] ?? DICT.zh[key] ?? null;
+  return code === "session_read_failed" && raw && translated
+    ? `${translated}: ${raw}`
+    : translated;
 }
 
 export function t(key, vars = {}) {

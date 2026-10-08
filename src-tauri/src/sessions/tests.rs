@@ -88,6 +88,34 @@ fn summary_text_has_limit() {
 }
 
 #[test]
+fn 详情读取失败保留原因并允许修复后重试() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("read-error.jsonl");
+    let content = json!({"type":"session_meta","payload":{"id":"read-error"}}).to_string();
+    std::fs::write(&path, &content).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    std::fs::remove_file(&path).unwrap();
+    let error = store.detail("codex:read-error").unwrap_err();
+    assert_eq!(error.code, crate::error::ApiError::SESSION_READ_FAILED);
+    assert!(!error.message.is_empty());
+    assert_eq!(
+        store.detail("codex:missing").unwrap_err().code,
+        crate::error::ApiError::SESSION_NOT_FOUND
+    );
+    std::fs::write(&path, content).unwrap();
+    assert!(store.detail("codex:read-error").is_ok());
+}
+
+#[test]
 fn 全文搜索覆盖中间消息并合并备注标签和排序() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("long.jsonl");

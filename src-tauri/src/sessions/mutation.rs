@@ -138,9 +138,7 @@ impl SessionStore {
         ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
         }
-        let detail = self
-            .detail(&resolved)
-            .ok_or_else(|| "无法读取会话详情".to_string())?;
+        let detail = self.detail(&resolved)?;
         let message = detail["conversation_messages"]
             .as_array()
             .into_iter()

@@ -77,37 +77,34 @@ impl SessionStore {
         )
     }
 
-    pub fn detail(&mut self, key: &str) -> Option<Value> {
-        let resolved = self.resolve_record_key(key)?;
+    pub fn detail(&mut self, key: &str) -> Result<Value, crate::error::ApiError> {
+        use crate::error::ApiError;
+        let missing = || ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在");
+        let resolved = self.resolve_record_key(key).ok_or_else(missing)?;
         if let Some(detail) = self.detail_cache.get(&resolved) {
-            return Some(detail);
+            return Ok(detail);
         }
-        let record = self.records.get(&resolved)?;
+        let record = self.records.get(&resolved).ok_or_else(missing)?;
         let detail = if let Some(locator) = &record.detail_locator {
             match locator {
-                DetailLocator::Gemini(locator) => {
-                    gemini::parse_detail(&record.source, locator).ok()
-                }
-                DetailLocator::OpenCode(locator) => {
-                    opencode::parse_detail(&record.source, locator).ok()
-                }
-                DetailLocator::ZCode(locator) => zcode::parse_detail(&record.source, locator).ok(),
+                DetailLocator::Gemini(locator) => gemini::parse_detail(&record.source, locator),
+                DetailLocator::OpenCode(locator) => opencode::parse_detail(&record.source, locator),
+                DetailLocator::ZCode(locator) => zcode::parse_detail(&record.source, locator),
                 DetailLocator::Cursor(locator) => {
-                    cursor::visit_detail(&record.source, locator, &mut |_| {}).ok()
+                    cursor::visit_detail(&record.source, locator, &mut |_| {})
                 }
-                DetailLocator::Devin(locator) => devin::parse_detail(&record.source, locator).ok(),
-                DetailLocator::Hermes(locator) => {
-                    hermes::parse_detail(&record.source, locator).ok()
-                }
+                DetailLocator::Devin(locator) => devin::parse_detail(&record.source, locator),
+                DetailLocator::Hermes(locator) => hermes::parse_detail(&record.source, locator),
             }
         } else {
-            parse_detail(&record.path, &record.source).ok()
-        }?;
+            parse_detail(&record.path, &record.source)
+        }
+        .map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))?;
         let size = serde_json::to_vec(&detail)
             .map(|value| value.len())
             .unwrap_or_default();
         self.detail_cache.insert(resolved, detail.clone(), size);
-        Some(detail)
+        Ok(detail)
     }
 
     /// 仅取摘要（不解析详情），供恢复会话这类只需要 id/cwd/source_kind 的操作使用。

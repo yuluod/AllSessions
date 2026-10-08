@@ -13,6 +13,7 @@ impl ApiError {
     pub const INVALID_REQUEST: &'static str = "invalid_request";
     pub const CONFIRMATION_REQUIRED: &'static str = "confirmation_required";
     pub const SESSION_NOT_FOUND: &'static str = "session_not_found";
+    pub const SESSION_READ_FAILED: &'static str = "session_read_failed";
     pub const READ_ONLY_SOURCE: &'static str = "read_only_source";
     pub const FILE_CHANGED: &'static str = "file_changed";
     pub const MAINTENANCE_DISABLED: &'static str = "maintenance_disabled";

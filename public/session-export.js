@@ -36,8 +36,29 @@ function redactText(value) {
 }
 
 export function prepareExportDetail(detail, { redact = false } = {}) {
+  const messages = detail.conversation_messages || [];
+  const loaded = messages.filter((message) => !message.is_truncation_marker);
+  const partial = Boolean(
+    detail.search_context ||
+    detail.summary?.detail_truncated ||
+    detail.truncation?.truncated ||
+    detail.raw_events?.some((event) => event.payload?.truncated === true) ||
+    messages.some(
+      (message) => message.is_truncation_marker || message.text_truncated
+    )
+  );
+  const exportInfo = {
+    scope: "loaded_content",
+    partial,
+    message_count: loaded.length,
+    total_messages: detail.search_context
+      ? null
+      : (detail.truncation?.messages?.total ??
+        (partial ? null : loaded.length)),
+    text_truncated: loaded.some((message) => message.text_truncated === true),
+  };
   return JSON.parse(
-    JSON.stringify(detail, (key, value) => {
+    JSON.stringify({ ...detail, export_info: exportInfo }, (key, value) => {
       if (INTERNAL_FIELDS.has(key)) return undefined;
       if (redact && REDACTED_FIELDS.has(key) && value) {
         return key === "cwd" || key === "file_path"
@@ -66,7 +87,7 @@ export function displayMessageText(message) {
   return message.text || "";
 }
 
-function sessionMarkdown(detail) {
+export function sessionMarkdown(detail) {
   const { summary, conversation_messages: messages = [] } = detail;
   const workspace = summary.workspace || {};
   const lines = [
@@ -77,6 +98,19 @@ function sessionMarkdown(detail) {
     `- **${t("source")}**: ${summary.source || summary.originator || "-"}`,
     `- **${t("sessionId")}**: ${summary.id}`,
   ];
+  if (detail.export_info) {
+    lines.push(
+      "",
+      `> ${t(
+        detail.export_info.partial
+          ? "exportPartialNotice"
+          : "exportLoadedNotice",
+        {
+          n: detail.export_info.message_count,
+        }
+      )}`
+    );
+  }
   if (workspace.favorite === true) {
     lines.push(`- **${t("favorite")}**: ✓`);
   }

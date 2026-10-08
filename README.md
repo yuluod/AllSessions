@@ -61,6 +61,8 @@ Full-text search uses a per-message SQLite index. The index lives entirely on yo
 
 Long sessions keep bounded head/tail detail windows and a 64 MB LRU cache; matched messages load on demand beyond the overview window.
 
+Exports contain the loaded session overview, not a complete backup of the original session. Long sessions may omit middle messages or truncate text and raw events. JSON includes `export_info` with the scope, message count, and partial status; Markdown also labels partial exports. Bulk exports follow the same rules. Return from a search context to the session overview before exporting.
+
 ### Organize and statistics
 
 - Favorite sessions and attach tags and notes

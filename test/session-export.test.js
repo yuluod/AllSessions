@@ -6,7 +6,73 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { prepareExportDetail } = await import("../public/session-export.js");
+const { prepareExportDetail, sessionMarkdown } =
+  await import("../public/session-export.js");
+
+test("长会话导出注明省略范围且不把占位符算作消息", () => {
+  const detail = detailFixture();
+  detail.conversation_messages.push({
+    is_truncation_marker: true,
+    omitted_count: 999,
+  });
+  detail.truncation = {
+    truncated: true,
+    messages: { total: 1000, omitted: 999 },
+  };
+  const prepared = prepareExportDetail(detail);
+  assert.equal(prepared.export_info.partial, true);
+  assert.equal(prepared.export_info.message_count, 1);
+  assert.equal(prepared.export_info.total_messages, 1000);
+  assert.match(sessionMarkdown(prepared), /部分内容导出/);
+  assert.match(sessionMarkdown(prepared), /不是完整会话备份/);
+  assert.equal(detail.export_info, undefined);
+});
+
+test("单条正文截断和搜索片段均不能标记为完整导出", () => {
+  const detail = detailFixture();
+  detail.conversation_messages[0].text_truncated = true;
+  assert.equal(prepareExportDetail(detail).export_info.text_truncated, true);
+  assert.equal(prepareExportDetail(detail).export_info.partial, true);
+  delete detail.conversation_messages[0].text_truncated;
+  detail.search_context = true;
+  assert.equal(prepareExportDetail(detail).export_info.partial, true);
+  assert.equal(prepareExportDetail(detail).export_info.total_messages, null);
+});
+
+test("普通导出记录消息数量", () => {
+  const prepared = prepareExportDetail(detailFixture());
+  assert.equal(prepared.export_info.partial, false);
+  assert.equal(prepared.export_info.message_count, 1);
+  assert.match(sessionMarkdown(prepared), /包含 1 条消息/);
+
+});
+
+test("仅原始事件载荷被截断时也标记部分导出", () => {
+  const detail = detailFixture();
+  detail.conversation_messages[0].text = "a".repeat(11_000);
+  detail.truncation = {
+    truncated: false,
+    messages: { total: 1, omitted: 0 },
+    raw_events: { total: 1, omitted: 0 },
+  };
+  detail.raw_events = [
+    {
+      type: "event_msg",
+      payload: { truncated: true, original_chars: 11_100 },
+    },
+  ];
+
+  for (const redact of [false, true]) {
+    const prepared = prepareExportDetail(detail, { redact });
+    assert.equal(prepared.export_info.partial, true);
+    assert.equal(prepared.export_info.text_truncated, false);
+    assert.equal(prepared.export_info.total_messages, 1);
+    assert.match(sessionMarkdown(prepared), /部分内容导出/);
+  }
+
+  detail.raw_events[0].payload = { truncated: false };
+  assert.equal(prepareExportDetail(detail).export_info.partial, false);
+});
 
 function detailFixture() {
   return {

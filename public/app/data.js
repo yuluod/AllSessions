@@ -99,7 +99,9 @@ export async function loadSessionDetail(id, { silent = false } = {}) {
     for (const button of [elements.exportMdBtn, elements.exportJsonBtn]) {
       if (button) {
         button.disabled = Boolean(detail.search_context);
-        button.title = detail.search_context ? t("searchContextExport") : "";
+        button.title = detail.search_context
+          ? t("searchContextExport")
+          : t("exportScopeHint");
       }
     }
     if (detail.search_context) {

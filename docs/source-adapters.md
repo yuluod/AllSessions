@@ -15,6 +15,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/helpers.rs`：文本截断、筛选、分页、统计聚合等跨模块小工具。
 - `sessions/gemini.rs`：Gemini 日志流式扫描、逐文件摘要缓存、跨文件会话合并和按需详情解析。
 - `sessions/pi.rs`：Pi JSONL 树的活动分支重建，以及消息、工具与扩展上下文归一化。
+- `sessions/grok.rs`：Grok Build ACP 展示日志的只读回放、流式内容与工具更新归约、回退过滤及摘要元数据关联。
 - `sessions/kimi.rs`：Kimi 新旧布局发现、旧版 `wire.jsonl` 解析、工作目录/标题关联和子 Agent 识别；`sessions/kimi/modern.rs` 归约新版 Wire 的消息位置与撤回关系，再读取有效正文。
 - `sessions/opencode.rs`：OpenCode 最新正式版 SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新。
 - `sessions/opencode.rs` 同时解析 Kilo 正式通道的兼容 SQLite 投影；Kilo 使用独立来源键与数据库路径。
@@ -67,6 +68,7 @@ OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 
 - [Claude Code](./sources/claude-code.md)
 - [Gemini CLI](./sources/gemini-cli.md)
 - [Pi](./sources/pi.md)
+- [Grok Build](./sources/grok-build.md)
 - [Kimi Code CLI](./sources/kimi-code-cli.md)
 - [OpenCode](./sources/opencode.md)
 - [Kilo](./sources/kilo.md)

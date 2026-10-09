@@ -12,7 +12,7 @@ use super::helpers::{
     compact, compact_title, error_text, is_synthetic_context, nullable_string, string_at,
 };
 use super::{
-    copilot, kimi, pi, vscode_copilot, Source, SourceFormat, DETAIL_EVENT_LIMIT,
+    copilot, grok, kimi, pi, vscode_copilot, Source, SourceFormat, DETAIL_EVENT_LIMIT,
     DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT,
 };
 
@@ -289,6 +289,7 @@ impl ParseState {
             match source.format {
                 SourceFormat::Claude => "anthropic",
                 SourceFormat::Gemini => "google",
+                SourceFormat::Grok => "unknown",
                 SourceFormat::Codex => "unknown",
                 SourceFormat::Pi => "unknown",
                 // Kimi Code CLI 可配置不同模型 Provider；wire.jsonl 未记录时不做推断。
@@ -315,6 +316,7 @@ impl ParseState {
             match source.format {
                 SourceFormat::Claude => "claude_code",
                 SourceFormat::Gemini => "google_gemini",
+                SourceFormat::Grok => "grok_build",
                 SourceFormat::Codex => "",
                 SourceFormat::Pi => "pi",
                 SourceFormat::Kimi => "kimi_code_cli",
@@ -336,6 +338,7 @@ impl ParseState {
 pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
     match source.format {
         SourceFormat::Pi => return pi::parse_summary(path, source),
+        SourceFormat::Grok => return grok::parse_summary(path, source),
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
         SourceFormat::Copilot => return copilot::parse_summary(path, source),
         SourceFormat::VsCodeCopilot => return vscode_copilot::parse_summary(path, source),
@@ -369,6 +372,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
 pub(crate) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
     match source.format {
         SourceFormat::Pi => return pi::parse_detail(path, source),
+        SourceFormat::Grok => return grok::parse_detail(path, source),
         SourceFormat::Kimi => return kimi::parse_detail(path, source),
         SourceFormat::Copilot => return copilot::parse_detail(path, source),
         SourceFormat::VsCodeCopilot => return vscode_copilot::parse_detail(path, source),
@@ -384,6 +388,7 @@ pub(crate) fn visit_detail(
 ) -> Result<Value, String> {
     match source.format {
         SourceFormat::Pi => return pi::visit_detail(path, source, visitor),
+        SourceFormat::Grok => return grok::visit_detail(path, source, visitor),
         SourceFormat::Kimi => return kimi::visit_detail(path, source, visitor),
         SourceFormat::Copilot => return copilot::visit_detail(path, source, visitor),
         SourceFormat::VsCodeCopilot => return vscode_copilot::visit_detail(path, source, visitor),

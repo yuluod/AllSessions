@@ -8,13 +8,14 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{json, Value};
 use walkdir::WalkDir;
 
-use super::{copilot, cursor, devin, hermes, kimi, vscode_copilot, Source, SourceFormat};
+use super::{copilot, cursor, devin, grok, hermes, kimi, vscode_copilot, Source, SourceFormat};
 
 pub(crate) struct RootLists {
     pub codex: Vec<PathBuf>,
     pub codex_archived: Vec<PathBuf>,
     pub claude: Vec<PathBuf>,
     pub gemini: Vec<PathBuf>,
+    pub grok: Vec<PathBuf>,
     pub pi: Vec<PathBuf>,
     pub kimi: Vec<PathBuf>,
     pub opencode: Vec<PathBuf>,
@@ -76,6 +77,20 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         &["GEMINI_SESSIONS_DIR"],
         vec![home.join(".gemini")],
     );
+    let grok_home = env::var_os("GROK_HOME")
+        .map(PathBuf::from)
+        .map(expand_tilde);
+    let (grok, mut grok_origin) = resolve_kind(
+        config.get("grok"),
+        &["GROK_SESSIONS_DIR"],
+        vec![grok_home
+            .clone()
+            .unwrap_or_else(|| home.join(".grok"))
+            .join("sessions")],
+    );
+    if grok_origin == "default" && grok_home.is_some() {
+        grok_origin = "env";
+    }
     let pi_agent_dir = env::var_os("PI_CODING_AGENT_DIR")
         .map(PathBuf::from)
         .map(expand_tilde);
@@ -250,6 +265,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
         "claude": { "roots": claude.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": claude_origin },
         "gemini": { "roots": gemini.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": gemini_origin },
+        "grok": { "roots": grok.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": grok_origin },
         "pi": { "roots": pi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": pi_origin },
         "kimi": { "roots": kimi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kimi_origin },
         "opencode": { "roots": opencode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": opencode_origin },
@@ -267,6 +283,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
             codex_archived,
             claude,
             gemini,
+            grok,
             pi,
             kimi,
             opencode,
@@ -374,6 +391,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "codex_archived": describe_protected_source_roots(config.codex_archived.as_deref().unwrap_or_default(), &inherited.codex_archived),
         "claude": describe_protected_source_roots(config.claude.as_deref().unwrap_or_default(), &inherited.claude),
         "gemini": describe_protected_source_roots(config.gemini.as_deref().unwrap_or_default(), &inherited.gemini),
+        "grok": describe_protected_source_roots(config.grok.as_deref().unwrap_or_default(), &inherited.grok),
         "pi": describe_protected_source_roots(config.pi.as_deref().unwrap_or_default(), &inherited.pi),
         "kimi": describe_protected_source_roots(config.kimi.as_deref().unwrap_or_default(), &inherited.kimi),
         "opencode": describe_protected_source_roots(config.opencode.as_deref().unwrap_or_default(), &inherited.opencode),
@@ -400,6 +418,13 @@ pub(crate) fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Sou
         display_name: "Pi",
         root: root.clone(),
         format: SourceFormat::Pi,
+        archived: false,
+    }));
+    sources.extend(lists.grok.iter().map(|root| Source {
+        kind: "grok",
+        display_name: "Grok Build",
+        root: grok::sessions_root(root),
+        format: SourceFormat::Grok,
         archived: false,
     }));
     sources.extend(lists.kimi.iter().map(|root| Source {
@@ -579,6 +604,9 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
         .collect()
 }
 pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
+    if matches!(source.format, SourceFormat::Grok) {
+        return grok::discover_files(source);
+    }
     if matches!(
         source.format,
         SourceFormat::OpenCode
@@ -623,6 +651,9 @@ pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
 }
 
 pub(crate) fn source_matches_path(source: &Source, path: &Path) -> bool {
+    if matches!(source.format, SourceFormat::Grok) {
+        return grok::matches_path(&source.root, path);
+    }
     if matches!(source.format, SourceFormat::Cursor) {
         return cursor::matches_path(&source.root, path);
     }

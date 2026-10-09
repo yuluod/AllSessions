@@ -10,11 +10,12 @@ use serde_json::Value;
 
 const ROOT_LIMIT_PER_KIND: usize = 16;
 const ROOT_TEXT_LIMIT: usize = 1024;
-const SOURCE_KINDS: [&str; 14] = [
+const SOURCE_KINDS: [&str; 15] = [
     "codex",
     "codex_archived",
     "claude",
     "gemini",
+    "grok",
     "pi",
     "kimi",
     "opencode",
@@ -69,6 +70,8 @@ pub struct SourceRoots {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gemini: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub grok: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pi: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kimi: Option<Vec<String>>,
@@ -97,6 +100,7 @@ impl SourceRoots {
             "codex_archived" => self.codex_archived.as_ref(),
             "claude" => self.claude.as_ref(),
             "gemini" => self.gemini.as_ref(),
+            "grok" => self.grok.as_ref(),
             "pi" => self.pi.as_ref(),
             "kimi" => self.kimi.as_ref(),
             "opencode" => self.opencode.as_ref(),
@@ -117,6 +121,7 @@ impl SourceRoots {
             "codex_archived" => self.codex_archived = roots,
             "claude" => self.claude = roots,
             "gemini" => self.gemini = roots,
+            "grok" => self.grok = roots,
             "pi" => self.pi = roots,
             "kimi" => self.kimi = roots,
             "opencode" => self.opencode = roots,

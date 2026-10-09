@@ -720,6 +720,7 @@ mod tests {
                 codex_archived: Some(vec![]),
                 claude: Some(vec![]),
                 gemini: Some(vec![]),
+                grok: Some(Vec::new()),
                 pi: Some(vec![]),
                 kimi: Some(vec![]),
                 opencode: Some(vec![]),

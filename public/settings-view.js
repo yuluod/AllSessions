@@ -12,6 +12,7 @@ const SOURCE_KINDS = [
   { key: "codex_archived", agent: "codex", label: "Codex Archived" },
   { key: "claude", agent: "claude", label: "Claude Code" },
   { key: "gemini", agent: "gemini", label: "Gemini CLI" },
+  { key: "grok", agent: "grok", label: "Grok Build" },
   { key: "pi", agent: "pi", label: "Pi" },
   { key: "kimi", agent: "kimi", label: "Kimi Code CLI" },
   { key: "opencode", agent: "opencode", label: "OpenCode" },

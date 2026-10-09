@@ -256,10 +256,13 @@ impl SessionStore {
                         continue;
                     }
                 };
-                let parsed = if matches!(source.format, SourceFormat::Kimi | SourceFormat::Copilot)
-                {
+                let parsed = if matches!(
+                    source.format,
+                    SourceFormat::Kimi | SourceFormat::Copilot | SourceFormat::Grok
+                ) {
                     // Kimi 的标题来自 state.json，目录来自 kimi.json 或 session_index.jsonl；
                     // Copilot 的标题/工作目录保存在相邻 workspace.yaml。
+                    // Grok 的标题、目录与可见性保存在相邻 summary.json。
                     // 仅使用事件文件指纹会让这些元数据变化后继续命中旧缓存。
                     parse_summary(&path, source)
                 } else {
@@ -343,8 +346,12 @@ impl SessionStore {
                         | SourceFormat::Cursor
                         | SourceFormat::Devin
                         | SourceFormat::Hermes
-                ) || matches!(source.format, SourceFormat::Kimi)
-                    && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl")
+                ) || matches!(source.format, SourceFormat::Grok)
+                    && (path.file_name().and_then(|value| value.to_str()) == Some("summary.json")
+                        || path.is_dir()
+                        || !path.exists() && path.extension().is_none())
+                    || matches!(source.format, SourceFormat::Kimi)
+                        && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl")
                     || matches!(source.format, SourceFormat::Copilot)
                         && path.file_name().and_then(|value| value.to_str())
                             == Some("workspace.yaml")

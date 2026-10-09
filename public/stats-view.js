@@ -5,6 +5,7 @@ const AGENT_PRESENTATION = {
   codex: { label: "Codex", color: "#0f766e" },
   claude: { label: "Claude Code", color: "#a15c07" },
   gemini: { label: "Gemini CLI", color: "#4f46e5" },
+  grok: { label: "Grok Build", color: "#52525b" },
   pi: { label: "Pi", color: "#2563eb" },
   kimi: { label: "Kimi Code CLI", color: "#b42318" },
   opencode: { label: "OpenCode", color: "#16794f" },

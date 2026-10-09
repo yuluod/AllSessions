@@ -69,6 +69,7 @@ fn codex_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
         codex_archived: Some(Vec::new()),
         claude: Some(Vec::new()),
         gemini: Some(Vec::new()),
+        grok: Some(Vec::new()),
         pi: Some(Vec::new()),
         kimi: Some(Vec::new()),
         opencode: Some(Vec::new()),
@@ -352,6 +353,7 @@ fn refresh_records_source_errors_without_blocking_valid_sessions() {
             codex_archived: Some(Vec::new()),
             claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
             gemini: Some(Vec::new()),
+            grok: Some(Vec::new()),
             pi: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
@@ -558,6 +560,7 @@ fn 增量刷新单文件失败不丢弃同批其他变更() {
             codex: Some(Vec::new()),
             codex_archived: Some(Vec::new()),
             gemini: Some(Vec::new()),
+            grok: Some(Vec::new()),
             pi: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
@@ -617,6 +620,7 @@ fn 缺失的_opencode_数据库属于不可用而不是扫描错误() {
             codex_archived: Some(Vec::new()),
             claude: Some(Vec::new()),
             gemini: Some(Vec::new()),
+            grok: Some(Vec::new()),
             pi: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(vec![database.to_string_lossy().into_owned()]),
@@ -679,6 +683,7 @@ fn refresh_paths_rebuilds_claude_priority_after_layout_change() {
             codex: Some(Vec::new()),
             codex_archived: Some(Vec::new()),
             gemini: Some(Vec::new()),
+            grok: Some(Vec::new()),
             pi: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
@@ -1448,6 +1453,7 @@ fn claude_modern_and_legacy_sessions_are_scanned_together() {
             codex: Some(Vec::new()),
             codex_archived: Some(Vec::new()),
             gemini: Some(Vec::new()),
+            grok: Some(Vec::new()),
             pi: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
@@ -1641,6 +1647,148 @@ fn 新版kimi读取回退历史并刷新元数据及去重迁移副本() {
     assert_eq!(refreshed["title"], "改名后");
     assert_eq!(refreshed["cwd"], "/work/moved");
     assert_eq!(std::fs::read_to_string(path).unwrap(), wire);
+}
+
+#[test]
+fn grok展示回放接入搜索刷新并保持只读() {
+    let directory = tempdir().unwrap();
+    let session = directory.path().join("sessions/encoded-project/grok-main");
+    std::fs::create_dir_all(&session).unwrap();
+    let meta_path = session.join("summary.json");
+    let mut metadata = json!({"info":{"id":"grok-main","cwd":"/work/grok"},"generated_title":"Grok 项目检查","created_at":"2026-10-01T00:00:00Z","updated_at":"2026-10-01T00:01:00Z","current_model_id":"grok-code","session_kind":"fork","parent_session_id":"parent"});
+    std::fs::write(&meta_path, metadata.to_string()).unwrap();
+    let acp = |update: Value| json!({"timestamp":1790812800,"method":"session/update","params":{"sessionId":"grok-main","update":update}});
+    let xai = |update: Value| json!({"timestamp":1790812800,"method":"_x.ai/session/update","params":{"sessionId":"grok-main","update":update}});
+    let chunk =
+        |tag: &str, text: &str| json!({"sessionUpdate":tag,"content":{"type":"text","text":text}});
+    let records = vec![
+        acp(
+            json!({"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"检查"},"_meta":{"promptIndex":0}}),
+        ),
+        acp(
+            json!({"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"项目"},"_meta":{"promptIndex":0}}),
+        ),
+        acp(chunk("agent_thought_chunk", "先查看目录")),
+        acp(chunk("agent_message_chunk", "正在")),
+        acp(chunk("agent_message_chunk", "检查")),
+        acp(
+            json!({"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"后台上下文"},"_meta":{"hostTurn":true}}),
+        ),
+        acp(
+            json!({"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"撤回的问题"},"_meta":{"promptIndex":1}}),
+        ),
+        acp(chunk("agent_message_chunk", "撤回的回复")),
+        xai(
+            json!({"sessionUpdate":"rewind_marker","target_prompt_index":1,"created_at":"2026-10-01T00:00:00Z"}),
+        ),
+        acp(
+            json!({"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"执行命令"},"_meta":{"promptIndex":1}}),
+        ),
+        acp(
+            json!({"sessionUpdate":"tool_call","toolCallId":"call-1","title":"Bash","status":"pending","rawInput":{"command":"pwd"}}),
+        ),
+        acp(
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"call-1","status":"in_progress","rawOutput":"中间输出"}),
+        ),
+        acp(
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"call-1","status":"failed","rawOutput":"权限不足"}),
+        ),
+        acp(chunk("agent_message_chunk", "命令失败")),
+        xai(json!({"sessionUpdate":"turn_completed","prompt_id":"p1","stop_reason":"end_turn"})),
+        acp(chunk("agent_message_chunk", "新的回复")),
+        acp(
+            json!({"sessionUpdate":"agent_message_chunk","content":{"type":"image","data":"unused","mimeType":"image/png"}}),
+        ),
+        xai(
+            json!({"sessionUpdate":"compaction_checkpoint","checkpoint_id":"c1","prompt_index_at_compaction":2}),
+        ),
+    ];
+    let wire = records
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let path = session.join("updates.jsonl");
+    std::fs::write(&path, &wire).unwrap();
+    // 模型上下文不作为第二份会话，子代理仍在正常会话目录内。
+    std::fs::write(session.join("chat_history.jsonl"), "不应读取").unwrap();
+    let child = session.parent().unwrap().join("grok-child");
+    std::fs::create_dir_all(&child).unwrap();
+    std::fs::write(child.join("summary.json"), json!({"info":{"id":"grok-child","cwd":"/work/grok"},"session_kind":"subagent","parent_session_id":"grok-main"}).to_string()).unwrap();
+    std::fs::write(
+        child.join("updates.jsonl"),
+        json!({"sessionId":"grok-child","update":chunk("user_message_chunk","子任务")}).to_string(),
+    )
+    .unwrap();
+    let mut config = codex_roots_config(&[]);
+    config.grok = Some(vec![directory.path().to_string_lossy().into_owned()]);
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: config,
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    assert_eq!(store.records.len(), 2);
+    assert_eq!(store.records["grok:grok-main"].summary["hidden"], false);
+    assert_eq!(store.records["grok:grok-child"].summary["hidden"], true);
+    assert_eq!(store.records["grok:grok-main"].summary["cwd"], "/work/grok");
+    assert_eq!(
+        store.records["grok:grok-main"].summary["model_provider"],
+        "unknown"
+    );
+    let detail = store.detail("grok:grok-main").unwrap();
+    let messages = detail["conversation_messages"].as_array().unwrap();
+    assert!(messages.iter().any(|m| m["text"] == "检查项目"));
+    assert!(messages.iter().any(|m| m["text"] == "正在检查"));
+    assert!(messages.iter().any(|m| m["source_subtype"] == "thinking"));
+    assert!(messages
+        .iter()
+        .any(|m| m["text"] == "后台上下文" && m["synthetic_context"] == true));
+    assert!(messages.iter().any(|m| m["text"] == "新的回复[image]"));
+    assert!(!messages
+        .iter()
+        .any(|m| m["text"].as_str().unwrap_or_default().contains("撤回")));
+    let tools = messages
+        .iter()
+        .filter(|m| m["tool_call_id"] == "call-1")
+        .collect::<Vec<_>>();
+    assert_eq!(tools.len(), 2);
+    assert_eq!(tools[1]["text"], "权限不足");
+    assert_eq!(tools[1]["tool_name"], "Bash");
+    assert_eq!(tools[1]["is_error"], true);
+    assert!(messages
+        .iter()
+        .all(|m| m["_message_key"].is_string() && m["_delete_ref"].is_null()));
+    assert!(detail["raw_events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["type"] == "rewind_marker"));
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let hits = store
+        .search(
+            &HashMap::from([("q".into(), "正在检查".into())]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(hits["sessions"].as_array().unwrap().len(), 1);
+    let removed = store
+        .search(&HashMap::from([("q".into(), "撤回".into())]), &workspace)
+        .unwrap();
+    assert!(removed["sessions"].as_array().unwrap().is_empty());
+    assert!(store.delete_session("grok:grok-main").is_err());
+    metadata["generated_title"] = json!("改名后的 Grok");
+    metadata["info"]["cwd"] = json!("/work/moved");
+    std::fs::write(&meta_path, metadata.to_string()).unwrap();
+    store.refresh_paths(&BTreeSet::from([meta_path])).unwrap();
+    let refreshed = store.detail("grok:grok-main").unwrap();
+    assert_eq!(refreshed["summary"]["title"], "改名后的 Grok");
+    assert_eq!(refreshed["summary"]["cwd"], "/work/moved");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), wire);
 }
 
 #[test]

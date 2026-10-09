@@ -14,6 +14,7 @@ fn resume_command(kind: &str, id: &str) -> Option<String> {
         "claude_code" => "claude --resume",
         "codex" | "codex_archived" => "codex resume",
         "gemini" => "gemini --resume",
+        "grok" => "grok --resume",
         "pi" => "pi --session",
         "kimi" => "kimi --resume",
         "opencode" => "opencode --session",
@@ -410,6 +411,10 @@ mod tests {
 
     #[test]
     fn 各来源的恢复命令与前端一致() {
+        assert_eq!(
+            resume_command("grok", "abc"),
+            Some("grok --resume abc".into())
+        );
         assert_eq!(
             resume_command("opencode", "ses_abc"),
             Some("opencode --session ses_abc".to_string())

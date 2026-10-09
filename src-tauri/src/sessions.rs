@@ -12,6 +12,7 @@ mod copilot;
 mod cursor;
 mod devin;
 mod gemini;
+mod grok;
 mod helpers;
 mod hermes;
 mod kimi;
@@ -82,6 +83,7 @@ pub(crate) enum SourceFormat {
     Codex,
     Claude,
     Gemini,
+    Grok,
     Pi,
     Kimi,
     OpenCode,
@@ -245,6 +247,7 @@ impl SessionStore {
             "codex_archived",
             "claude",
             "gemini",
+            "grok",
             "pi",
             "kimi",
             "opencode",
@@ -282,6 +285,7 @@ impl SessionStore {
             ("codex_archived", lists.codex_archived.as_slice()),
             ("claude", lists.claude.as_slice()),
             ("gemini", lists.gemini.as_slice()),
+            ("grok", lists.grok.as_slice()),
             ("pi", lists.pi.as_slice()),
             ("kimi", lists.kimi.as_slice()),
             ("opencode", lists.opencode.as_slice()),

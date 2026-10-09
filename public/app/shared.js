@@ -16,6 +16,7 @@ export const SOURCE_RAIL_AGENTS = [
   { agent: "codex", kinds: ["codex", "codex_archived"] },
   { agent: "claude", kinds: ["claude"] },
   { agent: "gemini", kinds: ["gemini"] },
+  { agent: "grok", kinds: ["grok"] },
   { agent: "pi", kinds: ["pi"] },
   { agent: "kimi", kinds: ["kimi"] },
   { agent: "opencode", kinds: ["opencode"] },
@@ -296,6 +297,8 @@ export function resumeCommandForKind(kind, sessionId) {
       return `codex resume ${sessionId}`;
     case "gemini":
       return `gemini --resume ${sessionId}`;
+    case "grok":
+      return `grok --resume ${sessionId}`;
     case "pi":
       return `pi --session ${sessionId}`;
     case "kimi":

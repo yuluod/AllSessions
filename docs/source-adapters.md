@@ -15,7 +15,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/helpers.rs`：文本截断、筛选、分页、统计聚合等跨模块小工具。
 - `sessions/gemini.rs`：Gemini 日志流式扫描、逐文件摘要缓存、跨文件会话合并和按需详情解析。
 - `sessions/pi.rs`：Pi JSONL 树的活动分支重建，以及消息、工具与扩展上下文归一化。
-- `sessions/kimi.rs`：Kimi `wire.jsonl` 解析、流式内容合并、工作目录/标题关联和子 Agent 识别。
+- `sessions/kimi.rs`：Kimi 新旧布局发现、旧版 `wire.jsonl` 解析、工作目录/标题关联和子 Agent 识别；`sessions/kimi/modern.rs` 归约新版 Wire 的消息位置与撤回关系，再读取有效正文。
 - `sessions/opencode.rs`：OpenCode 最新正式版 SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新。
 - `sessions/opencode.rs` 同时解析 Kilo 正式通道的兼容 SQLite 投影；Kilo 使用独立来源键与数据库路径。
 - `sessions/zcode.rs`：ZCode CLI SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新；排除 subagent_child 会话。
@@ -45,6 +45,8 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - 搜索文本、详情消息、原始事件和详情缓存都必须有明确上限。
 - 单个损坏文件不能阻止其他来源启动。
 - 使用 `${source_kind}:${id}` 组合键避免跨来源 ID 冲突。
+
+Kimi 官方迁移副本有明确的旧会话 ID，沿用 `kimi:<旧 id>` 工作区键以保留整理状态，摘要 `id` 保持新版真实 ID 供恢复使用；默认新版根优先。新版目录与标题取自会话级 `state.json`，目录缺失时取 `session_index.jsonl`，这两种元数据变更均触发全量刷新。详见 [Kimi 来源说明](./sources/kimi-code-cli.md)。
 
 Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合。每个日志文件只缓存有界摘要贡献，完整消息和原始事件在用户打开会话时重新流式读取，并应用与其他来源相同的首尾窗口。Kimi 以 `wire.jsonl` 作为会话事件流，但工作目录和标题分别来自根目录 `kimi.json` 与相邻 `state.json`；这两个元数据文件变化时必须重新解析摘要，不能只依赖 `wire.jsonl` 指纹缓存。OpenCode 的一份 `opencode.db` 包含多条会话，摘要通过批量查询聚合，详情按会话 ID 查询；`opencode.db`、`-wal` 或 `-shm` 变化时均全量刷新该聚合来源。
 

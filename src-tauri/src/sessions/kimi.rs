@@ -15,6 +15,47 @@ use super::{
     DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
 };
 
+mod modern;
+
+fn modern_session_dir(path: &Path) -> Option<&Path> {
+    let agents = path.parent()?.parent()?;
+    (agents.file_name()?.to_str()? == "agents")
+        .then(|| agents.parent())
+        .flatten()
+}
+
+fn session_metadata(path: &Path) -> Result<Value, String> {
+    let directory = modern_session_dir(path)
+        .or_else(|| path.parent())
+        .ok_or("Kimi 会话路径无效")?;
+    let state = directory.join("state.json");
+    match File::open(&state) {
+        Ok(file) => serde_json::from_reader(file).map_err(error_text),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
+        Err(error) => Err(error_text(error)),
+    }
+}
+
+fn indexed_work_dir(source: &Source, id: &str) -> Result<String, String> {
+    let file = match File::open(share_root(source).join("session_index.jsonl")) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
+        Err(error) => return Err(error_text(error)),
+    };
+    let mut cwd = String::new();
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(error_text)?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let record: Value = serde_json::from_str(&line).map_err(error_text)?;
+        if record["sessionId"].as_str() == Some(id) {
+            cwd = record["workDir"].as_str().unwrap_or_default().into();
+        }
+    }
+    Ok(cwd)
+}
+
 struct SessionLayout {
     id: String,
     cwd: String,
@@ -68,7 +109,7 @@ fn work_dir_for_hash(source: &Source, hash: &str) -> String {
         .unwrap_or_default()
 }
 
-fn session_layout(path: &Path, source: &Source) -> SessionLayout {
+fn session_layout(path: &Path, source: &Source) -> Result<SessionLayout, String> {
     let relative = path
         .strip_prefix(sessions_root(source))
         .or_else(|_| path.strip_prefix(&source.root))
@@ -83,27 +124,40 @@ fn session_layout(path: &Path, source: &Source) -> SessionLayout {
         .cloned()
         .or_else(|| path.parent()?.file_name()?.to_str().map(str::to_string))
         .unwrap_or_else(|| "unknown".into());
-    let subagent_index = parts.iter().position(|part| part == "subagents");
+    let modern = modern_session_dir(path).is_some();
+    let subagent_index = parts
+        .iter()
+        .position(|part| part == "subagents")
+        .or_else(|| {
+            modern
+                .then(|| parts.iter().position(|part| part == "agents"))
+                .flatten()
+                .filter(|index| parts.get(index + 1).map(String::as_str) != Some("main"))
+        });
     let hidden = subagent_index.is_some();
     let id = subagent_index
         .and_then(|index| parts.get(index + 1))
         .map(|agent| format!("{main_id}:subagent:{agent}"))
         .unwrap_or_else(|| main_id.clone());
-    SessionLayout {
+    let cwd = if modern {
+        let metadata = session_metadata(path)?;
+        metadata["cwd"]
+            .as_str()
+            .or_else(|| metadata["workDir"].as_str())
+            .or_else(|| metadata["custom"]["cwd"].as_str())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .map(Ok)
+            .unwrap_or_else(|| indexed_work_dir(source, &main_id))?
+    } else {
+        work_dir_for_hash(source, &hash)
+    };
+    Ok(SessionLayout {
         id,
-        cwd: work_dir_for_hash(source, &hash),
+        cwd,
         parent_session_id: if hidden { main_id } else { String::new() },
         hidden,
-    }
-}
-
-fn custom_title(path: &Path) -> Option<String> {
-    let state_path = path.parent()?.join("state.json");
-    let value: Value = serde_json::from_reader(File::open(state_path).ok()?).ok()?;
-    value["custom_title"]
-        .as_str()
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_string)
+    })
 }
 
 pub(super) fn discover_files(source: &Source) -> Vec<PathBuf> {
@@ -372,7 +426,10 @@ fn parse_wire(
     collect_detail: bool,
     visitor: &mut dyn FnMut(&Value),
 ) -> Result<ParsedWire, String> {
-    let layout = session_layout(path, source);
+    if modern_session_dir(path).is_some() {
+        return modern::parse_wire(path, source, collect_detail, visitor);
+    }
+    let layout = session_layout(path, source)?;
     let mut collector = MessageCollector::new(path, &layout, collect_detail, visitor);
     let mut events = collect_detail.then(|| HeadTail::new(DETAIL_EVENT_LIMIT));
     let mut tool_names = HashMap::<String, String>::new();
@@ -443,18 +500,36 @@ fn parse_wire(
     Ok((collector.state, collector.messages, events))
 }
 
-fn build_summary(path: &Path, source: &Source, state: &ParseState) -> Value {
+fn build_summary(path: &Path, source: &Source, state: &ParseState) -> Result<Value, String> {
     let mut summary = state.summary(path, source);
-    if let Some(title) = custom_title(path) {
-        summary["title"] = Value::String(compact(&title, 90));
+    let metadata = session_metadata(path)?;
+    if let Some(title) = metadata["title"]
+        .as_str()
+        .or_else(|| metadata["customTitle"].as_str())
+        .or_else(|| metadata["custom_title"].as_str())
+        .filter(|value| !value.trim().is_empty())
+    {
+        summary["title"] = Value::String(compact(title, 90));
+    }
+    if modern_session_dir(path).is_some()
+        && !state.hidden
+        && metadata["custom"]["imported_from_kimi_cli"] == true
+    {
+        if let Some(legacy_id) = metadata["custom"]["kimi_cli_session_id"]
+            .as_str()
+            .filter(|id| !id.is_empty())
+        {
+            // 沿用旧工作区键以保留收藏和备注；恢复命令仍使用新版真实 id。
+            summary["_key"] = json!(format!("{}:{legacy_id}", source.kind));
+        }
     }
     summary["source_read_only"] = Value::Bool(true);
-    summary
+    Ok(summary)
 }
 
 pub(super) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
     let (state, _, _) = parse_wire(path, source, false, &mut |_| {})?;
-    let summary = build_summary(path, source, &state);
+    let summary = build_summary(path, source, &state)?;
     let mut search = summary_search_text(&summary);
     append_limited(&mut search, &[&state.search_text], SEARCH_TEXT_LIMIT);
     Ok((summary, search))
@@ -502,7 +577,7 @@ pub(super) fn visit_detail(
             marker["payload"]["omitted_events"] = json!(omitted_events);
         }
     }
-    let mut summary = build_summary(path, source, &state);
+    let mut summary = build_summary(path, source, &state)?;
     if omitted_messages + omitted_events > 0 {
         summary["detail_truncated"] = Value::Bool(true);
     }

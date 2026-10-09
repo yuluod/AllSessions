@@ -1506,6 +1506,144 @@ fn duplicate_session_id_across_roots_keeps_first_root() {
 }
 
 #[test]
+fn 新版kimi读取回退历史并刷新元数据及去重迁移副本() {
+    let directory = tempdir().unwrap();
+    let modern = directory.path().join("new");
+    let legacy = directory.path().join("old");
+    let session = modern.join("sessions/wd_demo/ses_old-1");
+    let agent = session.join("agents/main");
+    std::fs::create_dir_all(&agent).unwrap();
+    let old_session = legacy.join("sessions/hash/old-1");
+    std::fs::create_dir_all(&old_session).unwrap();
+    std::fs::write(old_session.join("wire.jsonl"),
+        json!({"timestamp": 1787184000, "message": {"type": "TurnBegin", "payload": {"user_input": "旧副本"}}}).to_string()).unwrap();
+    let state_path = session.join("state.json");
+    let mut metadata = json!({"title": "新版会话", "custom": {"imported_from_kimi_cli": true, "kimi_cli_session_id": "old-1"}});
+    std::fs::write(&state_path, metadata.to_string()).unwrap();
+    let index_path = modern.join("session_index.jsonl");
+    std::fs::write(
+        &index_path,
+        json!({"sessionId":"ses_old-1","workDir":"/work/kimi"}).to_string(),
+    )
+    .unwrap();
+    let records = vec![
+        json!({"type":"metadata","protocol_version":"1.5","created_at":1787184000000_i64}),
+        json!({"type":"llm.request","provider":"moonshot","model":"kimi-test"}),
+        json!({"type":"context.append_message","message":{"role":"user","id":"u1","content":[{"type":"text","text":"检查项目"}],"toolCalls":[]}}),
+        json!({"type":"context.append_loop_event","event":{"type":"step.begin","uuid":"step1"}}),
+        json!({"type":"context.append_loop_event","event":{"type":"content.part","stepUuid":"step1","part":{"type":"think","think":"先检查"}}}),
+        json!({"type":"context.append_loop_event","event":{"type":"content.part","stepUuid":"step1","part":{"type":"text","text":"正在"}}}),
+        json!({"type":"context.append_loop_event","event":{"type":"content.part","stepUuid":"step1","part":{"type":"text","text":"检查"}}}),
+        json!({"type":"context.append_loop_event","event":{"type":"tool.call","stepUuid":"step1","toolCallId":"c1","name":"Bash","args":{"command":"pwd"}}}),
+        json!({"type":"context.append_loop_event","event":{"type":"tool.result","toolCallId":"c1","result":{"output":"命令失败","isError":true}}}),
+        json!({"type":"context.append_loop_event","event":{"type":"step.end","uuid":"step1","finishReason":"stop"}}),
+        json!({"type":"context.append_message","message":{"role":"assistant","content":[{"type":"text","text":"第一条完整回复"}],"toolCalls":[]}}),
+        json!({"type":"context.append_message","message":{"role":"assistant","content":[{"type":"text","text":"第二条完整回复"}],"toolCalls":[]}}),
+        json!({"type":"context.append_message","message":{"role":"user","origin":{"kind":"injection","ownerPromptId":"u2"},"content":[{"type":"text","text":"撤回附带上下文"}],"toolCalls":[]}}),
+        json!({"type":"context.append_message","message":{"role":"user","id":"u2","content":[{"type":"text","text":"撤回的问题"}],"toolCalls":[]}}),
+        json!({"type":"context.append_message","message":{"role":"assistant","content":[{"type":"text","text":"撤回的回答"}],"toolCalls":[]}}),
+        json!({"type":"context.undo","count":1}),
+        json!({"type":"context.apply_compaction","summary":"历史摘要","compactedCount":4,"keptUserMessageCount":1}),
+        json!({"type":"context.clear"}),
+        json!({"type":"context.append_message","message":{"role":"user","content":[{"type":"text","text":"清空后撤回"}],"toolCalls":[]}}),
+        json!({"type":"context.undo","count":1}),
+        json!({"type":"context.append_message","message":{"role":"user","content":[{"type":"text","text":"继续工作"},{"type":"image_url","imageUrl":{"url":"blob:fixture"}}],"toolCalls":[]}}),
+    ];
+    let wire = records
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut record)| {
+            record["time"] = json!(1787184000000_i64 + i as i64 * 1000);
+            record.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    let path = agent.join("wire.jsonl");
+    std::fs::write(&path, &wire).unwrap();
+    let child = session.join("agents/agent-0");
+    std::fs::create_dir_all(&child).unwrap();
+    std::fs::write(child.join("wire.jsonl"), &wire).unwrap();
+    let mut config = codex_roots_config(&[]);
+    config.kimi = Some(vec![
+        modern.to_string_lossy().into_owned(),
+        legacy.to_string_lossy().into_owned(),
+    ]);
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: config,
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    assert_eq!(store.records.len(), 2);
+    let record = &store.records["kimi:old-1"];
+    assert_eq!(record.path, path);
+    assert_eq!(record.summary["id"], "ses_old-1");
+    assert_eq!(record.summary["cwd"], "/work/kimi");
+    assert_eq!(record.summary["title"], "新版会话");
+    assert_eq!(record.summary["model_provider"], "moonshot");
+    assert!(record.search_text.contains("正在检查"));
+    assert!(!record.search_text.contains("撤回"));
+    assert_eq!(
+        store.records["kimi:ses_old-1:subagent:agent-0"].summary["hidden"],
+        true
+    );
+    let mut exported = Vec::new();
+    let detail = super::kimi::visit_detail(&path, &record.source, &mut |message| {
+        exported.push(message.clone())
+    })
+    .unwrap();
+    let messages = detail["conversation_messages"].as_array().unwrap();
+    assert_eq!(&exported, messages);
+    assert!(messages
+        .iter()
+        .any(|message| message["text"] == "第一条完整回复"));
+    assert!(messages
+        .iter()
+        .any(|message| message["text"] == "第二条完整回复"));
+    assert!(messages.iter().any(|message| message["text"] == "检查项目"));
+    assert!(messages
+        .iter()
+        .any(|message| message["text"] == "历史摘要" && message["synthetic_context"] == true));
+    assert!(messages.last().unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .contains("[image]"));
+    let result = messages
+        .iter()
+        .find(|message| message["tool_kind"] == "tool_result")
+        .unwrap();
+    assert_eq!(result["tool_name"], "Bash");
+    assert_eq!(result["is_error"], true);
+    assert!(messages
+        .iter()
+        .all(|message| message["_delete_ref"].is_null()));
+    assert!(detail["raw_events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|event| event["type"] == "context.undo"));
+    metadata["title"] = json!("改名后");
+    std::fs::write(&state_path, metadata.to_string()).unwrap();
+    std::fs::write(
+        &index_path,
+        json!({"sessionId":"ses_old-1","workDir":"/work/moved"}).to_string(),
+    )
+    .unwrap();
+    store
+        .refresh_paths(&BTreeSet::from([state_path, index_path]))
+        .unwrap();
+    let refreshed = store.summary_for_key("kimi:old-1").unwrap();
+    assert_eq!(refreshed["title"], "改名后");
+    assert_eq!(refreshed["cwd"], "/work/moved");
+    assert_eq!(std::fs::read_to_string(path).unwrap(), wire);
+}
+
+#[test]
 fn nested_roots_index_shared_file_once() {
     let outer = tempdir().unwrap();
     let nested = outer.path().join("nested");

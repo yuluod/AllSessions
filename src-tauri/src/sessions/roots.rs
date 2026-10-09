@@ -91,11 +91,23 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
     if pi_origin == "default" && pi_agent_dir.is_some() {
         pi_origin = "env";
     }
-    let (kimi, kimi_origin) = resolve_kind(
+    let kimi_home = env::var_os("KIMI_CODE_HOME")
+        .map(PathBuf::from)
+        .map(expand_tilde);
+    let kimi_share = env::var_os("KIMI_SHARE_DIR")
+        .map(PathBuf::from)
+        .map(expand_tilde);
+    let (kimi, mut kimi_origin) = resolve_kind(
         config.get("kimi"),
-        &["KIMI_SESSIONS_DIR", "KIMI_SHARE_DIR"],
-        vec![home.join(".kimi")],
+        &["KIMI_SESSIONS_DIR"],
+        vec![
+            kimi_home.clone().unwrap_or_else(|| home.join(".kimi-code")),
+            kimi_share.clone().unwrap_or_else(|| home.join(".kimi")),
+        ],
     );
+    if kimi_origin == "default" && (kimi_home.is_some() || kimi_share.is_some()) {
+        kimi_origin = "env";
+    }
     let opencode_data = env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .map(expand_tilde)

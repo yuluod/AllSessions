@@ -258,7 +258,7 @@ impl SessionStore {
                 };
                 let parsed = if matches!(source.format, SourceFormat::Kimi | SourceFormat::Copilot)
                 {
-                    // Kimi 的标题保存在相邻 state.json，工作目录映射保存在 kimi.json；
+                    // Kimi 的标题来自 state.json，目录来自 kimi.json 或 session_index.jsonl；
                     // Copilot 的标题/工作目录保存在相邻 workspace.yaml。
                     // 仅使用事件文件指纹会让这些元数据变化后继续命中旧缓存。
                     parse_summary(&path, source)

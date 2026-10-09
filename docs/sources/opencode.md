@@ -6,6 +6,7 @@ AllSessions 当前只读兼容实现时的 OpenCode 最新正式版 `v1.18.23` �
 
 - 从 `session`、`message`、`part` 表聚合会话，不重复读取兼容投影之外的内部表。
 - 展示用户与助手文本、Thinking、文件占位、工具输入/结果和错误。
+- 在系统终端通过 `opencode --session <id>` 恢复会话，参数依据 [官方 CLI 文档](https://opencode.ai/docs/cli/#tui)。
 - 使用 `parent_id` 识别并默认隐藏 Task 子 Agent 会话；普通 fork 不会被误判为子 Agent。
 - 按需读取单条会话详情，并限制消息、原始事件和单条文本大小。
 - 监听数据库本体及 SQLite 的 `-wal`、`-shm` 变化，变化后重新读取整份聚合来源。

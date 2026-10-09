@@ -297,11 +297,11 @@ export function resumeCommandForKind(kind, sessionId) {
     case "gemini":
       return `gemini --resume ${sessionId}`;
     case "pi":
-      return `pi --resume ${sessionId}`;
+      return `pi --session ${sessionId}`;
     case "kimi":
       return `kimi --resume ${sessionId}`;
     case "opencode":
-      return `opencode resume ${sessionId}`;
+      return `opencode --session ${sessionId}`;
     case "zcode":
       return `zcode --resume ${sessionId}`;
     case "copilot":

@@ -500,6 +500,53 @@ mod tests {
     }
 
     #[test]
+    fn 一点零记录保留原始历史且上下文编辑不删除消息() {
+        use serde_json::json;
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("pi-1.0.jsonl");
+        let records = [
+            json!({"type":"session","version":3,"id":"pi-1.0","cwd":"/work/repo","timestamp":"2026-10-01T00:00:00Z"}),
+            json!({"type":"message","id":"system","parentId":null,"message":{"role":"system","content":"","sections":{"preamble":"系统提示"},"toolsAdded":[]}}),
+            json!({"type":"message","id":"user","parentId":"system","message":{"role":"user","content":"生成图片"}}),
+            json!({"type":"message","id":"assistant","parentId":"user","message":{"role":"assistant","provider":"openai","content":[{"type":"thinking","thinking":"准备调用工具"},{"type":"toolCall","id":"call1","name":"codemode","arguments":{"code":"image(result)"}}],"stopReason":"toolUse"}}),
+            json!({"type":"message","id":"result","parentId":"assistant","message":{"role":"toolResult","toolCallId":"call1","toolName":"codemode","content":[{"type":"text","text":"图片已生成"}],"isError":false,"usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0}}}),
+            json!({"type":"context_edit","id":"edit","parentId":"result","targetId":"user","replacement":null}),
+            json!({"type":"usage","id":"usage","parentId":"edit","kind":"cache_warm","usage":{"input":0,"output":0,"cacheRead":100,"cacheWrite":0}}),
+            json!({"type":"session_info","id":"name","parentId":"usage","name":"一点零会话"}),
+        ];
+        let content = records
+            .iter()
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&path, &content).unwrap();
+        let source = source(directory.path());
+        let (summary, search) = parse_summary(&path, &source).unwrap();
+        assert_eq!(summary["title"], "一点零会话");
+        assert!(search.contains("生成图片"));
+        let detail = parse_detail(&path, &source).unwrap();
+        let messages = detail["conversation_messages"].as_array().unwrap();
+        assert!(messages
+            .iter()
+            .any(|message| message["role"] == "user" && message["text"] == "生成图片"));
+        assert!(messages
+            .iter()
+            .any(|message| message["source_subtype"] == "thinking"));
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message["tool_call_id"] == "call1")
+                .count(),
+            2
+        );
+        assert_eq!(
+            detail["raw_events"].as_array().unwrap().len(),
+            records.len()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+    }
+
+    #[test]
     fn 只展示当前活动分支并保留工具调用() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("session.jsonl");

@@ -102,17 +102,46 @@ fn metadata(path: &Path, source: &Source) -> Result<Value, String> {
     for entry in std::fs::read_dir(parent).map_err(error_text)? {
         let entry = entry.map_err(error_text)?;
         let candidate = entry.path();
-        if !entry.file_type().map_err(error_text)?.is_file()
-            || !candidate
-                .file_name()
-                .and_then(|s| s.to_str())
-                .is_some_and(|s| s.starts_with("local_") && s.ends_with(".json"))
+        if !candidate
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| s.starts_with("local_") && s.ends_with(".json"))
         {
             continue;
         }
-        let value: Value =
-            serde_json::from_reader(std::fs::File::open(candidate).map_err(error_text)?)
-                .map_err(error_text)?;
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(error) => {
+                eprintln!(
+                    "无法读取 Claude Cowork 元数据（{}）：{error}",
+                    candidate.display()
+                );
+                continue;
+            }
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let file = match std::fs::File::open(&candidate) {
+            Ok(file) => file,
+            Err(error) => {
+                eprintln!(
+                    "无法读取 Claude Cowork 元数据（{}）：{error}",
+                    candidate.display()
+                );
+                continue;
+            }
+        };
+        let value: Value = match serde_json::from_reader(file) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!(
+                    "无法解析 Claude Cowork 元数据（{}）：{error}",
+                    candidate.display()
+                );
+                continue;
+            }
+        };
         if value["cliSessionId"] == id {
             return Ok(value);
         }
@@ -187,6 +216,43 @@ pub(super) fn visit_detail(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 损坏候选元数据不阻断正常转录() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("local-agent-mode-sessions");
+        let parent = root.join("account/org");
+        let project = parent.join("task/.claude/projects/session");
+        std::fs::create_dir_all(&project).unwrap();
+        let path = project.join("cli-id.jsonl");
+        let wire = json!({"type":"user","sessionId":"cli-id","message":{"role":"user","content":"有效正文"}}).to_string();
+        std::fs::write(&path, &wire).unwrap();
+        let broken = parent.join("local_other.json");
+        std::fs::write(&broken, "{").unwrap();
+        let source = Source {
+            kind: "claude_cowork",
+            display_name: "Claude Cowork",
+            root,
+            format: SourceFormat::ClaudeCowork,
+            archived: false,
+        };
+        let (summary, _) = parse_summary(&path, &source).unwrap();
+        assert_eq!(summary["id"], "cli-id");
+        assert_eq!(summary["message_count"], 1);
+        std::fs::write(
+            parent.join("local_valid.json"),
+            json!({"cliSessionId":"cli-id","title":"匹配标题"}).to_string(),
+        )
+        .unwrap();
+        let (summary, _) = parse_summary(&path, &source).unwrap();
+        assert_eq!(summary["title"], "匹配标题");
+        assert_eq!(
+            visit_detail(&path, &source, &mut |_| {}).unwrap()["conversation_messages"][0]["text"],
+            "有效正文"
+        );
+        assert_eq!(std::fs::read_to_string(path).unwrap(), wire);
+        assert_eq!(std::fs::read_to_string(broken).unwrap(), "{");
+    }
 
     #[test]
     fn cowork关联元数据并复用消息工具思考解析() {

@@ -52,7 +52,7 @@
       }
     },
     "macOS": {
-      "bundleVersion": "1007"
+      "bundleVersion": "1008"
     }
   },
   "plugins": {

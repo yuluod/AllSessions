@@ -1,6 +1,8 @@
 /* 统计视图 */
 .stats-dashboard {
   display: grid;
+  /* 内容行保持自然高度，由外层滚动；否则内层裁切会让底部控件无法到达。 */
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 12px;
   min-height: calc(100dvh - var(--header-h) - 38px);
@@ -344,6 +346,18 @@
   padding-bottom: 4px;
 }
 
+.token-heatmap-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.token-heatmap-presets button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--text-inverse);
+  border-color: var(--accent);
+}
+
 .token-heatmap-cell {
   width: 13px;
   height: 13px;
@@ -381,8 +395,35 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   color: var(--muted);
   font-size: 0.7rem;
+}
+
+.token-heatmap-range {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.token-heatmap-range label {
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+  font-size: 0.75rem;
+}
+
+.token-heatmap-range input {
+  min-height: 34px;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  color-scheme: inherit;
 }
 
 .token-heatmap-legend {
@@ -425,23 +466,47 @@
 
 .agent-metric-toggle {
   display: inline-flex;
-  gap: 2px;
+  align-self: flex-start;
+  width: fit-content;
+  gap: 0;
   margin-bottom: 14px;
-  padding: 2px;
+  padding: 0;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: var(--surface-subtle);
 }
 
 .agent-metric-option {
   border: 0;
-  padding: 3px 12px;
-  border-radius: 999px;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-family: inherit;
+  font-size: 0.75rem;
   font-weight: 650;
   cursor: pointer;
+}
+
+.agent-metric-option:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.agent-metric-option:last-child {
+  border-left: 1px solid var(--line);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.agent-metric-option:hover:not([aria-pressed="true"]) {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.agent-metric-option:focus-visible,
+.token-heatmap-range input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .agent-metric-option[aria-pressed="true"] {

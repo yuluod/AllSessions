@@ -1,3 +1,4 @@
+import { sourceRailItemState } from "../source-rail.js";
 // 状态栏与来源栏:来源计数、扫描健康状态、快捷键提示与来源栏折叠。
 import { getLang, t } from "../i18n.js";
 import { getThemeState } from "../theme-manager.js";
@@ -7,42 +8,23 @@ import {
   SOURCE_RAIL_AGENTS,
   SOURCE_RAIL_COLLAPSED_KEY,
   elements,
-  sourceAgentForKind,
   sourceDiagnosticCount,
   state,
 } from "./shared.js";
 import { activeFilterEntries } from "./filters.js";
 
 export function renderSourceRail() {
-  const activeAgent = sourceAgentForKind(state.filters.source_kind);
-  const counts = new Map(
-    SOURCE_RAIL_AGENTS.map(({ agent, kinds }) => [
-      agent,
-      sourceDiagnosticCount(kinds),
-    ])
-  );
-  const total = Array.from(counts.values()).reduce(
-    (sum, count) => sum + count,
-    0
-  );
-
   elements.sourceRailItems.forEach((button) => {
-    const agent = button.dataset.sourceAgent;
-    const active = agent === activeAgent;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", active ? "true" : "false");
+    const item = sourceRailItemState(
+      button.dataset.sourceKind,
+      state.filters.source_kind,
+      state.diagnostics
+    );
+    button.classList.toggle("active", item.active);
+    button.setAttribute("aria-pressed", item.active ? "true" : "false");
     const count = button.querySelector("[data-source-count]");
-    if (count) {
-      count.textContent = state.diagnostics
-        ? String(agent === "all" ? total : counts.get(agent) || 0)
-        : "-";
-    }
-    const isEmptySource =
-      Boolean(state.diagnostics) &&
-      agent !== "all" &&
-      !active &&
-      !Number(counts.get(agent) || 0);
-    button.classList.toggle("is-empty", isEmptySource);
+    if (count) count.textContent = item.count;
+    button.classList.toggle("is-empty", item.empty);
   });
 }
 

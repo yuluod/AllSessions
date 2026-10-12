@@ -12,21 +12,7 @@ export const INSPECTOR_DRAWER_QUERY = "(max-width: 1640px)";
 export const COMPACT_WORKSPACE_QUERY =
   "(min-width: 761px) and (max-width: 1640px)";
 export const SOURCE_RAIL_COLLAPSED_KEY = "allsessions_source_rail_collapsed";
-export const SOURCE_RAIL_AGENTS = [
-  { agent: "codex", kinds: ["codex", "codex_archived"] },
-  { agent: "claude", kinds: ["claude"] },
-  { agent: "gemini", kinds: ["gemini"] },
-  { agent: "grok", kinds: ["grok"] },
-  { agent: "pi", kinds: ["pi"] },
-  { agent: "kimi", kinds: ["kimi"] },
-  { agent: "opencode", kinds: ["opencode"] },
-  { agent: "kilo", kinds: ["kilo"] },
-  { agent: "zcode", kinds: ["zcode"] },
-  { agent: "cursor", kinds: ["cursor"] },
-  { agent: "devin", kinds: ["devin"] },
-  { agent: "copilot", kinds: ["copilot", "vscode_copilot"] },
-  { agent: "hermes", kinds: ["hermes"] },
-];
+export { SOURCE_RAIL_AGENTS } from "../source-rail.js";
 export const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 export const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";
 export const REMOVED_MESSAGES_KEY = "allsessions_removed_messages";
@@ -329,13 +315,6 @@ export function sourceKindLabel(sourceKind) {
     (candidate) => candidate.kind === sourceKind
   );
   return source?.display_name || sourceKind;
-}
-
-export function sourceAgentForKind(sourceKind) {
-  if (sourceKind === "claude_code") return "claude";
-  if (sourceKind === "codex_archived") return "codex";
-  if (sourceKind === "vscode_copilot") return "copilot";
-  return sourceKind || "all";
 }
 
 export function sourceDiagnosticCount(kinds) {

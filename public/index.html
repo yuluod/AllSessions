@@ -231,7 +231,7 @@
           >
             <div class="rail__group-header">
               <strong data-i18n="sourceRail">会话来源</strong>
-              <span data-i18n="sourceRailHint">按 Agent 筛选</span>
+              <span data-i18n="sourceRailHint">按来源筛选</span>
             </div>
             <div id="source-rail-list" class="source-tree">
               <button
@@ -266,6 +266,11 @@
                 <span class="source-tree__dot" aria-hidden="true"></span>
                 <span>Claude Code</span>
                 <strong data-source-count="claude">-</strong>
+              </button>
+              <button class="source-tree__item" type="button" data-source-kind="claude_cowork" data-source-agent="claude" aria-pressed="false">
+                <span class="source-tree__dot" aria-hidden="true"></span>
+                <span>Claude Cowork</span>
+                <strong data-source-count="claude_cowork">-</strong>
               </button>
               <button
                 class="source-tree__item"

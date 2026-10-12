@@ -161,16 +161,6 @@
   .metric-card:nth-child(n + 4) {
     border-top: 1px solid var(--line);
   }
-
-  .stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .stats-section--cwd {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--line);
-    border-left: 0;
-  }
 }
 
 @media (max-width: 760px) {
@@ -475,15 +465,6 @@
 
   .metric-card:first-child {
     border-top: 0;
-  }
-
-  .stats-section--daily .stats-section__body {
-    grid-template-columns: 1fr;
-  }
-
-  .donut-wrap {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .stats-bar-row {

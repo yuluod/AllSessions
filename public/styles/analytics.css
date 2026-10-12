@@ -85,11 +85,6 @@
   font-weight: 650;
 }
 
-.metric-spark,
-.metric-delta {
-  display: none;
-}
-
 .stats-charts {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
@@ -198,13 +193,14 @@
   display: flex;
   min-height: 224px;
   align-items: center;
-  gap: 24px;
+  flex-wrap: wrap;
+  gap: 18px 28px;
 }
 
 .donut-visual {
   position: relative;
-  width: 142px;
-  height: 142px;
+  width: 132px;
+  height: 132px;
   flex: 0 0 auto;
 }
 
@@ -212,6 +208,8 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
+  /* 无数据的空环底色;有扇区时被 conic-gradient 覆盖。 */
+  background: var(--surface-muted);
 }
 
 .donut-center {
@@ -241,14 +239,16 @@
 
 .donut-legend {
   display: grid;
-  min-width: 0;
-  flex: 1;
+  /* 宽度按内容收缩:数字始终紧贴名称,不随卡片宽度拉开;放不下时换行到环下方。 */
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: 100%;
   gap: 6px;
 }
 
 .donut-legend-item {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) 34px 40px;
+  grid-template-columns: 8px minmax(0, 1fr) max-content max-content;
   align-items: center;
   gap: 7px;
   font-size: 0.72rem;
@@ -266,15 +266,19 @@
   white-space: nowrap;
 }
 
-.donut-pct,
-.donut-legend-item span:last-child {
-  color: var(--muted);
+.donut-count,
+.donut-tokens {
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.donut-tokens {
+  color: var(--muted);
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--line);
 }
 
@@ -283,21 +287,18 @@
   gap: 7px;
 }
 
-.stats-section--daily .stats-section__body {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 22px;
-}
-
-.stats-section--daily .stats-bar-row {
-  grid-template-columns: 86px minmax(34px, 1fr) 22px;
-  gap: 6px;
-}
-
 .stats-bar-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(58px, 110px) 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(58px, 110px) max-content;
   align-items: center;
   gap: 8px;
+}
+
+/* Provider 行多一列 token 用量,与来源分布图例的双数值口径一致。 */
+.stats-section--provider .stats-bar-row {
+  grid-template-columns:
+    minmax(0, 1fr) minmax(48px, 90px)
+    max-content max-content;
 }
 
 .stats-bar-label {
@@ -320,10 +321,12 @@
   background: var(--accent);
 }
 
-.stats-bar-count {
+.stats-bar-count,
+.stats-bar-tokens {
   color: var(--muted);
   font-size: 0.71rem;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .stats-heatmap-card {
@@ -336,14 +339,45 @@
   gap: 10px;
 }
 
+/* 月份行与日期格子共用列模板和间距，保证上下列对齐；横向滚动包在外层。 */
+.token-heatmap-area {
+  display: flex;
+  gap: 4px;
+}
+
+.token-heatmap-weekdays {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-rows: repeat(7, 13px);
+  gap: 3px;
+  padding-top: 18px;
+  color: var(--muted);
+  font-size: 0.6rem;
+  line-height: 13px;
+}
+
+.token-heatmap-scroll {
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.token-heatmap-months {
+  display: grid;
+  height: 14px;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.6rem;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
 .token-heatmap-grid {
   display: grid;
   grid-auto-flow: column;
   grid-template-rows: repeat(7, 13px);
-  grid-auto-columns: 13px;
   gap: 3px;
-  overflow-x: auto;
-  padding-bottom: 4px;
 }
 
 .token-heatmap-presets {
@@ -388,6 +422,11 @@
 
 .token-heatmap-cell.is-empty {
   background: transparent;
+}
+
+/* “今天”用内描边标记，不与悬停时的外描边冲突。 */
+.token-heatmap-cell.is-today {
+  box-shadow: inset 0 0 0 1.5px var(--text);
 }
 
 .token-heatmap-footer {
@@ -464,52 +503,7 @@
   font-size: 0.66rem;
 }
 
-.agent-metric-toggle {
-  display: inline-flex;
-  align-self: flex-start;
-  width: fit-content;
-  gap: 0;
-  margin-bottom: 14px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-subtle);
-}
-
-.agent-metric-option {
-  border: 0;
-  min-height: 34px;
-  padding: 6px 14px;
-  border-radius: 0;
-  background: transparent;
-  color: var(--muted);
-  font-family: inherit;
-  font-size: 0.75rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.agent-metric-option:first-child {
-  border-radius: var(--radius) 0 0 var(--radius);
-}
-
-.agent-metric-option:last-child {
-  border-left: 1px solid var(--line);
-  border-radius: 0 var(--radius) var(--radius) 0;
-}
-
-.agent-metric-option:hover:not([aria-pressed="true"]) {
-  background: var(--surface-sunken);
-  color: var(--text);
-}
-
-.agent-metric-option:focus-visible,
 .token-heatmap-range input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-.agent-metric-option[aria-pressed="true"] {
-  background: var(--accent);
-  color: var(--text-inverse);
 }

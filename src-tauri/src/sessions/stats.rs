@@ -81,6 +81,7 @@ impl SessionStore {
         let mut by_agent_tokens: HashMap<String, u64> = HashMap::new();
         let mut by_source_kind = HashMap::new();
         let mut by_provider = HashMap::new();
+        let mut by_provider_tokens: HashMap<String, u64> = HashMap::new();
         let mut by_cwd = HashMap::new();
         let mut total_events = 0_u64;
         let mut total_messages = 0_u64;
@@ -98,14 +99,14 @@ impl SessionStore {
             total_input_tokens += input;
             total_output_tokens += output;
             total_cached_input_tokens += cached;
+            let tokens = input + output + cached;
             if let Some(date) = local_date_key(timestamp_of(summary)) {
                 let day = by_date.entry(date).or_default();
                 day.count += 1;
-                day.tokens += input + output + cached;
+                day.tokens += tokens;
             }
             if let Some(agent) = agent_kind(&summary["source_kind"]) {
                 *by_agent.entry(agent.into()).or_default() += 1;
-                let tokens = input + output + cached;
                 // 不支持 token 统计的来源不进入 Token 维度,避免出现 0 占比扇区。
                 if tokens > 0 {
                     *by_agent_tokens.entry(agent.into()).or_default() += tokens;
@@ -113,6 +114,15 @@ impl SessionStore {
             }
             increment(&mut by_source_kind, &summary["source_kind"]);
             increment(&mut by_provider, &summary["model_provider"]);
+            // Provider 同口径提供 token 维度,无 token 统计的条目不进入。
+            if tokens > 0 {
+                if let Some(provider) = summary["model_provider"]
+                    .as_str()
+                    .filter(|value| !value.is_empty())
+                {
+                    *by_provider_tokens.entry(provider.into()).or_default() += tokens;
+                }
+            }
             increment(&mut by_cwd, &summary["cwd"]);
         }
         let active_days = by_date.len();
@@ -132,6 +142,7 @@ impl SessionStore {
             "by_agent_tokens": count_values(by_agent_tokens, usize::MAX),
             "by_source_kind": count_values(by_source_kind, usize::MAX),
             "by_provider": count_values(by_provider, usize::MAX),
+            "by_provider_tokens": count_values(by_provider_tokens, usize::MAX),
             "by_cwd": count_values(by_cwd, 16)
         })
     }

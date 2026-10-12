@@ -392,10 +392,11 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   assert.match(source, /stats\.by_agent/);
   assert.match(source, /stats\.by_agent_tokens/);
   assert.match(source, /function renderAgents\(stats, container\)/);
-  // 环形图支持会话数 / Token 两种度量切换,Token 模式显示紧凑量级。
-  assert.match(source, /agentMetric = "sessions"/);
-  assert.match(source, /agent-metric-toggle/);
-  assert.match(source, /aria-pressed/);
+  // 双环同屏:会话数与 Token 各一环,图例合并两列数值,不再提供切换。
+  assert.doesNotMatch(source, /agent-metric-toggle/);
+  assert.doesNotMatch(source, /agentMetric/);
+  assert.match(source, /donut-tokens/);
+  assert.match(source, /tokenStops/);
   assert.match(source, /codex:[\s\S]*label: "Codex"/);
   assert.doesNotMatch(source, /stats\.by_source_kind/);
   assert.match(html, /id="agent-chart-body"/);
@@ -403,7 +404,7 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   assert.match(html, /class="stats-surface"/);
   assert.match(html, /data-i18n="statsDashboardSummary"/);
   assert.match(html, /data-i18n="statsAgentDist"/);
-  assert.match(i18n, /statsAgentDist: "按 Agent 分布"/);
+  assert.match(i18n, /statsAgentDist: "按来源分布"/);
   assert.match(i18n, /statsMessages: "消息总数"/);
   assert.match(i18n, /statsTools: "工具调用数"/);
   assert.match(i18n, /statsDashboardTitle: "统计概览"/);
@@ -416,7 +417,17 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
     css,
     /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/
   );
-  assert.match(css, /\.stats-section--daily \.stats-section__body/);
+  // 近期每日排行与趋势图同源重复,已移除;排行区保留 Provider/工作目录两列。
+  assert.doesNotMatch(source, /statsRecentDaily/);
+  assert.doesNotMatch(css, /stats-section--daily/);
+  assert.match(
+    css,
+    /\.stats-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/
+  );
+  // Provider 排行附带 token 用量列,与来源分布的双数值口径一致。
+  assert.match(source, /by_provider_tokens/);
+  assert.match(css, /\.stats-section--provider \.stats-bar-row/);
+  assert.match(css, /\.stats-bar-tokens/);
 });
 
 test("统计页提供 Token 热力图与每日用量视图", async () => {
@@ -899,10 +910,7 @@ test("会话来源只在左侧筛选中出现，顶部保留搜索主路径", as
     source,
     /elements\.sourceRailItems\.forEach\(\(button\) => \{[\s\S]*?setSourceKindFilter\(button\.dataset\.sourceKind \|\| ""\)/
   );
-  assert.match(
-    source,
-    /button\.classList\.toggle\("is-empty", item\.empty\)/
-  );
+  assert.match(source, /button\.classList\.toggle\("is-empty", item\.empty\)/);
   assert.match(css, /\.source-tree__item\.is-empty\s*\{\s*display: none/);
   assert.match(
     css,

@@ -1,4 +1,4 @@
-import { t } from "./i18n.js";
+import { t, getLang } from "./i18n.js";
 import { formatCount } from "./session-format.js";
 import { calendarHeatmapDays, presetHeatmapRange } from "./stats-calendar.js";
 
@@ -18,7 +18,7 @@ const AGENT_PRESENTATION = {
   hermes: { label: "Hermes Agent", color: "#be185d" },
 };
 
-function renderBar(label, count, max, displayLabel = label) {
+function renderBar(label, count, max, displayLabel = label, tokens = null) {
   const row = document.createElement("div");
   row.className = "stats-bar-row";
   const percent = max > 0 ? Math.round((count / max) * 100) : 0;
@@ -36,6 +36,15 @@ function renderBar(label, count, max, displayLabel = label) {
   countElement.className = "stats-bar-count";
   countElement.textContent = String(count);
   row.append(labelElement, track, countElement);
+  if (tokens !== null) {
+    const tokenElement = document.createElement("span");
+    tokenElement.className = "stats-bar-tokens";
+    tokenElement.textContent = tokens > 0 ? formatTokensCompact(tokens) : "—";
+    if (tokens > 0) {
+      tokenElement.title = `${t("statsTokenShort")} ${formatCount(tokens)}`;
+    }
+    row.append(tokenElement);
+  }
   return row;
 }
 
@@ -98,15 +107,7 @@ function renderMetrics(stats, container) {
     const labelElement = document.createElement("div");
     labelElement.className = "metric-label";
     labelElement.textContent = label;
-    const spark = document.createElement("div");
-    spark.className = "metric-spark";
-    const sparkInner = document.createElement("div");
-    sparkInner.className = "metric-spark-bar";
-    sparkInner.style.width = byDate.length
-      ? `${Math.min(100, (byDate.reduce((sum, item) => sum + item.count, 0) / (byDate.length * 10)) * 100)}%`
-      : "0%";
-    spark.append(sparkInner);
-    card.append(valueElement, labelElement, spark);
+    card.append(valueElement, labelElement);
     container.append(card);
   });
 }
@@ -168,6 +169,31 @@ function heatmapLevel(tokens, max) {
   return Math.min(HEATMAP_LEVELS, 1 + Math.floor(ratio * HEATMAP_LEVELS));
 }
 
+const MONTH_LABELS_EN = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+function monthLabel(key) {
+  const month = Number(key.slice(5, 7));
+  return getLang() === "zh" ? `${month}月` : MONTH_LABELS_EN[month - 1];
+}
+
+// 与后端 local_date_key 同口径的本机日期键，用于标记“今天”。
+function localDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function renderHeatmap(stats, container) {
   container.replaceChildren();
   const days = stats.by_date || [];
@@ -222,21 +248,82 @@ function renderHeatmap(stats, container) {
   // 第一天前面按星期补空格，让列对齐真实的周内位置（周一起始）。
   const firstDay = recent[0];
   const leading = (new Date(`${firstDay.label}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const weeks = Math.ceil((leading + recent.length) / 7);
+  const columns = `repeat(${weeks}, 13px)`;
+  grid.style.gridTemplateColumns = columns;
+
+  // 月份标签占该月首末日所在的首末周列；后一个月的起点不早于上一个
+  // 已显示标签的末列，跨度不足两列（放不下文字）时整条跳过。
+  const monthSpans = [];
+  let currentKey = "";
+  let monthStart = 0;
+  let monthEnd = 0;
+  recent.forEach((day, index) => {
+    const column = Math.floor((leading + index) / 7);
+    const key = day.label.slice(0, 7);
+    if (key !== currentKey) {
+      if (currentKey) {
+        monthSpans.push({ key: currentKey, start: monthStart, end: monthEnd });
+      }
+      currentKey = key;
+      monthStart = column;
+    }
+    monthEnd = column;
+  });
+  if (currentKey) {
+    monthSpans.push({ key: currentKey, start: monthStart, end: monthEnd });
+  }
+
+  const area = document.createElement("div");
+  area.className = "token-heatmap-area";
+  const weekdays = document.createElement("div");
+  weekdays.className = "token-heatmap-weekdays";
+  weekdays.setAttribute("aria-hidden", "true");
+  for (const [row, key] of [
+    [0, "statsWeekdayMon"],
+    [2, "statsWeekdayWed"],
+    [4, "statsWeekdayFri"],
+  ]) {
+    const label = document.createElement("span");
+    label.style.gridRow = String(row + 1);
+    label.textContent = t(key);
+    weekdays.append(label);
+  }
+  const scroll = document.createElement("div");
+  scroll.className = "token-heatmap-scroll";
+  const months = document.createElement("div");
+  months.className = "token-heatmap-months";
+  months.setAttribute("aria-hidden", "true");
+  months.style.gridTemplateColumns = columns;
+  let labelEnd = -1;
+  for (const span of monthSpans) {
+    const start = Math.max(span.start, labelEnd + 1);
+    if (span.end - start < 1) continue;
+    labelEnd = span.end;
+    const label = document.createElement("span");
+    label.style.gridColumn = `${start + 1} / span ${span.end - start + 1}`;
+    label.textContent = monthLabel(span.key);
+    months.append(label);
+  }
   for (let index = 0; index < leading; index += 1) {
     const pad = document.createElement("span");
     pad.className = "token-heatmap-cell is-empty";
     grid.append(pad);
   }
+  const todayKey = localDateKey(new Date());
   recent.forEach((day) => {
     const cell = document.createElement("span");
     cell.className = "token-heatmap-cell";
+    if (day.label === todayKey) cell.classList.add("is-today");
     cell.dataset.level = String(heatmapLevel(day.tokens, max));
     cell.dataset.date = day.label;
     cell.dataset.tokens = String(day.tokens || 0);
     cell.dataset.count = String(day.count || 0);
     grid.append(cell);
   });
-  wrap.append(grid);
+  scroll.append(months, grid);
+  area.append(weekdays, scroll);
+  wrap.append(area);
 
   const footer = document.createElement("div");
   footer.className = "token-heatmap-footer";
@@ -344,90 +431,119 @@ function attachHeatmapTooltip(grid) {
   grid.addEventListener("scroll", hide, { passive: true });
 }
 
-// 按 Agent 分布的度量可在会话数与 Token 用量之间切换,跨渲染保留选择。
-let agentMetric = "sessions";
+// 双环同屏:左环按会话数占比,右环按 Token 用量占比;图例合并两列数值。
+const AGENT_SLICE_LIMIT = 7;
+const OTHER_AGENT = "__other__";
 
-function renderAgents(stats, container) {
-  container.replaceChildren();
-  const metricSource =
-    agentMetric === "tokens" ? stats.by_agent_tokens : stats.by_agent;
-  const items = (metricSource || []).slice(0, 7);
-  const formatMetric = (value) =>
-    agentMetric === "tokens" ? formatTokensCompact(value) : formatCount(value);
-  const metricLabel =
-    agentMetric === "tokens" ? t("statsTokenShort") : t("statsMetricSessions");
-
-  const toggle = document.createElement("div");
-  toggle.className = "agent-metric-toggle";
-  toggle.setAttribute("role", "group");
-  toggle.setAttribute("aria-label", t("statsAgentDist"));
-  for (const [value, label] of [
-    ["sessions", t("statsMetricSessions")],
-    ["tokens", t("statsTokenShort")],
-  ]) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "agent-metric-option";
-    button.dataset.metric = value;
-    button.textContent = label;
-    button.setAttribute("aria-pressed", String(agentMetric === value));
-    button.addEventListener("click", () => {
-      if (agentMetric === value) return;
-      agentMetric = value;
-      renderAgents(stats, container);
-      container.querySelector(`[data-metric="${value}"]`)?.focus();
-    });
-    toggle.append(button);
-  }
-  container.append(toggle);
-  if (!items.length) {
-    renderEmpty(container);
-    return;
-  }
-
-  const presentations = items.map(
-    (item) =>
-      AGENT_PRESENTATION[item.label] || {
-        label: item.label,
-        color: "#59656d",
-      }
-  );
-  const total = items.reduce((sum, item) => sum + item.count, 0);
-  let accumulated = 0;
-  const stops = items.map((item, index) => {
-    const percent = (item.count / total) * 100;
-    const start = accumulated;
-    accumulated += percent;
-    return `${presentations[index].color} ${start.toFixed(2)}% ${accumulated.toFixed(2)}%`;
-  });
-  const wrap = document.createElement("div");
-  wrap.className = "donut-wrap";
+function donutVisual(stops, ariaLabel, centerText, centerLabel, centerTitle) {
   const visual = document.createElement("div");
   visual.className = "donut-visual";
   visual.setAttribute("role", "img");
-  visual.setAttribute(
-    "aria-label",
-    `${t("statsAgentDist")} · ${metricLabel}: ${formatMetric(total)}`
-  );
+  visual.setAttribute("aria-label", ariaLabel);
   const donut = document.createElement("div");
   donut.className = "donut-chart";
   donut.setAttribute("aria-hidden", "true");
-  donut.style.background = `conic-gradient(${stops.join(", ")})`;
+  if (stops.length) {
+    donut.style.background = `conic-gradient(${stops.join(", ")})`;
+  }
   donut.style.mask = "radial-gradient(transparent 55%, black 56%)";
   donut.style.webkitMask = "radial-gradient(transparent 55%, black 56%)";
   const donutCenter = document.createElement("div");
   donutCenter.className = "donut-center";
   const donutTotal = document.createElement("strong");
-  donutTotal.textContent = formatMetric(total);
-  donutTotal.title = agentMetric === "tokens" ? formatCount(total) : "";
+  donutTotal.textContent = centerText;
+  if (centerTitle) donutTotal.title = centerTitle;
   const donutLabel = document.createElement("span");
-  donutLabel.textContent = metricLabel;
+  donutLabel.textContent = centerLabel;
   donutCenter.append(donutTotal, donutLabel);
   visual.append(donut, donutCenter);
+  return visual;
+}
+
+function renderAgents(stats, container) {
+  container.replaceChildren();
+  const sessions = stats.by_agent || [];
+  const tokens = stats.by_agent_tokens || [];
+  const top = sessions.slice(0, AGENT_SLICE_LIMIT);
+  const restCount = sessions
+    .slice(AGENT_SLICE_LIMIT)
+    .reduce((sum, item) => sum + (item.count || 0), 0);
+  // 「其他」兜底剩余来源,两环扇区、图例与中心数字始终同口径(全量合计)。
+  const items =
+    restCount > 0 ? [...top, { label: OTHER_AGENT, count: restCount }] : top;
+  if (!items.length) {
+    renderEmpty(container);
+    return;
+  }
+  const tokenByAgent = new Map(
+    tokens.map((item) => [item.label, item.count || 0])
+  );
+  const tokenTotal = tokens.reduce((sum, item) => sum + (item.count || 0), 0);
+  const topTokenSum = top.reduce(
+    (sum, item) => sum + (tokenByAgent.get(item.label) || 0),
+    0
+  );
+  const tokensOf = (item) =>
+    item.label === OTHER_AGENT
+      ? Math.max(0, tokenTotal - topTokenSum)
+      : tokenByAgent.get(item.label) || 0;
+
+  const presentations = items.map((item) =>
+    item.label === OTHER_AGENT
+      ? { label: t("statsAgentOther"), color: "#8a949c" }
+      : AGENT_PRESENTATION[item.label] || {
+          label: item.label,
+          color: "#59656d",
+        }
+  );
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+
+  // Token 环沿用会话环的分组(同一来源同色),两个扇区才能一一对照。
+  let sessionAcc = 0;
+  let tokenAcc = 0;
+  const sessionStops = [];
+  const tokenStops = [];
+  items.forEach((item, index) => {
+    const color = presentations[index].color;
+    if (item.count > 0) {
+      const start = (sessionAcc / total) * 100;
+      sessionAcc += item.count;
+      sessionStops.push(
+        `${color} ${start.toFixed(2)}% ${((sessionAcc / total) * 100).toFixed(2)}%`
+      );
+    }
+    const itemTokens = tokensOf(item);
+    if (tokenTotal > 0 && itemTokens > 0) {
+      const start = (tokenAcc / tokenTotal) * 100;
+      tokenAcc += itemTokens;
+      tokenStops.push(
+        `${color} ${start.toFixed(2)}% ${((tokenAcc / tokenTotal) * 100).toFixed(2)}%`
+      );
+    }
+  });
+
+  const wrap = document.createElement("div");
+  wrap.className = "donut-wrap";
+  wrap.append(
+    donutVisual(
+      sessionStops,
+      `${t("statsAgentDist")} · ${t("statsMetricSessions")}: ${formatCount(total)}`,
+      formatCount(total),
+      t("statsMetricSessions")
+    ),
+    donutVisual(
+      tokenStops,
+      `${t("statsAgentDist")} · ${t("statsTokenShort")}: ${formatCount(tokenTotal)}`,
+      tokenTotal > 0 ? formatTokensCompact(tokenTotal) : "0",
+      t("statsTokenShort"),
+      tokenTotal > 0 ? formatCount(tokenTotal) : ""
+    )
+  );
   const legend = document.createElement("div");
   legend.className = "donut-legend";
   items.forEach((item, index) => {
     const presentation = presentations[index];
+    const itemTokens = tokensOf(item);
     const row = document.createElement("div");
     row.className = "donut-legend-item";
     const dot = document.createElement("span");
@@ -435,32 +551,36 @@ function renderAgents(stats, container) {
     dot.style.background = presentation.color;
     const name = document.createElement("span");
     name.textContent = presentation.label;
+    name.title = presentation.label;
     const count = document.createElement("span");
-    count.textContent = formatMetric(item.count);
-    count.title = agentMetric === "tokens" ? formatCount(item.count) : "";
-    count.style.textAlign = "right";
-    const percent = document.createElement("span");
-    percent.className = "donut-pct";
-    percent.textContent = `${((item.count / total) * 100).toFixed(1)}%`;
-    row.append(dot, name, count, percent);
+    count.className = "donut-count";
+    count.textContent = formatCount(item.count);
+    count.title = `${t("statsMetricSessions")} ${formatCount(item.count)} · ${((item.count / total) * 100).toFixed(1)}%`;
+    const tokens = document.createElement("span");
+    tokens.className = "donut-tokens";
+    tokens.textContent = itemTokens ? formatTokensCompact(itemTokens) : "—";
+    tokens.title = itemTokens
+      ? `${t("statsTokenShort")} ${formatCount(itemTokens)} · ${((itemTokens / tokenTotal) * 100).toFixed(1)}%`
+      : "";
+    row.append(dot, name, count, tokens);
     legend.append(row);
   });
-  wrap.append(visual, legend);
+  wrap.append(legend);
   container.append(wrap);
 }
 
 function renderRankings(stats, container) {
   container.replaceChildren();
+  // Provider 行附带 token 用量;无 token 统计的条目显示占位符。
+  const tokenByProvider = new Map(
+    (stats.by_provider_tokens || []).map((item) => [item.label, item.count])
+  );
   const sections = [
-    {
-      title: t("statsRecentDaily"),
-      items: (stats.by_date || []).slice(-14),
-      kind: "daily",
-    },
     {
       title: t("statsCommonProvider"),
       items: stats.by_provider || [],
       kind: "provider",
+      tokensOf: (label) => tokenByProvider.get(label) ?? 0,
     },
     {
       title: t("statsCommonCwd"),
@@ -469,7 +589,7 @@ function renderRankings(stats, container) {
       kind: "cwd",
     },
   ];
-  sections.forEach(({ title, items, isPath, kind }) => {
+  sections.forEach(({ title, items, isPath, kind, tokensOf }) => {
     if (!items.length) return;
     const section = document.createElement("div");
     section.className = `stats-section stats-section--${kind}`;
@@ -480,7 +600,9 @@ function renderRankings(stats, container) {
     const max = Math.max(...items.map((item) => item.count), 1);
     items.forEach(({ label, count }) => {
       const displayLabel = isPath ? label.split(/[\\/]/).pop() || label : label;
-      body.append(renderBar(label, count, max, displayLabel));
+      body.append(
+        renderBar(label, count, max, displayLabel, tokensOf?.(label) ?? null)
+      );
     });
     section.append(heading, body);
     container.append(section);

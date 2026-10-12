@@ -8,6 +8,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/roots.rs`：来源根目录的配置/环境变量/默认值三级回退、路径发现与监听根计算。
 - `sessions/parse.rs`：通用摘要/详情分发、`ParseState` 归约、消息构造、首尾截断与详情缓存。
 - `sessions/claude_legacy.rs`：旧版 Claude `sessions/*.json` 与 `history.jsonl` 解析。
+- `sessions/claude_cowork.rs`：Cowork 本地任务发现、Claude 转录复用及 Desktop 元数据关联；来源只读。
 - `sessions/scan.rs`：全量/增量元数据刷新与搜索索引重建。
 - `sessions/query.rs`：列表、搜索计划（锁外全文查询）、搜索上下文与详情读取。
 - `sessions/mutation.rs`：永久删除、原子写回与备份路径。
@@ -66,6 +67,7 @@ OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 
 各来源的数据布局与边界详见：
 
 - [Claude Code](./sources/claude-code.md)
+- [Claude Cowork](./sources/claude-cowork.md)
 - [Gemini CLI](./sources/gemini-cli.md)
 - [Pi](./sources/pi.md)
 - [Grok Build](./sources/grok-build.md)

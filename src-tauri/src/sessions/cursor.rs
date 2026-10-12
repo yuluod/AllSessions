@@ -719,6 +719,7 @@ mod tests {
                 codex: Some(vec![]),
                 codex_archived: Some(vec![]),
                 claude: Some(vec![]),
+                claude_cowork: Some(Vec::new()),
                 gemini: Some(vec![]),
                 grok: Some(Vec::new()),
                 pi: Some(vec![]),

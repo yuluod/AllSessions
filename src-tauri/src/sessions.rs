@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 
 use crate::cache::IndexCache;
 
+mod claude_cowork;
 mod claude_legacy;
 mod copilot;
 mod cursor;
@@ -82,6 +83,7 @@ pub(crate) struct Source {
 pub(crate) enum SourceFormat {
     Codex,
     Claude,
+    ClaudeCowork,
     Gemini,
     Grok,
     Pi,
@@ -246,6 +248,7 @@ impl SessionStore {
             "codex",
             "codex_archived",
             "claude",
+            "claude_cowork",
             "gemini",
             "grok",
             "pi",
@@ -284,6 +287,7 @@ impl SessionStore {
             ("codex", lists.codex.as_slice()),
             ("codex_archived", lists.codex_archived.as_slice()),
             ("claude", lists.claude.as_slice()),
+            ("claude_cowork", lists.claude_cowork.as_slice()),
             ("gemini", lists.gemini.as_slice()),
             ("grok", lists.grok.as_slice()),
             ("pi", lists.pi.as_slice()),

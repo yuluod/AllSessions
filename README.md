@@ -29,7 +29,7 @@ Browse, search, organize, and manage local sessions from multiple AI coding agen
 
 </div>
 
-AllSessions brings local sessions from **Codex, Claude Code, Gemini CLI, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat** into a single desktop app.
+AllSessions brings local sessions from **Codex, Claude Code, Claude Cowork, Gemini CLI, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat** into a single desktop app.
 
 Instead of hunting through different tools and directories for past history, you can browse sessions, run full-text search, inspect tool calls, organize favorites and tags, review usage statistics, and export sessions — all in one interface.
 
@@ -99,6 +99,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 | **Codex** | `~/.codex/sessions` | Metadata, messages, tools, raw events, search, live refresh |
 | **Codex Archived** | `~/.codex/archived_sessions` | Browse, search, permanently delete archived sessions; files are not moved and archive state is not restored |
 | **Claude Code** | `~/.claude/{projects,sessions}` | `projects/**/*.jsonl` and legacy `sessions/*.json`; conversations, thinking, tools/results, search, live refresh, with `history.jsonl` enrichment for legacy details when available |
+| **Claude Cowork** | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions` (macOS) | Local task transcripts, thinking, tools, titles, host folders, search, refresh; read-only; [support boundaries](./docs/sources/claude-cowork.md) |
 | **Gemini CLI** | `~/.gemini/tmp/*/logs.json` | Streaming scan, per-`sessionId` aggregation, per-file incremental cache, bounded on-demand details |
 | **Grok Build** | `~/.grok/sessions` | `updates.jsonl` and `summary.json`; streamed text, thinking, tools, rewind filtering, raw events, search, refresh, resume; read-only source; [support boundaries](./docs/sources/grok-build.md) |
 | **Pi** | `~/.pi/agent/sessions` | Rebuilds the current branch from v1-v3 JSONL trees; messages, thinking, tools, summaries, raw events, search, live refresh |
@@ -169,6 +170,7 @@ Set environment variables before starting the desktop app; they are read once at
 | `CODEX_ARCHIVED_SESSIONS_DIR` | Archived Codex session roots (path list) | `$CODEX_HOME/archived_sessions` |
 | `CLAUDE_SESSIONS_DIR` | Claude Code roots (path list) | `~/.claude` |
 | `GEMINI_SESSIONS_DIR` | Gemini CLI roots (path list) | `~/.gemini` |
+| `CLAUDE_COWORK_SESSIONS_DIR` | Claude Cowork local task roots (path list) | `local-agent-mode-sessions` under Claude Desktop data directories |
 | `GROK_SESSIONS_DIR` | Grok Build session roots (path list) | `$GROK_HOME/sessions` |
 | `GROK_HOME` | Grok official data root (single path) | `~/.grok` |
 | `PI_SESSIONS_DIR` | Pi session roots (path list) | `~/.pi/agent/sessions` |
@@ -229,7 +231,7 @@ After explicit confirmation of permanent deletion, AllSessions creates a local b
 
 The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
 
-Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
+Claude Cowork, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
 
 Favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
 

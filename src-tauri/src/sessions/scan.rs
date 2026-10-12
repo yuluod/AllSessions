@@ -258,11 +258,15 @@ impl SessionStore {
                 };
                 let parsed = if matches!(
                     source.format,
-                    SourceFormat::Kimi | SourceFormat::Copilot | SourceFormat::Grok
+                    SourceFormat::Kimi
+                        | SourceFormat::Copilot
+                        | SourceFormat::Grok
+                        | SourceFormat::ClaudeCowork
                 ) {
                     // Kimi 的标题来自 state.json，目录来自 kimi.json 或 session_index.jsonl；
                     // Copilot 的标题/工作目录保存在相邻 workspace.yaml。
                     // Grok 的标题、目录与可见性保存在相邻 summary.json。
+                    // Cowork 的任务元数据与转录也分别存储，需同步重读。
                     // 仅使用事件文件指纹会让这些元数据变化后继续命中旧缓存。
                     parse_summary(&path, source)
                 } else {
@@ -322,7 +326,9 @@ impl SessionStore {
         // 单路径更新无法可靠重建聚合结果或来源优先级，因此复用缓存全量刷新。
         if paths.iter().any(|path| {
             self.sources.iter().any(|source| {
-                let belongs_to_source = if matches!(source.format, SourceFormat::Cursor) {
+                let belongs_to_source = if matches!(source.format, SourceFormat::ClaudeCowork) {
+                    super::claude_cowork::event_matches(&source.root, path)
+                } else if matches!(source.format, SourceFormat::Cursor) {
                     cursor::matches_path(&source.root, path)
                 } else if matches!(source.format, SourceFormat::Devin) {
                     devin::matches_path(&source.root, path)
@@ -340,6 +346,7 @@ impl SessionStore {
                     source.format,
                     SourceFormat::Gemini
                         | SourceFormat::Claude
+                        | SourceFormat::ClaudeCowork
                         | SourceFormat::OpenCode
                         | SourceFormat::Kilo
                         | SourceFormat::ZCode

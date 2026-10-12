@@ -109,6 +109,7 @@ impl SessionStore {
             record.source.format,
             SourceFormat::Pi
                 | SourceFormat::Grok
+                | SourceFormat::ClaudeCowork
                 | SourceFormat::Kimi
                 | SourceFormat::OpenCode
                 | SourceFormat::Kilo
@@ -129,6 +130,7 @@ impl SessionStore {
             record.source.format,
             SourceFormat::Pi
                 | SourceFormat::Grok
+                | SourceFormat::ClaudeCowork
                 | SourceFormat::Kimi
                 | SourceFormat::OpenCode
                 | SourceFormat::Kilo

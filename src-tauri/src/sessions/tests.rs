@@ -68,6 +68,7 @@ fn codex_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
         // ~/.claude、~/.gemini 会话扫进测试。
         codex_archived: Some(Vec::new()),
         claude: Some(Vec::new()),
+        claude_cowork: Some(Vec::new()),
         gemini: Some(Vec::new()),
         grok: Some(Vec::new()),
         pi: Some(Vec::new()),
@@ -352,6 +353,7 @@ fn refresh_records_source_errors_without_blocking_valid_sessions() {
             codex: Some(vec![codex_root.to_string_lossy().into_owned()]),
             codex_archived: Some(Vec::new()),
             claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
+            claude_cowork: Some(Vec::new()),
             gemini: Some(Vec::new()),
             grok: Some(Vec::new()),
             pi: Some(Vec::new()),
@@ -557,6 +559,7 @@ fn 增量刷新单文件失败不丢弃同批其他变更() {
         sources: Vec::new(),
         sources_config: crate::config::SourceRoots {
             claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
+            claude_cowork: Some(Vec::new()),
             codex: Some(Vec::new()),
             codex_archived: Some(Vec::new()),
             gemini: Some(Vec::new()),
@@ -619,6 +622,7 @@ fn 缺失的_opencode_数据库属于不可用而不是扫描错误() {
             codex: Some(Vec::new()),
             codex_archived: Some(Vec::new()),
             claude: Some(Vec::new()),
+            claude_cowork: Some(Vec::new()),
             gemini: Some(Vec::new()),
             grok: Some(Vec::new()),
             pi: Some(Vec::new()),
@@ -680,6 +684,7 @@ fn refresh_paths_rebuilds_claude_priority_after_layout_change() {
         sources: Vec::new(),
         sources_config: crate::config::SourceRoots {
             claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
+            claude_cowork: Some(Vec::new()),
             codex: Some(Vec::new()),
             codex_archived: Some(Vec::new()),
             gemini: Some(Vec::new()),
@@ -1450,6 +1455,7 @@ fn claude_modern_and_legacy_sessions_are_scanned_together() {
         sources: Vec::new(),
         sources_config: crate::config::SourceRoots {
             claude: Some(vec![claude_root.to_string_lossy().into_owned()]),
+            claude_cowork: Some(Vec::new()),
             codex: Some(Vec::new()),
             codex_archived: Some(Vec::new()),
             gemini: Some(Vec::new()),

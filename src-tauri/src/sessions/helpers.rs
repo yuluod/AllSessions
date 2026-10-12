@@ -223,7 +223,7 @@ pub(crate) fn count_values(values: HashMap<String, u64>, limit: usize) -> Vec<Va
 pub(crate) fn agent_kind(source_kind: &Value) -> Option<&str> {
     match source_kind.as_str()? {
         "codex_archived" => Some("codex"),
-        "claude_code" => Some("claude"),
+        "claude_code" | "claude_cowork" => Some("claude"),
         "vscode_copilot" => Some("copilot"),
         value => Some(value),
     }

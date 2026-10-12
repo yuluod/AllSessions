@@ -8,12 +8,15 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{json, Value};
 use walkdir::WalkDir;
 
-use super::{copilot, cursor, devin, grok, hermes, kimi, vscode_copilot, Source, SourceFormat};
+use super::{
+    claude_cowork, copilot, cursor, devin, grok, hermes, kimi, vscode_copilot, Source, SourceFormat,
+};
 
 pub(crate) struct RootLists {
     pub codex: Vec<PathBuf>,
     pub codex_archived: Vec<PathBuf>,
     pub claude: Vec<PathBuf>,
+    pub claude_cowork: Vec<PathBuf>,
     pub gemini: Vec<PathBuf>,
     pub grok: Vec<PathBuf>,
     pub pi: Vec<PathBuf>,
@@ -71,6 +74,11 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         config.get("claude"),
         &["CLAUDE_SESSIONS_DIR"],
         vec![home.join(".claude")],
+    );
+    let (claude_cowork, cowork_origin) = resolve_kind(
+        config.get("claude_cowork"),
+        &["CLAUDE_COWORK_SESSIONS_DIR"],
+        claude_cowork::default_roots(),
     );
     let (gemini, gemini_origin) = resolve_kind(
         config.get("gemini"),
@@ -263,6 +271,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
+        "claude_cowork": { "roots": claude_cowork.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": cowork_origin },
         "claude": { "roots": claude.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": claude_origin },
         "gemini": { "roots": gemini.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": gemini_origin },
         "grok": { "roots": grok.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": grok_origin },
@@ -282,6 +291,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
             codex,
             codex_archived,
             claude,
+            claude_cowork,
             gemini,
             grok,
             pi,
@@ -389,6 +399,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
     json!({
         "codex": describe_protected_source_roots(config.codex.as_deref().unwrap_or_default(), &inherited.codex),
         "codex_archived": describe_protected_source_roots(config.codex_archived.as_deref().unwrap_or_default(), &inherited.codex_archived),
+        "claude_cowork": describe_protected_source_roots(config.claude_cowork.as_deref().unwrap_or_default(), &inherited.claude_cowork),
         "claude": describe_protected_source_roots(config.claude.as_deref().unwrap_or_default(), &inherited.claude),
         "gemini": describe_protected_source_roots(config.gemini.as_deref().unwrap_or_default(), &inherited.gemini),
         "grok": describe_protected_source_roots(config.grok.as_deref().unwrap_or_default(), &inherited.grok),
@@ -418,6 +429,13 @@ pub(crate) fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Sou
         display_name: "Pi",
         root: root.clone(),
         format: SourceFormat::Pi,
+        archived: false,
+    }));
+    sources.extend(lists.claude_cowork.iter().map(|root| Source {
+        kind: "claude_cowork",
+        display_name: "Claude Cowork",
+        root: claude_cowork::sessions_root(root),
+        format: SourceFormat::ClaudeCowork,
         archived: false,
     }));
     sources.extend(lists.grok.iter().map(|root| Source {
@@ -604,6 +622,9 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
         .collect()
 }
 pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
+    if source.format == SourceFormat::ClaudeCowork {
+        return claude_cowork::discover_files(source);
+    }
     if matches!(source.format, SourceFormat::Grok) {
         return grok::discover_files(source);
     }
@@ -651,6 +672,9 @@ pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
 }
 
 pub(crate) fn source_matches_path(source: &Source, path: &Path) -> bool {
+    if source.format == SourceFormat::ClaudeCowork {
+        return claude_cowork::matches_path(&source.root, path);
+    }
     if matches!(source.format, SourceFormat::Grok) {
         return grok::matches_path(&source.root, path);
     }

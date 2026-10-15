@@ -1,10 +1,12 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
+    fs,
     path::{Path, PathBuf},
     time::Duration,
 };
 
 use rusqlite::{Connection, OpenFlags, Row};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -13,12 +15,15 @@ use super::{
     truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     SEARCH_TEXT_LIMIT,
 };
+use crate::cache::IndexCache;
 
+#[derive(Serialize, Deserialize)]
 pub(super) struct ParsedSource {
     pub sessions: Vec<ParsedSession>,
     pub active_paths: BTreeSet<String>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub(super) struct ParsedSession {
     pub summary: Value,
     pub search_text: String,
@@ -26,7 +31,7 @@ pub(super) struct ParsedSession {
     pub detail_locator: DetailLocator,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct DetailLocator {
     database_path: PathBuf,
     session_id: String,
@@ -433,7 +438,68 @@ fn finish_summary(
     (summary, search_text)
 }
 
-pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
+/// 库文件指纹（size + mtime，含 -wal 边车）。WAL 模式下源应用提交只追加
+/// -wal 而不改主库，不看边车会让缓存命中过期内容；DB 未变时整个来源
+/// 直接复用上次解析结果。
+fn source_stamp(path: &Path) -> Option<String> {
+    let metadata = fs::metadata(path).ok()?;
+    let modified = metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    let mut stamp = format!("{}:{}", metadata.len(), modified.as_nanos());
+    let mut wal = path.as_os_str().to_os_string();
+    wal.push("-wal");
+    if let Ok(wal) = fs::metadata(&wal) {
+        let modified = wal
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+        stamp.push_str(&format!(":wal:{}:{}", wal.len(), modified));
+    }
+    Some(stamp)
+}
+
+/// 整源缓存的键路径。
+pub(super) fn cache_key(source: &Source) -> PathBuf {
+    database_path(&source.root)
+}
+
+/// 仅读缓存，指纹未命中返回 None。热启动路径使用。
+pub(super) fn cached_source(source: &Source, cache: &IndexCache) -> Option<ParsedSource> {
+    let path = cache_key(source);
+    let stamp = source_stamp(&path)?;
+    cached_at(source, cache, &path, &stamp)
+}
+
+fn cached_at(source: &Source, cache: &IndexCache, path: &Path, stamp: &str) -> Option<ParsedSource> {
+    let payload = cache.get_source(source.kind, path, stamp)?;
+    serde_json::from_value::<ParsedSource>(payload).ok()
+}
+
+pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<ParsedSource, String> {
+    let path = cache_key(source);
+    // 指纹必须在解析前计算：解析期间库被写入时，用解析后的新指纹配
+    // 解析前的旧内容会把过期数据钉死在缓存里，直到库再次变化。
+    let stamp = source_stamp(&path);
+    if let Some(stamp) = &stamp {
+        if let Some(cached) = cached_at(source, cache, &path, stamp) {
+            return Ok(cached);
+        }
+    }
+    let parsed = parse_source_uncached(source)?;
+    if let Some(stamp) = stamp {
+        if let Ok(payload) = serde_json::to_value(&parsed) {
+            cache.put_source(source.kind, &path, &stamp, &payload);
+        }
+    }
+    Ok(parsed)
+}
+
+fn parse_source_uncached(source: &Source) -> Result<ParsedSource, String> {
     let path = database_path(&source.root);
     let connection = open_database(&path)?;
     // 空库(常见于安装后尚未使用)直接按无数据处理,不作为格式错误上报。
@@ -623,6 +689,7 @@ pub(super) fn visit_detail(
 
 #[cfg(test)]
 mod tests {
+    use crate::cache::IndexCache;
     use rusqlite::{params, Connection};
     use serde_json::json;
     use tempfile::tempdir;
@@ -780,7 +847,7 @@ mod tests {
         let (_directory, source) = fixture();
         let connection = Connection::open(&source.root).unwrap();
         let fingerprint = || {
-            parse_source(&source)
+            parse_source(&source, &IndexCache::disabled())
                 .unwrap()
                 .sessions
                 .into_iter()
@@ -814,7 +881,7 @@ mod tests {
     #[test]
     fn sqlite_格式聚合会话摘要并排除子代理() {
         let (_directory, source) = fixture();
-        let parsed = parse_source(&source).unwrap();
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
         // subagent_child 会话被排除，只保留主会话
         assert_eq!(parsed.sessions.len(), 1);
         let main = parsed
@@ -851,7 +918,7 @@ mod tests {
                 )
                 .unwrap();
         }
-        let parsed = parse_source(&source).unwrap();
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
         let main = parsed
             .sessions
             .iter()
@@ -866,7 +933,7 @@ mod tests {
     #[test]
     fn 无turn_usage表时token为零() {
         let (_directory, source) = fixture();
-        let parsed = parse_source(&source).unwrap();
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
         let main = parsed
             .sessions
             .iter()
@@ -889,14 +956,14 @@ mod tests {
             format: SourceFormat::Kilo,
             archived: false,
         };
-        let parsed = parse_source(&source).unwrap();
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
         assert!(parsed.sessions.is_empty());
     }
 
     #[test]
     fn 详情会映射文本_思考和工具结果() {
         let (_directory, source) = fixture();
-        let parsed = parse_source(&source).unwrap();
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
         let session = parsed
             .sessions
             .into_iter()
@@ -943,7 +1010,7 @@ mod tests {
             format: SourceFormat::ZCode,
             archived: false,
         };
-        let error = match parse_source(&source) {
+        let error = match parse_source(&source, &IndexCache::disabled()) {
             Ok(_) => panic!("旧格式不应被识别为最新 ZCode 数据库"),
             Err(error) => error,
         };

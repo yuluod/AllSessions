@@ -3,16 +3,18 @@ use super::{
     HeadTail, ParseState, Source, StoredSession, DETAIL_MESSAGE_LIMIT,
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
-    fs::File,
+    fs::{self, File},
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     time::Duration,
 };
+use crate::cache::IndexCache;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct DetailLocator {
     path: PathBuf,
     id: String,
@@ -342,7 +344,140 @@ pub(super) struct ParsedSource {
     pub unsupported: Vec<(PathBuf, String, String)>,
 }
 
-pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
+/// 读取错误留待下次扫描重试；不支持格式的诊断随成功结果一起缓存。
+#[derive(Serialize, Deserialize)]
+struct CachedRecords {
+    records: Vec<CachedRecord>,
+    unsupported: Vec<(PathBuf, String, String)>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CachedRecord {
+    summary: Value,
+    search_text: String,
+    path: PathBuf,
+    locator: DetailLocator,
+}
+
+/// 覆盖解析会读取的全部文件：主 state.vscdb、workspaceStorage 下的
+/// state.vscdb/workspace.json，以及无主库时的 agent-transcripts 转录。
+/// 任一文件变化都会让指纹失效，避免命中过期记录。
+fn source_stamp(source: &Source, main_path: &Path) -> String {
+    /// SQLite 库以 WAL 模式提交时只追加 -wal 而不改主库，边车也要进指纹；
+    /// 对非库文件（如 workspace.json）该边车不存在，无副作用。
+    fn push(stamp: &mut String, path: &Path) {
+        let mut entry = |path: &Path| {
+            if let Ok(metadata) = fs::metadata(path) {
+                let modified = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|value| value.as_nanos())
+                    .unwrap_or(0);
+                stamp.push_str(&format!("{}:{}:{};", path.display(), metadata.len(), modified));
+            }
+        };
+        entry(path);
+        let mut wal = path.as_os_str().to_os_string();
+        wal.push("-wal");
+        entry(&PathBuf::from(wal));
+    }
+    let mut stamp = String::new();
+    push(&mut stamp, main_path);
+    let workspace = source.root.join("workspaceStorage");
+    if let Ok(entries) = fs::read_dir(workspace) {
+        let mut directories = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        directories.sort();
+        for directory in directories {
+            push(&mut stamp, &directory.join("state.vscdb"));
+            push(&mut stamp, &directory.join("workspace.json"));
+        }
+    }
+    if !main_path.is_file() {
+        for entry in walkdir::WalkDir::new(&source.root).into_iter().flatten() {
+            let path = entry.path();
+            if entry.file_type().is_file()
+                && path.extension().is_some_and(|value| value == "jsonl")
+                && path
+                    .components()
+                    .any(|component| component.as_os_str() == "agent-transcripts")
+            {
+                push(&mut stamp, path);
+            }
+        }
+    }
+    stamp
+}
+
+/// 整源缓存的键路径：来源是单个库文件时即该文件，否则为主 state.vscdb。
+pub(super) fn cache_key(source: &Source) -> PathBuf {
+    if source.root.is_file() {
+        source.root.clone()
+    } else {
+        source.root.join("globalStorage/state.vscdb")
+    }
+}
+
+/// 仅读缓存，指纹未命中返回 None。热启动路径使用：绝不触发全量解析。
+pub(super) fn cached_source(source: &Source, cache: &IndexCache) -> Option<ParsedSource> {
+    let main_path = cache_key(source);
+    let stamp = source_stamp(source, &main_path);
+    let payload = cache.get_source(source.kind, &main_path, &stamp)?;
+    let cached = serde_json::from_value::<CachedRecords>(payload).ok()?;
+    Some(ParsedSource {
+        records: cached
+            .records
+            .into_iter()
+            .map(|record| StoredSession {
+                summary: record.summary,
+                search_text: record.search_text,
+                source: source.clone(),
+                path: record.path,
+                detail_locator: Some(super::DetailLocator::Cursor(record.locator)),
+            })
+            .collect(),
+        errors: Vec::new(),
+        unsupported: cached.unsupported,
+    })
+}
+
+pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<ParsedSource, String> {
+    if let Some(cached) = cached_source(source, cache) {
+        return Ok(cached);
+    }
+    let main_path = cache_key(source);
+    let stamp = source_stamp(source, &main_path);
+    let parsed = parse_source_uncached(source)?;
+    if !stamp.is_empty() && parsed.errors.is_empty() {
+        let cached = CachedRecords {
+            records: parsed
+                .records
+                .iter()
+                .filter_map(|record| {
+                    Some(CachedRecord {
+                        summary: record.summary.clone(),
+                        search_text: record.search_text.clone(),
+                        path: record.path.clone(),
+                        locator: match &record.detail_locator {
+                            Some(super::DetailLocator::Cursor(locator)) => locator.clone(),
+                            _ => return None,
+                        },
+                    })
+                })
+                .collect(),
+            unsupported: parsed.unsupported.clone(),
+        };
+        if let Ok(payload) = serde_json::to_value(&cached) {
+            cache.put_source(source.kind, &main_path, &stamp, &payload);
+        }
+    }
+    Ok(parsed)
+}
+
+fn parse_source_uncached(source: &Source) -> Result<ParsedSource, String> {
     let mut locators = Vec::new();
     let mut errors = Vec::new();
     let mut unsupported = Vec::new();
@@ -481,6 +616,7 @@ pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::cache::IndexCache;
     use super::*;
     fn source(root: &Path) -> Source {
         Source {
@@ -506,6 +642,45 @@ mod tests {
     }
 
     #[test]
+    fn 缓存保留不支持诊断且读取错误不落盘() {
+        let directory = tempfile::tempdir().unwrap();
+        let cache_directory = tempfile::tempdir().unwrap();
+        let db = fixture(directory.path());
+        put(
+            &db,
+            "composerData:unsupported",
+            json!({"conversationState":"encoded"}),
+        );
+        put(
+            &db,
+            "composerData:valid",
+            json!({"conversation":[{"type":1,"text":"保留正文"}]}),
+        );
+        let source = source(directory.path());
+        let cache = IndexCache::open_at(&cache_directory.path().join("cache.sqlite"));
+        let first = parse_source(&source, &cache).unwrap();
+        assert_eq!(first.records.len(), 1);
+        assert_eq!(first.unsupported.len(), 1);
+        let cached = cached_source(&source, &cache).unwrap();
+        assert_eq!(cached.records.len(), 1);
+        assert_eq!(cached.unsupported, first.unsupported);
+
+        db.execute_batch("insert into composerHeaders values('valid','{')")
+            .unwrap();
+        for _ in 0..2 {
+            let failed = parse_source(&source, &cache).unwrap();
+            assert_eq!(failed.records.len(), 1);
+            assert_eq!(failed.errors.len(), 1);
+            assert!(cached_source(&source, &cache).is_none());
+        }
+        db.execute_batch("delete from composerHeaders").unwrap();
+        let recovered = parse_source(&source, &cache).unwrap();
+        assert_eq!(recovered.records.len(), 1);
+        assert!(recovered.errors.is_empty());
+        assert!(cached_source(&source, &cache).is_some());
+    }
+
+    #[test]
     fn 空草稿不计入诊断但有正文的草稿仍保留() {
         let directory = tempfile::tempdir().unwrap();
         let db = fixture(directory.path());
@@ -515,7 +690,7 @@ mod tests {
             json!({"conversationState":"~"}),
         );
         put(&db, "composerData:real", json!({"conversationState":"~"}));
-        let parsed = parse_source(&source(directory.path())).unwrap();
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.unsupported.len(), 1);
         assert_eq!(parsed.unsupported[0].1, "real");
         put(
@@ -523,7 +698,7 @@ mod tests {
             "composerData:empty-state-draft",
             json!({"conversation":[{"type":1,"text":"实际正文"}]}),
         );
-        let parsed = parse_source(&source(directory.path())).unwrap();
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.records.len(), 1);
     }
 
@@ -539,7 +714,7 @@ mod tests {
             );
         }
         db.execute_batch("insert into composerHeaders values('first','{'); insert into composerHeaders values('second',NULL);").unwrap();
-        let parsed = parse_source(&source(directory.path())).unwrap();
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.records.len(), 2);
         assert_eq!(parsed.errors.len(), 2);
         let mut diagnostics = super::super::ScanDiagnostics::default();
@@ -553,7 +728,7 @@ mod tests {
                 json!({"conversationState":"encoded"}),
             );
         }
-        for (path, id, reason) in parse_source(&source(directory.path())).unwrap().unsupported {
+        for (path, id, reason) in parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap().unsupported {
             diagnostics.record_unsupported("cursor", &path, &id, &reason);
         }
         let diagnostic = &diagnostics.sources["cursor"];
@@ -596,7 +771,7 @@ mod tests {
         )
         .unwrap();
         let before = std::fs::read(directory.path().join("globalStorage/state.vscdb")).unwrap();
-        let parsed = parse_source(&source(directory.path())).unwrap();
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
         assert!(parsed.errors.is_empty());
         assert_eq!(parsed.records.len(), 2);
         let record = parsed
@@ -641,7 +816,7 @@ mod tests {
             "composerData:missing",
             json!({"fullConversationHeadersOnly":[{"bubbleId":"missing"}]}),
         );
-        let parsed = parse_source(&source(directory.path())).unwrap();
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.records.len(), 1);
         // 未找到可读正文时单独统计，不推断格式或数据完整性。
         assert_eq!(parsed.unsupported.len(), 1);
@@ -659,7 +834,7 @@ mod tests {
             json!({"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"pwd"}}]}}),
             json!({"type":"status","status":"completed"})
         )).unwrap();
-        let parsed = parse_source(&source(directory.path())).unwrap();
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
         assert!(parsed.errors.is_empty());
         assert_eq!(parsed.records.len(), 1);
         assert_eq!(parsed.records[0].summary["id"], "session");
@@ -684,7 +859,7 @@ mod tests {
             dirs::config_dir().unwrap().join("Cursor/User"),
             home.join(".cursor/projects"),
         ] {
-            let parsed = parse_source(&source(&root)).unwrap();
+            let parsed = parse_source(&source(&root), &IndexCache::disabled()).unwrap();
             eprintln!(
                 "Cursor 可读会话 {}，诊断 {}",
                 parsed.records.len(),

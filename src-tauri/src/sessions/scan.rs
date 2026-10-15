@@ -3,6 +3,8 @@ use std::collections::{hash_map::Entry, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
+
 use super::helpers::{
     diagnostic_source_kind, error_text, is_placeholder_session, search_fingerprint, timestamp_of,
 };
@@ -12,8 +14,8 @@ use super::roots::{
     configured_sources, discover_files, opencode_event_matches, path_identity, source_matches_path,
 };
 use super::{
-    cursor, devin, gemini, hermes, opencode, vscode_copilot, zcode, DetailLocator, ScanDiagnostics,
-    SessionStore, SourceFormat, StoredSession,
+    copilot, cursor, devin, gemini, grok, hermes, kimi, opencode, vscode_copilot, zcode,
+    DetailLocator, ScanDiagnostics, SessionStore, SourceFormat, StoredSession,
 };
 
 impl SessionStore {
@@ -70,7 +72,7 @@ impl SessionStore {
                 if !source.root.exists() {
                     continue;
                 }
-                match cursor::parse_source(source) {
+                match cursor::parse_source(source, &self.index_cache) {
                     Ok(parsed) => {
                         for (path, id, error) in parsed.errors {
                             diagnostics.record_session_error(&diagnostic_kind, &path, &id, &error);
@@ -96,7 +98,7 @@ impl SessionStore {
                 if !source.root.exists() {
                     continue;
                 }
-                let parsed = match opencode::parse_source(source) {
+                let parsed = match opencode::parse_source(source, &self.index_cache) {
                     Ok(parsed) => parsed,
                     Err(error) => {
                         diagnostics.record_error(&diagnostic_kind, &source.root, &error);
@@ -128,7 +130,7 @@ impl SessionStore {
                 if !source.root.exists() {
                     continue;
                 }
-                let parsed = match zcode::parse_source(source) {
+                let parsed = match zcode::parse_source(source, &self.index_cache) {
                     Ok(parsed) => parsed,
                     Err(error) => {
                         diagnostics.record_error(&diagnostic_kind, &source.root, &error);
@@ -160,7 +162,7 @@ impl SessionStore {
                 if !source.root.exists() {
                     continue;
                 }
-                match devin::parse_source(source) {
+                match devin::parse_source(source, &self.index_cache) {
                     Ok(parsed) => {
                         for (path, id, error) in parsed.errors {
                             diagnostics.record_session_error(&diagnostic_kind, &path, &id, &error);
@@ -210,7 +212,7 @@ impl SessionStore {
                 if !source.root.exists() {
                     continue;
                 }
-                match hermes::parse_source(source) {
+                match hermes::parse_source(source, &self.index_cache) {
                     Ok(parsed) => {
                         for (path, id, error) in parsed.errors {
                             diagnostics.record_session_error(&diagnostic_kind, &path, &id, &error);
@@ -258,28 +260,57 @@ impl SessionStore {
                 };
                 let parsed = if matches!(
                     source.format,
-                    SourceFormat::Kimi
-                        | SourceFormat::Copilot
-                        | SourceFormat::Grok
-                        | SourceFormat::ClaudeCowork
+                    SourceFormat::Kimi | SourceFormat::Copilot | SourceFormat::Grok
                 ) {
-                    // Kimi 的标题来自 state.json，目录来自 kimi.json 或 session_index.jsonl；
-                    // Copilot 的标题/工作目录保存在相邻 workspace.yaml。
-                    // Grok 的标题、目录与可见性保存在相邻 summary.json。
-                    // Cowork 的任务元数据与转录也分别存储，需同步重读。
-                    // 仅使用事件文件指纹会让这些元数据变化后继续命中旧缓存。
+                    // Kimi/Copilot/Grok 的标题、目录或可见性存放在相邻文件里，
+                    // 用「事件文件 + 相邻元数据」的复合指纹做逐文件缓存，
+                    // 元数据变化后不会命中旧摘要。Cowork 的任务元数据命名
+                    // 不定且分散，复合指纹不可靠，保持每次直读（会话量小）。
+                    let stamp = match source.format {
+                        SourceFormat::Kimi => kimi::cache_stamp(source, &path),
+                        SourceFormat::Copilot => copilot::cache_stamp(&path),
+                        _ => grok::cache_stamp(&path),
+                    };
+                    match self.index_cache.get_stamped(&path, source.kind, &stamp) {
+                        Some(cached) => Ok((cached.summary, cached.search_text)),
+                        None => {
+                            let parsed = parse_summary(&path, source);
+                            if let Ok((summary, search_text)) = &parsed {
+                                self.index_cache.put_stamped(
+                                    &path,
+                                    source.kind,
+                                    &stamp,
+                                    summary,
+                                    search_text,
+                                );
+                            }
+                            parsed
+                        }
+                    }
+                } else if matches!(source.format, SourceFormat::ClaudeCowork) {
                     parse_summary(&path, source)
                 } else {
-                    self.index_cache
-                        .get(&path, source.kind, &metadata)
-                        .map(|cached| (cached.summary, cached.search_text))
-                        .map(Ok)
-                        .unwrap_or_else(|| parse_summary(&path, source))
+                    match self.index_cache.get(&path, source.kind, &metadata) {
+                        Some(cached) => Ok((cached.summary, cached.search_text)),
+                        None => {
+                            // 命中时不再回写：每次启动对未变文件重复 UPSERT
+                            // 是 WAL 无限膨胀的主要来源。
+                            let parsed = parse_summary(&path, source);
+                            if let Ok((summary, search_text)) = &parsed {
+                                self.index_cache.put(
+                                    &path,
+                                    source.kind,
+                                    &metadata,
+                                    summary,
+                                    search_text,
+                                );
+                            }
+                            parsed
+                        }
+                    }
                 };
                 match parsed {
                     Ok((summary, search_text)) => {
-                        self.index_cache
-                            .put(&path, source.kind, &metadata, &summary, &search_text);
                         if is_placeholder_session(source, &summary) {
                             continue;
                         }
@@ -300,6 +331,26 @@ impl SessionStore {
             }
         }
         self.index_cache.prune(&active_paths);
+        // DB 型来源按「来源 + 缓存键路径」回收整源 blob；根目录被重定向
+        // 或工具卸载后没有别的失效路径，防止过期负载在库里无限累积。
+        let mut active_sources = BTreeSet::new();
+        for source in &self.sources {
+            let key = match source.format {
+                SourceFormat::OpenCode | SourceFormat::Kilo => Some(opencode::cache_key(source)),
+                SourceFormat::ZCode => Some(zcode::cache_key(source)),
+                SourceFormat::Cursor => Some(cursor::cache_key(source)),
+                SourceFormat::Devin => Some(devin::cache_key(source)),
+                SourceFormat::Hermes => Some(hermes::cache_key(source)),
+                _ => None,
+            };
+            if let Some(path) = key {
+                active_sources.insert((
+                    source.kind.to_string(),
+                    path.to_string_lossy().into_owned(),
+                ));
+            }
+        }
+        self.index_cache.prune_sources(&active_sources);
         self.records = next;
         self.scan_diagnostics = diagnostics;
         self.rebuild_summary_list();
@@ -470,8 +521,24 @@ impl SessionStore {
                 self.records.remove(key);
                 self.index_cache.remove(record_path);
             }
-            self.index_cache
-                .put(path, source.kind, &metadata, &summary, &search_text);
+            // 与全量刷新保持同一缓存指纹：Kimi/Copilot/Grok 的有效指纹
+            // 是「事件文件 + 相邻元数据」的复合值，用事件文件自身的
+            // 元数据覆盖会把复合指纹行写坏，下次全量扫描必然失效。
+            if matches!(
+                source.format,
+                SourceFormat::Kimi | SourceFormat::Copilot | SourceFormat::Grok
+            ) {
+                let stamp = match source.format {
+                    SourceFormat::Kimi => kimi::cache_stamp(&source, path),
+                    SourceFormat::Copilot => copilot::cache_stamp(path),
+                    _ => grok::cache_stamp(path),
+                };
+                self.index_cache
+                    .put_stamped(path, source.kind, &stamp, &summary, &search_text);
+            } else {
+                self.index_cache
+                    .put(path, source.kind, &metadata, &summary, &search_text);
+            }
             // 占位会话不进列表；若顶掉了旧记录仍需标记变更。
             if is_placeholder_session(&source, &summary) {
                 changed |= !affected.is_empty();
@@ -505,6 +572,151 @@ impl SessionStore {
         }
     }
 
+    /// 热启动：装载上次扫描留下的摘要缓存，列表在后台扫描完成前即可展示。
+    /// 只取当前配置来源下仍存在的文件；scanning() 保持 true，前端继续
+    /// 显示扫描状态；扫描完成后 records 被全量结果整体替换。
+    pub fn warm_from_cache(&mut self) {
+        self.resolve_sources();
+        let mut next = HashMap::new();
+        for (kind, path, summary, search_text) in self.index_cache.load_cached_rows() {
+            let path = PathBuf::from(path);
+            let canonical_path = PathBuf::from(path_identity(&path));
+            let Some(source) = self.sources.iter().find(|source| {
+                source.kind == kind
+                    && canonical_path.starts_with(path_identity(&source.root))
+                    && source_matches_path(source, &path)
+            })
+            else {
+                continue;
+            };
+            // 上次运行后已删除的文件不进热列表，避免出现幽灵会话。
+            if !path.is_file() {
+                continue;
+            }
+            if is_placeholder_session(source, &summary) {
+                continue;
+            }
+            let key = summary["_key"].as_str().unwrap_or_default().to_string();
+            next.entry(key).or_insert_with(|| StoredSession {
+                summary,
+                search_text,
+                source: source.clone(),
+                path,
+                detail_locator: None,
+            });
+        }
+        for source in &self.sources {
+            // DB 型来源走整源缓存；指纹未变时直接反序列化，绝不触发全量解析。
+            let sessions: Option<Vec<(Value, String, PathBuf, DetailLocator)>> = match source.format
+            {
+                SourceFormat::OpenCode | SourceFormat::Kilo => {
+                    opencode::cached_source(source, &self.index_cache).map(|parsed| {
+                        parsed
+                            .sessions
+                            .into_iter()
+                            .map(|session| {
+                                (
+                                    session.summary,
+                                    session.search_text,
+                                    session.path,
+                                    DetailLocator::OpenCode(session.detail_locator),
+                                )
+                            })
+                            .collect()
+                    })
+                }
+                SourceFormat::ZCode => zcode::cached_source(source, &self.index_cache).map(
+                    |parsed| {
+                        parsed
+                            .sessions
+                            .into_iter()
+                            .map(|session| {
+                                (
+                                    session.summary,
+                                    session.search_text,
+                                    session.path,
+                                    DetailLocator::ZCode(session.detail_locator),
+                                )
+                            })
+                            .collect()
+                    },
+                ),
+                SourceFormat::Cursor => cursor::cached_source(source, &self.index_cache).map(
+                    |parsed| {
+                        parsed
+                            .records
+                            .into_iter()
+                            .filter_map(|record| match record.detail_locator {
+                                Some(DetailLocator::Cursor(locator)) => Some((
+                                    record.summary,
+                                    record.search_text,
+                                    record.path,
+                                    DetailLocator::Cursor(locator),
+                                )),
+                                _ => None,
+                            })
+                            .collect()
+                    },
+                ),
+                SourceFormat::Devin => devin::cached_source(source, &self.index_cache).map(
+                    |parsed| {
+                        parsed
+                            .sessions
+                            .into_iter()
+                            .map(|session| {
+                                (
+                                    session.summary,
+                                    session.search_text,
+                                    session.path,
+                                    DetailLocator::Devin(session.detail_locator),
+                                )
+                            })
+                            .collect()
+                    },
+                ),
+                SourceFormat::Hermes => hermes::cached_source(source, &self.index_cache).map(
+                    |parsed| {
+                        parsed
+                            .sessions
+                            .into_iter()
+                            .map(|session| {
+                                (
+                                    session.summary,
+                                    session.search_text,
+                                    session.path,
+                                    DetailLocator::Hermes(session.detail_locator),
+                                )
+                            })
+                            .collect()
+                    },
+                ),
+                _ => None,
+            };
+            let Some(sessions) = sessions else {
+                continue;
+            };
+            for (summary, search_text, path, locator) in sessions {
+                let key = summary
+                    .get("_key")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                next.entry(key).or_insert_with(|| StoredSession {
+                    summary,
+                    search_text,
+                    source: source.clone(),
+                    path,
+                    detail_locator: Some(locator),
+                });
+            }
+        }
+        if next.is_empty() {
+            return;
+        }
+        self.records = next;
+        self.rebuild_summary_list();
+    }
+
     pub(crate) fn rebuild_summaries(&mut self) -> Result<(), String> {
         self.rebuild_summary_list();
         self.rebuild_search_index()
@@ -531,14 +743,18 @@ impl SessionStore {
     }
 
     pub fn rebuild_search_index(&mut self) -> Result<(), String> {
-        self.rebuild_search_index_with_progress(|_, _| Ok(()))
+        self.rebuild_search_index_with_progress(|_, _| Ok(()))?;
+        Ok(())
     }
 
+    /// 返回是否发生了实际的重建或清理。全部指纹命中且无过期条目时，
+    /// 调用方无需再次广播 sessions-changed，避免前端无谓的整表重拉。
     pub fn rebuild_search_index_with_progress(
         &mut self,
         mut progress: impl FnMut(usize, usize) -> Result<(), String>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let total = self.records.len();
+        let mut reindexed = 0_usize;
         progress(0, total)?;
         for (position, (key, record)) in self.records.iter().enumerate() {
             let content_fingerprint = match &record.detail_locator {
@@ -618,22 +834,28 @@ impl SessionStore {
                     .map(|_| ())
                 });
             match result {
-                Ok(()) => {}
+                Ok(reparsed) => {
+                    if reparsed {
+                        reindexed += 1;
+                    }
+                }
                 Err(crate::search::RefreshError::Source(error)) => {
                     self.scan_diagnostics.record_error(
                         diagnostic_source_kind(record.source.kind),
                         &record.path,
                         &format!("搜索索引：{error}"),
                     );
+                    reindexed += 1;
                     self.index_cache.search.invalidate(key)?;
                 }
                 Err(crate::search::RefreshError::Database(error)) => return Err(error),
             }
             progress(position + 1, total)?;
         }
-        self.index_cache
+        let pruned = self
+            .index_cache
             .search
             .prune(&self.records.keys().cloned().collect())?;
-        Ok(())
+        Ok(reindexed > 0 || pruned > 0)
     }
 }

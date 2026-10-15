@@ -51,8 +51,12 @@ impl BackendState {
             },
             None => (AppConfig::default(), None),
         };
+        let mut store = SessionStore::open(&config)?;
+        // 热启动：先装载上次扫描留下的摘要缓存，窗口一出现就有列表；
+        // 首次全量扫描完成后由后台线程整体替换。
+        store.warm_from_cache();
         Ok(Self {
-            store: Arc::new(Mutex::new(SessionStore::open(&config)?)),
+            store: Arc::new(Mutex::new(store)),
             workspace: Arc::new(Mutex::new(WorkspaceStore::open()?)),
             config: Arc::new(Mutex::new(config)),
             config_path,
@@ -158,6 +162,7 @@ impl BackendState {
         self.search_indexing.store(true, Ordering::SeqCst);
         let started = Instant::now();
         *self.index_progress.lock().map_err(lock_error)? = json!({"phase":"scanning"});
+        let mut indexed_any = false;
         let result = (|| {
             let config = self.config.lock().map_err(lock_error)?.clone();
             let mut working = SessionStore::open(&config)?;
@@ -181,7 +186,7 @@ impl BackendState {
                 .map_err(|e| e.to_string())?;
             let metadata_ms = started.elapsed().as_millis();
             let indexing = Instant::now();
-            working.rebuild_search_index_with_progress(|processed, total| {
+            indexed_any = working.rebuild_search_index_with_progress(|processed, total| {
                 // 进度使用独立锁，不等待会话列表锁或 SQLite 查询。
                 *self.index_progress.lock().map_err(lock_error)? =
                     json!({"phase":"indexing", "processed":processed, "total":total});
@@ -203,8 +208,18 @@ impl BackendState {
             "error": result.as_ref().err(),
             "elapsed_ms": started.elapsed().as_millis()
         });
-        app.emit("sessions-changed", json!({"type":"session-updated"}))
-            .map_err(|e| e.to_string())?;
+        if result.is_ok() {
+            if let Ok(store) = self.store.lock() {
+                store.checkpoint_cache();
+            }
+        }
+        // 索引零变化时不再广播：列表在元数据阶段已发布，索引进度由前端
+        // 轮询 index-status 获知，重复事件只会让前端整表重拉一遍。
+        // 出错时保留广播，让前端重拉列表与错误状态。
+        if indexed_any || result.is_err() {
+            app.emit("sessions-changed", json!({"type":"session-updated"}))
+                .map_err(|e| e.to_string())?;
+        }
         result
     }
 

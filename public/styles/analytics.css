@@ -4,7 +4,7 @@
   /* 内容行保持自然高度，由外层滚动；否则内层裁切会让底部控件无法到达。 */
   grid-auto-rows: max-content;
   align-content: start;
-  gap: 12px;
+  gap: 16px;
   min-height: calc(100dvh - var(--header-h) - 38px);
   padding: 18px;
 }
@@ -57,7 +57,7 @@
 
 .metric-card {
   min-width: 0;
-  padding: 18px 20px 16px;
+  padding: 13px 17px 12px;
 }
 
 .metric-card + .metric-card {
@@ -71,7 +71,7 @@
 .metric-value {
   color: var(--accent-strong);
   font-family: var(--font-display);
-  font-size: clamp(1.28rem, 1.55vw, 1.7rem);
+  font-size: clamp(1.12rem, 1.36vw, 1.44rem);
   font-weight: 780;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.025em;
@@ -79,9 +79,9 @@
 }
 
 .metric-label {
-  margin-top: 7px;
+  margin-top: 5px;
   color: var(--muted);
-  font-size: 0.71rem;
+  font-size: 0.67rem;
   font-weight: 650;
 }
 
@@ -94,7 +94,7 @@
 .chart-card,
 .stats-section {
   min-width: 0;
-  padding: 18px 20px;
+  padding: 15px 17px;
   border: 0;
   background: var(--surface);
 }
@@ -106,16 +106,16 @@
 
 .chart-card h3,
 .stats-section h3 {
-  margin: 0 0 16px;
+  margin: 0 0 13px;
   color: var(--accent-strong);
   font-family: var(--font-display);
-  font-size: 0.79rem;
+  font-size: 0.75rem;
   font-weight: 780;
   letter-spacing: 0.01em;
 }
 
 .chart-body {
-  min-height: 224px;
+  min-height: 196px;
 }
 
 .stats-empty {
@@ -144,7 +144,7 @@
   position: relative;
   z-index: 1;
   display: flex;
-  height: 224px;
+  height: 196px;
   align-items: stretch;
   gap: 6px;
   padding: 0 4px;
@@ -199,8 +199,8 @@
 
 .donut-visual {
   position: relative;
-  width: 132px;
-  height: 132px;
+  width: 118px;
+  height: 118px;
   flex: 0 0 auto;
 }
 
@@ -226,14 +226,14 @@
 .donut-center strong {
   color: var(--accent-strong);
   font-family: var(--font-display);
-  font-size: 1.35rem;
+  font-size: 1.22rem;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .donut-center span {
   color: var(--muted);
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   white-space: nowrap;
 }
 
@@ -243,7 +243,7 @@
   flex: 0 1 auto;
   width: fit-content;
   max-width: 100%;
-  gap: 6px;
+  gap: 5px;
 }
 
 .donut-legend-item {
@@ -251,7 +251,7 @@
   grid-template-columns: 8px minmax(0, 1fr) max-content max-content;
   align-items: center;
   gap: 7px;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
 }
 
 .donut-dot {
@@ -284,7 +284,7 @@
 
 .stats-section__body {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .stats-bar-row {
@@ -303,7 +303,7 @@
 
 .stats-bar-label {
   overflow: hidden;
-  font-size: 0.75rem;
+  font-size: 0.73rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -324,7 +324,7 @@
 .stats-bar-count,
 .stats-bar-tokens {
   color: var(--muted);
-  font-size: 0.71rem;
+  font-size: 0.69rem;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -336,7 +336,7 @@
 .token-heatmap {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 9px;
 }
 
 /* 月份行与日期格子共用列模板和间距，保证上下列对齐；横向滚动包在外层。 */
@@ -348,12 +348,12 @@
 .token-heatmap-weekdays {
   display: grid;
   flex: 0 0 auto;
-  grid-template-rows: repeat(7, 13px);
+  grid-template-rows: repeat(7, 12px);
   gap: 3px;
-  padding-top: 18px;
+  padding-top: 16px;
   color: var(--muted);
-  font-size: 0.6rem;
-  line-height: 13px;
+  font-size: 0.58rem;
+  line-height: 12px;
 }
 
 .token-heatmap-scroll {
@@ -365,18 +365,18 @@
 
 .token-heatmap-months {
   display: grid;
-  height: 14px;
-  margin-bottom: 4px;
+  height: 13px;
+  margin-bottom: 3px;
   color: var(--muted);
-  font-size: 0.6rem;
-  line-height: 14px;
+  font-size: 0.58rem;
+  line-height: 13px;
   white-space: nowrap;
 }
 
 .token-heatmap-grid {
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(7, 13px);
+  grid-template-rows: repeat(7, 12px);
   gap: 3px;
 }
 
@@ -393,9 +393,9 @@
 }
 
 .token-heatmap-cell {
-  width: 13px;
-  height: 13px;
-  border-radius: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 2.5px;
   background: var(--surface-sunken);
 }
 
@@ -433,24 +433,24 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 11px;
   flex-wrap: wrap;
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
 }
 
 .token-heatmap-range {
   display: flex;
   align-items: end;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 9px;
 }
 
 .token-heatmap-range label {
   display: grid;
   gap: 4px;
   color: var(--text);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
 .token-heatmap-range input {

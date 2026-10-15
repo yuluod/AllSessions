@@ -35,7 +35,7 @@ mod tests;
 // 的既有引用路径不变;兄弟子模块之间直接从定义模块导入,不经此枢纽。
 pub(crate) use claude_legacy::{legacy_timestamp, timestamp_from_millis};
 pub(crate) use helpers::{
-    compact, compact_title, diagnostic_entries, diagnostic_source_kind, error_text,
+    compact, compact_title, diagnostic_entries, diagnostic_source_kind, error_text, mixed_stamp,
     nullable_string, scan_timestamp,
 };
 #[cfg(test)]
@@ -345,6 +345,11 @@ impl SessionStore {
 
     pub fn watch_roots(&self) -> Vec<PathBuf> {
         watch_roots_for(&self.sources_config)
+    }
+
+    /// 扫描收尾时截断缓存库 WAL，避免下次启动背着膨胀的 WAL 打开。
+    pub fn checkpoint_cache(&self) {
+        self.index_cache.checkpoint();
     }
 
     /// 首次全量扫描尚未完成时为 true，前端据此区分“扫描中”和“确无会话”。

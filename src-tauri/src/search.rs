@@ -67,12 +67,13 @@ impl SearchIndex {
         Ok(Self(Mutex::new(db)))
     }
 
+    /// 指纹一致时只补齐短词索引并返回 false（未重新解析）。
     pub fn refresh(
         &self,
         key: &str,
         fingerprint: &str,
         parse: impl FnOnce(&mut dyn FnMut(&Value)) -> Result<(), String>,
-    ) -> Result<(), RefreshError> {
+    ) -> Result<bool, RefreshError> {
         let db = self.lock().map_err(RefreshError::Database)?;
         let old: Option<String> = db
             .query_row(
@@ -90,7 +91,7 @@ impl SearchIndex {
             backfill_short(&tx, key).map_err(RefreshError::Database)?;
             tx.commit()
                 .map_err(|e| RefreshError::Database(e.to_string()))?;
-            return Ok(());
+            return Ok(false);
         }
         let tx = db
             .unchecked_transaction()
@@ -136,7 +137,8 @@ impl SearchIndex {
         tx.execute("insert into search_sessions_v1 values(?1,?2) on conflict(key) do update set fingerprint=excluded.fingerprint", params![key,fingerprint]).map_err(|e| RefreshError::Database(e.to_string()))?;
         backfill_short(&tx, key).map_err(RefreshError::Database)?;
         tx.commit()
-            .map_err(|e| RefreshError::Database(e.to_string()))
+            .map_err(|e| RefreshError::Database(e.to_string()))?;
+        Ok(true)
     }
 
     pub fn invalidate(&self, key: &str) -> Result<(), String> {
@@ -149,7 +151,8 @@ impl SearchIndex {
         tx.commit().map_err(|e| e.to_string())
     }
 
-    pub fn prune(&self, active: &BTreeSet<String>) -> Result<(), String> {
+    /// 清理不再活跃的会话索引，返回删除数（用于判断是否需要广播变更）。
+    pub fn prune(&self, active: &BTreeSet<String>) -> Result<usize, String> {
         let db = self.lock()?;
         let mut stmt = db
             .prepare("select key from search_sessions_v1")
@@ -160,8 +163,12 @@ impl SearchIndex {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
         drop(stmt);
+        let stale = keys
+            .into_iter()
+            .filter(|key| !active.contains(key))
+            .collect::<Vec<_>>();
         let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
-        for key in keys.into_iter().filter(|key| !active.contains(key)) {
+        for key in &stale {
             tx.execute(
                 "delete from search_messages_v1 where session_key=?1",
                 [&key],
@@ -170,7 +177,8 @@ impl SearchIndex {
             tx.execute("delete from search_sessions_v1 where key=?1", [&key])
                 .map_err(|e| e.to_string())?;
         }
-        tx.commit().map_err(|e| e.to_string())
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(stale.len())
     }
 
     #[cfg(test)]

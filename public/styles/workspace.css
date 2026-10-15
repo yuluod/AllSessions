@@ -2577,6 +2577,18 @@ body.is-resizing {
   mask-image: url("../assets/agents/devin.svg");
 }
 
+.source-tree__item[data-source-agent="copilot"] .source-tree__dot {
+  mask-image: url("../assets/agents/githubcopilot.svg");
+}
+
+.source-tree__item[data-source-agent="hermes"] .source-tree__dot {
+  mask-image: url("../assets/agents/hermesagent.svg");
+}
+
+.source-tree__item[data-source-agent="grok"] .source-tree__dot {
+  mask-image: url("../assets/agents/grok.svg");
+}
+
 .session-pane {
   display: flex;
   min-width: 0;

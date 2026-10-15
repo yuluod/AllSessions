@@ -45,7 +45,10 @@ import {
 } from "./detail-view.js";
 import { renderWorkspaceStatus } from "./status.js";
 
-export async function loadSessionDetail(id, { silent = false } = {}) {
+export async function loadSessionDetail(
+  id,
+  { silent = false, initial = false } = {}
+) {
   const request = detailRequestGate.begin();
   try {
     const around =
@@ -117,7 +120,13 @@ export async function loadSessionDetail(id, { silent = false } = {}) {
     }
     renderRawEvents(detail.raw_events);
     updateTabs();
-    if (state._initialized && window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {
+    // 初始化恢复的首条详情不滚动：此时 _initialized 已置 true，
+    // 但移动端首屏应停留在列表，只有用户后续的详情切换才滚过去。
+    if (
+      !initial &&
+      state._initialized &&
+      window.matchMedia(MOBILE_LAYOUT_QUERY).matches
+    ) {
       scrollToWorkspaceSection(document.querySelector("#detail-panel"));
     }
     return true;
@@ -208,40 +217,46 @@ export async function loadSessions({
           el.dataset.sessionKey === state.selectedSessionKey
         );
       });
+      // 首条详情不阻塞列表渲染与 _initialized：详情 IPC 与整页渲染
+      // 在后台完成，失败回退逻辑在调度时快照初始化状态。
       const restoreKey = state.selectedSessionKey;
-      const loaded = await loadSessionDetail(restoreKey, {
-        silent: keepingOffscreenSelection,
-      });
-      if (
-        keepingOffscreenSelection &&
-        !loaded &&
-        request.isCurrent() &&
-        // 加载期间用户手动选择了其他会话时不回退
-        state.selectedSessionKey === restoreKey
-      ) {
-        if (!state._initialized) {
-          // 初始化恢复的分享链接已失效：静默回退为默认选中第一个
-          state.selectedSessionKey = null;
-          const first = visibleSessions()[0];
-          if (first) {
-            state.selectedSessionKey = first._key;
-            elements.sessionList
-              .querySelectorAll(".session-item")
-              .forEach((el) => {
-                el.classList.toggle(
-                  "active",
-                  el.dataset.sessionKey === first._key
-                );
-              });
-            await loadSessionDetail(first._key);
+      const initializing = !state._initialized;
+      void (async () => {
+        const loaded = await loadSessionDetail(restoreKey, {
+          silent: keepingOffscreenSelection,
+          initial: initializing,
+        });
+        if (
+          keepingOffscreenSelection &&
+          !loaded &&
+          request.isCurrent() &&
+          // 加载期间用户手动选择了其他会话时不回退
+          state.selectedSessionKey === restoreKey
+        ) {
+          if (initializing) {
+            // 初始化恢复的分享链接已失效：静默回退为默认选中第一个
+            state.selectedSessionKey = null;
+            const first = visibleSessions()[0];
+            if (first) {
+              state.selectedSessionKey = first._key;
+              elements.sessionList
+                .querySelectorAll(".session-item")
+                .forEach((el) => {
+                  el.classList.toggle(
+                    "active",
+                    el.dataset.sessionKey === first._key
+                  );
+                });
+              await loadSessionDetail(first._key, { initial: initializing });
+            }
+          } else {
+            // 后台刷新时目标会话已被删除：清除选择并显示占位
+            state.selectedSessionKey = null;
+            state.currentDetail = null;
+            showSelectSessionPlaceholder();
           }
-        } else {
-          // 后台刷新时目标会话已被删除：清除选择并显示占位
-          state.selectedSessionKey = null;
-          state.currentDetail = null;
-          showSelectSessionPlaceholder();
         }
-      }
+      })();
     } else {
       showSelectSessionPlaceholder();
     }

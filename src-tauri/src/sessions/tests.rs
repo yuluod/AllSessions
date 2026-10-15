@@ -1887,3 +1887,97 @@ fn refresh_paths_attributes_shared_file_to_first_declared_root() {
     assert_eq!(record.source.root, outer.path());
     assert!(record.search_text.contains("after"));
 }
+
+#[test]
+fn 热启动直接装载上次扫描留下的会话列表() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("warm.jsonl");
+    std::fs::write(
+        &path,
+        json!({"type":"session_meta","payload":{"id":"warm","cwd":"/p"},"timestamp":"2026-01-01T00:00:00Z"}).to_string(),
+    )
+    .unwrap();
+    let cache_directory = tempdir().unwrap();
+    let cache_path = cache_directory.path().join("cache.sqlite");
+    let build_store = || SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::open_at(&cache_path),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    let mut store = build_store();
+    store.refresh().unwrap();
+    assert_eq!(store.summaries.len(), 1);
+
+    // 模拟重启：同缓存库上的全新 store，热启动应立即有列表，
+    // 且 scanning() 仍为 true（首次全量扫描尚未完成）。
+    let mut warmed = build_store();
+    warmed.warm_from_cache();
+    assert_eq!(warmed.summaries.len(), 1);
+    assert!(warmed.scanning());
+    assert_eq!(warmed.summaries[0]["_key"], json!("codex:warm"));
+    // 热记录携带来源与路径，详情可按需读取。
+    assert!(warmed.detail("codex:warm").is_ok());
+
+    // 上次运行后删除的文件不进热列表。
+    std::fs::remove_file(&path).unwrap();
+    let mut after_delete = build_store();
+    after_delete.warm_from_cache();
+    assert!(after_delete.summaries.is_empty());
+}
+
+#[test]
+fn 热启动按当前根目录过滤缓存并保留来源归属() {
+    let first = tempdir().unwrap();
+    let second = tempdir().unwrap();
+    let empty = tempdir().unwrap();
+    let cache_directory = tempdir().unwrap();
+    let cache_path = cache_directory.path().join("cache.sqlite");
+    for (root, id) in [(first.path(), "first"), (second.path(), "second")] {
+        std::fs::write(
+            root.join("warm.jsonl"),
+            json!({"type":"session_meta","payload":{"id":id,"cwd":"/p"},"timestamp":"2026-01-01T00:00:00Z"}).to_string(),
+        )
+        .unwrap();
+    }
+    let build_store = |roots: &[PathBuf]| SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(roots),
+        index_cache: crate::cache::IndexCache::open_at(&cache_path),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    let roots = [first.path().to_path_buf(), second.path().to_path_buf()];
+    let mut initial = build_store(&roots);
+    initial.refresh_metadata().unwrap();
+
+    let mut warmed = build_store(&roots);
+    warmed.warm_from_cache();
+    assert_eq!(warmed.records.len(), 2);
+    assert_eq!(warmed.records["codex:first"].source.root, first.path());
+    assert_eq!(warmed.records["codex:second"].source.root, second.path());
+
+    let mut changed = build_store(&[second.path().to_path_buf()]);
+    changed.warm_from_cache();
+    assert_eq!(changed.records.len(), 1);
+    assert!(changed.records.contains_key("codex:second"));
+
+    let mut replaced = build_store(&[empty.path().to_path_buf()]);
+    replaced.warm_from_cache();
+    assert!(replaced.records.is_empty());
+
+    #[cfg(unix)]
+    {
+        let alias = empty.path().join("alias");
+        std::os::unix::fs::symlink(second.path(), &alias).unwrap();
+        let mut aliased = build_store(std::slice::from_ref(&alias));
+        aliased.warm_from_cache();
+        assert_eq!(aliased.records.len(), 1);
+        assert_eq!(aliased.records["codex:second"].source.root, alias);
+    }
+}

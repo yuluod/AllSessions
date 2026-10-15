@@ -11,10 +11,19 @@ use serde_json::{json, Value};
 use walkdir::WalkDir;
 
 use super::{
-    append_limited, attach_message_key, compact_title, error_text, message_value,
+    append_limited, attach_message_key, compact_title, error_text, message_value, mixed_stamp,
     summary_search_text, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
     DETAIL_MESSAGE_LIMIT,
 };
+
+/// 事件文件与相邻 summary.json 的复合指纹。
+pub(super) fn cache_stamp(path: &Path) -> (i64, i64) {
+    let mut paths = vec![path.to_path_buf()];
+    if let Some(directory) = path.parent() {
+        paths.push(directory.join("summary.json"));
+    }
+    mixed_stamp(&paths)
+}
 
 pub(super) fn sessions_root(root: &Path) -> PathBuf {
     if root.file_name().and_then(|s| s.to_str()) == Some("sessions") {

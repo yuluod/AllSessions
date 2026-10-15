@@ -9,9 +9,18 @@ use serde_json::{json, Value};
 
 use super::{
     append_limited, attach_message_key, compact_title, error_text, extract_text, message_value,
-    summary_search_text, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
-    DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    mixed_stamp, summary_search_text, truncate_message, HeadTail, ParseState, Source,
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
 };
+
+/// 事件文件与相邻 workspace.yaml 的复合指纹。
+pub(super) fn cache_stamp(path: &Path) -> (i64, i64) {
+    let mut paths = vec![path.to_path_buf()];
+    if let Some(directory) = path.parent() {
+        paths.push(directory.join("workspace.yaml"));
+    }
+    mixed_stamp(&paths)
+}
 
 /// workspace.yaml 里的会话元数据。该文件是扁平的 key: value 清单
 /// （id/cwd/git_root/repository/branch/name/summary/created_at/updated_at），

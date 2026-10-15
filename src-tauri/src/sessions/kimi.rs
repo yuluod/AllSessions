@@ -11,8 +11,8 @@ use walkdir::WalkDir;
 
 use super::{
     append_limited, attach_message_key, compact, error_text, extract_text, message_value,
-    summary_search_text, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
-    DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    mixed_stamp, summary_search_text, truncate_message, HeadTail, ParseState, Source,
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
 };
 
 mod modern;
@@ -22,6 +22,19 @@ fn modern_session_dir(path: &Path) -> Option<&Path> {
     (agents.file_name()?.to_str()? == "agents")
         .then(|| agents.parent())
         .flatten()
+}
+
+/// 事件文件与相邻元数据的复合指纹：会话目录的 state.json、share 根的
+/// kimi.json 与 session_index.jsonl。任一变化都会让逐文件缓存失效。
+pub(super) fn cache_stamp(source: &Source, path: &Path) -> (i64, i64) {
+    let mut paths = vec![path.to_path_buf()];
+    if let Some(directory) = modern_session_dir(path).or_else(|| path.parent()) {
+        paths.push(directory.join("state.json"));
+    }
+    let share = share_root(source);
+    paths.push(share.join("kimi.json"));
+    paths.push(share.join("session_index.jsonl"));
+    mixed_stamp(&paths)
 }
 
 fn session_metadata(path: &Path) -> Result<Value, String> {

@@ -32,6 +32,7 @@ use std::{
 };
 
 use rusqlite::{Connection, OpenFlags, Row};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -40,6 +41,7 @@ use super::{
     truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     SEARCH_TEXT_LIMIT,
 };
+use crate::cache::IndexCache;
 
 const STATE_DB: &str = "state.db";
 /// 原始消息字段超过该字符数时只保留元信息。
@@ -54,6 +56,7 @@ pub(super) struct ParsedSource {
     pub errors: Vec<ScanError>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub(super) struct ParsedSession {
     pub summary: Value,
     pub search_text: String,
@@ -61,7 +64,7 @@ pub(super) struct ParsedSession {
     pub detail_locator: DetailLocator,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct DetailLocator {
     database_path: PathBuf,
     session_id: String,
@@ -666,7 +669,87 @@ fn scan_database(
     Ok((sessions, errors))
 }
 
-pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
+/// 仅缓存无读取错误的扫描结果；失败来源留待下次扫描重试。
+#[derive(Serialize, Deserialize)]
+struct CachedSource {
+    sessions: Vec<ParsedSession>,
+    active_paths: BTreeSet<String>,
+}
+
+#[derive(Serialize)]
+struct CachedSourceRef<'a> {
+    sessions: &'a [ParsedSession],
+    active_paths: &'a BTreeSet<String>,
+}
+
+/// 覆盖解析读取的全部库文件（主库与各 profile 库）。SQLite 库以 WAL
+/// 模式提交时只追加 -wal 而不改主库，边车也要进指纹。
+fn source_stamp(source: &Source) -> String {
+    let mut stamp = String::new();
+    let mut push = |path: &Path| {
+        let mut entry = |path: &Path| {
+            if let Ok(metadata) = fs::metadata(path) {
+                let modified = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|value| value.as_nanos())
+                    .unwrap_or(0);
+                stamp.push_str(&format!(
+                    "{}:{}:{};",
+                    path.display(),
+                    metadata.len(),
+                    modified
+                ));
+            }
+        };
+        entry(path);
+        let mut wal = path.as_os_str().to_os_string();
+        wal.push("-wal");
+        entry(&PathBuf::from(wal));
+    };
+    for database in state_databases(&source.root) {
+        push(&database);
+    }
+    stamp
+}
+
+/// 整源缓存的键路径。
+pub(super) fn cache_key(source: &Source) -> PathBuf {
+    source.root.clone()
+}
+
+/// 仅读缓存，指纹未命中返回 None。热启动路径使用。
+pub(super) fn cached_source(source: &Source, cache: &IndexCache) -> Option<ParsedSource> {
+    let stamp = source_stamp(source);
+    let payload = cache.get_source(source.kind, &source.root, &stamp)?;
+    let cached = serde_json::from_value::<CachedSource>(payload).ok()?;
+    Some(ParsedSource {
+        sessions: cached.sessions,
+        active_paths: cached.active_paths,
+        errors: Vec::new(),
+    })
+}
+
+pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<ParsedSource, String> {
+    if let Some(cached) = cached_source(source, cache) {
+        return Ok(cached);
+    }
+    let stamp = source_stamp(source);
+    let parsed = parse_source_uncached(source)?;
+    if !stamp.is_empty() && parsed.errors.is_empty() {
+        let cached = CachedSourceRef {
+            sessions: &parsed.sessions,
+            active_paths: &parsed.active_paths,
+        };
+        if let Ok(payload) = serde_json::to_value(&cached) {
+            cache.put_source(source.kind, &source.root, &stamp, &payload);
+        }
+    }
+    Ok(parsed)
+}
+
+fn parse_source_uncached(source: &Source) -> Result<ParsedSource, String> {
     let mut sessions = Vec::new();
     let mut active_paths = BTreeSet::new();
     let mut errors = Vec::new();
@@ -831,6 +914,7 @@ pub(super) fn visit_detail(
 
 #[cfg(test)]
 mod tests {
+    use crate::cache::IndexCache;
     use std::path::Path;
 
     use rusqlite::{params, Connection};
@@ -973,7 +1057,7 @@ mod tests {
             .unwrap();
         drop(connection);
 
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.sessions.len(), 1);
         assert_eq!(
             parsed.active_paths,
@@ -1048,7 +1132,7 @@ mod tests {
         }
         drop(connection);
 
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.sessions.len(), 1);
         assert_eq!(parsed.sessions[0].summary["id"], "s-main");
     }
@@ -1084,7 +1168,7 @@ mod tests {
             .unwrap();
         drop(profile);
 
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.sessions.len(), 2);
         assert!(parsed.active_paths.contains(
             &root
@@ -1116,7 +1200,7 @@ mod tests {
             .unwrap();
         drop(connection);
 
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.sessions.len(), 1);
         let summary = &parsed.sessions[0].summary;
         assert_eq!(summary["title"], "旧库消息");
@@ -1147,7 +1231,7 @@ mod tests {
             .unwrap();
         drop(connection);
 
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         let detail = parse_detail(&source(root), &parsed.sessions[0].detail_locator).unwrap();
         let messages = detail["conversation_messages"].as_array().unwrap();
         assert!(messages.iter().any(|message| message["text"] == "最终回复"));
@@ -1167,9 +1251,34 @@ mod tests {
             .execute_batch("create table other(x)")
             .unwrap();
 
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert!(parsed.sessions.is_empty());
         assert_eq!(parsed.errors.len(), 2);
+    }
+
+    #[test]
+    fn 读取锁释放后刷新会重试且不缓存失败结果() {
+        let directory = tempdir().unwrap();
+        let cache_directory = tempdir().unwrap();
+        let connection = create_state_db(&directory.path().join("state.db"), true);
+        connection
+            .execute_batch(
+                "insert into sessions (id, source, started_at) values ('s', 'cli', 1760000000.0);
+                 insert into messages (session_id, role, content, timestamp) values ('s', 'user', '测试正文', 1760000001.0);",
+            )
+            .unwrap();
+        let source = source(directory.path());
+        let cache = IndexCache::open_at(&cache_directory.path().join("cache.sqlite"));
+        connection.execute_batch("begin exclusive").unwrap();
+        let failed = parse_source(&source, &cache).unwrap();
+        assert!(!failed.errors.is_empty());
+        connection.execute_batch("rollback").unwrap();
+
+        assert!(super::cached_source(&source, &cache).is_none());
+        let recovered = parse_source(&source, &cache).unwrap();
+        assert!(recovered.errors.is_empty());
+        assert_eq!(recovered.sessions.len(), 1);
+        assert!(super::cached_source(&source, &cache).is_some());
     }
 
     #[test]

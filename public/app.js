@@ -261,11 +261,11 @@ async function loadInitialWorkspace() {
     // 后端首次扫描在后台进行，先订阅事件再拉取，避免漏掉扫描完成通知。
     await bindTauriSessionEventsOnce();
     await loadWorkspaceState();
-    await Promise.all([
-      loadFacets(),
-      loadCapabilities(),
-      loadWorkspaceDiagnostics(),
-    ]);
+    await Promise.all([loadFacets(), loadCapabilities()]);
+    // /api/settings 聚合诊断与存储信息，不在首屏关键路径上，后台补齐。
+    void loadWorkspaceDiagnostics().catch((error) => {
+      console.error("读取工作区诊断失败", error);
+    });
     const sessionsLoaded = await loadSessions({ reportError: false });
     if (!sessionsLoaded) {
       throw state.lastSessionError || new Error(t("loadListFailed"));
@@ -729,8 +729,14 @@ async function initialize() {
   maintenanceController.renderLocalized();
 
   settingsController.bind();
-  await updateController.bind();
-  await bindTauriSettingsEvent();
+  // 更新检查与设置事件订阅不阻塞首屏:列表加载完成前不等待这两个
+  // 网络往返,失败只记日志。
+  void updateController.bind().catch((error) => {
+    console.error("绑定更新通道失败", error);
+  });
+  void bindTauriSettingsEvent().catch((error) => {
+    console.error("绑定设置事件失败", error);
+  });
 
   elements.detailSearchInput?.addEventListener("input", (event) => {
     state.detailQuery = event.target.value.trim();

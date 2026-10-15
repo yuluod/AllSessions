@@ -241,6 +241,25 @@ pub(crate) fn diagnostic_source_kind(kind: &str) -> &str {
         value => value,
     }
 }
+/// 复合指纹：把一组文件的 size 与 mtime 累加成二元组，任一文件变化
+/// 都会让缓存失效。用于元数据存放在相邻文件里的来源（Kimi/Copilot/Grok）。
+pub(crate) fn mixed_stamp(paths: &[std::path::PathBuf]) -> (i64, i64) {
+    let mut size = 0_i64;
+    let mut modified = 0_i64;
+    for path in paths {
+        if let Ok(metadata) = std::fs::metadata(path) {
+            size += i64::try_from(metadata.len()).unwrap_or(i64::MAX);
+            modified += metadata
+                .modified()
+                .ok()
+                .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|value| i64::try_from(value.as_nanos()).ok())
+                .unwrap_or(0);
+        }
+    }
+    (size, modified)
+}
+
 pub(crate) fn scan_timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }

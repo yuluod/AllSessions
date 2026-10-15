@@ -34,6 +34,7 @@ use std::{
 };
 
 use rusqlite::{Connection, OpenFlags, Row};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -42,6 +43,7 @@ use super::{
     truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
     SEARCH_TEXT_LIMIT,
 };
+use crate::cache::IndexCache;
 
 const SESSIONINFO_PREFIX: &str = "windsurf.acp.sessioninfo.session.";
 const MESSAGESTORE_PREFIX: &str = "windsurf.acp.messageStore.session.";
@@ -57,6 +59,7 @@ pub(super) struct ParsedSource {
     pub errors: Vec<ScanError>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub(super) struct ParsedSession {
     pub summary: Value,
     pub search_text: String,
@@ -64,7 +67,7 @@ pub(super) struct ParsedSession {
     pub detail_locator: DetailLocator,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct DetailLocator {
     database_path: PathBuf,
     session_id: String,
@@ -511,7 +514,99 @@ fn scan_session(
     scan().map_err(|error| (uuid, error))
 }
 
-pub(super) fn parse_source(source: &Source) -> Result<ParsedSource, String> {
+/// 仅缓存无读取错误的扫描结果；失败来源留待下次扫描重试。
+#[derive(Serialize, Deserialize)]
+struct CachedSource {
+    sessions: Vec<ParsedSession>,
+    active_paths: BTreeSet<String>,
+}
+
+#[derive(Serialize)]
+struct CachedSourceRef<'a> {
+    sessions: &'a [ParsedSession],
+    active_paths: &'a BTreeSet<String>,
+}
+
+/// 覆盖解析读取的全部文件：acp-messages 消息库、全局 state.vscdb
+/// 与 CLI 聚合库候选。任一变化都会让指纹失效。
+fn source_stamp(source: &Source) -> String {
+    /// SQLite 库以 WAL 模式提交时只追加 -wal 而不改主库，边车也要进指纹。
+    fn push(stamp: &mut String, path: &Path) {
+        let mut entry = |path: &Path| {
+            if let Ok(metadata) = fs::metadata(path) {
+                let modified = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|value| value.as_nanos())
+                    .unwrap_or(0);
+                stamp.push_str(&format!(
+                    "{}:{}:{};",
+                    path.display(),
+                    metadata.len(),
+                    modified
+                ));
+            }
+        };
+        entry(path);
+        let mut wal = path.as_os_str().to_os_string();
+        wal.push("-wal");
+        entry(&PathBuf::from(wal));
+    }
+    let mut stamp = String::new();
+    if let Ok(entries) = fs::read_dir(acp_database_dir(&source.root)) {
+        let mut paths = entries.flatten().map(|entry| entry.path()).collect::<Vec<_>>();
+        paths.sort();
+        for path in paths {
+            push(&mut stamp, &path);
+        }
+    }
+    push(
+        &mut stamp,
+        &source.root.join("globalStorage").join("state.vscdb"),
+    );
+    for database in cli_databases(&source.root) {
+        push(&mut stamp, &database);
+    }
+    stamp
+}
+
+/// 整源缓存的键路径。
+pub(super) fn cache_key(source: &Source) -> PathBuf {
+    source.root.clone()
+}
+
+/// 仅读缓存，指纹未命中返回 None。热启动路径使用。
+pub(super) fn cached_source(source: &Source, cache: &IndexCache) -> Option<ParsedSource> {
+    let stamp = source_stamp(source);
+    let payload = cache.get_source(source.kind, &source.root, &stamp)?;
+    let cached = serde_json::from_value::<CachedSource>(payload).ok()?;
+    Some(ParsedSource {
+        sessions: cached.sessions,
+        active_paths: cached.active_paths,
+        errors: Vec::new(),
+    })
+}
+
+pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<ParsedSource, String> {
+    if let Some(cached) = cached_source(source, cache) {
+        return Ok(cached);
+    }
+    let stamp = source_stamp(source);
+    let parsed = parse_source_uncached(source)?;
+    if !stamp.is_empty() && parsed.errors.is_empty() {
+        let cached = CachedSourceRef {
+            sessions: &parsed.sessions,
+            active_paths: &parsed.active_paths,
+        };
+        if let Ok(payload) = serde_json::to_value(&cached) {
+            cache.put_source(source.kind, &source.root, &stamp, &payload);
+        }
+    }
+    Ok(parsed)
+}
+
+fn parse_source_uncached(source: &Source) -> Result<ParsedSource, String> {
     let index = session_index(&source.root);
     let directory = acp_database_dir(&source.root);
     let mut sessions = Vec::new();
@@ -1212,6 +1307,7 @@ pub(super) fn visit_detail(
 
 #[cfg(test)]
 mod tests {
+    use crate::cache::IndexCache;
     use std::path::{Path, PathBuf};
 
     use rusqlite::{params, Connection};
@@ -1351,11 +1447,32 @@ mod tests {
     }
 
     #[test]
+    fn 读取锁释放后刷新会重试且不缓存失败结果() {
+        let directory = tempdir().unwrap();
+        let cache_directory = tempdir().unwrap();
+        fixture(directory.path());
+        let connection =
+            Connection::open(directory.path().join("acp-messages/ses-main.db")).unwrap();
+        let source = source(directory.path());
+        let cache = IndexCache::open_at(&cache_directory.path().join("cache.sqlite"));
+        connection.execute_batch("begin exclusive").unwrap();
+        let failed = parse_source(&source, &cache).unwrap();
+        assert!(!failed.errors.is_empty());
+        connection.execute_batch("rollback").unwrap();
+
+        assert!(super::cached_source(&source, &cache).is_none());
+        let recovered = parse_source(&source, &cache).unwrap();
+        assert!(recovered.errors.is_empty());
+        assert_eq!(recovered.sessions.len(), 1);
+        assert!(super::cached_source(&source, &cache).is_some());
+    }
+
+    #[test]
     fn 聚合会话摘要并排除空草稿() {
         let directory = tempdir().unwrap();
         let root = directory.path();
         fixture(root);
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.sessions.len(), 1);
         let session = &parsed.sessions[0];
         // 桌面端镜像的 CLI 会话统一用 slug 作 id，便于与 CLI 库去重。
@@ -1400,7 +1517,7 @@ mod tests {
             )
             .unwrap();
         drop(session);
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.sessions.len(), 1);
         let summary = &parsed.sessions[0].summary;
         assert_eq!(summary["id"], "orphan");
@@ -1413,7 +1530,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let root = directory.path();
         fixture(root);
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         let session = parsed.sessions.into_iter().next().unwrap();
         let detail = parse_detail(&source(root), &session.detail_locator).unwrap();
         let messages = detail["conversation_messages"].as_array().unwrap();
@@ -1471,7 +1588,7 @@ mod tests {
         let root = directory.path();
         fixture(root);
         let fingerprint = || {
-            parse_source(&source(root))
+            parse_source(&source(root), &IndexCache::disabled())
                 .unwrap()
                 .sessions
                 .into_iter()
@@ -1497,12 +1614,12 @@ mod tests {
         let directory = tempdir().unwrap();
         let root = directory.path();
         // 根目录还没有 acp-messages：不算错误。
-        let empty = parse_source(&source(root)).unwrap();
+        let empty = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert!(empty.sessions.is_empty());
         assert!(empty.errors.is_empty());
         std::fs::create_dir_all(root.join("acp-messages")).unwrap();
         Connection::open(root.join("acp-messages").join("not-devin.db")).unwrap();
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert!(parsed.sessions.is_empty());
         assert_eq!(parsed.errors.len(), 1);
         assert!(parsed.errors[0].2.contains("不是受支持的 Devin 消息库"));
@@ -1618,7 +1735,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let root = directory.path();
         cli_fixture(root);
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.errors, Vec::new());
         assert_eq!(parsed.sessions.len(), 1);
         let session = &parsed.sessions[0];
@@ -1642,7 +1759,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let root = directory.path();
         let database = cli_fixture(root);
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         let session = parsed.sessions.into_iter().next().unwrap();
         let detail = parse_detail(&source(root), &session.detail_locator).unwrap();
         let messages = detail["conversation_messages"].as_array().unwrap();
@@ -1692,7 +1809,7 @@ mod tests {
             root: database.clone(),
             ..source(root)
         };
-        let reparsed = parse_source(&file_source).unwrap();
+        let reparsed = parse_source(&file_source, &IndexCache::disabled()).unwrap();
         assert_eq!(reparsed.sessions.len(), 1);
         assert_eq!(reparsed.sessions[0].summary["id"], "brisk-otter");
     }
@@ -1703,7 +1820,7 @@ mod tests {
         let root = directory.path();
         let database = cli_fixture(root);
         let fingerprint = |root: &Path| {
-            parse_source(&source(root)).unwrap().sessions[0]
+            parse_source(&source(root), &IndexCache::disabled()).unwrap().sessions[0]
                 .detail_locator
                 .content_fingerprint
                 .clone()
@@ -1740,7 +1857,7 @@ mod tests {
             )
             .unwrap();
         drop(connection);
-        let parsed = parse_source(&source(root)).unwrap();
+        let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.sessions.len(), 1);
         let detail = parse_detail(&source(root), &parsed.sessions[0].detail_locator).unwrap();
         assert!(detail["raw_events"].as_array().unwrap().len() <= 7);
@@ -1798,7 +1915,7 @@ mod tests {
         let mut sessions = Vec::new();
         let mut errors = Vec::new();
         for root in [desktop, cli] {
-            let parsed = parse_source(&source(&root)).unwrap();
+            let parsed = parse_source(&source(&root), &IndexCache::disabled()).unwrap();
             sessions.extend(parsed.sessions);
             errors.extend(parsed.errors);
         }

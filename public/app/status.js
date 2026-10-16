@@ -1,12 +1,9 @@
 import { sourceRailItemState } from "../source-rail.js";
-// 状态栏与来源栏:来源计数、扫描健康状态、快捷键提示与来源栏折叠。
+// 状态栏与来源栏:来源计数、扫描健康状态与快捷键提示。
 import { getLang, t } from "../i18n.js";
 import { getThemeState } from "../theme-manager.js";
 import {
-  COMPACT_WORKSPACE_QUERY,
-  MOBILE_LAYOUT_QUERY,
   SOURCE_RAIL_AGENTS,
-  SOURCE_RAIL_COLLAPSED_KEY,
   elements,
   sourceDiagnosticCount,
   state,
@@ -14,11 +11,19 @@ import {
 import { activeFilterEntries } from "./filters.js";
 
 export function renderSourceRail() {
+  // 项目筛选生效时，来源计数改为该项目内部的来源分布。
+  const project = state.filters.cwd
+    ? (state.facets?.projects || []).find(
+        (project) => project.path === state.filters.cwd
+      )
+    : null;
+  const projectCounts = project?.source_counts || null;
   elements.sourceRailItems.forEach((button) => {
     const item = sourceRailItemState(
       button.dataset.sourceKind,
       state.filters.source_kind,
-      state.diagnostics
+      state.diagnostics,
+      projectCounts
     );
     button.classList.toggle("active", item.active);
     button.setAttribute("aria-pressed", item.active ? "true" : "false");
@@ -84,9 +89,13 @@ export function renderWorkspaceStatus() {
   }
 
   if (elements.statusFilterText) {
-    const count = activeFilterEntries().length;
+    const count = activeFilterEntries().filter(
+      (entry) => state.activeView !== "stats" || entry.type !== "search"
+    ).length;
     elements.statusFilterText.textContent = count
-      ? t("statusFilterCount", { n: count })
+      ? count === 1
+        ? t("statusFilterCountOne", { n: count })
+        : t("statusFilterCount", { n: count })
       : t("statusFilterNone");
   }
   if (elements.statusLanguage) {
@@ -109,35 +118,16 @@ export function syncShortcutHints() {
 }
 
 export function syncSchemeToggle() {
-  if (!elements.schemeToggle) return;
-  const key =
-    getThemeState().resolvedScheme === "dark"
-      ? "schemeToggleToLight"
-      : "schemeToggleToDark";
-  elements.schemeToggle.setAttribute("aria-label", t(key));
-  elements.schemeToggle.title = t(key);
-}
-
-export function defaultSourceRailCollapsed() {
-  const stored = localStorage.getItem(SOURCE_RAIL_COLLAPSED_KEY);
-  if (stored !== null) return stored === "true";
-  return window.matchMedia(COMPACT_WORKSPACE_QUERY).matches;
-}
-
-export function syncSourceRailToggle() {
-  if (!elements.railToggle || !elements.appLayout) return;
-  const expanded = !elements.appLayout.classList.contains("rail-collapsed");
-  const label = t(expanded ? "hideSourceRail" : "showSourceRail");
-  elements.railToggle.setAttribute("aria-expanded", String(expanded));
-  elements.railToggle.setAttribute("aria-label", label);
-  elements.railToggle.title = label;
-}
-
-export function setSourceRailCollapsed(collapsed, { persist = false } = {}) {
-  const compact = collapsed && !window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
-  elements.appLayout?.classList.toggle("rail-collapsed", compact);
-  if (persist) {
-    localStorage.setItem(SOURCE_RAIL_COLLAPSED_KEY, String(collapsed));
-  }
-  syncSourceRailToggle();
+  const { scheme } = getThemeState();
+  const keys = {
+    light: "schemeLight",
+    dark: "schemeDark",
+    system: "schemeSystem",
+  };
+  elements.schemeOptions.forEach((button) => {
+    const mode = button.dataset.schemeOption;
+    button.setAttribute("aria-pressed", String(mode === scheme));
+    button.setAttribute("aria-label", t(keys[mode]));
+    button.title = t(keys[mode]);
+  });
 }

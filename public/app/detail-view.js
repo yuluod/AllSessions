@@ -17,7 +17,6 @@ import {
   state,
   visibilityLabel,
 } from "./shared.js";
-import { conversationView } from "./controllers.js";
 
 export function parseWorkspaceTags(value) {
   return Array.from(
@@ -161,6 +160,7 @@ export function renderDetailTags(summary) {
     const span = document.createElement("span");
     span.className = `detail-tag ${cls || ""}`.trim();
     if (sourceKind) span.dataset.sourceKind = sourceKind;
+    if (cls === "tag-provider") span.title = text;
     if (icon) {
       span.append(createTagIcon(icon), document.createTextNode(` ${text}`));
     } else {
@@ -224,7 +224,7 @@ export function syncSessionArchiveButton() {
   );
 }
 // ── 属性面板 ────────────────────────────────────────────────────────────────────
-export function renderPropsPanel(summary, messages = []) {
+export function renderPropsPanel(summary) {
   const basic = [
     { label: "Provider", value: providerLabel(summary) },
     { label: t("source"), value: displaySourceLabel(summary) || "-" },
@@ -281,8 +281,7 @@ export function renderPropsPanel(summary, messages = []) {
   elements.propsContent.innerHTML = "";
   elements.propsContent.append(
     section(t("basicInfo"), basic),
-    section(t("techInfo"), tech),
-    conversationView.createMessageNavSection(messages)
+    section(t("techInfo"), tech)
   );
 }
 
@@ -336,6 +335,14 @@ export function setRawEventCardCollapsed(card, toggleButton, collapsed) {
 export function renderRawEvents(events) {
   elements.rawEvents.innerHTML = "";
 
+  if (!events.length) {
+    const empty = document.createElement("p");
+    empty.className = "hero-copy";
+    empty.textContent = t("noRawEvents");
+    elements.rawEvents.append(empty);
+    return;
+  }
+
   events.forEach((event, idx) => {
     const fragment = elements.rawEventTemplate.content.cloneNode(true);
     const card = fragment.querySelector(".raw-event-card");
@@ -383,18 +390,20 @@ export function updateTabs() {
     conversationActive ? "true" : "false"
   );
 }
-export function setDetailPlaceholder(title, description = "") {
-  const heading = document.createElement("h2");
+export function setDetailPlaceholder(title, description = "", showActions = false) {
+  const heading = elements.detailEmpty.querySelector("h2");
   heading.textContent = title;
-  const copy = document.createElement("p");
+  const copy = elements.detailEmpty.querySelector("p");
   copy.textContent = description;
   copy.classList.toggle("hidden", !description);
-  elements.detailEmpty.replaceChildren(heading, copy);
+  elements.detailEmpty
+    .querySelectorAll(".empty-state-hints, .empty-state-actions")
+    .forEach((element) => element.classList.toggle("hidden", !showActions));
 }
 export function showSelectSessionPlaceholder() {
   detailRequestGate.cancel();
   elements.detailView.classList.add("hidden");
   elements.detailEmpty.classList.remove("hidden");
-  setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
+  setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"), true);
   setPropsPlaceholder(t("selectSession"));
 }

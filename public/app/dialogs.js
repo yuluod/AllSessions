@@ -76,12 +76,23 @@ export function openDeleteDialog({ kind, message = null }) {
       ? sessionWorkspace(sessionKey).removed === true
       : isMessageRemoved(message);
   pendingDeletion = { kind, sessionKey, messageKey, removed };
+  const sessionTitle =
+    kind === "session"
+      ? (state.currentDetail?.summary?.title || "").trim()
+      : "";
+  const namedTitle =
+    sessionTitle.length > 24
+      ? `${sessionTitle.slice(0, 24)}…`
+      : sessionTitle;
   elements.deleteDialogTitle.textContent = t(
     removed
       ? "manageRemovedTitle"
       : kind === "session"
-        ? "removeSessionTitle"
-        : "removeMessageTitle"
+        ? sessionTitle
+          ? "removeSessionTitleNamed"
+          : "removeSessionTitle"
+        : "removeMessageTitle",
+    sessionTitle ? { title: namedTitle } : {}
   );
   elements.deleteDialogDescription.textContent = t(
     kind === "session" ? "removeSessionDesc" : "removeMessageDesc"
@@ -110,10 +121,7 @@ export function refreshDeletionViews() {
   conversationView.renderConversation(
     state.currentDetail.conversation_messages || []
   );
-  renderPropsPanel(
-    state.currentDetail.summary,
-    state.currentDetail.conversation_messages || []
-  );
+  renderPropsPanel(state.currentDetail.summary);
 }
 
 export async function restoreRemovedMessage(message) {

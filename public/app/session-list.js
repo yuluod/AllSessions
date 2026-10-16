@@ -10,7 +10,6 @@ import {
   sessionTimestamp,
 } from "../session-format.js";
 import {
-  MOBILE_LAYOUT_QUERY,
   compactSourceLabel,
   detailRequestGate,
   displaySourceLabel,
@@ -27,7 +26,12 @@ import { loadMoreSessions, loadSessionDetail } from "./data.js";
 
 export function updateBulkToolbar() {
   const count = state.selectedSessionKeys.size;
-  elements.bulkToolbar?.classList.toggle("hidden", count === 0);
+  const selecting = state.bulkSelectionMode || count > 0;
+  elements.sessionList?.classList.toggle("is-selecting", selecting);
+  elements.bulkToolbar?.classList.toggle("hidden", !selecting);
+  const toggle = document.querySelector("#bulk-select-toggle");
+  toggle?.setAttribute("aria-pressed", String(selecting));
+  if (elements.bulkExportBtn) elements.bulkExportBtn.disabled = count === 0;
   if (elements.selectVisibleBtn) {
     elements.selectVisibleBtn.disabled = state.sessions.length === 0;
   }
@@ -36,7 +40,7 @@ export function updateBulkToolbar() {
       ? t("selectedSessionsCount", { n: count })
       : t("noSessionsSelected");
   }
-  elements.bulkActions?.classList.toggle("hidden", count === 0);
+  elements.bulkActions?.classList.toggle("hidden", !selecting);
 }
 
 export function setSessionSelected(sessionKey, selected) {
@@ -113,9 +117,12 @@ export function appendLoadedSessions(added) {
     );
     const lastHeader = headers[headers.length - 1];
     if (lastHeader?.lastElementChild) {
-      lastHeader.lastElementChild.textContent = t("groupSessionCount", {
-        n: counts.get(lastRenderedGroupKey) || 0,
-      });
+      const count = counts.get(lastRenderedGroupKey) || 0;
+      lastHeader.lastElementChild.textContent = String(count);
+      lastHeader.lastElementChild.setAttribute(
+        "aria-label",
+        t("groupSessionCount", { n: count })
+      );
     }
   }
   appendSessionBatch(added, counts);
@@ -130,7 +137,9 @@ export function appendSessionGroupHeader(label, count) {
   const title = document.createElement("span");
   title.textContent = label;
   const meta = document.createElement("span");
-  meta.textContent = t("groupSessionCount", { n: count });
+  meta.className = "session-group-count";
+  meta.textContent = String(count);
+  meta.setAttribute("aria-label", t("groupSessionCount", { n: count }));
   header.append(title, meta);
   elements.sessionList.append(header);
 }
@@ -171,6 +180,7 @@ export function appendSessionItems(sessions) {
     const timeEl = button.querySelector(".session-time");
     timeEl.textContent = formatListTimestamp(sessionTimestamp(session));
     timeEl.title = formatTimestamp(sessionTimestamp(session));
+    timeEl.dateTime = sessionTimestamp(session);
     button.querySelector(".session-provider").textContent =
       providerLabel(session);
     const pathParts = cwdParts(session.cwd);
@@ -200,7 +210,8 @@ export function appendSessionItems(sessions) {
     sourceKindEl.dataset.sourceKind = sourceKind;
     const messageCount = Number(session.message_count || 0);
     const messageCountEl = button.querySelector(".session-message-count");
-    messageCountEl.textContent = String(messageCount);
+    button.querySelector(".session-message-count-value").textContent =
+      String(messageCount);
     messageCountEl.title = t("sessionMessageCount", { n: messageCount });
     messageCountEl.setAttribute(
       "aria-label",
@@ -298,10 +309,6 @@ export function selectSession(key, buttonEl, hit = null) {
   elements.detailView.classList.add("hidden");
   elements.detailEmpty.classList.remove("hidden");
   setDetailPlaceholder(t("loading"));
-  if (window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {
-    if (elements.sidebarFilters) elements.sidebarFilters.open = false;
-    if (elements.projectNav) elements.projectNav.open = false;
-  }
   syncUrl();
   loadSessionDetail(key);
 }

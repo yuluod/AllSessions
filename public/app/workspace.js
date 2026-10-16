@@ -1,9 +1,8 @@
-// 个人工作台数据:旧版 localStorage 迁移、工作区 API、常用筛选与批量导出。
+// 个人工作台数据:旧版 localStorage 迁移、工作区 API 与批量导出。
 import { t } from "../i18n.js";
 import { mapWithConcurrency } from "../async-coordinator.js";
 import { exportSessionCollection } from "../session-export.js";
 import {
-  announce,
   elements,
   fetchJson,
   showError,
@@ -14,14 +13,7 @@ import {
   REMOVED_MESSAGES_KEY,
   REMOVED_SESSIONS_KEY,
 } from "./shared.js";
-import {
-  applyFilterValue,
-  currentFilterValue,
-  syncFilterControls,
-  syncUrl,
-} from "./filters.js";
 import { updateBulkToolbar } from "./session-list.js";
-import { loadSessions, loadStats } from "./data.js";
 
 function readLegacyArchivedIds() {
   try {
@@ -103,83 +95,7 @@ async function migrateLegacyWorkspace() {
 export async function loadWorkspaceState() {
   await migrateLegacyWorkspace();
   state.workspace = await fetchJson("/api/workspace");
-  renderSavedFilters();
   updateBulkToolbar();
-}
-export function renderSavedFilters() {
-  if (!elements.savedFilterList) return;
-  elements.savedFilterList.replaceChildren();
-  const filters = state.workspace.saved_filters || [];
-  if (!filters.length) {
-    const empty = document.createElement("span");
-    empty.className = "saved-filter-empty";
-    empty.textContent = t("noSavedFilters");
-    elements.savedFilterList.append(empty);
-    return;
-  }
-  filters.forEach((saved) => {
-    const chip = document.createElement("span");
-    chip.className = "saved-filter-chip";
-    const apply = document.createElement("button");
-    apply.type = "button";
-    apply.textContent = saved.name;
-    apply.title = t("applySavedFilter", { name: saved.name });
-    apply.addEventListener("click", async () => {
-      applyFilterValue(saved.filter);
-      syncFilterControls();
-      syncUrl();
-      await Promise.all([loadSessions(), loadStats()]);
-    });
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "saved-filter-delete";
-    remove.textContent = "×";
-    remove.title = t("deleteSavedFilter");
-    remove.setAttribute("aria-label", t("deleteSavedFilter"));
-    remove.addEventListener("click", async () => {
-      try {
-        await fetchJson("/api/workspace/saved-filter/delete", {
-          method: "POST",
-          body: { id: saved.id },
-        });
-        state.workspace.saved_filters = (
-          state.workspace.saved_filters || []
-        ).filter((filter) => filter.id !== saved.id);
-        renderSavedFilters();
-        announce(t("savedFilterDeleted"));
-      } catch (error) {
-        showError(`${t("workspaceSaveFailed")}: ${error.message}`);
-      }
-    });
-    chip.append(apply, remove);
-    elements.savedFilterList.append(chip);
-  });
-}
-
-export async function saveCurrentFilter() {
-  const name = elements.savedFilterName?.value.trim();
-  if (!name) {
-    elements.savedFilterName?.focus();
-    return;
-  }
-  elements.saveFilterBtn.disabled = true;
-  try {
-    const saved = await fetchJson("/api/workspace/saved-filter", {
-      method: "POST",
-      body: { name, filter: currentFilterValue() },
-    });
-    state.workspace.saved_filters = [
-      saved,
-      ...(state.workspace.saved_filters || []),
-    ];
-    elements.savedFilterName.value = "";
-    renderSavedFilters();
-    announce(t("savedFilterCreated"));
-  } catch (error) {
-    showError(`${t("workspaceSaveFailed")}: ${error.message}`);
-  } finally {
-    elements.saveFilterBtn.disabled = false;
-  }
 }
 export async function exportSelectedSessions() {
   const keys = Array.from(state.selectedSessionKeys);

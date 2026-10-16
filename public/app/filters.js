@@ -182,9 +182,19 @@ export function updateFacetFilters() {
     return;
   }
 
-  fillSelect(elements.providerFilter, state.facets.providers);
-  fillSelect(elements.dateFilter, state.facets.dates);
-  fillSelect(elements.workspaceTagFilter, state.facets.workspace_tags || []);
+  fillSelect(
+    elements.providerFilter,
+    state.facets.providers,
+    undefined,
+    t("allProviders")
+  );
+  fillSelect(elements.dateFilter, state.facets.dates, undefined, t("allDates"));
+  fillSelect(
+    elements.workspaceTagFilter,
+    state.facets.workspace_tags || [],
+    undefined,
+    t("allTags")
+  );
   renderProjectNav();
 }
 
@@ -377,8 +387,17 @@ export function activeFilterEntries() {
 
 export function renderActiveFilters() {
   if (!elements.activeFilterBar) return;
+  renderWorkspaceStatus();
 
-  const entries = activeFilterEntries();
+  const entries = activeFilterEntries().filter(
+    (entry) =>
+      entry.type !== "source_kind" &&
+      (state.activeView !== "stats" || entry.type !== "search")
+  );
+  elements.resetFilters?.classList.toggle(
+    "hidden",
+    !activeFilterEntries().length
+  );
   elements.activeFilterBar.innerHTML = "";
   if (!entries.length) {
     return;

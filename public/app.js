@@ -1,7 +1,8 @@
 // 应用入口:装配各模块、绑定全局事件并执行初始化与首屏加载。
-import { t, getLang, updateStaticI18n } from "./i18n.js";
-import { initTheme, toggleScheme } from "./theme-manager.js";
+import { t, getLang, setLang, updateStaticI18n } from "./i18n.js";
+import { initTheme, setScheme } from "./theme-manager.js";
 import { initPaneLayout } from "./pane-layout.js";
+import { initReadingToolbar } from "./reading-toolbar.js";
 import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
 import { bindTauriSessionEvents } from "./session-events.js";
@@ -66,8 +67,6 @@ import {
 import {
   exportSelectedSessions,
   loadWorkspaceState,
-  renderSavedFilters,
-  saveCurrentFilter,
   updateSessionWorkspace,
 } from "./app/workspace.js";
 import {
@@ -80,11 +79,8 @@ import {
   loadWorkspaceDiagnostics,
 } from "./app/data.js";
 import {
-  defaultSourceRailCollapsed,
-  setSourceRailCollapsed,
   syncSchemeToggle,
   syncShortcutHints,
-  syncSourceRailToggle,
   renderWorkspaceStatus,
 } from "./app/status.js";
 import {
@@ -94,7 +90,6 @@ import {
   moveSessionSelection,
   openFocusedSession,
   refreshSessions,
-  returnHome,
 } from "./app/navigation.js";
 import {
   bindTauriSettingsEvent,
@@ -106,10 +101,10 @@ import {
 
 initTheme();
 initPaneLayout();
+initReadingToolbar();
 
 export function rerenderLocalizedContent() {
   syncSchemeToggle();
-  syncSourceRailToggle();
   syncSessionRoot();
   updateFacetFilters();
   syncFilterControls();
@@ -129,20 +124,16 @@ export function rerenderLocalizedContent() {
     syncSessionWorkspaceControls(state.currentDetail.summary);
     syncSessionArchiveButton();
     syncSessionDeleteButton();
-    renderPropsPanel(
-      state.currentDetail.summary,
-      state.currentDetail.conversation_messages
-    );
+    renderPropsPanel(state.currentDetail.summary);
     conversationView.renderConversation(
       state.currentDetail.conversation_messages
     );
     renderRawEvents(state.currentDetail.raw_events);
     updateTabs();
   } else {
-    setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"));
+    setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"), true);
     setPropsPlaceholder(t("selectSession"));
   }
-  renderSavedFilters();
   updateBulkToolbar();
   if (state.stats) {
     renderStats(state.stats, elements);
@@ -288,37 +279,57 @@ async function loadInitialWorkspace() {
 async function initialize() {
   restoreFromUrl();
   maintenanceController.bind();
-  setSourceRailCollapsed(defaultSourceRailCollapsed());
   syncInspectorLayout();
   syncSchemeToggle();
-  elements.schemeToggle?.addEventListener("click", toggleScheme);
+  elements.schemeOptions.forEach((button) => {
+    button.addEventListener("click", () =>
+      setScheme(button.dataset.schemeOption)
+    );
+  });
+  elements.statusLanguage?.addEventListener("click", () => {
+    setLang(getLang() === "zh" ? "en" : "zh");
+    rerenderLocalizedContent();
+  });
   document.addEventListener("allsessions:themechange", syncSchemeToggle);
-  elements.railToggle?.addEventListener("click", () => {
-    const collapsed = !elements.appLayout?.classList.contains("rail-collapsed");
-    setSourceRailCollapsed(collapsed, { persist: true });
+  // 弹层菜单互斥：同一时刻只开一个；点击菜单外部时全部收起。
+  const popoverMenus = [...document.querySelectorAll(".bar-menu")].filter(
+    (menu) => menu instanceof HTMLDetailsElement
+  );
+  for (const menu of popoverMenus) {
+    menu.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !menu.open) return;
+      menu.open = false;
+      menu.querySelector("summary")?.focus();
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      for (const other of popoverMenus) {
+        if (other !== menu) other.open = false;
+      }
+    });
+  }
+  document.addEventListener("click", (event) => {
+    if (event.target instanceof Element && !event.target.closest(".bar-menu")) {
+      for (const menu of popoverMenus) menu.open = false;
+    }
   });
-  window.matchMedia(MOBILE_LAYOUT_QUERY).addEventListener("change", () => {
-    setSourceRailCollapsed(defaultSourceRailCollapsed());
-  });
+  // 空态快捷操作：直达搜索与统计视图。
+  document
+    .getElementById("empty-search-action")
+    ?.addEventListener("click", () => {
+      elements.searchInput?.focus();
+      elements.searchInput?.select();
+    });
+  document
+    .getElementById("empty-stats-action")
+    ?.addEventListener("click", () => {
+      document.querySelector('[data-sidebar-tab="stats"]')?.click();
+    });
   window
     .matchMedia(INSPECTOR_DRAWER_QUERY)
     .addEventListener("change", syncInspectorLayout);
-
-  elements.homeLink?.addEventListener("click", (event) => {
-    if (
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    )
-      return;
-    event.preventDefault();
-    returnHome().catch((error) => {
-      console.error(error);
-      showError(`${t("loadListFailed")}: ${error.message}`);
-    });
-  });
 
   elements.sourceRailItems.forEach((button) => {
     button.addEventListener("click", () => {
@@ -400,14 +411,13 @@ async function initialize() {
     await Promise.all([loadSessions(), loadStats()]);
   });
 
-  elements.saveFilterBtn?.addEventListener("click", saveCurrentFilter);
-  elements.savedFilterName?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void saveCurrentFilter();
-    }
-  });
-
+  document
+    .querySelector("#bulk-select-toggle")
+    ?.addEventListener("click", () => {
+      state.bulkSelectionMode = !state.bulkSelectionMode;
+      if (!state.bulkSelectionMode) state.selectedSessionKeys.clear();
+      renderSessionList();
+    });
   elements.selectVisibleBtn?.addEventListener("click", () => {
     const visible = visibleSessions();
     const allSelected =
@@ -418,6 +428,7 @@ async function initialize() {
     );
   });
   elements.clearSelectionBtn?.addEventListener("click", () => {
+    state.bulkSelectionMode = false;
     state.selectedSessionKeys.clear();
     renderSessionList();
   });
@@ -428,7 +439,6 @@ async function initialize() {
     state.filters.source_kind = "codex_archived";
     if (elements.showCodexArchivedToggle)
       elements.showCodexArchivedToggle.checked = true;
-    if (elements.sidebarFilters) elements.sidebarFilters.open = true;
     syncFilterControls();
     syncUrl();
     await activateWorkspaceView("list");
@@ -507,10 +517,6 @@ async function initialize() {
     setInspectorOpen(false);
     elements.sessionInspectorToggle?.focus();
   });
-
-  if (window.matchMedia(MOBILE_LAYOUT_QUERY).matches && elements.projectNav) {
-    elements.projectNav.open = false;
-  }
 
   const workspaceTabs = Array.from(document.querySelectorAll(".sidebar-tab"));
   workspaceTabs.forEach((tab) => {
@@ -662,6 +668,7 @@ async function initialize() {
         break;
       case "focus-search":
         event.preventDefault();
+        if (state.activeView !== "list") void activateWorkspaceView("list");
         elements.searchInput?.focus();
         elements.searchInput?.select();
         break;
@@ -726,6 +733,35 @@ async function initialize() {
   updateStaticI18n();
   document.documentElement.lang = getLang() === "zh" ? "zh-CN" : "en";
   syncShortcutHints();
+  // 消息导航浮动目录：收起态即右缘进度轨；展开/收起偏好持久化，默认收起。
+  // 放在 updateStaticI18n 之后，避免静态文案覆盖运行状态文案。
+  const NAV_OUTLINE_KEY = "allsessions_nav_outline";
+  const applyMessageOutlineCollapsed = (collapsed) => {
+    const outline = elements.messageOutline;
+    if (!outline) return;
+    outline.classList.toggle("collapsed", collapsed);
+    outline
+      .closest(".conversation-body")
+      ?.classList.toggle("outline-collapsed", collapsed);
+    const toggle = elements.messageOutlineToggle;
+    if (toggle) {
+      toggle.textContent = t(
+        collapsed ? "messageNav" : "messageOutlineCollapse"
+      );
+      toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      toggle.title = t(
+        collapsed ? "messageOutlineExpand" : "messageOutlineCollapse"
+      );
+    }
+  };
+  applyMessageOutlineCollapsed(
+    localStorage.getItem(NAV_OUTLINE_KEY) !== "expanded"
+  );
+  elements.messageOutlineToggle?.addEventListener("click", () => {
+    const collapsed = !elements.messageOutline.classList.contains("collapsed");
+    localStorage.setItem(NAV_OUTLINE_KEY, collapsed ? "collapsed" : "expanded");
+    applyMessageOutlineCollapsed(collapsed);
+  });
   maintenanceController.renderLocalized();
 
   settingsController.bind();

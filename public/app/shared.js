@@ -6,12 +6,9 @@ import { createLatestRequestGate } from "../async-coordinator.js";
 export const PAGE_LIMIT = 50;
 export const MAX_BULK_EXPORT_SESSIONS = 20;
 export const BULK_EXPORT_CONCURRENCY = 4;
-export const PROJECT_PREVIEW_LIMIT = 12;
+export const PROJECT_PREVIEW_LIMIT = 6;
 export const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
 export const INSPECTOR_DRAWER_QUERY = "(max-width: 1640px)";
-export const COMPACT_WORKSPACE_QUERY =
-  "(min-width: 761px) and (max-width: 1640px)";
-export const SOURCE_RAIL_COLLAPSED_KEY = "allsessions_source_rail_collapsed";
 export { SOURCE_RAIL_AGENTS } from "../source-rail.js";
 export const ARCHIVE_KEY = "codex_viewer_archived_sessions";
 export const REMOVED_SESSIONS_KEY = "allsessions_removed_sessions";
@@ -65,6 +62,7 @@ export const state = {
     storage: null,
   },
   selectedSessionKeys: new Set(),
+  bulkSelectionMode: false,
 };
 
 export function isMessageRemoved(message) {
@@ -112,10 +110,7 @@ export function visibilityLabel(session) {
 
 export const elements = {
   appLayout: document.querySelector(".app-layout"),
-  homeLink: document.querySelector("#home-link"),
-  railToggle: document.querySelector("#rail-toggle"),
   sidebarLeft: document.querySelector(".sidebar-left"),
-  sidebarFilters: document.querySelector("#sidebar-filters"),
   projectNav: document.querySelector(".project-nav"),
   sessionRoot: document.querySelector("#session-root"),
   sessionCount: document.querySelector("#session-count"),
@@ -126,9 +121,6 @@ export const elements = {
   dateFilter: document.querySelector("#date-filter"),
   workspaceTagFilter: document.querySelector("#workspace-tag-filter"),
   favoriteOnlyToggle: document.querySelector("#favorite-only-toggle"),
-  savedFilterName: document.querySelector("#saved-filter-name"),
-  saveFilterBtn: document.querySelector("#save-filter-btn"),
-  savedFilterList: document.querySelector("#saved-filter-list"),
   searchInput: document.querySelector("#search-input"),
   searchShortcut: document.querySelector("#search-shortcut"),
   resetFilters: document.querySelector("#reset-filters"),
@@ -168,6 +160,9 @@ export const elements = {
   showContextToggle: document.querySelector("#show-context-toggle"),
   conversationDescToggle: document.querySelector("#conversation-desc-toggle"),
   messageNavInlineList: document.querySelector("#message-nav-inline-list"),
+  messageOutline: document.querySelector("#message-outline"),
+  messageOutlineList: document.querySelector("#message-outline-list"),
+  messageOutlineToggle: document.querySelector("#message-outline-toggle"),
   conversationList: document.querySelector("#conversation-list"),
   rawEvents: document.querySelector("#raw-events"),
   conversationTab: document.querySelector("#conversation-tab"),
@@ -179,6 +174,7 @@ export const elements = {
   sessionArchiveBtn: document.querySelector("#session-archive-btn"),
   sessionFavoriteBtn: document.querySelector("#session-favorite-btn"),
   sessionOrganizeMenu: document.querySelector("#session-organize-menu"),
+  detailMoreMenu: document.querySelector("#detail-more-menu"),
   sessionTagsInput: document.querySelector("#session-tags-input"),
   sessionNoteInput: document.querySelector("#session-note-input"),
   saveSessionWorkspaceBtn: document.querySelector(
@@ -196,7 +192,7 @@ export const elements = {
   toolsDashboard: document.querySelector("#tools-dashboard"),
   openCodexArchiveBtn: document.querySelector("#open-codex-archive-btn"),
   mobileBackBtn: document.querySelector("#mobile-back-btn"),
-  schemeToggle: document.querySelector("#scheme-toggle"),
+  schemeOptions: Array.from(document.querySelectorAll("[data-scheme-option]")),
   settingsToggle: document.querySelector("#settings-toggle"),
   settingsDialog: document.querySelector("#settings-dialog"),
   settingsCloseBtn: document.querySelector("#settings-close-btn"),

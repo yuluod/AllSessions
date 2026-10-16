@@ -57,6 +57,8 @@ export async function fetchJson(
     const code = errorCode(error);
     const raw = errorMessage(error);
     const translated = code && translateCode ? translateCode(code, raw) : null;
+    // 兜底文案保持硬编码：本模块需在 Node 测试环境可直接导入，
+    // 不能引入依赖 DOM 的 i18n.js；正常路径由 formatError/translateCode 提供本地化文案。
     const message =
       translated || raw || (formatError ? formatError(500) : "请求失败");
     const wrapped = new Error(message, { cause: error });

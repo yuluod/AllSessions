@@ -94,7 +94,7 @@ export async function loadSessionDetail(
     syncSessionWorkspaceControls(detail.summary);
     syncSessionArchiveButton();
     syncSessionDeleteButton();
-    renderPropsPanel(detail.summary, detail.conversation_messages);
+    renderPropsPanel(detail.summary);
     conversationView.renderConversation(detail.conversation_messages);
     document
       .querySelector("#search-full-session")
@@ -175,8 +175,8 @@ export async function loadSessions({
       .querySelector("#search-sort")
       ?.classList.toggle("hidden", !state.searchQuery);
     document
-      .querySelector("#list-sort-label")
-      ?.classList.toggle("hidden", Boolean(state.searchQuery));
+      .querySelector("#search-results-toolbar")
+      ?.classList.toggle("hidden", !state.searchQuery);
     const searchCount = document.querySelector("#search-result-count");
     if (searchCount)
       searchCount.textContent = state.searchQuery

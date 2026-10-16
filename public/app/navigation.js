@@ -13,7 +13,12 @@ import {
   showError,
   state,
 } from "./shared.js";
-import { resetFilterState, syncFilterControls, syncUrl } from "./filters.js";
+import {
+  renderActiveFilters,
+  resetFilterState,
+  syncFilterControls,
+  syncUrl,
+} from "./filters.js";
 import { setInspectorOpen, setPropsPlaceholder } from "./detail-view.js";
 import {
   loadFacets,
@@ -34,8 +39,6 @@ export async function returnHome() {
   state.roleFilter = "";
   setPropsPlaceholder(t("selectSession"));
   setInspectorOpen(false);
-  if (elements.sidebarFilters) elements.sidebarFilters.open = false;
-  if (elements.projectNav) elements.projectNav.open = false;
   syncFilterControls();
   syncUrl();
   await activateWorkspaceView("list");
@@ -45,13 +48,17 @@ export async function returnHome() {
 
 export async function activateWorkspaceView(panel) {
   state.activeView = panel;
+  // 复用同一组筛选控件，统计页也明确展示当前条件，避免隐藏筛选影响结果。
+  const filterControls = document.querySelector("#session-query-controls");
+  const filterSlot = document.querySelector(
+    panel === "stats" ? "#stats-filter-slot" : "#session-filter-slot"
+  );
+  if (filterControls && filterSlot) filterSlot.append(filterControls);
+  const visibilityMenu = document.querySelector("#list-filter-menu");
+  if (visibilityMenu) visibilityMenu.open = false;
   document.body.dataset.view = panel;
   if (elements.appLayout) elements.appLayout.dataset.view = panel;
   if (elements.sidebarLeft) elements.sidebarLeft.dataset.activePanel = panel;
-  if (panel === "stats") {
-    if (elements.projectNav) elements.projectNav.open = true;
-    if (elements.sidebarFilters) elements.sidebarFilters.open = true;
-  }
 
   document.querySelectorAll(".sidebar-tab").forEach((tab) => {
     const active = tab.dataset.sidebarTab === panel;
@@ -74,6 +81,7 @@ export async function activateWorkspaceView(panel) {
   const isList = panel === "list";
   if (!isList) setInspectorOpen(false);
   codexRollbackDashboard?.classList.add("hidden");
+  renderActiveFilters();
   renderWorkspaceStatus();
 }
 export function isEditableShortcutTarget(target) {

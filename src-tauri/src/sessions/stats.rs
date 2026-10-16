@@ -45,6 +45,9 @@ impl SessionStore {
                 }
                 insert_string(&mut project.providers, &summary["model_provider"]);
                 insert_string(&mut project.source_kinds, &summary["source_kind"]);
+                if let Some(kind) = summary["source_kind"].as_str().filter(|value| !value.is_empty()) {
+                    *project.source_counts.entry(kind.into()).or_insert(0) += 1;
+                }
             }
         }
         let mut project_values = projects
@@ -179,6 +182,7 @@ struct ProjectFacet {
     last_timestamp: String,
     providers: BTreeSet<String>,
     source_kinds: BTreeSet<String>,
+    source_counts: BTreeMap<String, u64>,
 }
 
 /// 按日聚合的会话数与 token 用量（input + output + cached）。
@@ -189,6 +193,6 @@ struct DayUsage {
 }
 impl ProjectFacet {
     fn value(self) -> Value {
-        json!({ "name": self.name, "path": self.path, "count": self.count, "last_timestamp": self.last_timestamp, "providers": self.providers, "source_kinds": self.source_kinds })
+        json!({ "name": self.name, "path": self.path, "count": self.count, "last_timestamp": self.last_timestamp, "providers": self.providers, "source_kinds": self.source_kinds, "source_counts": self.source_counts })
     }
 }

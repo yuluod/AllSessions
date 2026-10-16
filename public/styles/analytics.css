@@ -5,7 +5,7 @@
   grid-auto-rows: max-content;
   align-content: start;
   gap: 16px;
-  min-height: calc(100dvh - var(--header-h) - 38px);
+  min-height: 100%;
   padding: 18px;
 }
 

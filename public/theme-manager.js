@@ -10,7 +10,7 @@ export const SCHEMES = ["light", "dark", "system"];
 
 const THEME_KEY = "allsessions_theme";
 const SCHEME_KEY = "allsessions_scheme";
-const DEFAULT_THEME = "greenbar";
+const DEFAULT_THEME = "standard";
 const DEFAULT_SCHEME = "system";
 
 let theme = DEFAULT_THEME;

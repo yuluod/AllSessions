@@ -20,14 +20,21 @@ export function formatTimestamp(value) {
   }).format(date);
 }
 
-export function formatListTimestamp(value) {
+export function formatListTimestamp(value, now = new Date()) {
   if (!value) return t("unknownTime");
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
   const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  if (localDateKey(date) === localDateKey(now)) return time;
+  const day = new Intl.DateTimeFormat(locale(), {
+    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+    month: "short",
+    day: "numeric",
+  }).format(date);
+  return `${day} ${time}`;
 }
 
 export function sessionTimestamp(session) {
@@ -88,9 +95,14 @@ function createOption(value, label) {
   return option;
 }
 
-export function fillSelect(select, values, labelFor = (value) => value) {
+export function fillSelect(
+  select,
+  values,
+  labelFor = (value) => value,
+  allLabel = t("all")
+) {
   const currentValue = select.value;
-  select.replaceChildren(createOption("", t("all")));
+  select.replaceChildren(createOption("", allLabel));
   values.forEach((value) =>
     select.append(createOption(value, labelFor(value)))
   );

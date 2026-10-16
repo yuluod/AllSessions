@@ -1,6 +1,6 @@
 :root {
-  --rail-w: 220px;
-  --list-w: clamp(400px, 29vw, 520px);
+  --rail-w: 260px;
+  --list-w: clamp(400px, 32vw, 500px);
   --sidebar-w: var(--list-w);
   --inspector-w: 280px;
   --header-h: 66px;
@@ -99,9 +99,25 @@ kbd {
 .page-shell {
   display: grid;
   width: 100%;
-  min-height: 100dvh;
+  height: 100dvh;
   margin: 0;
-  padding: 12px;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 10px;
+  padding: 0;
+  overflow: hidden;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.page-shell > .sidebar-left {
+  grid-column: 1;
+  /* overflow 容器不传递固有宽度，列宽显式锁定（pane-resizer 可调）。 */
+  width: var(--rail-w);
+  min-width: 0;
+}
+
+.workspace-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100dvh;
+  grid-column: 2;
 }

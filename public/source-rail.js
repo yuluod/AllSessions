@@ -23,16 +23,17 @@ export function sourceAgentForKind(sourceKind) {
   return sourceKind || "all";
 }
 
-export function sourceRailItemState(sourceKind, activeKind, diagnostics) {
+export function sourceRailItemState(sourceKind, activeKind, diagnostics, projectCounts = null) {
   const group = sourceAgentForKind(sourceKind);
+  // 选中项目时按项目内的来源计数展示，未选中时回退到全局索引诊断。
+  const kindCount = (kind) =>
+    projectCounts
+      ? Number(projectCounts[kind] || 0)
+      : Number(diagnostics?.sources?.[kind]?.indexed_sessions || 0);
   const counts = new Map(
     SOURCE_RAIL_AGENTS.map(({ agent, kinds }) => [
       agent,
-      kinds.reduce(
-        (total, kind) =>
-          total + Number(diagnostics?.sources?.[kind]?.indexed_sessions || 0),
-        0
-      ),
+      kinds.reduce((total, kind) => total + kindCount(kind), 0),
     ])
   );
   const count =
@@ -40,9 +41,10 @@ export function sourceRailItemState(sourceKind, activeKind, diagnostics) {
       ? [...counts.values()].reduce((total, count) => total + count, 0)
       : counts.get(group) || 0;
   const active = group === sourceAgentForKind(activeKind);
+  const hasData = Boolean(diagnostics || projectCounts);
   return {
-    count: diagnostics ? String(count) : "-",
+    count: hasData ? String(count) : "-",
     active,
-    empty: Boolean(diagnostics) && group !== "all" && !active && count === 0,
+    empty: hasData && group !== "all" && !active && count === 0,
   };
 }

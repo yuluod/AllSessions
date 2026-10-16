@@ -21,32 +21,27 @@
   }
 }
 
+/* 宽屏：消息导航用阅读区浮动目录/进度轨，工具栏下拉退场。 */
+@media (min-width: 1041px) {
+  .conversation-toolbar .message-nav-inline {
+    display: none;
+  }
+}
+
 /* 中等宽度：保留双栏浏览 */
 @media (max-width: 1640px) {
   .app-layout {
-    grid-template-columns: var(--rail-w) var(--list-w) minmax(0, 1fr);
-  }
-
-  .app-layout.rail-collapsed {
     grid-template-columns: var(--list-w) minmax(0, 1fr);
   }
 
-  .app-layout[data-view="stats"] {
-    grid-template-columns: var(--rail-w) minmax(0, 1fr);
-  }
-
+  .app-layout[data-view="stats"],
   .app-layout[data-view="tools"] {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .app-layout.rail-collapsed[data-view="stats"],
-  .app-layout.rail-collapsed[data-view="tools"] {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .props-panel {
     position: fixed;
-    top: calc(var(--header-h) + 24px);
+    top: 12px;
     right: 12px;
     z-index: calc(var(--z-sticky) + 5);
     display: none;
@@ -67,72 +62,49 @@
   .message-nav-inline {
     display: block;
   }
-
-  .toolbar {
-    grid-template-columns: auto auto minmax(270px, 1fr) auto;
-    gap: 8px;
-  }
-
-  .toolbar-copy {
-    display: none;
-  }
-
-  .meta-chip-wide {
-    display: none;
-  }
 }
 
 @media (max-width: 1040px) {
   :root {
-    --rail-w: 220px;
+    --rail-w: 200px;
     --list-w: 330px;
-    --header-h: 114px;
   }
 
   .pane-resizer {
     display: none;
   }
 
-  .toolbar {
-    grid-template-areas:
-      "brand views right"
-      "search search search";
-    grid-template-columns: auto 1fr auto;
-  }
-
-  .toolbar-brand {
-    grid-area: brand;
-  }
-
-  .toolbar-workspace {
-    grid-area: views;
-    justify-self: center;
-  }
-
-  .toolbar-center {
-    grid-area: search;
-  }
-
-  .toolbar-right {
-    grid-area: right;
-  }
-
   .sidebar-left,
   .session-pane,
-  .props-panel {
-    top: calc(var(--header-h) + 12px);
-    height: calc(100dvh - var(--header-h) - var(--status-h) - 34px);
-    max-height: calc(100dvh - var(--header-h) - var(--status-h) - 34px);
+  .props-panel,
+  .detail-shell {
+    --detail-edge: 12px;
   }
 
   .detail-shell,
   .stats-dashboard,
   .tools-dashboard,
   #codex-rollback-dashboard {
-    height: calc(100dvh - var(--header-h) - var(--status-h) - 34px);
+    min-height: 0;
   }
 
-  .status-bar__keys > span:nth-child(2) {
+  .stats-dashboard,
+  .tools-dashboard,
+  #codex-rollback-dashboard {
+    overflow-y: auto;
+  }
+
+  /* 窄窗口：阅读区宽度有限，浮动目录退场，消息导航回到工具栏下拉。 */
+  .message-outline {
+    display: none;
+  }
+
+  /* 窄窗口优先保住过滤条件与常用快捷键；数据根目录与视图切换提示让位。 */
+  .status-bar__root {
+    display: none;
+  }
+
+  .status-bar__keys > span:nth-child(3) {
     display: none;
   }
 
@@ -164,45 +136,34 @@
 }
 
 @media (max-width: 760px) {
-  :root {
-    --header-h: 0px;
-  }
-
   .page-shell {
     display: block;
+    overflow: visible;
     padding: 7px 7px 92px;
   }
 
-  .toolbar {
-    top: 5px;
-    grid-template-areas:
-      "brand right"
-      "search search";
-    grid-template-columns: minmax(0, 1fr) auto;
-    padding: 9px;
+  .workspace-column {
+    min-height: 0;
   }
 
-  .toolbar h1 {
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .detail-view {
+    height: auto;
+    grid-template-rows: auto auto;
   }
 
-  .toolbar-right .meta-chip {
-    display: none;
+  .detail-body {
+    overflow: visible;
+    padding-right: 0;
   }
 
-  .workspace-tabs {
+  .sidebar-view-tabs {
     position: fixed;
     right: 7px;
     bottom: calc(var(--status-h) + 14px);
     left: 7px;
     z-index: calc(var(--z-sticky) + 2);
-    width: auto;
     box-shadow: var(--shadow-raised);
-  }
-
-  .toolbar-workspace {
-    display: contents;
+    background: var(--surface);
   }
 
   .sidebar-tab {
@@ -217,22 +178,15 @@
     padding-right: 10px;
   }
 
+  .search-overlay {
+    padding: 24px 10px 0;
+  }
+
   .app-layout,
   .app-layout[data-view="stats"],
-  .app-layout[data-view="tools"],
-  .app-layout.rail-collapsed,
-  .app-layout.rail-collapsed[data-view="stats"],
-  .app-layout.rail-collapsed[data-view="tools"] {
+  .app-layout[data-view="tools"] {
     grid-template-columns: 1fr;
     margin-top: 7px;
-  }
-
-  .app-layout.rail-collapsed:not([data-view="tools"]) .sidebar-left {
-    display: flex;
-  }
-
-  .rail-toggle {
-    display: none;
   }
 
   .sidebar-left,
@@ -245,6 +199,10 @@
 
   .sidebar-left {
     min-height: 0;
+  }
+
+  .page-shell > .sidebar-left {
+    width: auto;
   }
 
   .props-panel.is-open {
@@ -300,7 +258,12 @@
     right: 7px;
     bottom: 7px;
     left: 7px;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: 6px;
+  }
+
+  .status-bar__filter > span {
+    display: none;
   }
 
   .status-bar__keys {
@@ -407,19 +370,6 @@
 }
 
 @media (max-width: 500px) {
-  .toolbar-logo {
-    width: 26px;
-    height: 26px;
-  }
-
-  .toolbar-heading {
-    max-width: 190px;
-  }
-
-  .filter-bar {
-    grid-template-columns: 1fr;
-  }
-
   .detail-topbar-right {
     display: grid;
   }
@@ -477,7 +427,7 @@
   }
 
   .status-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .status-bar__filter {

@@ -52,6 +52,19 @@ test("会话列表优先展示最近活动时间", () => {
   );
 });
 
-test("日期分组中的会话行只显示时间", () => {
-  assert.match(formatListTimestamp("2026-08-24T14:51:00Z"), /^\d{2}:\d{2}$/);
+test("列表当天显示时间，跨日期与跨年份补充日期", () => {
+  const now = new Date(2026, 9, 16, 12, 0);
+  assert.equal(
+    formatListTimestamp(new Date(2026, 9, 16, 9, 5).toISOString(), now),
+    "09:05"
+  );
+  assert.match(
+    formatListTimestamp(new Date(2026, 9, 15, 23, 16).toISOString(), now),
+    /10月15日 23:16/
+  );
+  assert.match(
+    formatListTimestamp(new Date(2025, 9, 15, 23, 16).toISOString(), now),
+    /2025.*10月15日 23:16/
+  );
+  assert.equal(formatListTimestamp("bad-date", now), "bad-date");
 });

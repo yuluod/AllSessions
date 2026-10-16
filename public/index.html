@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="greenbar" data-scheme="light">
+<html lang="zh-CN" data-theme="standard" data-scheme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,7 +14,7 @@
           "pixel",
         ];
         const schemes = ["light", "dark", "system"];
-        let theme = "greenbar";
+        let theme = "standard";
         let scheme = "system";
         try {
           const savedTheme = localStorage.getItem("allsessions_theme");
@@ -41,188 +41,104 @@
   </head>
   <body>
     <div class="page-shell">
-      <header class="job-header toolbar">
-        <a
-          id="home-link"
-          class="toolbar-brand"
-          href="/"
-          aria-label="返回首页"
-          data-i18n="home"
+      <aside
+        id="source-rail"
+        class="rail sidebar-left app-sidebar"
+        data-active-panel="list"
+      >
+        <div class="sidebar-topbar">
+          <img
+            class="sidebar-brand-logo"
+            src="/assets/allsessions-icon-v3.png"
+            alt="AllSessions"
+            width="22"
+            height="22"
+          />
+          <strong class="sidebar-brand-name">AllSessions</strong>
+        </div>
+        <nav
+          class="sidebar-tabs sidebar-view-tabs"
+          aria-label="工作区视图"
+          data-i18n="workspaceViews"
           data-i18n-attr="aria-label"
         >
-          <img
-            class="toolbar-logo"
-            src="/assets/allsessions-icon-v3.png"
-            alt=""
-            width="30"
-            height="30"
-          />
-          <div class="toolbar-heading">
-            <h1 data-i18n="title">AllSessions</h1>
-            <p class="toolbar-copy" data-i18n="description">
-              筛选、切换并查看本机 AI 会话历史。
-            </p>
-          </div>
-        </a>
-        <div class="toolbar-workspace">
-          <nav
-            class="sidebar-tabs workspace-tabs"
-            aria-label="工作区视图"
-            data-i18n="workspaceViews"
+          <button
+            class="sidebar-tab active"
+            data-sidebar-tab="list"
+            type="button"
+            aria-current="page"
+            data-i18n="sessionList"
             data-i18n-attr="aria-label"
-          >
-            <button
-              class="sidebar-tab active"
-              data-sidebar-tab="list"
-              type="button"
-              aria-current="page"
-              data-i18n="sessionList"
-            >
-              会话列表
-            </button>
-            <button
-              class="sidebar-tab"
-              data-sidebar-tab="stats"
-              type="button"
-              data-i18n="statsOverview"
-            >
-              统计概览
-            </button>
-            <button
-              class="sidebar-tab"
-              data-sidebar-tab="tools"
-              type="button"
-              data-i18n="tools"
-            >
-              工具
-            </button>
-          </nav>
-          <button
-            id="rail-toggle"
-            class="ghost-button rail-toggle"
-            type="button"
-            aria-controls="source-rail"
-            aria-expanded="true"
-            aria-label="收起来源栏"
-            title="收起来源栏"
+            data-i18n-title="sessionList"
+            aria-label="会话"
+            title="会话"
           >
             <svg
-              aria-hidden="true"
               viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <path d="M9 4v16M6 8h.01M6 12h.01M6 16h.01" />
-            </svg>
-          </button>
-        </div>
-        <div class="toolbar-center">
-          <div class="search-box">
-            <input
-              id="search-input"
-              type="search"
-              placeholder="搜索会话内容 / 路径 / 关键词..."
-              data-i18n-placeholder="searchPlaceholder"
-            />
-            <kbd id="search-shortcut" class="search-kbd" aria-hidden="true"
-              >Ctrl K</kbd
-            >
-          </div>
-        </div>
-        <div class="toolbar-right">
-          <div class="meta-chip">
-            <strong id="session-count" class="meta-strong">-</strong>
-            <span class="meta-label" data-i18n="metaSessionCount"
-              >Sessions</span
-            >
-          </div>
-          <div class="meta-chip meta-chip-wide">
-            <span class="local-indicator" aria-hidden="true"></span>
-            <span id="session-root" class="meta-value" data-i18n="loading"
-              >加载中...</span
-            >
-          </div>
-          <button
-            id="scheme-toggle"
-            class="ghost-button scheme-toggle"
-            type="button"
-            aria-label="切换至深色模式"
-            title="切换至深色模式"
-          >
-            <svg
-              class="scheme-icon scheme-icon-sun"
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
+              width="20"
+              height="20"
+              fill="currentColor"
               aria-hidden="true"
             >
-              <circle cx="12" cy="12" r="3.5" />
               <path
-                d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"
+                d="M6 3h12a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4H9l-5.2 3a.6.6 0 0 1-.9-.6V18A4 4 0 0 1 2 15V7a4 4 0 0 1 4-4Z"
               />
-            </svg>
-            <svg
-              class="scheme-icon scheme-icon-moon"
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
               <path
-                d="M20.5 15.1A8.5 8.5 0 0 1 8.9 3.5a8.5 8.5 0 1 0 11.6 11.6Z"
+                d="M7 9h10M7 13h7"
+                fill="none"
+                stroke="var(--surface)"
+                stroke-width="1.7"
+                stroke-linecap="round"
               />
             </svg>
           </button>
           <button
-            id="settings-toggle"
-            class="ghost-button settings-toggle"
+            class="sidebar-tab"
+            data-sidebar-tab="stats"
             type="button"
-            aria-haspopup="dialog"
-            aria-controls="settings-dialog"
-            data-i18n="settings"
-            data-i18n-attr="title"
-            title="设置"
+            data-i18n="statsOverview"
+            data-i18n-attr="aria-label"
+            data-i18n-title="statsOverview"
+            aria-label="统计"
+            title="统计"
           >
             <svg
               viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              width="16"
-              height="16"
+              width="20"
+              height="20"
+              fill="currentColor"
               aria-hidden="true"
             >
-              <circle cx="12" cy="12" r="3" />
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.24.6.86 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.65 0-1.27.4-1.51 1z"
-              />
+              <rect x="3" y="12" width="4" height="9" rx="1.2" />
+              <rect x="10" y="3" width="4" height="18" rx="1.2" />
+              <rect x="17" y="8" width="4" height="13" rx="1.2" />
             </svg>
-            <span data-i18n="settings">设置</span>
           </button>
-        </div>
-      </header>
-
-      <main class="app-layout" data-view="list">
-        <aside
-          id="source-rail"
-          class="rail sidebar-left"
-          data-active-panel="list"
-        >
+          <button
+            class="sidebar-tab"
+            data-sidebar-tab="tools"
+            type="button"
+            data-i18n="tools"
+            data-i18n-attr="aria-label"
+            data-i18n-title="tools"
+            aria-label="工具"
+            title="工具"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <rect x="3" y="3" width="7" height="7" rx="1.8" />
+              <rect x="14" y="3" width="7" height="7" rx="1.8" />
+              <rect x="3" y="14" width="7" height="7" rx="1.8" />
+              <rect x="14" y="14" width="7" height="7" rx="1.8" />
+            </svg>
+          </button>
+        </nav>
+        <div class="rail-scroll">
           <nav
             class="rail__group rail__sources"
             aria-label="会话来源"
@@ -267,7 +183,13 @@
                 <span>Claude Code</span>
                 <strong data-source-count="claude">-</strong>
               </button>
-              <button class="source-tree__item" type="button" data-source-kind="claude_cowork" data-source-agent="claude" aria-pressed="false">
+              <button
+                class="source-tree__item"
+                type="button"
+                data-source-kind="claude_cowork"
+                data-source-agent="claude"
+                aria-pressed="false"
+              >
                 <span class="source-tree__dot" aria-hidden="true"></span>
                 <span>Claude Cowork</span>
                 <strong data-source-count="claude_cowork">-</strong>
@@ -396,189 +318,269 @@
             </div>
           </nav>
 
-          <details id="sidebar-filters" class="sidebar-filters">
-            <summary>
-              <span data-i18n="filterOptions">筛选条件</span>
-              <span class="summary-hint" data-i18n="filterOptionsHint"
-                >Provider · 标签 · 日期</span
-              >
-            </summary>
-            <div class="sidebar-filter-content">
-              <div class="sidebar-filter-actions">
-                <button
-                  id="refresh-btn"
-                  class="ghost-button"
-                  type="button"
-                  data-i18n="refresh"
-                >
-                  刷新
-                </button>
-                <button
-                  id="reset-filters"
-                  class="ghost-button"
-                  type="button"
-                  data-i18n="clear"
-                >
-                  清空
-                </button>
-              </div>
-              <div class="filter-bar">
-                <label class="field">
-                  <span>Provider</span>
-                  <select id="provider-filter">
-                    <option value="" data-i18n="all">全部</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span data-i18n="date">日期</span>
-                  <select id="date-filter">
-                    <option value="" data-i18n="all">全部</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span data-i18n="workspaceTagFilter">标签</span>
-                  <select id="workspace-tag-filter">
-                    <option value="" data-i18n="all">全部</option>
-                  </select>
-                </label>
-              </div>
-              <details class="visibility-panel">
-                <summary>
-                  <span data-i18n="visibility">可见性</span>
-                  <span class="summary-hint" data-i18n="visibilityHint"
-                    >归档与隐藏会话</span
-                  >
-                </summary>
-                <div class="visibility-options">
-                  <label class="archive-toggle-label">
-                    <input id="show-archived-toggle" type="checkbox" />
-                    <span data-i18n="showArchived">显示已归档会话</span>
-                  </label>
-                  <label class="archive-toggle-label">
-                    <input id="show-codex-archived-toggle" type="checkbox" />
-                    <span data-i18n="showCodexArchived"
-                      >显示 Codex 归档会话</span
-                    >
-                  </label>
-                  <label class="archive-toggle-label">
-                    <input id="show-hidden-toggle" type="checkbox" />
-                    <span data-i18n="showHidden">显示隐藏会话</span>
-                  </label>
-                  <label class="archive-toggle-label">
-                    <input id="show-removed-toggle" type="checkbox" />
-                    <span data-i18n="showRemoved">显示已移除内容</span>
-                  </label>
-                </div>
-              </details>
-              <div class="saved-filter-section">
-                <div class="saved-filter-form">
-                  <input
-                    id="saved-filter-name"
-                    type="text"
-                    maxlength="60"
-                    data-i18n-placeholder="savedFilterNamePlaceholder"
-                    placeholder="为当前筛选命名"
-                  />
-                  <button
-                    id="save-filter-btn"
-                    class="ghost-button"
-                    type="button"
-                    data-i18n="saveCurrentFilter"
-                  >
-                    保存筛选
-                  </button>
-                </div>
-                <div
-                  id="saved-filter-list"
-                  class="saved-filter-list"
-                  aria-label="常用筛选"
-                  data-i18n="savedFilters"
-                  data-i18n-attr="aria-label"
-                ></div>
-              </div>
-            </div>
-          </details>
-
-          <details class="project-nav rail__group">
-            <summary id="project-nav-title">
-              <span data-i18n="projects">项目</span>
-              <span class="summary-hint" data-i18n="recentProjects"
-                >最近使用</span
-              >
-            </summary>
-            <div id="project-list" class="project-list"></div>
-          </details>
-        </aside>
-
-        <section
-          class="session-pane sidebar-body"
-          data-sidebar-panel="list"
-          data-view-panel="list"
-          aria-label="会话列表"
-          data-i18n="listAriaLabel"
-          data-i18n-attr="aria-label"
-        >
-          <div
-            class="pane-resizer"
-            data-pane-resizer="rail"
-            role="separator"
-            aria-orientation="vertical"
-            tabindex="0"
-            aria-label="调整来源栏宽度"
-            data-i18n="resizeRailPane"
+          <nav
+            class="rail__group project-nav"
+            aria-label="项目"
+            data-i18n="projects"
             data-i18n-attr="aria-label"
-          ></div>
-          <div class="session-list-shell">
-            <div id="bulk-toolbar" class="bulk-toolbar hidden">
-              <span
-                id="bulk-selection-count"
-                class="bulk-selection-count"
-                aria-live="polite"
-                data-i18n="noSessionsSelected"
-                >未选择会话</span
-              >
-              <div id="bulk-actions" class="bulk-actions hidden">
-                <select
-                  id="bulk-export-format"
-                  aria-label="批量导出格式"
-                  data-i18n="bulkExportFormat"
+          >
+            <div class="rail__group-header">
+              <strong data-i18n="projects">项目</strong>
+              <span data-i18n="recentProjects">最近使用</span>
+            </div>
+            <div id="project-list" class="project-list"></div>
+          </nav>
+        </div>
+        <div class="sidebar-footer">
+          <button
+            id="settings-toggle"
+            class="ghost-button sidebar-settings-button"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="settings-dialog"
+            data-i18n="settings"
+            data-i18n-attr="aria-label"
+            data-i18n-title="settings"
+            title="设置"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              width="15"
+              height="15"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.24.6.86 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.65 0-1.27.4-1.51 1z"
+              />
+            </svg>
+          </button>
+          <div
+            class="scheme-control"
+            role="group"
+            aria-label="明暗模式"
+            data-i18n="scheme"
+            data-i18n-attr="aria-label"
+          >
+            <button
+              type="button"
+              data-scheme-option="light"
+              aria-pressed="false"
+              data-i18n="schemeLight"
+              data-i18n-attr="aria-label"
+              data-i18n-title="schemeLight"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path
+                  d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              data-scheme-option="dark"
+              aria-pressed="false"
+              data-i18n="schemeDark"
+              data-i18n-attr="aria-label"
+              data-i18n-title="schemeDark"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M20.5 15.1A8.5 8.5 0 0 1 8.9 3.5a8.5 8.5 0 1 0 11.6 11.6Z"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              data-scheme-option="system"
+              aria-pressed="false"
+              data-i18n="schemeSystem"
+              data-i18n-attr="aria-label"
+              data-i18n-title="schemeSystem"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="13" rx="2" />
+                <path d="M8 21h8m-4-4v4" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="workspace-column">
+        <main class="app-layout" data-view="list">
+          <section
+            class="session-pane sidebar-body"
+            data-sidebar-panel="list"
+            data-view-panel="list"
+            aria-label="会话列表"
+            data-i18n="listAriaLabel"
+            data-i18n-attr="aria-label"
+          >
+            <div
+              class="pane-resizer"
+              data-pane-resizer="rail"
+              role="separator"
+              aria-orientation="vertical"
+              tabindex="0"
+              aria-label="调整来源栏宽度"
+              data-i18n="resizeRailPane"
+              data-i18n-attr="aria-label"
+            ></div>
+            <div class="session-list-shell">
+              <div class="session-pane-heading">
+                <h2 data-i18n="sessionList">会话</h2>
+                <div class="meta-chip meta-chip--list session-total">
+                  <strong id="session-count" class="meta-strong">-</strong>
+                  <span class="meta-label" data-i18n="metaSessionCount"
+                    >Sessions</span
+                  >
+                </div>
+                <button
+                  id="bulk-select-toggle"
+                  class="ghost-button bulk-select-toggle"
+                  type="button"
+                  aria-label="批量导出"
+                  title="批量导出"
+                  aria-pressed="false"
+                  data-i18n="batchExport"
                   data-i18n-attr="aria-label"
+                  data-i18n-title="batchExport"
                 >
-                  <option value="json">JSON</option>
-                  <option value="markdown">Markdown</option>
-                </select>
-                <label
-                  class="bulk-redact-option"
-                  title="隐藏本地路径和会话标识"
-                  data-i18n-title="redactExportHint"
-                >
-                  <input id="bulk-redact-toggle" type="checkbox" />
-                  <span data-i18n="redact">脱敏</span>
-                </label>
-                <button
-                  id="bulk-export-btn"
-                  class="ghost-button bulk-export-button"
-                  type="button"
-                  title="导出所选"
-                  data-i18n="export"
-                  data-i18n-title="exportSelected"
-                >
-                  导出
-                </button>
-                <button
-                  id="clear-selection-btn"
-                  class="ghost-button"
-                  type="button"
-                  title="取消选择"
-                  data-i18n="cancel"
-                  data-i18n-title="clearSelection"
-                >
-                  取消
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="17"
+                    height="17"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M12 3v12m-4-4 4 4 4-4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"
+                    />
+                  </svg>
                 </button>
               </div>
-            </div>
-            <div class="session-list-header">
-              <div class="session-list-header__primary">
+              <div class="session-search">
+                <div class="search-box">
+                  <input
+                    id="search-input"
+                    type="search"
+                    placeholder="搜索会话内容 / 路径 / 关键词..."
+                    data-i18n-placeholder="searchPlaceholder"
+                  />
+                  <kbd
+                    id="search-shortcut"
+                    class="search-kbd"
+                    aria-hidden="true"
+                    >Ctrl K</kbd
+                  >
+                </div>
+              </div>
+              <div id="session-filter-slot">
+                <div id="session-query-controls" class="session-query-controls">
+                  <div class="session-filter-fields">
+                    <label class="session-filter-field">
+                      <span data-i18n="date">日期</span>
+                      <select id="date-filter">
+                        <option value="" data-i18n="all">全部</option>
+                      </select>
+                    </label>
+                    <label class="session-filter-field">
+                      <span>Provider</span>
+                      <select id="provider-filter">
+                        <option value="" data-i18n="all">全部</option>
+                      </select>
+                    </label>
+                    <label class="session-filter-field">
+                      <span data-i18n="workspaceTagFilter">标签</span>
+                      <select id="workspace-tag-filter">
+                        <option value="" data-i18n="all">全部</option>
+                      </select>
+                    </label>
+                    <button
+                      id="favorite-only-toggle"
+                      class="ghost-button session-list-header__favorite"
+                      type="button"
+                      aria-pressed="false"
+                      aria-label="只看收藏"
+                      title="只看收藏"
+                      data-i18n="favoriteOnly"
+                      data-i18n-attr="aria-label"
+                      data-i18n-title="favoriteOnly"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        width="13"
+                        height="13"
+                      >
+                        <path
+                          d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.7"
+                        />
+                      </svg>
+                      <span data-i18n="favoriteOnly">只看收藏</span>
+                    </button>
+                  </div>
+                  <details
+                    id="list-filter-menu"
+                    class="bar-menu session-visibility-menu"
+                  >
+                    <summary data-i18n="visibility">显示范围</summary>
+                    <div class="bar-menu-body list-filter-panel">
+                      <div class="visibility-options">
+                        <label class="archive-toggle-label">
+                          <input id="show-archived-toggle" type="checkbox" />
+                          <span data-i18n="showArchived">显示已归档会话</span>
+                        </label>
+                        <label class="archive-toggle-label">
+                          <input
+                            id="show-codex-archived-toggle"
+                            type="checkbox"
+                          />
+                          <span data-i18n="showCodexArchived"
+                            >显示 Codex 归档会话</span
+                          >
+                        </label>
+                        <label class="archive-toggle-label">
+                          <input id="show-hidden-toggle" type="checkbox" />
+                          <span data-i18n="showHidden">显示隐藏会话</span>
+                        </label>
+                        <label class="archive-toggle-label">
+                          <input id="show-removed-toggle" type="checkbox" />
+                          <span data-i18n="showRemoved">显示已移除内容</span>
+                        </label>
+                      </div>
+                    </div>
+                  </details>
+                  <div class="session-active-filters">
+                    <div
+                      id="active-filter-bar"
+                      class="active-filter-bar"
+                      aria-live="polite"
+                    ></div>
+                    <button
+                      id="reset-filters"
+                      class="ghost-button"
+                      type="button"
+                      data-i18n="clear"
+                    >
+                      清空
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div id="bulk-toolbar" class="bulk-toolbar hidden">
                 <button
                   id="select-visible-btn"
                   class="ghost-button session-select-visible"
@@ -587,211 +589,314 @@
                 >
                   选择当前页
                 </button>
-                <span id="list-sort-label" data-i18n="sortDesc"
-                  >按时间倒序</span
+                <span
+                  id="bulk-selection-count"
+                  class="bulk-selection-count"
+                  aria-live="polite"
+                  data-i18n="noSessionsSelected"
+                  >未选择会话</span
                 >
-                <select
-                  id="search-sort"
-                  class="hidden"
-                  aria-label="搜索排序"
-                  data-i18n="searchSort"
-                  data-i18n-attr="aria-label"
-                >
-                  <option value="relevance" data-i18n="searchRelevance">
-                    相关度
-                  </option>
-                  <option value="recent" data-i18n="searchRecent">
-                    最近活动
-                  </option>
-                </select>
-                <span id="search-result-count" role="status"></span>
+                <div id="bulk-actions" class="bulk-actions hidden">
+                  <select
+                    id="bulk-export-format"
+                    aria-label="批量导出格式"
+                    data-i18n="bulkExportFormat"
+                    data-i18n-attr="aria-label"
+                  >
+                    <option value="json">JSON</option>
+                    <option value="markdown">Markdown</option>
+                  </select>
+                  <label
+                    class="bulk-redact-option"
+                    title="隐藏本地路径和会话标识"
+                    data-i18n-title="redactExportHint"
+                  >
+                    <input id="bulk-redact-toggle" type="checkbox" />
+                    <span data-i18n="redact">脱敏</span>
+                  </label>
+                  <button
+                    id="bulk-export-btn"
+                    class="ghost-button bulk-export-button"
+                    type="button"
+                    title="导出所选"
+                    data-i18n="export"
+                    data-i18n-title="exportSelected"
+                  >
+                    导出
+                  </button>
+                  <button
+                    id="clear-selection-btn"
+                    class="ghost-button"
+                    type="button"
+                    title="取消选择"
+                    data-i18n="cancel"
+                    data-i18n-title="clearSelection"
+                  >
+                    取消
+                  </button>
+                </div>
               </div>
               <div
-                id="active-filter-bar"
-                class="active-filter-bar"
-                aria-live="polite"
-              ></div>
-              <button
-                id="favorite-only-toggle"
-                class="ghost-button session-list-header__favorite"
-                type="button"
-                aria-pressed="false"
-                aria-label="只看收藏"
-                title="只看收藏"
-                data-i18n="favoriteOnly"
-                data-i18n-attr="aria-label"
-                data-i18n-title="favoriteOnly"
+                id="search-results-toolbar"
+                class="session-list-header hidden"
               >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  width="13"
-                  height="13"
-                >
-                  <path
-                    d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                  />
-                </svg>
-                <span data-i18n="favoriteOnly">只看收藏</span>
-              </button>
+                <div class="session-list-header__primary">
+                  <select
+                    id="search-sort"
+                    class="hidden"
+                    aria-label="搜索排序"
+                    data-i18n="searchSort"
+                    data-i18n-attr="aria-label"
+                  >
+                    <option value="relevance" data-i18n="searchRelevance">
+                      相关度
+                    </option>
+                    <option value="recent" data-i18n="searchRecent">
+                      最近活动
+                    </option>
+                  </select>
+                  <span id="search-result-count" role="status"></span>
+                </div>
+              </div>
+              <div
+                id="session-list"
+                class="session-list"
+                role="listbox"
+                aria-label="会话列表"
+                data-i18n="listAriaLabel"
+                data-i18n-attr="aria-label"
+              ></div>
             </div>
+          </section>
+
+          <section class="content-main workspace-main">
             <div
-              id="session-list"
-              class="session-list"
-              role="listbox"
-              aria-label="会话列表"
-              data-i18n="listAriaLabel"
+              class="pane-resizer"
+              data-pane-resizer="list"
+              role="separator"
+              aria-orientation="vertical"
+              tabindex="0"
+              aria-label="调整会话列表宽度"
+              data-i18n="resizeListPane"
               data-i18n-attr="aria-label"
             ></div>
-          </div>
-        </section>
-
-        <section class="content-main workspace-main">
-          <div
-            class="pane-resizer"
-            data-pane-resizer="list"
-            role="separator"
-            aria-orientation="vertical"
-            tabindex="0"
-            aria-label="调整会话列表宽度"
-            data-i18n="resizeListPane"
-            data-i18n-attr="aria-label"
-          ></div>
-          <div
-            class="detail-shell detail-pane"
-            id="detail-panel"
-            data-view-panel="list"
-          >
-            <div id="detail-empty" class="empty-state">
-              <h2 data-i18n="selectSession">选择一个会话</h2>
-              <p data-i18n="selectSessionDesc">
-                左侧会显示所有已解析会话。选中后，详情和属性会在这里展示。
-              </p>
-            </div>
-
-            <div id="detail-view" class="detail-view hidden">
-              <div class="detail-topbar">
-                <div class="detail-heading">
-                  <button
-                    id="mobile-back-btn"
-                    class="mobile-back-button"
-                    type="button"
-                    data-i18n="backToSessions"
-                  >
-                    ← 返回会话
-                  </button>
-                  <h2 id="detail-title">-</h2>
-                  <div id="detail-tags" class="detail-tags"></div>
+            <div
+              class="detail-shell detail-pane"
+              id="detail-panel"
+              data-view-panel="list"
+            >
+              <div id="detail-empty" class="empty-state">
+                <h2 data-i18n="selectSession">选择一个会话</h2>
+                <p data-i18n="selectSessionDesc">
+                  左侧会显示所有已解析会话。选中后，详情和属性会在这里展示。
+                </p>
+                <div class="empty-state-hints" aria-hidden="true">
+                  <span class="empty-hint">
+                    <kbd>⌘/Ctrl K</kbd>
+                    <span data-i18n="keySearch">搜索</span>
+                  </span>
+                  <span class="empty-hint">
+                    <kbd>J</kbd>/<kbd>K</kbd>
+                    <span data-i18n="keyMove">移动</span>
+                  </span>
                 </div>
-                <div class="detail-topbar-right">
+                <div class="empty-state-actions">
                   <button
-                    id="session-favorite-btn"
-                    class="ghost-button session-favorite-button"
+                    id="empty-search-action"
+                    class="ghost-button"
                     type="button"
-                    aria-pressed="false"
-                    aria-label="收藏"
-                    title="收藏"
-                    data-i18n="favorite"
-                    data-i18n-attr="aria-label"
-                    data-i18n-title="favorite"
+                    data-i18n="search"
                   >
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      width="15"
-                      height="15"
-                    >
-                      <path
-                        d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
+                    搜索会话
                   </button>
-                  <details
-                    id="session-organize-menu"
-                    class="session-organize-menu"
+                  <button
+                    id="empty-stats-action"
+                    class="ghost-button"
+                    type="button"
+                    data-i18n="statsOverview"
                   >
-                    <summary data-i18n="organizeSession">整理</summary>
-                    <div class="session-organize-body">
-                      <label>
-                        <span data-i18n="workspaceTags">标签</span>
-                        <input
-                          id="session-tags-input"
-                          type="text"
-                          maxlength="840"
-                          data-i18n-placeholder="workspaceTagsPlaceholder"
-                          placeholder="使用逗号分隔"
-                        />
-                      </label>
-                      <label>
-                        <span data-i18n="workspaceNote">备注</span>
-                        <textarea
-                          id="session-note-input"
-                          maxlength="10000"
-                          rows="4"
-                          data-i18n-placeholder="workspaceNotePlaceholder"
-                          placeholder="仅保存在 AllSessions 中"
-                        ></textarea>
-                      </label>
-                      <p
-                        class="workspace-data-hint"
-                        data-i18n="workspaceDataHint"
+                    查看统计
+                  </button>
+                </div>
+              </div>
+
+              <div id="detail-view" class="detail-view hidden">
+                <div class="detail-topbar">
+                  <div class="detail-heading">
+                    <button
+                      id="mobile-back-btn"
+                      class="mobile-back-button"
+                      type="button"
+                      data-i18n="backToSessions"
+                    >
+                      ← 返回会话
+                    </button>
+                    <h2 id="detail-title">-</h2>
+                    <div id="detail-tags" class="detail-tags"></div>
+                  </div>
+                  <div class="detail-topbar-right">
+                    <button
+                      id="session-favorite-btn"
+                      class="ghost-button session-favorite-button"
+                      type="button"
+                      aria-pressed="false"
+                      aria-label="收藏"
+                      title="收藏"
+                      data-i18n="favorite"
+                      data-i18n-attr="aria-label"
+                      data-i18n-title="favorite"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        width="15"
+                        height="15"
                       >
-                        收藏、标签、备注和移除状态属于 AllSessions
-                        用户数据，不会写入 Agent 原始记录。
-                      </p>
-                      <div class="session-organize-actions">
+                        <path
+                          d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.7"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <details
+                      id="session-organize-menu"
+                      class="session-organize-menu"
+                    >
+                      <summary data-i18n="organizeSession">整理</summary>
+                      <div class="session-organize-body">
+                        <label>
+                          <span data-i18n="workspaceTags">标签</span>
+                          <input
+                            id="session-tags-input"
+                            type="text"
+                            maxlength="840"
+                            data-i18n-placeholder="workspaceTagsPlaceholder"
+                            placeholder="使用逗号分隔"
+                          />
+                        </label>
+                        <label>
+                          <span data-i18n="workspaceNote">备注</span>
+                          <textarea
+                            id="session-note-input"
+                            maxlength="10000"
+                            rows="4"
+                            data-i18n-placeholder="workspaceNotePlaceholder"
+                            placeholder="仅保存在 AllSessions 中"
+                          ></textarea>
+                        </label>
+                        <p
+                          class="workspace-data-hint"
+                          data-i18n="workspaceDataHint"
+                        >
+                          收藏、标签、备注和移除状态属于 AllSessions
+                          用户数据，不会写入 Agent 原始记录。
+                        </p>
+                        <div class="session-organize-actions">
+                          <button
+                            id="save-session-workspace-btn"
+                            class="ghost-button"
+                            type="button"
+                            data-i18n="saveOrganization"
+                          >
+                            保存整理
+                          </button>
+                          <button
+                            id="reveal-source-btn"
+                            class="ghost-button"
+                            type="button"
+                            data-i18n="revealSourceFile"
+                          >
+                            显示来源文件
+                          </button>
+                          <button
+                            id="reveal-project-btn"
+                            class="ghost-button"
+                            type="button"
+                            data-i18n="revealProjectFolder"
+                          >
+                            显示项目目录
+                          </button>
+                        </div>
+                      </div>
+                    </details>
+                    <button
+                      id="resume-session-btn"
+                      class="ghost-button"
+                      type="button"
+                      data-i18n="resumeSession"
+                      data-i18n-attr="aria-label"
+                      data-i18n-title="resumeSession"
+                    >
+                      <span data-i18n="resumeSessionShort">终端恢复</span>
+                    </button>
+                    <button
+                      id="session-inspector-toggle"
+                      class="ghost-button inspector-toggle"
+                      type="button"
+                      aria-controls="props-panel"
+                      aria-expanded="false"
+                      data-i18n="sessionInspector"
+                    >
+                      信息
+                    </button>
+
+                    <details class="export-menu">
+                      <summary data-i18n="export">导出</summary>
+                      <div class="export-actions">
+                        <span
+                          class="export-redact-hint"
+                          data-i18n="exportScopeHint"
+                        >
+                          导出已加载内容；长会话可能省略中间消息或截断正文，文件中会注明。
+                        </span>
+                        <label class="export-redact-option">
+                          <input id="export-redact-toggle" type="checkbox" />
+                          <span data-i18n="redactExport">脱敏导出</span>
+                        </label>
+                        <span
+                          class="export-redact-hint"
+                          data-i18n="redactExportHint"
+                        >
+                          隐藏本地路径和会话标识
+                        </span>
                         <button
-                          id="save-session-workspace-btn"
+                          id="export-md-btn"
                           class="ghost-button"
                           type="button"
-                          data-i18n="saveOrganization"
+                          data-i18n-title="exportMd"
                         >
-                          保存整理
+                          ↓ MD
                         </button>
                         <button
-                          id="reveal-source-btn"
+                          id="export-json-btn"
                           class="ghost-button"
                           type="button"
-                          data-i18n="revealSourceFile"
+                          data-i18n-title="exportJson"
                         >
-                          显示来源文件
-                        </button>
-                        <button
-                          id="reveal-project-btn"
-                          class="ghost-button"
-                          type="button"
-                          data-i18n="revealProjectFolder"
-                        >
-                          显示项目目录
-                        </button>
-                        <button
-                          id="resume-session-btn"
-                          class="ghost-button"
-                          type="button"
-                          data-i18n="resumeSession"
-                        >
-                          在终端恢复
+                          ↓ JSON
                         </button>
                       </div>
-                    </div>
-                  </details>
-                  <button
-                    id="session-inspector-toggle"
-                    class="ghost-button inspector-toggle"
-                    type="button"
-                    aria-controls="props-panel"
-                    aria-expanded="false"
-                    data-i18n="sessionInspector"
-                  >
-                    信息
-                  </button>
+                    </details>
+                    <button
+                      id="session-archive-btn"
+                      class="ghost-button"
+                      type="button"
+                      data-i18n="archive"
+                    >
+                      归档
+                    </button>
+                    <button
+                      id="session-delete-btn"
+                      class="ghost-button session-delete-button"
+                      type="button"
+                      data-i18n="deleteSession"
+                    >
+                      删除
+                    </button>
+                  </div>
                   <div
                     class="tabs"
                     role="tablist"
@@ -825,848 +930,917 @@
                       原始事件
                     </button>
                   </div>
-                  <details class="export-menu">
-                    <summary data-i18n="export">导出</summary>
-                    <div class="export-actions">
-                      <span
-                        class="export-redact-hint"
-                        data-i18n="exportScopeHint"
+                </div>
+
+                <div class="detail-body">
+                  <section
+                    id="conversation-tab"
+                    class="detail-tab"
+                    role="tabpanel"
+                    aria-labelledby="conversation-tab-button"
+                  >
+                    <div class="conversation-toolbar">
+                      <div class="detail-search-box">
+                        <div class="detail-search-field">
+                          <svg
+                            class="detail-search-icon"
+                            viewBox="0 0 24 24"
+                            width="15"
+                            height="15"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linecap="round"
+                            aria-hidden="true"
+                          >
+                            <circle cx="10.5" cy="10.5" r="6.5" />
+                            <path d="m16 16 4 4" />
+                          </svg>
+                          <input
+                            id="detail-search-input"
+                            type="search"
+                            placeholder="搜索当前会话..."
+                            data-i18n-placeholder="detailSearchPlaceholder"
+                          />
+                          <span id="detail-search-count" role="status"></span>
+                          <button
+                            id="search-previous"
+                            type="button"
+                            class="search-nav-button"
+                            data-i18n="searchPrevious"
+                            data-i18n-attr="aria-label"
+                            data-i18n-title="searchPrevious"
+                            aria-label="上一处"
+                            title="上一处"
+                            disabled
+                          >
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              width="13"
+                              height="13"
+                            >
+                              <path
+                                d="m6 14.5 6-6 6 6"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                              />
+                            </svg>
+                          </button>
+                          <button
+                            id="search-next"
+                            type="button"
+                            class="search-nav-button"
+                            data-i18n="searchNext"
+                            data-i18n-attr="aria-label"
+                            data-i18n-title="searchNext"
+                            aria-label="下一处"
+                            title="下一处"
+                            disabled
+                          >
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              width="13"
+                              height="13"
+                            >
+                              <path
+                                d="m6 9.5 6 6 6-6"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                        <button
+                          id="search-full-session"
+                          type="button"
+                          class="ghost-button hidden"
+                          data-i18n="searchFullSession"
+                        >
+                          返回会话概览
+                        </button>
+                        <details
+                          id="message-nav-inline"
+                          class="bar-menu message-nav-inline"
+                        >
+                          <summary>
+                            <svg
+                              viewBox="0 0 24 24"
+                              width="14"
+                              height="14"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="1.8"
+                              stroke-linecap="round"
+                              aria-hidden="true"
+                            >
+                              <path
+                                d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"
+                              /></svg
+                            ><span data-i18n="messageNav">消息导航</span>
+                          </summary>
+                          <div
+                            id="message-nav-inline-list"
+                            class="bar-menu-body message-nav-list"
+                          ></div>
+                        </details>
+                      </div>
+                      <div class="conversation-display-options">
+                        <div class="conversation-display-options-body">
+                          <div
+                            class="role-filter"
+                            id="role-filter"
+                            role="group"
+                            aria-label="消息角色筛选"
+                            data-i18n="messageRoleFilter"
+                            data-i18n-attr="aria-label"
+                          >
+                            <button
+                              class="role-filter-btn active"
+                              data-role=""
+                              type="button"
+                              aria-pressed="true"
+                              data-i18n="all"
+                            >
+                              全部
+                            </button>
+                            <button
+                              class="role-filter-btn"
+                              data-role="user"
+                              type="button"
+                              aria-pressed="false"
+                              data-i18n="roleUser"
+                            >
+                              用户
+                            </button>
+                            <button
+                              class="role-filter-btn"
+                              data-role="assistant"
+                              type="button"
+                              aria-pressed="false"
+                              data-i18n="roleAssistant"
+                            >
+                              助手
+                            </button>
+                            <button
+                              class="role-filter-btn"
+                              data-role="developer"
+                              type="button"
+                              aria-pressed="false"
+                              data-i18n="roleDeveloper"
+                            >
+                              开发者
+                            </button>
+                          </div>
+                          <label class="tool-toggle-label">
+                            <input
+                              id="show-tools-toggle"
+                              type="checkbox"
+                              checked
+                            />
+                            <span data-i18n="conversationTools"
+                              >显示工具调用</span
+                            >
+                          </label>
+                          <label class="tool-toggle-label">
+                            <input
+                              id="show-context-toggle"
+                              type="checkbox"
+                              checked
+                            />
+                            <span data-i18n="conversationContext"
+                              >显示系统上下文</span
+                            >
+                          </label>
+                          <label class="tool-toggle-label">
+                            <input
+                              id="conversation-desc-toggle"
+                              type="checkbox"
+                            />
+                            <span data-i18n="conversationNewestFirst"
+                              >按时间倒序</span
+                            >
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="conversation-body has-outline">
+                      <div id="conversation-list" class="conversation-list"></div>
+                      <aside
+                        id="message-outline"
+                        class="message-outline"
+                        aria-label="消息目录"
+                        data-i18n="messageOutlineLabel"
+                        data-i18n-attr="aria-label"
                       >
-                        导出已加载内容；长会话可能省略中间消息或截断正文，文件中会注明。
-                      </span>
-                      <label class="export-redact-option">
-                        <input id="export-redact-toggle" type="checkbox" />
-                        <span data-i18n="redactExport">脱敏导出</span>
-                      </label>
-                      <span
-                        class="export-redact-hint"
-                        data-i18n="redactExportHint"
-                      >
-                        隐藏本地路径和会话标识
-                      </span>
+                        <div class="message-outline-head">
+                          <span data-i18n="messageNav">消息导航</span>
+                          <button
+                            id="message-outline-toggle"
+                            class="ghost-button message-outline-toggle"
+                            type="button"
+                            aria-expanded="true"
+                          >
+                            收起目录
+                          </button>
+                        </div>
+                        <div
+                          id="message-outline-list"
+                          class="message-nav-list"
+                        ></div>
+                        <div class="message-outline-rail"></div>
+                      </aside>
+                    </div>
+                  </section>
+
+                  <section
+                    id="raw-tab"
+                    class="detail-tab hidden"
+                    role="tabpanel"
+                    aria-labelledby="raw-tab-button"
+                    aria-hidden="true"
+                  >
+                    <div id="raw-events" class="raw-events"></div>
+                  </section>
+                </div>
+              </div>
+            </div>
+
+            <button
+              id="reading-back-top"
+              class="reading-back-top hidden"
+              type="button"
+              aria-label="返回顶部"
+              title="返回顶部"
+              data-i18n="backToTop"
+              data-i18n-attr="aria-label"
+              data-i18n-title="backToTop"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="19"
+                height="19"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M5 5h14m-7 15V9m-5 5 5-5 5 5" />
+              </svg>
+            </button>
+            <div
+              class="stats-dashboard hidden"
+              id="stats-dashboard"
+              data-view-panel="stats"
+            >
+              <header class="stats-header">
+                <div>
+                  <h2 data-i18n="statsDashboardTitle">统计概览</h2>
+                  <p data-i18n="statsDashboardSummary">
+                    快速了解会话规模、活跃趋势与使用分布。
+                  </p>
+                </div>
+                <span class="stats-range" data-i18n="statsDashboardRange"
+                  >全部时间 · 最近 14 个活跃日</span
+                >
+              </header>
+              <div id="stats-filter-slot"></div>
+              <div class="stats-surface">
+                <div class="stats-metrics" id="stats-metrics"></div>
+                <div class="stats-charts" id="stats-charts">
+                  <div class="chart-card">
+                    <h3 data-i18n="statsTrend">会话趋势</h3>
+                    <div class="chart-body" id="trend-chart-body"></div>
+                  </div>
+                  <div class="chart-card">
+                    <h3 data-i18n="statsAgentDist">按来源分布</h3>
+                    <div class="chart-body" id="agent-chart-body"></div>
+                  </div>
+                </div>
+                <div class="chart-card stats-heatmap-card">
+                  <h3 data-i18n="statsTokenHeatmap">Token 热力图</h3>
+                  <div
+                    class="chart-body token-heatmap-body"
+                    id="token-heatmap-body"
+                  ></div>
+                </div>
+                <div class="stats-grid" id="stats-grid"></div>
+              </div>
+            </div>
+
+            <div
+              class="tools-dashboard hidden"
+              id="tools-dashboard"
+              data-view-panel="tools"
+            >
+              <aside class="tools-sidebar">
+                <div class="tools-sidebar-heading">
+                  <strong data-i18n="toolsNavTitle">工具列表</strong>
+                  <span data-i18n="toolsNavHint">本地只读与维护工具</span>
+                </div>
+                <nav
+                  class="tools-nav"
+                  aria-label="工具导航"
+                  data-i18n="toolsNav"
+                  data-i18n-attr="aria-label"
+                >
+                  <button
+                    class="tools-nav-item active"
+                    type="button"
+                    data-tools-target="#codex-archive-tool-card"
+                    aria-current="true"
+                  >
+                    <span data-i18n="codexArchiveViewer">Codex 归档查看</span>
+                  </button>
+                  <button
+                    class="tools-nav-item"
+                    type="button"
+                    data-tools-target="#codex-rollback-tool-card"
+                  >
+                    <span data-i18n="codexRollbackTitle">Codex 修复回滚</span>
+                  </button>
+                  <button
+                    class="tools-nav-item"
+                    type="button"
+                    data-tools-target="#codex-migration-card"
+                  >
+                    <span data-i18n="codexProviderMigration"
+                      >Codex Provider 可见性修复</span
+                    >
+                  </button>
+                </nav>
+              </aside>
+              <div class="tools-content">
+                <div
+                  class="tools-panel active"
+                  data-tools-panel="codex-archive-tool-card"
+                >
+                  <section
+                    id="codex-archive-tool-card"
+                    class="tool-card readonly-tool-card tool-card-compact"
+                    aria-labelledby="codex-archive-viewer-title"
+                  >
+                    <div class="tool-card-header">
+                      <div>
+                        <span
+                          class="tool-mode-badge"
+                          data-mode="readonly"
+                          data-i18n="readonlyTool"
+                          >归档来源</span
+                        >
+                        <h2
+                          id="codex-archive-viewer-title"
+                          data-i18n="codexArchiveViewer"
+                        >
+                          Codex 归档查看
+                        </h2>
+                        <p data-i18n="codexArchiveViewerDesc">
+                          显示 Codex
+                          自身归档的会话；不会移动文件或恢复归档状态，永久删除仍会修改原始记录。
+                        </p>
+                      </div>
                       <button
-                        id="export-md-btn"
+                        id="open-codex-archive-btn"
                         class="ghost-button"
                         type="button"
-                        data-i18n-title="exportMd"
+                        data-i18n="viewCodexArchived"
                       >
-                        ↓ MD
-                      </button>
-                      <button
-                        id="export-json-btn"
-                        class="ghost-button"
-                        type="button"
-                        data-i18n-title="exportJson"
-                      >
-                        ↓ JSON
+                        在会话页查看归档
                       </button>
                     </div>
-                  </details>
+                  </section>
+                </div>
+                <div
+                  class="tools-panel"
+                  data-tools-panel="codex-rollback-tool-card"
+                >
+                  <section
+                    id="codex-rollback-tool-card"
+                    class="tool-card tool-card-compact"
+                    aria-labelledby="codex-rollback-launcher-title"
+                  >
+                    <div class="tool-card-header">
+                      <div>
+                        <span
+                          class="tool-mode-badge"
+                          data-mode="maintenance"
+                          data-i18n="recoveryTool"
+                          >恢复工具</span
+                        >
+                        <h2
+                          id="codex-rollback-launcher-title"
+                          data-i18n="codexRollbackTitle"
+                        >
+                          Codex 修复回滚
+                        </h2>
+                        <p data-i18n="codexRollbackDesc">
+                          从修复时生成的备份恢复旧
+                          Provider。仅在修复后出现异常时使用。
+                        </p>
+                      </div>
+                      <button
+                        id="open-codex-rollback-btn"
+                        class="ghost-button"
+                        type="button"
+                        data-i18n="openRollbackTool"
+                      >
+                        打开回滚工具
+                      </button>
+                    </div>
+                  </section>
+                </div>
+                <div
+                  class="tools-panel"
+                  data-tools-panel="codex-migration-card"
+                >
+                  <section
+                    id="codex-migration-card"
+                    class="tool-card"
+                    aria-labelledby="codex-migration-title"
+                    data-enabled="false"
+                  >
+                    <div class="tool-card-header">
+                      <div>
+                        <span
+                          class="tool-mode-badge"
+                          data-mode="maintenance"
+                          data-i18n="localTool"
+                          >显式维护模式</span
+                        >
+                        <h2
+                          id="codex-migration-title"
+                          data-i18n="codexProviderMigration"
+                        >
+                          Codex Provider 可见性修复
+                        </h2>
+                        <p data-i18n="codexProviderMigrationDesc">
+                          把明确选择的旧历史重新绑定到当前 Provider。切换
+                          Provider 后可能需要再次执行；不修改 config.toml
+                          或任何第三方工具。
+                        </p>
+                        <p
+                          class="tool-card-hint"
+                          data-i18n="maintenanceWhenToUse"
+                        >
+                          仅在切换 Provider 后，明确知道旧会话不可见时使用。
+                        </p>
+                      </div>
+                    </div>
+
+                    <p
+                      class="maintenance-next-step"
+                      id="codex-migration-next-step"
+                    >
+                      下一步：开启维护模式
+                    </p>
+
+                    <div
+                      class="maintenance-workflow"
+                      id="codex-migration-workflow"
+                      data-phase="disabled"
+                    >
+                      <section
+                        class="maintenance-step"
+                        data-step="1"
+                        data-state="active"
+                      >
+                        <div class="maintenance-step-header">
+                          <div class="maintenance-step-heading">
+                            <span class="maintenance-step-number">1</span>
+                            <div>
+                              <h3 data-i18n="maintenanceStepEnable">
+                                开启维护模式
+                              </h3>
+                              <p data-i18n="maintenanceStepEnableDesc">
+                                临时允许生成计划和执行修复，关闭后立即恢复只读。
+                              </p>
+                            </div>
+                          </div>
+                          <label class="maintenance-toggle">
+                            <span data-i18n="maintenanceToggle">维护模式</span>
+                            <input
+                              id="codex-maintenance-toggle"
+                              type="checkbox"
+                              role="switch"
+                            />
+                          </label>
+                        </div>
+                        <p
+                          class="maintenance-boundary"
+                          data-i18n="maintenanceBoundary"
+                        >
+                          维护模式默认关闭。开启后才允许生成修复计划、执行修复或回滚；关闭后立即恢复只读状态。
+                        </p>
+                      </section>
+
+                      <section
+                        class="maintenance-step"
+                        data-step="2"
+                        data-state="pending"
+                      >
+                        <div class="maintenance-step-header">
+                          <div class="maintenance-step-heading">
+                            <span class="maintenance-step-number">2</span>
+                            <div>
+                              <h3 data-i18n="maintenanceStepSelect">
+                                选择历史 Provider
+                              </h3>
+                              <p data-i18n="maintenanceStepSelectDesc">
+                                先扫描候选项，勾选需要恢复的来源，再生成精确计划。
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            id="codex-migration-preview-btn"
+                            class="ghost-button"
+                            type="button"
+                          >
+                            扫描历史 Provider
+                          </button>
+                        </div>
+                        <div class="migration-provider-section">
+                          <h3 data-i18n="migrationProviders">
+                            选择要恢复的历史 Providers
+                          </h3>
+                          <div
+                            id="codex-migration-provider-list"
+                            class="migration-provider-list"
+                          ></div>
+                        </div>
+                      </section>
+
+                      <section
+                        class="maintenance-step"
+                        data-step="3"
+                        data-state="pending"
+                      >
+                        <div class="maintenance-step-heading">
+                          <span class="maintenance-step-number">3</span>
+                          <div>
+                            <h3 data-i18n="maintenanceStepReview">
+                              核对修复计划
+                            </h3>
+                            <p data-i18n="maintenanceStepReviewDesc">
+                              确认目标 Provider、影响数量和备份位置后再继续。
+                            </p>
+                          </div>
+                        </div>
+                        <div
+                          class="tool-status"
+                          id="codex-migration-status"
+                          role="status"
+                          aria-live="polite"
+                          data-i18n="migrationNotPreviewed"
+                        >
+                          尚未预览
+                        </div>
+                        <p
+                          class="migration-stale-notice hidden"
+                          id="codex-migration-plan-stale"
+                          data-i18n="migrationPlanStale"
+                        >
+                          来源选择已变化；下方旧计划仅作参考，重新生成后才能执行。
+                        </p>
+                        <div
+                          class="migration-metrics"
+                          id="codex-migration-metrics"
+                          data-stale="false"
+                        >
+                          <div class="migration-metric">
+                            <span data-i18n="migrationThreads">匹配线程</span>
+                            <strong id="codex-migration-thread-count">-</strong>
+                          </div>
+                          <div class="migration-metric">
+                            <span data-i18n="migrationJsonlFiles"
+                              >JSONL 文件</span
+                            >
+                            <strong id="codex-migration-jsonl-count">-</strong>
+                          </div>
+                          <div class="migration-metric">
+                            <span data-i18n="migrationReplacements"
+                              >替换条目</span
+                            >
+                            <strong id="codex-migration-replacement-count"
+                              >-</strong
+                            >
+                          </div>
+                        </div>
+                        <div
+                          class="migration-diagnostics"
+                          id="codex-migration-diagnostics"
+                          data-kind="neutral"
+                          data-stale="false"
+                        >
+                          <div>
+                            <span data-i18n="migrationCurrentProvider"
+                              >当前 Provider</span
+                            >
+                            <strong id="codex-migration-current-provider"
+                              >-</strong
+                            >
+                          </div>
+                          <div>
+                            <span data-i18n="migrationTargetProvider"
+                              >可见性修复目标</span
+                            >
+                            <strong id="codex-migration-target-provider"
+                              >-</strong
+                            >
+                          </div>
+                          <ul id="codex-migration-diagnostic-list"></ul>
+                        </div>
+                        <div
+                          class="migration-backup-notice hidden"
+                          id="codex-migration-backup-notice"
+                        >
+                          <span
+                            id="codex-migration-backup-label"
+                            data-i18n="backupWillSaveTo"
+                            >备份将保存到</span
+                          >
+                          <code id="codex-migration-backup-path"></code>
+                        </div>
+                      </section>
+
+                      <section
+                        class="maintenance-step"
+                        data-step="4"
+                        data-state="pending"
+                      >
+                        <div class="maintenance-step-heading">
+                          <span class="maintenance-step-number">4</span>
+                          <div class="migration-safety-copy">
+                            <h3 data-i18n="maintenanceSafetyTitle">
+                              退出 Codex 并执行
+                            </h3>
+                            <p data-i18n="maintenanceSafetyDesc">
+                              完全退出 Codex App 后勾选确认，再执行修复。
+                            </p>
+                          </div>
+                        </div>
+                        <div class="migration-actions">
+                          <label class="migration-confirm">
+                            <input
+                              id="codex-migration-confirm"
+                              type="checkbox"
+                            />
+                            <span data-i18n="migrationConfirmClosed"
+                              >我已退出 Codex App</span
+                            >
+                          </label>
+                          <button
+                            id="codex-migration-apply-btn"
+                            class="danger-button"
+                            type="button"
+                            disabled
+                            data-i18n="applyMigration"
+                          >
+                            恢复到当前 Provider
+                          </button>
+                        </div>
+                        <div
+                          class="migration-complete hidden"
+                          id="codex-migration-complete"
+                          role="status"
+                        >
+                          <strong data-i18n="migrationCompleteTitle"
+                            >修复已完成</strong
+                          >
+                          <span data-i18n="migrationCompleteDesc">
+                            无需再次生成计划。关闭维护模式，然后重新打开 Codex
+                            App 检查历史会话。
+                          </span>
+                          <button
+                            id="codex-migration-finish-btn"
+                            class="ghost-button"
+                            type="button"
+                            data-i18n="finishMaintenance"
+                          >
+                            关闭维护模式
+                          </button>
+                        </div>
+                      </section>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+
+            <div class="tools-dashboard hidden" id="codex-rollback-dashboard">
+              <section
+                class="tool-card codex-rollback-card"
+                aria-labelledby="codex-rollback-title"
+                data-enabled="false"
+              >
+                <div class="tool-page-header">
                   <button
-                    id="session-archive-btn"
+                    id="codex-rollback-back-btn"
                     class="ghost-button"
                     type="button"
-                    data-i18n="archive"
+                    data-i18n="backToTools"
                   >
-                    归档
+                    返回工具
                   </button>
+                  <div>
+                    <span
+                      class="tool-mode-badge"
+                      data-mode="maintenance"
+                      data-i18n="recoveryTool"
+                      >恢复工具</span
+                    >
+                    <h2
+                      id="codex-rollback-title"
+                      data-i18n="codexRollbackTitle"
+                    >
+                      Codex 修复回滚
+                    </h2>
+                    <p data-i18n="codexRollbackPageDesc">
+                      选择一次修复生成的备份目录，将 Provider
+                      字段恢复到修复前状态。
+                    </p>
+                  </div>
+                </div>
+
+                <div class="rollback-section">
+                  <div>
+                    <h3 data-i18n="rollbackEnableTitle">1. 开启维护模式</h3>
+                    <p data-i18n="rollbackEnableDesc">
+                      回滚会写入 Codex 本地数据，完成后请立即关闭维护模式。
+                    </p>
+                  </div>
+                  <label class="maintenance-toggle">
+                    <span data-i18n="maintenanceToggle">维护模式</span>
+                    <input
+                      id="codex-rollback-maintenance-toggle"
+                      type="checkbox"
+                      role="switch"
+                    />
+                  </label>
+                </div>
+
+                <div class="rollback-section">
+                  <div>
+                    <h3 data-i18n="rollbackBackupTitle">2. 选择备份</h3>
+                    <p data-i18n="migrationRollbackHint">
+                      使用修复完成时生成的具体备份目录，也可以输入历史备份目录。
+                    </p>
+                  </div>
+                  <label class="field">
+                    <span data-i18n="rollbackBackupDir">备份目录</span>
+                    <input
+                      id="codex-migration-rollback-dir"
+                      type="text"
+                      placeholder="~/.codex/backups/..."
+                      data-i18n-placeholder="rollbackBackupPlaceholder"
+                    />
+                  </label>
+                </div>
+
+                <div class="rollback-section">
+                  <div>
+                    <h3 data-i18n="rollbackExecuteTitle">
+                      3. 退出 Codex 并回滚
+                    </h3>
+                    <p data-i18n="rollbackExecuteDesc">
+                      完全退出 Codex App，勾选确认后再执行回滚。
+                    </p>
+                  </div>
+                  <label class="migration-confirm">
+                    <input
+                      id="codex-migration-rollback-confirm"
+                      type="checkbox"
+                    />
+                    <span data-i18n="migrationConfirmClosed"
+                      >我已退出 Codex App</span
+                    >
+                  </label>
                   <button
-                    id="session-delete-btn"
-                    class="ghost-button session-delete-button"
+                    id="codex-migration-rollback-btn"
+                    class="danger-button"
                     type="button"
-                    data-i18n="deleteSession"
+                    data-i18n="rollbackMigration"
                   >
-                    删除
+                    回滚
                   </button>
                 </div>
-              </div>
 
-              <div class="detail-body">
-                <section
-                  id="conversation-tab"
-                  class="detail-tab"
-                  role="tabpanel"
-                  aria-labelledby="conversation-tab-button"
-                >
-                  <div class="conversation-toolbar">
-                    <div class="detail-search-box">
-                      <div class="detail-search-field">
-                        <input
-                          id="detail-search-input"
-                          type="search"
-                          placeholder="搜索当前会话..."
-                          data-i18n-placeholder="detailSearchPlaceholder"
-                        />
-                        <span id="detail-search-count" role="status"></span>
-                        <button
-                          id="search-previous"
-                          type="button"
-                          class="search-nav-button"
-                          data-i18n="searchPrevious"
-                          data-i18n-attr="aria-label"
-                          data-i18n-title="searchPrevious"
-                          aria-label="上一处"
-                          title="上一处"
-                          disabled
-                        >
-                          <svg
-                            aria-hidden="true"
-                            viewBox="0 0 24 24"
-                            width="13"
-                            height="13"
-                          >
-                            <path
-                              d="m6 14.5 6-6 6 6"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2.2"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                            />
-                          </svg>
-                        </button>
-                        <button
-                          id="search-next"
-                          type="button"
-                          class="search-nav-button"
-                          data-i18n="searchNext"
-                          data-i18n-attr="aria-label"
-                          data-i18n-title="searchNext"
-                          aria-label="下一处"
-                          title="下一处"
-                          disabled
-                        >
-                          <svg
-                            aria-hidden="true"
-                            viewBox="0 0 24 24"
-                            width="13"
-                            height="13"
-                          >
-                            <path
-                              d="m6 9.5 6 6 6-6"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2.2"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                      <button
-                        id="search-full-session"
-                        type="button"
-                        class="ghost-button hidden"
-                        data-i18n="searchFullSession"
-                      >
-                        返回会话概览
-                      </button>
-                    </div>
-                    <div class="conversation-display-options">
-                      <div class="conversation-display-options-body">
-                        <div
-                          class="role-filter"
-                          id="role-filter"
-                          role="group"
-                          aria-label="消息角色筛选"
-                          data-i18n="messageRoleFilter"
-                          data-i18n-attr="aria-label"
-                        >
-                          <button
-                            class="role-filter-btn active"
-                            data-role=""
-                            type="button"
-                            aria-pressed="true"
-                            data-i18n="all"
-                          >
-                            全部
-                          </button>
-                          <button
-                            class="role-filter-btn"
-                            data-role="user"
-                            type="button"
-                            aria-pressed="false"
-                            data-i18n="roleUser"
-                          >
-                            用户
-                          </button>
-                          <button
-                            class="role-filter-btn"
-                            data-role="assistant"
-                            type="button"
-                            aria-pressed="false"
-                            data-i18n="roleAssistant"
-                          >
-                            助手
-                          </button>
-                          <button
-                            class="role-filter-btn"
-                            data-role="developer"
-                            type="button"
-                            aria-pressed="false"
-                            data-i18n="roleDeveloper"
-                          >
-                            开发者
-                          </button>
-                        </div>
-                        <label class="tool-toggle-label">
-                          <input
-                            id="show-tools-toggle"
-                            type="checkbox"
-                            checked
-                          />
-                          <span data-i18n="showToolMessages">显示工具调用</span>
-                        </label>
-                        <label class="tool-toggle-label">
-                          <input
-                            id="show-context-toggle"
-                            type="checkbox"
-                            checked
-                          />
-                          <span data-i18n="showSystemContext"
-                            >显示系统上下文</span
-                          >
-                        </label>
-                        <label class="tool-toggle-label">
-                          <input
-                            id="conversation-desc-toggle"
-                            type="checkbox"
-                          />
-                          <span data-i18n="newestFirst">按时间倒序</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                  <details id="message-nav-inline" class="message-nav-inline">
-                    <summary data-i18n="messageNav">消息导航</summary>
-                    <div
-                      id="message-nav-inline-list"
-                      class="message-nav-list"
-                    ></div>
-                  </details>
-                  <div id="conversation-list" class="conversation-list"></div>
-                </section>
-
-                <section
-                  id="raw-tab"
-                  class="detail-tab hidden"
-                  role="tabpanel"
-                  aria-labelledby="raw-tab-button"
-                  aria-hidden="true"
-                >
-                  <div id="raw-events" class="raw-events"></div>
-                </section>
-              </div>
-            </div>
-          </div>
-
-          <div
-            class="stats-dashboard hidden"
-            id="stats-dashboard"
-            data-view-panel="stats"
-          >
-            <header class="stats-header">
-              <div>
-                <h2 data-i18n="statsDashboardTitle">统计概览</h2>
-                <p data-i18n="statsDashboardSummary">
-                  快速了解会话规模、活跃趋势与使用分布。
-                </p>
-              </div>
-              <span class="stats-range" data-i18n="statsDashboardRange"
-                >全部时间 · 最近 14 个活跃日</span
-              >
-            </header>
-            <div class="stats-surface">
-              <div class="stats-metrics" id="stats-metrics"></div>
-              <div class="stats-charts" id="stats-charts">
-                <div class="chart-card">
-                  <h3 data-i18n="statsTrend">会话趋势</h3>
-                  <div class="chart-body" id="trend-chart-body"></div>
-                </div>
-                <div class="chart-card">
-                  <h3 data-i18n="statsAgentDist">按来源分布</h3>
-                  <div class="chart-body" id="agent-chart-body"></div>
-                </div>
-              </div>
-              <div class="chart-card stats-heatmap-card">
-                <h3 data-i18n="statsTokenHeatmap">Token 热力图</h3>
                 <div
-                  class="chart-body token-heatmap-body"
-                  id="token-heatmap-body"
-                ></div>
-              </div>
-              <div class="stats-grid" id="stats-grid"></div>
+                  class="tool-status"
+                  id="codex-rollback-status"
+                  role="status"
+                  aria-live="polite"
+                  data-i18n="rollbackMaintenanceDisabled"
+                >
+                  开启维护模式后才能执行回滚。
+                </div>
+              </section>
             </div>
-          </div>
+          </section>
 
-          <div
-            class="tools-dashboard hidden"
-            id="tools-dashboard"
-            data-view-panel="tools"
+          <aside
+            class="props-panel inspector-pane"
+            id="props-panel"
+            aria-hidden="false"
+            data-view-panel="list"
           >
-            <aside class="tools-sidebar">
-              <div class="tools-sidebar-heading">
-                <strong data-i18n="toolsNavTitle">工具列表</strong>
-                <span data-i18n="toolsNavHint">本地只读与维护工具</span>
-              </div>
-              <nav
-                class="tools-nav"
-                aria-label="工具导航"
-                data-i18n="toolsNav"
-                data-i18n-attr="aria-label"
+            <div class="props-header">
+              <h2 id="props-eyebrow" data-i18n="sessionInspector">信息</h2>
+              <button
+                id="props-close-btn"
+                class="ghost-button props-close-btn"
+                type="button"
+                data-i18n="closeSessionInspector"
               >
-                <button
-                  class="tools-nav-item active"
-                  type="button"
-                  data-tools-target="#codex-archive-tool-card"
-                  aria-current="true"
-                >
-                  <span data-i18n="codexArchiveViewer">Codex 归档查看</span>
-                </button>
-                <button
-                  class="tools-nav-item"
-                  type="button"
-                  data-tools-target="#codex-rollback-tool-card"
-                >
-                  <span data-i18n="codexRollbackTitle">Codex 修复回滚</span>
-                </button>
-                <button
-                  class="tools-nav-item"
-                  type="button"
-                  data-tools-target="#codex-migration-card"
-                >
-                  <span data-i18n="codexProviderMigration"
-                    >Codex Provider 可见性修复</span
-                  >
-                </button>
-              </nav>
-            </aside>
-            <div class="tools-content">
-              <div
-                class="tools-panel active"
-                data-tools-panel="codex-archive-tool-card"
-              >
-                <section
-                  id="codex-archive-tool-card"
-                  class="tool-card readonly-tool-card tool-card-compact"
-                  aria-labelledby="codex-archive-viewer-title"
-                >
-                  <div class="tool-card-header">
-                    <div>
-                      <span
-                        class="tool-mode-badge"
-                        data-mode="readonly"
-                        data-i18n="readonlyTool"
-                        >归档来源</span
-                      >
-                      <h2
-                        id="codex-archive-viewer-title"
-                        data-i18n="codexArchiveViewer"
-                      >
-                        Codex 归档查看
-                      </h2>
-                      <p data-i18n="codexArchiveViewerDesc">
-                        显示 Codex
-                        自身归档的会话；不会移动文件或恢复归档状态，永久删除仍会修改原始记录。
-                      </p>
-                    </div>
-                    <button
-                      id="open-codex-archive-btn"
-                      class="ghost-button"
-                      type="button"
-                      data-i18n="viewCodexArchived"
-                    >
-                      在会话页查看归档
-                    </button>
-                  </div>
-                </section>
-              </div>
-              <div
-                class="tools-panel"
-                data-tools-panel="codex-rollback-tool-card"
-              >
-                <section
-                  id="codex-rollback-tool-card"
-                  class="tool-card tool-card-compact"
-                  aria-labelledby="codex-rollback-launcher-title"
-                >
-                  <div class="tool-card-header">
-                    <div>
-                      <span
-                        class="tool-mode-badge"
-                        data-mode="maintenance"
-                        data-i18n="recoveryTool"
-                        >恢复工具</span
-                      >
-                      <h2
-                        id="codex-rollback-launcher-title"
-                        data-i18n="codexRollbackTitle"
-                      >
-                        Codex 修复回滚
-                      </h2>
-                      <p data-i18n="codexRollbackDesc">
-                        从修复时生成的备份恢复旧
-                        Provider。仅在修复后出现异常时使用。
-                      </p>
-                    </div>
-                    <button
-                      id="open-codex-rollback-btn"
-                      class="ghost-button"
-                      type="button"
-                      data-i18n="openRollbackTool"
-                    >
-                      打开回滚工具
-                    </button>
-                  </div>
-                </section>
-              </div>
-              <div class="tools-panel" data-tools-panel="codex-migration-card">
-                <section
-                  id="codex-migration-card"
-                  class="tool-card"
-                  aria-labelledby="codex-migration-title"
-                  data-enabled="false"
-                >
-                  <div class="tool-card-header">
-                    <div>
-                      <span
-                        class="tool-mode-badge"
-                        data-mode="maintenance"
-                        data-i18n="localTool"
-                        >显式维护模式</span
-                      >
-                      <h2
-                        id="codex-migration-title"
-                        data-i18n="codexProviderMigration"
-                      >
-                        Codex Provider 可见性修复
-                      </h2>
-                      <p data-i18n="codexProviderMigrationDesc">
-                        把明确选择的旧历史重新绑定到当前 Provider。切换 Provider
-                        后可能需要再次执行；不修改 config.toml
-                        或任何第三方工具。
-                      </p>
-                      <p
-                        class="tool-card-hint"
-                        data-i18n="maintenanceWhenToUse"
-                      >
-                        仅在切换 Provider 后，明确知道旧会话不可见时使用。
-                      </p>
-                    </div>
-                  </div>
-
-                  <p
-                    class="maintenance-next-step"
-                    id="codex-migration-next-step"
-                  >
-                    下一步：开启维护模式
-                  </p>
-
-                  <div
-                    class="maintenance-workflow"
-                    id="codex-migration-workflow"
-                    data-phase="disabled"
-                  >
-                    <section
-                      class="maintenance-step"
-                      data-step="1"
-                      data-state="active"
-                    >
-                      <div class="maintenance-step-header">
-                        <div class="maintenance-step-heading">
-                          <span class="maintenance-step-number">1</span>
-                          <div>
-                            <h3 data-i18n="maintenanceStepEnable">
-                              开启维护模式
-                            </h3>
-                            <p data-i18n="maintenanceStepEnableDesc">
-                              临时允许生成计划和执行修复，关闭后立即恢复只读。
-                            </p>
-                          </div>
-                        </div>
-                        <label class="maintenance-toggle">
-                          <span data-i18n="maintenanceToggle">维护模式</span>
-                          <input
-                            id="codex-maintenance-toggle"
-                            type="checkbox"
-                            role="switch"
-                          />
-                        </label>
-                      </div>
-                      <p
-                        class="maintenance-boundary"
-                        data-i18n="maintenanceBoundary"
-                      >
-                        维护模式默认关闭。开启后才允许生成修复计划、执行修复或回滚；关闭后立即恢复只读状态。
-                      </p>
-                    </section>
-
-                    <section
-                      class="maintenance-step"
-                      data-step="2"
-                      data-state="pending"
-                    >
-                      <div class="maintenance-step-header">
-                        <div class="maintenance-step-heading">
-                          <span class="maintenance-step-number">2</span>
-                          <div>
-                            <h3 data-i18n="maintenanceStepSelect">
-                              选择历史 Provider
-                            </h3>
-                            <p data-i18n="maintenanceStepSelectDesc">
-                              先扫描候选项，勾选需要恢复的来源，再生成精确计划。
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          id="codex-migration-preview-btn"
-                          class="ghost-button"
-                          type="button"
-                        >
-                          扫描历史 Provider
-                        </button>
-                      </div>
-                      <div class="migration-provider-section">
-                        <h3 data-i18n="migrationProviders">
-                          选择要恢复的历史 Providers
-                        </h3>
-                        <div
-                          id="codex-migration-provider-list"
-                          class="migration-provider-list"
-                        ></div>
-                      </div>
-                    </section>
-
-                    <section
-                      class="maintenance-step"
-                      data-step="3"
-                      data-state="pending"
-                    >
-                      <div class="maintenance-step-heading">
-                        <span class="maintenance-step-number">3</span>
-                        <div>
-                          <h3 data-i18n="maintenanceStepReview">
-                            核对修复计划
-                          </h3>
-                          <p data-i18n="maintenanceStepReviewDesc">
-                            确认目标 Provider、影响数量和备份位置后再继续。
-                          </p>
-                        </div>
-                      </div>
-                      <div
-                        class="tool-status"
-                        id="codex-migration-status"
-                        role="status"
-                        aria-live="polite"
-                        data-i18n="migrationNotPreviewed"
-                      >
-                        尚未预览
-                      </div>
-                      <p
-                        class="migration-stale-notice hidden"
-                        id="codex-migration-plan-stale"
-                        data-i18n="migrationPlanStale"
-                      >
-                        来源选择已变化；下方旧计划仅作参考，重新生成后才能执行。
-                      </p>
-                      <div
-                        class="migration-metrics"
-                        id="codex-migration-metrics"
-                        data-stale="false"
-                      >
-                        <div class="migration-metric">
-                          <span data-i18n="migrationThreads">匹配线程</span>
-                          <strong id="codex-migration-thread-count">-</strong>
-                        </div>
-                        <div class="migration-metric">
-                          <span data-i18n="migrationJsonlFiles"
-                            >JSONL 文件</span
-                          >
-                          <strong id="codex-migration-jsonl-count">-</strong>
-                        </div>
-                        <div class="migration-metric">
-                          <span data-i18n="migrationReplacements"
-                            >替换条目</span
-                          >
-                          <strong id="codex-migration-replacement-count"
-                            >-</strong
-                          >
-                        </div>
-                      </div>
-                      <div
-                        class="migration-diagnostics"
-                        id="codex-migration-diagnostics"
-                        data-kind="neutral"
-                        data-stale="false"
-                      >
-                        <div>
-                          <span data-i18n="migrationCurrentProvider"
-                            >当前 Provider</span
-                          >
-                          <strong id="codex-migration-current-provider"
-                            >-</strong
-                          >
-                        </div>
-                        <div>
-                          <span data-i18n="migrationTargetProvider"
-                            >可见性修复目标</span
-                          >
-                          <strong id="codex-migration-target-provider"
-                            >-</strong
-                          >
-                        </div>
-                        <ul id="codex-migration-diagnostic-list"></ul>
-                      </div>
-                      <div
-                        class="migration-backup-notice hidden"
-                        id="codex-migration-backup-notice"
-                      >
-                        <span
-                          id="codex-migration-backup-label"
-                          data-i18n="backupWillSaveTo"
-                          >备份将保存到</span
-                        >
-                        <code id="codex-migration-backup-path"></code>
-                      </div>
-                    </section>
-
-                    <section
-                      class="maintenance-step"
-                      data-step="4"
-                      data-state="pending"
-                    >
-                      <div class="maintenance-step-heading">
-                        <span class="maintenance-step-number">4</span>
-                        <div class="migration-safety-copy">
-                          <h3 data-i18n="maintenanceSafetyTitle">
-                            退出 Codex 并执行
-                          </h3>
-                          <p data-i18n="maintenanceSafetyDesc">
-                            完全退出 Codex App 后勾选确认，再执行修复。
-                          </p>
-                        </div>
-                      </div>
-                      <div class="migration-actions">
-                        <label class="migration-confirm">
-                          <input id="codex-migration-confirm" type="checkbox" />
-                          <span data-i18n="migrationConfirmClosed"
-                            >我已退出 Codex App</span
-                          >
-                        </label>
-                        <button
-                          id="codex-migration-apply-btn"
-                          class="danger-button"
-                          type="button"
-                          disabled
-                          data-i18n="applyMigration"
-                        >
-                          恢复到当前 Provider
-                        </button>
-                      </div>
-                      <div
-                        class="migration-complete hidden"
-                        id="codex-migration-complete"
-                        role="status"
-                      >
-                        <strong data-i18n="migrationCompleteTitle"
-                          >修复已完成</strong
-                        >
-                        <span data-i18n="migrationCompleteDesc">
-                          无需再次生成计划。关闭维护模式，然后重新打开 Codex App
-                          检查历史会话。
-                        </span>
-                        <button
-                          id="codex-migration-finish-btn"
-                          class="ghost-button"
-                          type="button"
-                          data-i18n="finishMaintenance"
-                        >
-                          关闭维护模式
-                        </button>
-                      </div>
-                    </section>
-                  </div>
-                </section>
+                关闭
+              </button>
+            </div>
+            <div id="props-content" class="props-content">
+              <div class="props-empty" data-i18n="selectSession">
+                选择一个会话
               </div>
             </div>
-          </div>
+          </aside>
+        </main>
 
-          <div class="tools-dashboard hidden" id="codex-rollback-dashboard">
-            <section
-              class="tool-card codex-rollback-card"
-              aria-labelledby="codex-rollback-title"
-              data-enabled="false"
-            >
-              <div class="tool-page-header">
-                <button
-                  id="codex-rollback-back-btn"
-                  class="ghost-button"
-                  type="button"
-                  data-i18n="backToTools"
-                >
-                  返回工具
-                </button>
-                <div>
-                  <span
-                    class="tool-mode-badge"
-                    data-mode="maintenance"
-                    data-i18n="recoveryTool"
-                    >恢复工具</span
-                  >
-                  <h2 id="codex-rollback-title" data-i18n="codexRollbackTitle">
-                    Codex 修复回滚
-                  </h2>
-                  <p data-i18n="codexRollbackPageDesc">
-                    选择一次修复生成的备份目录，将 Provider
-                    字段恢复到修复前状态。
-                  </p>
-                </div>
-              </div>
-
-              <div class="rollback-section">
-                <div>
-                  <h3 data-i18n="rollbackEnableTitle">1. 开启维护模式</h3>
-                  <p data-i18n="rollbackEnableDesc">
-                    回滚会写入 Codex 本地数据，完成后请立即关闭维护模式。
-                  </p>
-                </div>
-                <label class="maintenance-toggle">
-                  <span data-i18n="maintenanceToggle">维护模式</span>
-                  <input
-                    id="codex-rollback-maintenance-toggle"
-                    type="checkbox"
-                    role="switch"
-                  />
-                </label>
-              </div>
-
-              <div class="rollback-section">
-                <div>
-                  <h3 data-i18n="rollbackBackupTitle">2. 选择备份</h3>
-                  <p data-i18n="migrationRollbackHint">
-                    使用修复完成时生成的具体备份目录，也可以输入历史备份目录。
-                  </p>
-                </div>
-                <label class="field">
-                  <span data-i18n="rollbackBackupDir">备份目录</span>
-                  <input
-                    id="codex-migration-rollback-dir"
-                    type="text"
-                    placeholder="~/.codex/backups/..."
-                    data-i18n-placeholder="rollbackBackupPlaceholder"
-                  />
-                </label>
-              </div>
-
-              <div class="rollback-section">
-                <div>
-                  <h3 data-i18n="rollbackExecuteTitle">3. 退出 Codex 并回滚</h3>
-                  <p data-i18n="rollbackExecuteDesc">
-                    完全退出 Codex App，勾选确认后再执行回滚。
-                  </p>
-                </div>
-                <label class="migration-confirm">
-                  <input
-                    id="codex-migration-rollback-confirm"
-                    type="checkbox"
-                  />
-                  <span data-i18n="migrationConfirmClosed"
-                    >我已退出 Codex App</span
-                  >
-                </label>
-                <button
-                  id="codex-migration-rollback-btn"
-                  class="danger-button"
-                  type="button"
-                  data-i18n="rollbackMigration"
-                >
-                  回滚
-                </button>
-              </div>
-
-              <div
-                class="tool-status"
-                id="codex-rollback-status"
-                role="status"
-                aria-live="polite"
-                data-i18n="rollbackMaintenanceDisabled"
-              >
-                开启维护模式后才能执行回滚。
-              </div>
-            </section>
-          </div>
-        </section>
-
-        <aside
-          class="props-panel inspector-pane"
-          id="props-panel"
-          aria-hidden="false"
-          data-view-panel="list"
-        >
-          <div class="props-header">
-            <h2 id="props-eyebrow" data-i18n="sessionInspector">信息</h2>
-            <button
-              id="props-close-btn"
-              class="ghost-button props-close-btn"
-              type="button"
-              data-i18n="closeSessionInspector"
-            >
-              关闭
-            </button>
-          </div>
-          <div id="props-content" class="props-content">
-            <div class="props-empty" data-i18n="selectSession">
-              选择一个会话
-            </div>
-          </div>
-        </aside>
-      </main>
-
-      <footer
-        class="status-bar"
-        aria-label="工作区状态"
-        data-i18n="workspaceStatus"
-        data-i18n-attr="aria-label"
-      >
-        <button
-          id="status-health-button"
-          class="status-bar__health"
-          type="button"
-          data-state="loading"
-        >
-          <span class="status-bar__indicator" aria-hidden="true"></span>
-          <span id="status-health-text" data-i18n="scanHealthLoading"
-            >正在读取扫描状态</span
-          >
-          <progress id="index-progress" hidden max="1" value="0"></progress>
-          <span
-            id="status-health-issues"
-            class="status-bar__issues"
-            hidden
-          ></span>
-        </button>
-        <div class="status-bar__filter">
-          <span data-i18n="statusFilterLabel">当前过滤</span>
-          <strong id="status-filter-text" data-i18n="statusFilterNone"
-            >全部会话</strong
-          >
-        </div>
-        <div
-          class="status-bar__keys"
-          aria-label="键盘快捷键"
-          data-i18n="keyboardShortcuts"
+        <footer
+          class="status-bar"
+          aria-label="工作区状态"
+          data-i18n="workspaceStatus"
           data-i18n-attr="aria-label"
         >
-          <span
-            ><kbd>⌘/Ctrl K</kbd> <span data-i18n="keySearch">搜索</span></span
+          <button
+            id="status-health-button"
+            class="status-bar__health"
+            type="button"
+            data-state="loading"
           >
-          <span><kbd>j/k</kbd> <span data-i18n="keyMove">移动</span></span>
-          <span
-            ><kbd>1/2/3</kbd> <span data-i18n="keyViews">切换视图</span></span
+            <span class="status-bar__indicator" aria-hidden="true"></span>
+            <span id="status-health-text" data-i18n="scanHealthLoading"
+              >正在读取扫描状态</span
+            >
+            <progress id="index-progress" hidden max="1" value="0"></progress>
+            <span
+              id="status-health-issues"
+              class="status-bar__issues"
+              hidden
+            ></span>
+          </button>
+          <button
+            id="refresh-btn"
+            class="ghost-button"
+            type="button"
+            data-i18n="refresh"
           >
-        </div>
-        <span id="status-language" class="status-bar__language">中文</span>
-      </footer>
+            刷新
+          </button>
+          <div class="meta-chip meta-chip-wide status-bar__root">
+            <span class="local-indicator" aria-hidden="true"></span>
+            <span id="session-root" class="meta-value" data-i18n="loading"
+              >加载中...</span
+            >
+          </div>
+          <div class="status-bar__filter">
+            <span data-i18n="statusFilterLabel">当前过滤</span>
+            <strong id="status-filter-text" data-i18n="statusFilterNone"
+              >全部会话</strong
+            >
+          </div>
+          <div
+            class="status-bar__keys"
+            aria-label="键盘快捷键"
+            data-i18n="keyboardShortcuts"
+            data-i18n-attr="aria-label"
+          >
+            <span
+              ><kbd>⌘/Ctrl K</kbd> <span data-i18n="keySearch">搜索</span></span
+            >
+            <span><kbd>j/k</kbd> <span data-i18n="keyMove">移动</span></span>
+            <span
+              ><kbd>1/2/3</kbd> <span data-i18n="keyViews">切换视图</span></span
+            >
+          </div>
+          <button
+            id="status-language"
+            class="status-bar__language"
+            type="button"
+            data-i18n="statusLanguageChinese"
+            data-i18n-title="statusLanguageToggle"
+            title="切换语言"
+          >
+            中文
+          </button>
+        </footer>
+      </div>
     </div>
 
     <dialog
@@ -2052,7 +2226,7 @@
                       <span class="settings-theme-preview" aria-hidden="true">
                         <i></i><i></i><i></i>
                       </span>
-                      <strong data-i18n="themeStandard">现代蓝白</strong>
+                      <strong data-i18n="themeStandard">现代青白</strong>
                     </span>
                   </label>
                   <label
@@ -2427,16 +2601,26 @@
             >
           </label>
           <button class="session-item" type="button">
-            <span class="session-item__meta">
-              <span class="session-time"></span>
-              <span class="session-source-kind"></span>
-              <span class="session-message-count"></span>
-            </span>
             <span class="session-title-cell">
               <strong class="session-title"></strong>
               <span class="session-preview"></span>
             </span>
+            <span class="session-message-count"
+              ><svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+              >
+                <path
+                  d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"
+                /></svg
+              ><span class="session-message-count-value"></span
+            ></span>
             <span class="session-tertiary">
+              <time class="session-time"></time>
+              <span class="session-source-kind"></span>
               <strong class="session-provider"></strong>
               <span class="session-source"></span>
             </span>
@@ -2451,6 +2635,7 @@
 
     <template id="conversation-item-template">
       <article class="message-card">
+        <span class="message-avatar hidden" aria-hidden="true"></span>
         <header>
           <button class="message-toggle" type="button" aria-expanded="false">
             ▶

@@ -3,7 +3,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 16px 12px 12px;
+  padding: 16px 10px 12px;
 }
 
 .sidebar-brand-logo {
@@ -43,7 +43,7 @@
 
 .sidebar-tab:hover {
   color: var(--text-secondary);
-  background: var(--surface-raised);
+  background: var(--surface-subtle);
 }
 
 .sidebar-tab.active {
@@ -53,8 +53,8 @@
 }
 
 .sidebar-tab svg {
-  width: 21px;
-  height: 21px;
+  width: 18px;
+  height: 18px;
 }
 
 .search-box {
@@ -149,7 +149,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
+  /* 高度与相邻状态栏一致（42px），让两者的上边线齐平成一条水平线。 */
+  min-height: 42px;
+  padding: 3px 10px;
   border-top: 1px solid var(--line);
 }
 .sidebar-footer .sidebar-settings-button {
@@ -763,15 +765,13 @@ body.is-resizing {
 }
 
 .project-item:hover {
-  border-color: var(--line);
   background: var(--surface-subtle);
 }
 
-/* 选中项目只用文字色相标记，不再与来源树抢胶囊高亮。 */
+/* 选中项目：与来源行同语言的软底选中态。 */
 .project-item.active {
-  border-color: transparent;
   color: var(--accent-strong);
-  background: transparent;
+  background: var(--accent-soft);
 }
 
 /* 项目是低频导航：字重和字号都低于来源树，避免层级倒挂。 */
@@ -3081,7 +3081,8 @@ body.is-resizing {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 2px 8px;
+  /* 与所在区块行胶囊的左边缘对齐（区块容器自带 10px 内边距）。 */
+  padding: 0 0 8px;
 }
 
 .rail__group-header strong {
@@ -3126,18 +3127,83 @@ body.is-resizing {
   text-align: left;
 }
 
+/* 侧栏导航行统一为无框语言：hover 底色、选中软底，描边只保留 transparent 占位防跳动。 */
 .source-tree__item:hover {
-  border-color: var(--line);
-  background: var(--surface-raised);
+  background: var(--surface-subtle);
 }
 
 .source-tree__item.active {
-  border-color: var(--line-accent);
   color: var(--accent-strong);
   background: var(--accent-soft);
 }
 
+/* 无会话的来源行默认隐藏；“其他来源”展开时以置灰形态显示，行数不挤占常用导航。 */
 .source-tree__item.is-empty {
+  display: none;
+}
+
+.source-tree.expanded .source-tree__item.is-empty {
+  display: grid;
+  opacity: 0.4;
+}
+
+.source-tree.expanded .source-tree__item.is-empty:hover {
+  opacity: 0.65;
+}
+
+/* “其他来源”折叠行：与来源行同构的三列布局，箭头随展开旋转。 */
+.source-tree__more {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: var(--radius-small);
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.73rem;
+  font-weight: 500;
+  text-align: left;
+  transition: color 150ms var(--ease-out);
+}
+
+.source-tree__more:hover {
+  color: var(--accent-strong);
+}
+
+.source-tree__more .more-caret {
+  display: inline-block;
+  color: var(--muted);
+  font-size: 0.62rem;
+  text-align: center;
+  transform: rotate(-90deg);
+  transition: transform 150ms var(--ease-out);
+}
+
+.source-tree__more[aria-expanded="true"] .more-caret {
+  transform: rotate(0deg);
+}
+
+.source-tree__more .more-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-tree__more .more-count {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.source-tree__more[hidden] {
   display: none;
 }
 
@@ -3154,6 +3220,24 @@ body.is-resizing {
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   text-align: right;
+  transition: opacity 200ms var(--ease-out);
+}
+
+/* 数字变化时的微过渡与零值弱化 */
+.source-tree__item strong.count-flash {
+  opacity: 0.2;
+}
+
+.source-tree__item strong.count-zero {
+  opacity: 0.7;
+}
+
+/* 项目筛选时弱化展示的全局总数（嵌在数字元素内部，行内显示） */
+.source-count-global {
+  margin-left: 3px;
+  color: var(--muted);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
 }
 
 .source-tree__dot {
@@ -3621,6 +3705,31 @@ body.is-resizing {
 
 .status-bar__keys > span {
   white-space: nowrap;
+}
+
+/* 状态栏内部统一为轻量无框风格：信息用纯文本，边框只属于 kbd。 */
+.status-bar .ghost-button {
+  min-height: 24px;
+  padding: 2px 8px;
+  border-color: transparent;
+  background: transparent;
+  font-weight: 400;
+}
+
+.status-bar .ghost-button:hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--accent-strong);
+  background: var(--surface-subtle);
+  filter: none;
+}
+
+.status-bar .meta-chip.status-bar__root {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .status-bar kbd {

@@ -160,6 +160,8 @@ export const elements = {
   showContextToggle: document.querySelector("#show-context-toggle"),
   conversationDescToggle: document.querySelector("#conversation-desc-toggle"),
   messageNavInlineList: document.querySelector("#message-nav-inline-list"),
+  sourceRailHint: document.querySelector("#source-rail-hint"),
+  sourceRailList: document.querySelector("#source-rail-list"),
   messageOutline: document.querySelector("#message-outline"),
   messageOutlineList: document.querySelector("#message-outline-list"),
   messageOutlineToggle: document.querySelector("#message-outline-toggle"),

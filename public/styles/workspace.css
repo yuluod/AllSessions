@@ -2513,7 +2513,7 @@ body.is-resizing {
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   color: var(--text);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
@@ -2573,9 +2573,8 @@ body.is-resizing {
 }
 
 .delete-dialog-close-button:hover {
-  border-color: var(--line);
   color: var(--text);
-  background: var(--surface-muted);
+  background: var(--surface-subtle);
 }
 
 .delete-dialog-close-button svg {
@@ -2943,9 +2942,21 @@ body.is-resizing {
 }
 
 .props-close-btn {
+  display: inline-grid;
+  width: 28px;
   min-height: 28px;
-  padding: 4px 8px;
-  font-size: 0.7rem;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+  border-color: transparent;
+  color: var(--muted);
+  background: transparent;
+}
+
+.props-close-btn:hover {
+  border-color: transparent;
+  color: var(--text);
+  background: var(--surface-subtle);
 }
 
 .props-header .props-close-btn {

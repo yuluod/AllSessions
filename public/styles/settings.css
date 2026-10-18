@@ -53,6 +53,16 @@ html.settings-modal-open body {
   min-height: 34px;
   padding: 0;
   place-items: center;
+  border-radius: 50%;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.settings-close-btn:hover {
+  border-color: transparent;
+  color: var(--text);
+  background: var(--surface-subtle);
 }
 
 .settings-body {

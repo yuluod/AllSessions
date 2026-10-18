@@ -215,6 +215,10 @@ export const elements = {
   settingsTerminalCustomPick: document.querySelector(
     "#settings-terminal-custom-pick"
   ),
+  settingsUnsavedHint: document.querySelector("#settings-unsaved-hint"),
+  settingsDiscardPrompt: document.querySelector("#settings-discard-prompt"),
+  settingsKeepEditing: document.querySelector("#settings-keep-editing"),
+  settingsDiscardChanges: document.querySelector("#settings-discard-changes"),
   settingsSourceOverview: document.querySelector("#settings-source-overview"),
   settingsSources: document.querySelector("#settings-sources"),
   settingsRecovery: document.querySelector("#settings-recovery"),

@@ -1144,7 +1144,7 @@ test("页面提供默认关闭且需显式选择来源的 Codex 可见性修复�
   assert.match(app, /bindTauriSessionEvents/);
 });
 
-test("设置对话框使用四个顶部分类并只在来源页显示保存操作", async () => {
+test("设置对话框使用四个顶部分类并在来源页或有草稿时显示保存操作", async () => {
   const html = await readProjectFile("public/index.html");
   const css = await readProjectFile("public/styles.css");
   const settingsCss = await readProjectFile("public/styles/settings.css");
@@ -1203,7 +1203,7 @@ test("设置对话框使用四个顶部分类并只在来源页显示保存操�
   );
   assert.match(
     settingsCss,
-    /\.settings-dialog:not\(\[data-active-tab="sources"\]\) \.settings-footer/
+    /\.settings-dialog:not\(\[data-active-tab="sources"\]\):not\(\[data-dirty="true"\]\)[\s\S]*?\.settings-footer/
   );
   assert.match(source, /function activateTab\(name, focus = false\)/);
   assert.match(source, /\["ArrowLeft", "ArrowRight", "Home", "End"\]/);
@@ -1259,7 +1259,7 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
     /setLang\(event\.target\.value === "en" \? "en" : "zh"\)/
   );
   assert.match(source, /originKey[\s\S]*resolved\.origin/);
-  assert.match(source, /t\(`settingsOrigin_\$\{originKey\}`\)/);
+  assert.match(source, /t\(`settingsOrigin_\$\{source\.originKey\}`\)/);
   assert.match(source, /key: "pi", agent: "pi", label: "Pi"/);
   assert.match(source, /key: "kimi", agent: "kimi", label: "Kimi Code CLI"/);
   assert.match(source, /key: "opencode", agent: "opencode", label: "OpenCode"/);
@@ -1378,10 +1378,8 @@ test("会话来源与存储使用紧凑的分组设置结构", async () => {
 
   assert.match(html, /class="settings-storage-card"/);
   assert.match(html, /class="settings-storage-actions"/);
-  assert.match(
-    settingsCss,
-    /\.settings-source-header\s*\{[\s\S]*display: flex;[\s\S]*justify-content: space-between;/
-  );
+  assert.match(settingsCss, /\.settings-source-card\s*\{/);
+  assert.match(settingsCss, /\.settings-source-dialog\s*\{/);
   assert.match(
     settingsCss,
     /\.settings-source-actions\s*\{[\s\S]*justify-content: flex-end;/

@@ -37,8 +37,39 @@ export function summarizeSourceSupport(payload) {
   return { supported, detected };
 }
 
+// 路径数组必须复制，避免编辑草稿同时改变已保存的基线。
+export function cloneSourceSettings(sources = {}) {
+  return Object.fromEntries(
+    Object.entries(sources).map(([key, roots]) => [
+      key,
+      roots === null ? null : [...roots],
+    ])
+  );
+}
+
+export function hasSourceChanges(draft, saved) {
+  return [
+    ...new Set([...Object.keys(draft || {}), ...Object.keys(saved || {})]),
+  ].some((key) => {
+    const next = draft?.[key] ?? null;
+    const previous = saved?.[key] ?? null;
+    return JSON.stringify(next) !== JSON.stringify(previous);
+  });
+}
+
+export function sourceHealthState(diagnostic) {
+  if (typeof diagnostic?.enabled !== "boolean") return "unknown";
+  if (!diagnostic.enabled) return "disabled";
+  if ((diagnostic.error_count || 0) > 0) return "warning";
+  if ((diagnostic.unsupported_count || 0) > 0) return "unsupported";
+  if ((diagnostic.available_roots || 0) === 0) return "missing";
+  return "ready";
+}
+
 function sourceText(key, directoryKey, databaseKey) {
-  return t(["opencode", "kilo", "zcode"].includes(key) ? databaseKey : directoryKey);
+  return t(
+    ["opencode", "kilo", "zcode"].includes(key) ? databaseKey : directoryKey
+  );
 }
 
 function formatBytes(bytes) {
@@ -61,6 +92,11 @@ export function createSettingsController({
   let activeTab = "general";
   let savedPreferences = null;
   let latestPayload = null;
+  let savedSources = null;
+  let savingSources = false;
+  let loading = false;
+  let loadVersion = 0;
+  let discardPending = false;
 
   function dialog() {
     return elements.settingsDialog;
@@ -78,6 +114,64 @@ export function createSettingsController({
     if (!elements.settingsStatus) return;
     elements.settingsStatus.textContent = message;
     elements.settingsStatus.dataset.state = isError ? "error" : "info";
+  }
+
+  function syncDraftState() {
+    const dirty = hasSourceChanges(draft, savedSources);
+    if (!dirty) discardPending = false;
+    dialog()?.setAttribute("data-dirty", String(dirty));
+    dialog()?.setAttribute("data-discard-pending", String(discardPending));
+    if (elements.settingsSaveBtn)
+      elements.settingsSaveBtn.disabled =
+        loading ||
+        savingSources ||
+        !draft ||
+        (!dirty && !latestPayload?.recovery?.required);
+    if (elements.settingsUnsavedHint)
+      elements.settingsUnsavedHint.textContent = dirty
+        ? t("settingsUnsavedSources")
+        : "";
+    if (elements.settingsDiscardPrompt)
+      elements.settingsDiscardPrompt.hidden = !discardPending;
+    if (elements.settingsDiscardChanges)
+      elements.settingsDiscardChanges.disabled = savingSources;
+    // 输入过程中只刷新概览提示，不重建输入框或打断光标。
+    for (const card of elements.settingsSources?.querySelectorAll(
+      ".settings-source-card"
+    ) || []) {
+      const key = card.dataset.key;
+      const pending = hasSourceChanges(
+        { [key]: draft?.[key] },
+        { [key]: savedSources?.[key] }
+      );
+      card.dataset.pending = String(pending);
+      const badge = card.querySelector(".settings-card-health");
+      if (badge)
+        badge.textContent = pending
+          ? t("settingsPendingSource")
+          : sourceHealthLabel(card.dataset.state);
+    }
+  }
+
+  function close() {
+    if (sourceConfigDialogEl?.open) {
+      sourceConfigDialogEl.close();
+      return;
+    }
+    if (savingSources) return;
+    if (loading) {
+      loadVersion += 1;
+      loading = false;
+      dialog()?.close();
+      return;
+    }
+    if (hasSourceChanges(draft, savedSources)) {
+      discardPending = true;
+      syncDraftState();
+      elements.settingsKeepEditing?.focus();
+      return;
+    }
+    dialog()?.close();
   }
 
   function syncAppearance() {
@@ -105,19 +199,11 @@ export function createSettingsController({
     dialog()?.setAttribute("data-active-tab", name);
   }
 
-  function focusLastRootInput(container, key) {
-    const inputs = container.querySelectorAll(
-      `.settings-source[data-kind="${key}"] input`
+  function focusLastRootInput() {
+    const inputs = sourceConfigDialogEl.querySelectorAll(
+      ".settings-root-row input"
     );
     inputs[inputs.length - 1]?.focus();
-  }
-
-  function sourceHealthState(diagnostic) {
-    if (!diagnostic?.enabled) return "disabled";
-    if ((diagnostic.error_count || 0) > 0) return "warning";
-    if ((diagnostic.unsupported_count || 0) > 0) return "unsupported";
-    if ((diagnostic.available_roots || 0) === 0) return "missing";
-    return "ready";
   }
 
   function sourceHealthLabel(state) {
@@ -281,211 +367,344 @@ export function createSettingsController({
     const container = elements.settingsSources;
     if (!container) return;
     container.replaceChildren();
-    SOURCE_KINDS.forEach(({ key, label }) => {
-      const resolved = payload?.resolved?.[key] || {
-        roots: [],
-        origin: "default",
-      };
-      const custom = draft?.[key] ?? null;
-      const inheritedRoots = payload?.inherited?.[key]?.roots || [];
-      const inheritedRootSet = new Set([
-        ...inheritedRoots,
-        ...(payload?.protected?.[key] || []),
-      ]);
-      const protectedRoots = new Set(
-        custom?.filter((root) => inheritedRootSet.has(root)) || []
-      );
-      const customRoots =
-        custom?.filter((root) => !protectedRoots.has(root)) || [];
-      const sourceState =
-        custom === null ? "inherited" : custom.length ? "custom" : "disabled";
-      const originKey =
-        sourceState === "inherited"
-          ? resolved.origin
-          : sourceState === "custom"
-            ? "config"
-            : "disabled";
-      const block = document.createElement("div");
-      block.className = "settings-source";
-      block.dataset.state = sourceState;
 
-      const header = document.createElement("div");
-      header.className = "settings-source-header";
+    // 概览网格：紧凑卡片（图标 + 名称 + 来源徽章），点击打开目录编辑弹窗。
+    const grid = document.createElement("div");
+    grid.className = "settings-source-grid";
+
+    SOURCE_KINDS.forEach(({ key, label, agent }) => {
+      const source = sourceSnapshot(payload, key);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.dataset.key = key;
+      card.dataset.sourceAgent = agent;
+      card.className = "settings-source-card";
+      card.setAttribute("aria-haspopup", "dialog");
+      const icon = document.createElement("span");
+      icon.className = "source-tree__dot";
       const name = document.createElement("strong");
       name.textContent = label;
       const origin = document.createElement("span");
       origin.className = "settings-origin";
-      origin.dataset.origin = originKey;
-      origin.textContent = t(`settingsOrigin_${originKey}`);
-      header.append(name, origin);
-      block.append(header);
+      origin.dataset.origin = source.originKey;
+      origin.textContent = t(`settingsOrigin_${source.originKey}`);
+      const diagnostic = payload?.diagnostics?.sources?.[key];
+      card.dataset.state = sourceHealthState(diagnostic);
+      const metadata = document.createElement("span");
+      metadata.className = "settings-source-card-meta";
+      const health = document.createElement("span");
+      health.className = "settings-card-health";
+      const count = document.createElement("span");
+      metadata.append(health);
+      if (typeof diagnostic?.indexed_sessions === "number") {
+        count.textContent = t("settingsIndexedSessions", {
+          n: diagnostic.indexed_sessions,
+        });
+        metadata.append(count);
+      }
+      card.append(icon, name, origin, metadata);
+      card.addEventListener("click", () => {
+        openSourceConfigDialog(payload, key, label);
+      });
+      grid.append(card);
+    });
 
-      if (custom === null) {
-        const list = document.createElement("ul");
-        list.className = "settings-root-list readonly";
-        resolved.roots.forEach((root) => {
-          const item = document.createElement("li");
-          item.textContent = root;
-          list.append(item);
+    container.append(grid);
+    syncDraftState();
+  }
+
+  function sourceSnapshot(payload, key) {
+    const custom = draft?.[key] ?? null;
+    const resolved = (custom === null ? payload?.inherited?.[key] : null) ||
+      payload?.resolved?.[key] || {
+        roots: [],
+        origin: "default",
+      };
+    const inheritedRoots = payload?.inherited?.[key]?.roots || [];
+    const inheritedRootSet = new Set([
+      ...inheritedRoots,
+      ...(payload?.protected?.[key] || []),
+    ]);
+    const protectedRoots = new Set(
+      custom?.filter((root) => inheritedRootSet.has(root)) || []
+    );
+    const customRoots =
+      custom?.filter((root) => !protectedRoots.has(root)) || [];
+    const sourceState =
+      custom === null ? "inherited" : custom.length ? "custom" : "disabled";
+    const originKey =
+      sourceState === "inherited"
+        ? resolved.origin
+        : sourceState === "custom"
+          ? "config"
+          : "disabled";
+    return {
+      resolved,
+      custom,
+      sourceState,
+      originKey,
+      protectedRoots,
+      customRoots,
+    };
+  }
+
+  let sourceConfigDialogEl = null;
+
+  // 单来源目录编辑弹窗：从概览卡片打开，修改暂存到草稿，由外层统一保存。
+  function openSourceConfigDialog(payload, key, label) {
+    if (!sourceConfigDialogEl || !sourceConfigDialogEl.isConnected) {
+      sourceConfigDialogEl = document.createElement("dialog");
+      sourceConfigDialogEl.className = "delete-dialog settings-source-dialog";
+      sourceConfigDialogEl.setAttribute(
+        "aria-labelledby",
+        "settings-source-dialog-title"
+      );
+      sourceConfigDialogEl.addEventListener("close", () => {
+        elements.settingsSources
+          ?.querySelector(
+            `[data-key="${sourceConfigDialogEl.dataset.sourceKey}"]`
+          )
+          ?.focus();
+      });
+      document.body.append(sourceConfigDialogEl);
+    }
+    sourceConfigDialogEl.dataset.sourceKey = key;
+    const source = sourceSnapshot(payload, key);
+    const refresh = () => {
+      renderSources(payload);
+      openSourceConfigDialog(payload, key, label);
+    };
+
+    const header = document.createElement("div");
+    header.className = "delete-dialog-header";
+    const title = document.createElement("h2");
+    title.id = "settings-source-dialog-title";
+    title.textContent = label;
+    const origin = document.createElement("span");
+    origin.className = "settings-origin";
+    origin.dataset.origin = source.originKey;
+    origin.textContent = t(`settingsOrigin_${source.originKey}`);
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "ghost-button delete-dialog-close-button";
+    closeButton.setAttribute("aria-label", t("closeSettings"));
+    const closeSvg = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+    closeSvg.setAttribute("viewBox", "0 0 24 24");
+    closeSvg.setAttribute("width", "18");
+    closeSvg.setAttribute("height", "18");
+    closeSvg.setAttribute("fill", "none");
+    const closePath = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "path"
+    );
+    closePath.setAttribute("d", "M6 6l12 12M18 6L6 18");
+    closePath.setAttribute("stroke", "currentColor");
+    closePath.setAttribute("stroke-width", "1.8");
+    closePath.setAttribute("stroke-linecap", "round");
+    closeSvg.append(closePath);
+    closeButton.append(closeSvg);
+    closeButton.addEventListener("click", () => sourceConfigDialogEl.close());
+    header.append(title, origin, closeButton);
+
+    const body = document.createElement("div");
+    body.className = "delete-dialog-body";
+
+    sourceConfigDialogEl.replaceChildren(header, body);
+    sourceConfigDialogEl.showModal();
+    buildSourceEditor({ payload, key, source, body, refresh });
+    const footer = document.createElement("div");
+    footer.className = "settings-source-dialog-footer";
+    const hint = document.createElement("span");
+    hint.textContent = t("settingsSourceDraftHint");
+    const done = document.createElement("button");
+    done.className = "ghost-button";
+    done.type = "button";
+    done.textContent = t("settingsSourceDone");
+    done.addEventListener("click", () => sourceConfigDialogEl.close());
+    footer.append(hint, done);
+    sourceConfigDialogEl.append(footer);
+  }
+
+  // 编辑器内容填充进传入的 body；refresh 用于修改后同步概览与弹窗自身。
+  function buildSourceEditor({ payload, key, source, body, refresh }) {
+    const { resolved, custom, sourceState, protectedRoots, customRoots } =
+      source;
+    const summary = document.createElement("div");
+    summary.className = "settings-source-dialog-meta";
+    appendSourceHealth(summary, key, payload?.diagnostics?.sources?.[key]);
+    body.append(summary);
+
+    if (custom === null) {
+      const list = document.createElement("ul");
+      list.className = "settings-root-list readonly";
+      resolved.roots.forEach((root) => {
+        const item = document.createElement("li");
+        item.textContent = root;
+        list.append(item);
+      });
+      if (!resolved.roots.length) {
+        const item = document.createElement("li");
+        item.textContent = t("settingsNoRoots");
+        list.append(item);
+      }
+      const protection = document.createElement("p");
+      protection.className = "settings-source-note";
+      protection.textContent = t("settingsDefaultRootsProtected");
+      const actions = document.createElement("div");
+      actions.className = "settings-source-actions";
+      const add = document.createElement("button");
+      add.className = "ghost-button settings-source-action";
+      add.type = "button";
+      add.textContent = sourceText(
+        key,
+        "settingsAddRoot",
+        "settingsAddDatabase"
+      );
+      add.addEventListener("click", () => {
+        draft[key] = [...resolved.roots, ""];
+        refresh();
+        focusLastRootInput();
+      });
+      const disable = document.createElement("button");
+      disable.className = "ghost-button settings-source-action";
+      disable.type = "button";
+      disable.textContent = t("settingsDisableSource");
+      disable.addEventListener("click", () => {
+        draft[key] = [];
+        refresh();
+      });
+      actions.append(add, disable);
+      body.append(list, protection, actions);
+    } else {
+      if (sourceState === "disabled") {
+        const disabled = document.createElement("p");
+        disabled.className = "settings-source-disabled";
+        disabled.textContent = t("settingsSourceDisabled");
+        body.append(disabled);
+      } else {
+        const hint = document.createElement("p");
+        hint.className = "settings-source-note";
+        hint.textContent = protectedRoots.size
+          ? t("settingsProtectedRootsRetained")
+          : sourceText(
+              key,
+              "settingsCustomRootsHint",
+              "settingsCustomDatabaseHint"
+            );
+        const list = document.createElement("div");
+        list.className = "settings-root-editor";
+        custom.forEach((root, index) => {
+          const row = document.createElement("div");
+          row.className = "settings-root-row";
+          if (protectedRoots.has(root)) {
+            row.classList.add("settings-root-protected");
+            const value = document.createElement("code");
+            value.className = "settings-root-protected-value";
+            value.textContent = root;
+            value.title = root;
+            const protectedLabel = document.createElement("span");
+            protectedLabel.className = "settings-root-protected-label";
+            protectedLabel.textContent = t("settingsProtectedRoot");
+            row.append(value, protectedLabel);
+          } else {
+            const input = document.createElement("input");
+            input.type = "text";
+            input.value = root;
+            input.spellcheck = false;
+            input.setAttribute(
+              "aria-label",
+              sourceText(key, "settingsChooseRoot", "settingsChooseDatabase")
+            );
+            input.placeholder = sourceText(
+              key,
+              "settingsRootPlaceholder",
+              "settingsDatabasePlaceholder"
+            );
+            input.addEventListener("input", () => {
+              draft[key][index] = input.value;
+              syncDraftState();
+            });
+            row.append(input);
+            const choose = document.createElement("button");
+            choose.className = "ghost-button settings-root-pick";
+            choose.type = "button";
+            choose.textContent = sourceText(
+              key,
+              "settingsChooseRoot",
+              "settingsChooseDatabase"
+            );
+            choose.addEventListener("click", async () => {
+              const selected = await chooseSourcePath(key, input.value);
+              if (!selected) return;
+              draft[key][index] = selected;
+              input.value = selected;
+              syncDraftState();
+            });
+            row.append(choose);
+            if (protectedRoots.size > 0 || customRoots.length > 1) {
+              const remove = document.createElement("button");
+              remove.className = "ghost-button settings-root-remove";
+              remove.type = "button";
+              remove.textContent = sourceText(
+                key,
+                "settingsRemoveRoot",
+                "settingsRemoveDatabase"
+              );
+              remove.addEventListener("click", () => {
+                draft[key].splice(index, 1);
+                refresh();
+              });
+              row.append(remove);
+            }
+          }
+          list.append(row);
         });
-        if (!resolved.roots.length) {
-          const item = document.createElement("li");
-          item.textContent = t("settingsNoRoots");
-          list.append(item);
+        body.append(hint, list);
+      }
+      const actions = document.createElement("div");
+      actions.className = "settings-source-actions";
+      const add = document.createElement("button");
+      add.className = "ghost-button settings-source-action";
+      add.type = "button";
+      add.textContent =
+        sourceState === "disabled"
+          ? sourceText(key, "settingsEnableSource", "settingsEnableDatabase")
+          : sourceText(key, "settingsAddRoot", "settingsAddDatabase");
+      add.addEventListener("click", () => {
+        if (sourceState === "disabled") {
+          draft[key] = [""];
+        } else {
+          draft[key].push("");
         }
-        const protection = document.createElement("p");
-        protection.className = "settings-source-note";
-        protection.textContent = t("settingsDefaultRootsProtected");
-        const actions = document.createElement("div");
-        actions.className = "settings-source-actions";
-        const add = document.createElement("button");
-        add.className = "ghost-button settings-source-action";
-        add.type = "button";
-        add.textContent = sourceText(
-          key,
-          "settingsAddRoot",
-          "settingsAddDatabase"
-        );
-        add.addEventListener("click", () => {
-          draft[key] = [...resolved.roots, ""];
-          renderSources(payload);
-          focusLastRootInput(container, key);
-        });
+        refresh();
+        focusLastRootInput();
+      });
+      actions.append(add);
+      const restore = document.createElement("button");
+      restore.className = "ghost-button settings-source-action";
+      restore.type = "button";
+      restore.textContent = t("settingsRestoreDefault");
+      restore.addEventListener("click", () => {
+        draft[key] = null;
+        refresh();
+      });
+      actions.append(restore);
+      if (sourceState !== "disabled") {
         const disable = document.createElement("button");
         disable.className = "ghost-button settings-source-action";
         disable.type = "button";
         disable.textContent = t("settingsDisableSource");
         disable.addEventListener("click", () => {
           draft[key] = [];
-          renderSources(payload);
+          refresh();
         });
-        actions.append(add, disable);
-        block.append(list, protection, actions);
-      } else {
-        if (sourceState === "disabled") {
-          const disabled = document.createElement("p");
-          disabled.className = "settings-source-disabled";
-          disabled.textContent = t("settingsSourceDisabled");
-          block.append(disabled);
-        } else {
-          const hint = document.createElement("p");
-          hint.className = "settings-source-note";
-          hint.textContent = protectedRoots.size
-            ? t("settingsProtectedRootsRetained")
-            : sourceText(
-                key,
-                "settingsCustomRootsHint",
-                "settingsCustomDatabaseHint"
-              );
-          const list = document.createElement("div");
-          list.className = "settings-root-editor";
-          custom.forEach((root, index) => {
-            const row = document.createElement("div");
-            row.className = "settings-root-row";
-            if (protectedRoots.has(root)) {
-              row.classList.add("settings-root-protected");
-              const value = document.createElement("code");
-              value.className = "settings-root-protected-value";
-              value.textContent = root;
-              value.title = root;
-              const protectedLabel = document.createElement("span");
-              protectedLabel.className = "settings-root-protected-label";
-              protectedLabel.textContent = t("settingsProtectedRoot");
-              row.append(value, protectedLabel);
-            } else {
-              const input = document.createElement("input");
-              input.type = "text";
-              input.value = root;
-              input.spellcheck = false;
-              input.placeholder = sourceText(
-                key,
-                "settingsRootPlaceholder",
-                "settingsDatabasePlaceholder"
-              );
-              input.addEventListener("input", () => {
-                draft[key][index] = input.value;
-              });
-              row.append(input);
-              const choose = document.createElement("button");
-              choose.className = "ghost-button settings-root-pick";
-              choose.type = "button";
-              choose.textContent = sourceText(
-                key,
-                "settingsChooseRoot",
-                "settingsChooseDatabase"
-              );
-              choose.addEventListener("click", async () => {
-                const selected = await chooseSourcePath(key, input.value);
-                if (!selected) return;
-                draft[key][index] = selected;
-                input.value = selected;
-              });
-              row.append(choose);
-              if (protectedRoots.size > 0 || customRoots.length > 1) {
-                const remove = document.createElement("button");
-                remove.className = "ghost-button settings-root-remove";
-                remove.type = "button";
-                remove.textContent = sourceText(
-                  key,
-                  "settingsRemoveRoot",
-                  "settingsRemoveDatabase"
-                );
-                remove.addEventListener("click", () => {
-                  draft[key].splice(index, 1);
-                  renderSources(payload);
-                });
-                row.append(remove);
-              }
-            }
-            list.append(row);
-          });
-          block.append(hint, list);
-        }
-        const actions = document.createElement("div");
-        actions.className = "settings-source-actions";
-        const add = document.createElement("button");
-        add.className = "ghost-button settings-source-action";
-        add.type = "button";
-        add.textContent =
-          sourceState === "disabled"
-            ? sourceText(key, "settingsEnableSource", "settingsEnableDatabase")
-            : sourceText(key, "settingsAddRoot", "settingsAddDatabase");
-        add.addEventListener("click", () => {
-          if (sourceState === "disabled") {
-            draft[key] = [""];
-          } else {
-            draft[key].push("");
-          }
-          renderSources(payload);
-          focusLastRootInput(container, key);
-        });
-        actions.append(add);
-        if (sourceState !== "disabled") {
-          const disable = document.createElement("button");
-          disable.className = "ghost-button settings-source-action";
-          disable.type = "button";
-          disable.textContent = t("settingsDisableSource");
-          disable.addEventListener("click", () => {
-            draft[key] = [];
-            renderSources(payload);
-          });
-          actions.append(disable);
-        }
-        const restore = document.createElement("button");
-        restore.className = "ghost-button settings-source-action";
-        restore.type = "button";
-        restore.textContent = t("settingsRestoreDefault");
-        restore.addEventListener("click", () => {
-          draft[key] = null;
-          renderSources(payload);
-        });
-        actions.append(restore);
-        block.append(actions);
+        actions.append(disable);
       }
-      appendSourceHealth(block, key, payload?.diagnostics?.sources?.[key]);
-      block.dataset.kind = key;
-      container.append(block);
-    });
+      body.append(actions);
+    }
   }
 
   function formatDiagnosticTime(value) {
@@ -643,7 +862,9 @@ export function createSettingsController({
 
   function applyPayload(payload) {
     latestPayload = payload;
-    draft = { ...(payload?.sources || {}) };
+    savedSources = cloneSourceSettings(payload?.sources);
+    draft = cloneSourceSettings(savedSources);
+    discardPending = false;
     renderSources(payload);
     renderStorage(payload);
     renderPreferences(payload);
@@ -658,6 +879,12 @@ export function createSettingsController({
     const target = dialog();
     if (!target) return;
     if (tab) activeTab = tab;
+    if (target.open) {
+      activateTab(activeTab);
+      return;
+    }
+    loading = true;
+    const requestVersion = ++loadVersion;
     setStatus("");
     if (elements.settingsLanguageSelect) {
       elements.settingsLanguageSelect.value = getLang();
@@ -671,18 +898,26 @@ export function createSettingsController({
     if (elements.settingsCheckUpdate)
       elements.settingsCheckUpdate.disabled = true;
     try {
-      applyPayload(await fetchJson("/api/settings"));
-      if (elements.settingsSaveBtn) elements.settingsSaveBtn.disabled = false;
+      const payload = await fetchJson("/api/settings");
+      // 关闭或重新打开后，旧请求不能覆盖当前表单和草稿。
+      if (requestVersion !== loadVersion || !target.open) return;
+      applyPayload(payload);
       setPreferenceControlsDisabled(false);
       if (elements.settingsCheckUpdate)
         elements.settingsCheckUpdate.disabled = false;
     } catch (error) {
+      if (requestVersion !== loadVersion || !target.open) return;
       setStatus(
         error.code === DESKTOP_RUNTIME_REQUIRED
           ? t("settingsDesktopPreview")
           : error.message,
         error.code !== DESKTOP_RUNTIME_REQUIRED
       );
+    } finally {
+      if (requestVersion === loadVersion) {
+        loading = false;
+        syncDraftState();
+      }
     }
   }
 
@@ -755,8 +990,15 @@ export function createSettingsController({
   }
 
   async function save() {
-    if (!draft) return;
-    if (elements.settingsSaveBtn) elements.settingsSaveBtn.disabled = true;
+    if (
+      !draft ||
+      savingSources ||
+      (!hasSourceChanges(draft, savedSources) &&
+        !latestPayload?.recovery?.required)
+    )
+      return;
+    savingSources = true;
+    syncDraftState();
     setStatus(t("settingsSaving"));
     try {
       const payload = await fetchJson("/api/settings", {
@@ -769,7 +1011,8 @@ export function createSettingsController({
     } catch (error) {
       setStatus(error.message, true);
     } finally {
-      if (elements.settingsSaveBtn) elements.settingsSaveBtn.disabled = false;
+      savingSources = false;
+      syncDraftState();
     }
   }
 
@@ -835,12 +1078,26 @@ export function createSettingsController({
 
   function bind() {
     elements.settingsToggle?.addEventListener("click", () => open());
-    elements.settingsCloseBtn?.addEventListener("click", () =>
-      dialog()?.close()
-    );
+    elements.settingsCloseBtn?.addEventListener("click", close);
+    dialog()?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      close();
+    });
+    elements.settingsKeepEditing?.addEventListener("click", () => {
+      discardPending = false;
+      syncDraftState();
+      activateTab("sources", true);
+    });
+    elements.settingsDiscardChanges?.addEventListener("click", () => {
+      if (savingSources) return;
+      draft = cloneSourceSettings(savedSources);
+      discardPending = false;
+      syncDraftState();
+      dialog()?.close();
+    });
     dialog()?.addEventListener("close", unlockPageScroll);
     dialog()?.addEventListener("click", (event) => {
-      if (event.target === dialog()) dialog().close();
+      if (event.target === dialog()) close();
     });
     elements.settingsSaveBtn?.addEventListener("click", save);
     elements.settingsClearCache?.addEventListener("click", clearCache);
@@ -927,5 +1184,5 @@ export function createSettingsController({
     });
   }
 
-  return { bind, open };
+  return { bind, open, close };
 }

@@ -17,7 +17,7 @@ html.settings-modal-open body {
   max-height: calc(100dvh - 32px);
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
 }
@@ -86,7 +86,7 @@ html.settings-modal-open body {
   min-height: 30px;
   padding: 4px 11px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-small);
   color: var(--muted);
   font-size: 0.76rem;
   font-weight: 650;
@@ -145,18 +145,18 @@ html.settings-modal-open body {
 .settings-general-list {
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
 /* 常规页分组卡片：外观与通用行为同构，视觉节奏一致。 */
 .settings-appearance {
   display: grid;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 14px 16px;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
@@ -208,15 +208,16 @@ html.settings-modal-open body {
   cursor: pointer;
 }
 
-.settings-theme-card {
+.settings-theme-option[data-preview-theme] .settings-theme-card {
   display: grid;
   gap: 7px;
   min-height: 66px;
   padding: 7px;
-  border: 1px solid var(--line);
+  border: var(--preview-line-width, 1px) solid var(--line);
   border-radius: var(--radius-small);
   color: var(--text-secondary);
   background: var(--surface-raised);
+  font-family: var(--font-ui);
   transition:
     border-color 140ms var(--ease-out),
     background-color 140ms var(--ease-out);
@@ -237,76 +238,72 @@ html.settings-modal-open body {
   outline-offset: 2px;
 }
 
-.settings-theme-preview {
+.settings-theme-option[data-preview-theme] .settings-theme-preview {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 0.55fr;
-  height: 24px;
+  grid-template-columns: 24% minmax(0, 1fr);
+  height: 42px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: max(1px, calc(var(--radius-small) - 2px));
+  border: var(--preview-line-width, 1px) solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--preview-shadow, none);
+  font-family: var(--font-ui);
+  font-size: calc(0.58rem * var(--density));
+  font-weight: var(--control-weight);
 }
 
-.settings-theme-preview i:nth-child(1) {
-  background: var(--preview-bg);
+.settings-preview-nav {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 6px 4px;
+  border-right: 1px solid var(--line);
+  background: var(--surface-sunken);
 }
 
-.settings-theme-preview i:nth-child(2) {
-  background: var(--preview-surface);
+.settings-preview-nav i {
+  height: 4px;
+  background: var(--muted);
 }
 
-.settings-theme-preview i:nth-child(3) {
-  background: var(--preview-accent);
+.settings-preview-nav i:first-child {
+  background: var(--accent);
+}
+
+.settings-preview-workspace {
+  display: grid;
+  gap: 3px;
+  padding: 4px 5px;
+}
+
+.settings-preview-workspace span {
+  color: var(--text);
+  font-family: var(--font-display);
+  line-height: 1.2;
+}
+
+.settings-preview-workspace i {
+  display: block;
+  height: 5px;
+  border-radius: var(--radius-small);
+  background: var(--accent-soft);
+}
+
+.settings-preview-workspace i:last-child {
+  width: 60%;
+  background: var(--surface-sunken);
 }
 
 .settings-theme-card strong {
+  display: -webkit-box;
   overflow: hidden;
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-scheme-options {
-  display: inline-grid;
-  grid-template-columns: repeat(3, auto);
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-small);
-  background: var(--surface-sunken);
-}
-
-.settings-scheme-options label {
-  cursor: pointer;
-}
-
-.settings-scheme-options input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.settings-scheme-options span {
-  display: block;
-  min-height: 30px;
-  padding: 6px 12px;
-  border: 1px solid transparent;
-  border-radius: max(1px, calc(var(--radius-small) - 2px));
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 650;
-}
-
-.settings-scheme-options input:checked + span {
-  border-color: var(--line);
-  color: var(--text);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-raised);
-}
-
-.settings-scheme-options input:focus-visible + span {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .settings-general-row {
@@ -314,7 +311,7 @@ html.settings-modal-open body {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  min-height: 58px;
+  min-height: 54px;
   padding: 10px 12px;
 }
 
@@ -356,55 +353,6 @@ html.settings-modal-open body {
   font-size: 0.72rem;
 }
 
-.settings-switch {
-  position: relative;
-  appearance: none;
-  width: 2.35rem;
-  height: 1.25rem;
-  margin: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--surface-subtle);
-  cursor: pointer;
-  transition:
-    background 140ms ease,
-    border-color 140ms ease;
-}
-
-.settings-switch::after {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 0.82rem;
-  height: 0.82rem;
-  border-radius: 50%;
-  background: var(--muted);
-  content: "";
-  transition:
-    transform 140ms ease,
-    background 140ms ease;
-}
-
-.settings-switch:checked {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.settings-switch:checked::after {
-  background: var(--accent);
-  transform: translateX(1.05rem);
-}
-
-.settings-switch:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.settings-switch:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-
 .settings-hint {
   max-width: 72ch;
   margin: 0 2px 10px;
@@ -419,7 +367,7 @@ html.settings-modal-open body {
   margin-bottom: 10px;
   padding: 10px 12px;
   border: 1px solid var(--danger);
-  border-radius: 9px;
+  border-radius: var(--radius-small);
   color: var(--text);
   background: var(--danger-soft);
 }
@@ -443,7 +391,7 @@ html.settings-modal-open body {
   margin-bottom: 8px;
   padding: 8px 11px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   color: var(--muted);
   font-size: 0.72rem;
   background: var(--surface-subtle);
@@ -460,49 +408,144 @@ html.settings-modal-open body {
   border-left: 1px solid var(--line);
 }
 
+/* 会话来源：紧凑卡片网格（图标 + 名称 + 来源徽章），点击打开目录编辑弹窗。 */
 .settings-sources {
   display: grid;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-
-.settings-source {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  padding: 12px 14px;
-  border: 0;
-  border-radius: 0;
-  background: var(--surface);
-}
-
-.settings-source + .settings-source {
-  border-top: 1px solid var(--line);
-}
-
-.settings-source[data-state="disabled"] {
-  background: var(--surface-muted);
-}
-
-.settings-source-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 12px;
+}
+
+.settings-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.settings-source-card {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 66px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  transition:
+    border-color 150ms var(--ease-out),
+    background-color 150ms var(--ease-out);
+}
+
+.settings-source-card:hover {
+  border-color: var(--line-strong);
+}
+
+.settings-source-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 2 / -1;
+  gap: 4px 10px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.settings-card-health {
+  color: var(--text-secondary);
+}
+
+.settings-source-card[data-state="warning"] .settings-card-health {
+  color: var(--signal);
+}
+
+.settings-source-card[data-state="ready"] .settings-card-health {
+  color: var(--success);
+}
+
+.settings-source-card[data-pending="true"] .settings-card-health {
+  color: var(--warning);
+}
+
+.settings-source-card strong {
+  flex: 1;
   min-width: 0;
   font-size: 0.82rem;
 }
 
-.settings-source-header strong {
-  min-width: 0;
-  font-size: 0.84rem;
+/* 卡片图标与首页会话来源一致（彩色 agent 标识）。 */
+.settings-source-card .source-tree__dot {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+/* 目录编辑弹窗：沿用对话框卡片框架。 */
+.settings-source-dialog {
+  width: min(560px, calc(100vw - 28px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.settings-source-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 40px);
+}
+
+.settings-source-dialog .delete-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+}
+
+.settings-source-dialog .delete-dialog-header {
+  flex-shrink: 0;
+  padding: 14px 16px 10px;
+}
+
+.settings-source-dialog .delete-dialog-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-source-dialog .delete-dialog-header h2 .settings-origin {
+  font-size: 0.66rem;
+}
+
+.settings-source-dialog .settings-source-dialog-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-source-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-source-dialog-footer span {
+  flex: 1 1 220px;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .settings-origin {
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--badge-radius);
   font-size: 0.66rem;
   font-weight: 700;
   color: var(--muted);
@@ -539,7 +582,7 @@ html.settings-modal-open body {
 
 .settings-root-list li {
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   background: var(--surface-muted);
 }
 
@@ -603,7 +646,7 @@ html.settings-modal-open body {
 
 .settings-root-protected-label {
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--badge-radius);
   color: var(--muted);
   font-size: 0.66rem;
   font-weight: 700;
@@ -625,12 +668,6 @@ html.settings-modal-open body {
   padding-top: 2px;
 }
 
-.settings-source-action {
-  min-height: 28px;
-  padding: 3px 8px;
-  font-size: 0.72rem;
-}
-
 .settings-source-health {
   display: flex;
   align-items: center;
@@ -643,7 +680,7 @@ html.settings-modal-open body {
 .settings-health-badge {
   flex: 0 0 auto;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--badge-radius);
   color: var(--muted);
   font-size: 0.66rem;
   font-weight: 700;
@@ -748,7 +785,7 @@ html.settings-modal-open body {
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;
+  margin: 8px 0 12px;
   color: var(--muted);
   font-size: 0.7rem;
 }
@@ -768,7 +805,7 @@ html.settings-modal-open body {
 .settings-storage-card {
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
@@ -783,7 +820,7 @@ html.settings-modal-open body {
   grid-template-columns: 120px minmax(0, 1fr);
   gap: 16px;
   align-items: center;
-  min-height: 58px;
+  min-height: 54px;
   padding: 10px 14px;
 }
 
@@ -844,7 +881,7 @@ html.settings-modal-open body {
 .settings-about-summary img {
   display: block;
   margin-bottom: 12px;
-  border-radius: 18px;
+  border-radius: var(--radius);
 }
 
 .settings-about-copy {
@@ -908,7 +945,7 @@ html.settings-modal-open body {
 }
 
 .settings-about-repository:focus-visible {
-  border-radius: 3px;
+  border-radius: var(--radius-small);
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -919,6 +956,8 @@ html.settings-modal-open body {
 
 .settings-footer {
   display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
@@ -928,7 +967,8 @@ html.settings-modal-open body {
   background: var(--surface-subtle);
 }
 
-.settings-dialog:not([data-active-tab="sources"]) .settings-footer {
+.settings-dialog:not([data-active-tab="sources"]):not([data-dirty="true"])
+  .settings-footer {
   display: none;
 }
 
@@ -1024,4 +1064,28 @@ html.settings-modal-open body {
   .settings-source-actions {
     justify-content: flex-start;
   }
+}
+
+.settings-unsaved-hint {
+  flex: 1 1 220px;
+  color: var(--warning);
+  font-size: 0.75rem;
+}
+
+.settings-discard-prompt:not([hidden]) {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  background: var(--surface);
+}
+
+.settings-discard-prompt > span {
+  flex: 1 1 240px;
+  font-size: 0.75rem;
 }

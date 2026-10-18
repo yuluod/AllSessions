@@ -2204,6 +2204,7 @@
                   <label
                     class="settings-theme-option"
                     data-preview-theme="greenbar"
+                    data-i18n-title="themeGreenbar"
                   >
                     <input
                       id="settings-theme-greenbar"
@@ -2214,12 +2215,20 @@
                     />
                     <span class="settings-theme-card">
                       <span class="settings-theme-preview" aria-hidden="true">
-                        <i></i><i></i><i></i>
+                        <span class="settings-preview-nav"><i></i><i></i></span>
+                        <span class="settings-preview-workspace"
+                          ><span data-i18n="sessionList">会话</span><i></i
+                          ><i></i
+                        ></span>
                       </span>
                       <strong data-i18n="themeGreenbar">经典报表</strong>
                     </span>
                   </label>
-                  <label class="settings-theme-option" data-preview-theme="tui">
+                  <label
+                    class="settings-theme-option"
+                    data-preview-theme="tui"
+                    data-i18n-title="themeTui"
+                  >
                     <input
                       id="settings-theme-tui"
                       class="visually-hidden"
@@ -2229,7 +2238,11 @@
                     />
                     <span class="settings-theme-card">
                       <span class="settings-theme-preview" aria-hidden="true">
-                        <i></i><i></i><i></i>
+                        <span class="settings-preview-nav"><i></i><i></i></span>
+                        <span class="settings-preview-workspace"
+                          ><span data-i18n="sessionList">会话</span><i></i
+                          ><i></i
+                        ></span>
                       </span>
                       <strong data-i18n="themeTui">开发者终端</strong>
                     </span>
@@ -2237,6 +2250,7 @@
                   <label
                     class="settings-theme-option"
                     data-preview-theme="standard"
+                    data-i18n-title="themeStandard"
                   >
                     <input
                       id="settings-theme-standard"
@@ -2247,7 +2261,11 @@
                     />
                     <span class="settings-theme-card">
                       <span class="settings-theme-preview" aria-hidden="true">
-                        <i></i><i></i><i></i>
+                        <span class="settings-preview-nav"><i></i><i></i></span>
+                        <span class="settings-preview-workspace"
+                          ><span data-i18n="sessionList">会话</span><i></i
+                          ><i></i
+                        ></span>
                       </span>
                       <strong data-i18n="themeStandard">现代青白</strong>
                     </span>
@@ -2255,6 +2273,7 @@
                   <label
                     class="settings-theme-option"
                     data-preview-theme="hdweb"
+                    data-i18n-title="themeHdweb"
                   >
                     <input
                       id="settings-theme-hdweb"
@@ -2265,7 +2284,11 @@
                     />
                     <span class="settings-theme-card">
                       <span class="settings-theme-preview" aria-hidden="true">
-                        <i></i><i></i><i></i>
+                        <span class="settings-preview-nav"><i></i><i></i></span>
+                        <span class="settings-preview-workspace"
+                          ><span data-i18n="sessionList">会话</span><i></i
+                          ><i></i
+                        ></span>
                       </span>
                       <strong data-i18n="themeHdweb">高对比红白</strong>
                     </span>
@@ -2273,6 +2296,7 @@
                   <label
                     class="settings-theme-option"
                     data-preview-theme="blind"
+                    data-i18n-title="themeBlind"
                   >
                     <input
                       id="settings-theme-blind"
@@ -2283,7 +2307,11 @@
                     />
                     <span class="settings-theme-card">
                       <span class="settings-theme-preview" aria-hidden="true">
-                        <i></i><i></i><i></i>
+                        <span class="settings-preview-nav"><i></i><i></i></span>
+                        <span class="settings-preview-workspace"
+                          ><span data-i18n="sessionList">会话</span><i></i
+                          ><i></i
+                        ></span>
                       </span>
                       <strong data-i18n="themeBlind">工业警示</strong>
                     </span>
@@ -2291,6 +2319,7 @@
                   <label
                     class="settings-theme-option"
                     data-preview-theme="pixel"
+                    data-i18n-title="themePixel"
                   >
                     <input
                       id="settings-theme-pixel"
@@ -2301,7 +2330,11 @@
                     />
                     <span class="settings-theme-card">
                       <span class="settings-theme-preview" aria-hidden="true">
-                        <i></i><i></i><i></i>
+                        <span class="settings-preview-nav"><i></i><i></i></span>
+                        <span class="settings-preview-workspace"
+                          ><span data-i18n="sessionList">会话</span><i></i
+                          ><i></i
+                        ></span>
                       </span>
                       <strong data-i18n="themePixel">像素工作站</strong>
                     </span>
@@ -2435,7 +2468,6 @@
               role="status"
               aria-live="polite"
             ></div>
-            <div id="settings-sources" class="settings-sources"></div>
             <div class="settings-diagnostics-footer">
               <span id="settings-diagnostics-meta">-</span>
               <button
@@ -2455,6 +2487,7 @@
                 复制脱敏诊断信息
               </button>
             </div>
+            <div id="settings-sources" class="settings-sources"></div>
           </div>
         </section>
         <section
@@ -2603,6 +2636,38 @@
         </section>
       </div>
       <div class="settings-footer">
+        <span
+          id="settings-unsaved-hint"
+          class="settings-unsaved-hint"
+          role="status"
+          aria-live="polite"
+        ></span>
+        <div
+          id="settings-discard-prompt"
+          class="settings-discard-prompt"
+          role="alert"
+          hidden
+        >
+          <span data-i18n="settingsDiscardQuestion"
+            >来源设置尚未保存，是否放弃更改并关闭？</span
+          >
+          <button
+            id="settings-keep-editing"
+            class="ghost-button"
+            type="button"
+            data-i18n="settingsKeepEditing"
+          >
+            继续编辑
+          </button>
+          <button
+            id="settings-discard-changes"
+            class="ghost-button"
+            type="button"
+            data-i18n="settingsDiscardChanges"
+          >
+            放弃更改并关闭
+          </button>
+        </div>
         <button
           id="settings-save-btn"
           class="ghost-button settings-save-btn"

@@ -621,6 +621,7 @@ async function initialize() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) return;
     const activeElement = document.activeElement;
     const action = resolveGlobalShortcut(event, {
       editableTarget: isEditableShortcutTarget(event.target),
@@ -653,7 +654,7 @@ async function initialize() {
       case "toggle-settings":
         event.preventDefault();
         if (elements.settingsDialog?.open) {
-          elements.settingsDialog.close();
+          settingsController.close();
         } else if (!document.querySelector("dialog[open]")) {
           void settingsController.open();
         }

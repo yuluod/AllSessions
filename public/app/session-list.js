@@ -23,6 +23,7 @@ import {
 import { renderActiveFilters, syncUrl } from "./filters.js";
 import { setDetailPlaceholder, setPropsPlaceholder } from "./detail-view.js";
 import { loadMoreSessions, loadSessionDetail } from "./data.js";
+import { createEmptyState } from "../ui-components.js";
 
 export function updateBulkToolbar() {
   const count = state.selectedSessionKeys.size;
@@ -343,9 +344,10 @@ export function renderSessionList() {
   const visible = visibleSessions();
 
   if (!visible.length) {
-    const empty = document.createElement("p");
-    empty.className = "hero-copy";
-    empty.textContent = t(state.scanning ? "scanningSessions" : "noResults");
+    const empty = createEmptyState({
+      title: t(state.scanning ? "scanningSessions" : "noResults"),
+      compact: true,
+    });
     elements.sessionList.append(empty);
     renderSessionListFooter();
     return;

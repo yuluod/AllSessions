@@ -1,0 +1,427 @@
+/* 组件规格集中定义；页面样式只负责布局和有明确语义的变体。 */
+.detail-topbar-right,
+.session-query-controls,
+.bulk-toolbar,
+.settings-source-dialog {
+  --control-height: var(--control-height-compact);
+  --control-font-size: var(--control-font-compact);
+}
+
+/* 通用控件 */
+.ghost-button,
+.danger-button,
+.tab-button,
+.role-filter-btn,
+.mobile-back-button {
+  min-height: var(--control-height);
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  font-size: var(--control-font-size);
+  line-height: var(--control-line-height);
+  font-weight: var(--control-weight);
+  transition:
+    color var(--control-motion) var(--ease-out),
+    border-color var(--control-motion) var(--ease-out),
+    background-color var(--control-motion) var(--ease-out),
+    transform var(--control-motion) var(--ease-out);
+}
+
+:where(.ghost-button, .tab-button, .mobile-back-button) {
+  color: var(--text-secondary);
+  background: var(--surface);
+}
+
+:where(.ghost-button:hover, .tab-button:hover, .mobile-back-button:hover) {
+  border-color: var(--line-strong);
+  color: var(--accent-strong);
+  background: var(--surface-subtle);
+}
+
+.ghost-button:active,
+.danger-button:active,
+.tab-button:active,
+.mobile-back-button:active {
+  transform: translateY(1px);
+}
+
+.ghost-button:disabled,
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+  transform: none;
+}
+
+.danger-button {
+  border-color: var(--signal);
+  color: var(--text-inverse);
+  background: var(--signal);
+}
+
+.danger-button:hover:not(:disabled) {
+  filter: brightness(0.88);
+}
+
+.detail-topbar-right > button,
+.detail-topbar-right > details > summary,
+.session-query-controls .ghost-button,
+.bulk-toolbar .ghost-button,
+.settings-source-dialog .ghost-button:not(.delete-dialog-close-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  height: auto;
+  padding: 5px 9px;
+  font-size: var(--control-font-size);
+  line-height: var(--control-line-height);
+}
+
+.detail-topbar-right > .session-favorite-button {
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+}
+
+.detail-search-field {
+  --icon-control-size: 24px;
+}
+
+.bulk-select-toggle,
+.search-nav-button {
+  display: inline-grid;
+  place-items: center;
+  width: var(--icon-control-size, 30px);
+  height: var(--icon-control-size, 30px);
+  min-height: var(--icon-control-size, 30px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+}
+
+/* 开关共用状态与几何，维护开关仅改变强调色。 */
+.conversation-toolbar {
+  --switch-width: var(--switch-width-compact);
+  --switch-height: var(--switch-height-compact);
+  --switch-thumb: var(--switch-thumb-compact);
+}
+
+.maintenance-toggle {
+  --switch-tone: var(--warning);
+}
+
+.settings-switch,
+.maintenance-toggle input,
+.conversation-toolbar .tool-toggle-label input {
+  position: relative;
+  appearance: none;
+  flex: 0 0 auto;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--control-round);
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: background-color var(--control-motion) var(--ease-out);
+}
+
+.settings-switch::after,
+.maintenance-toggle input::after,
+.conversation-toolbar .tool-toggle-label input::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: var(--switch-thumb);
+  height: var(--switch-thumb);
+  border: 0;
+  border-radius: var(--control-thumb-radius);
+  background: #fff;
+  content: "";
+  transition: transform var(--control-motion) var(--ease-out);
+}
+
+.settings-switch:checked,
+.maintenance-toggle input:checked,
+.conversation-toolbar .tool-toggle-label input:checked {
+  background: var(--switch-tone, var(--accent-strong));
+}
+
+.settings-switch:checked::after,
+.maintenance-toggle input:checked::after,
+.conversation-toolbar .tool-toggle-label input:checked::after {
+  transform: translateX(calc(var(--switch-width) - var(--switch-thumb) - 4px));
+}
+
+.settings-switch:focus-visible,
+.maintenance-toggle input:focus-visible,
+.conversation-toolbar .tool-toggle-label input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.settings-switch:disabled,
+.maintenance-toggle input:disabled,
+.conversation-toolbar .tool-toggle-label input:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+/* 文字、图标、原生单选三种入口共用分段选中态。 */
+.role-filter,
+.scheme-control {
+  --segment-height: var(--segment-height-compact);
+  --segment-font-size: var(--segment-font-compact);
+}
+
+.role-filter,
+.scheme-control,
+.settings-scheme-options {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+}
+
+.role-filter .role-filter-btn,
+.scheme-control button,
+.settings-scheme-options span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--segment-height);
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: max(0px, calc(var(--radius-small) - 2px));
+  color: var(--muted);
+  background: transparent;
+  font-size: var(--segment-font-size);
+  font-weight: var(--control-weight);
+  line-height: var(--control-line-height);
+  cursor: pointer;
+}
+
+.scheme-control button {
+  width: 30px;
+  padding: 4px;
+}
+
+.settings-scheme-options label {
+  cursor: pointer;
+}
+
+.settings-scheme-options input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.role-filter .role-filter-btn.active,
+.scheme-control button[aria-pressed="true"],
+.settings-scheme-options input:checked + span {
+  border-color: var(--line);
+  color: var(--accent-strong);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.settings-scheme-options input:focus-visible + span {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* 表单共用底色、边框、箭头与焦点；宽度仍由页面布局决定。 */
+.field select,
+.field input,
+.session-filter-field select,
+.settings-general-row select,
+.settings-root-row input,
+.session-organize-body input,
+.session-organize-body textarea,
+.bulk-actions select {
+  min-height: var(--control-height);
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  background-color: var(--surface-subtle);
+  font-size: var(--control-font-size);
+  line-height: var(--control-line-height);
+}
+
+.field select,
+.session-filter-field select,
+.settings-general-row select,
+.bulk-actions select {
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23748090' stroke-width='1.4'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
+  background-position: right 9px center;
+  background-size: 12px;
+  background-repeat: no-repeat;
+}
+
+.field :is(input, select):focus-visible,
+.session-filter-field select:focus-visible,
+.settings-general-row select:focus-visible,
+.settings-root-row input:focus-visible,
+.session-organize-body :is(input, textarea):focus-visible,
+.bulk-actions select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-color: var(--line-accent);
+}
+
+[data-popover] > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height);
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--text-secondary);
+  background: var(--surface);
+  font-size: var(--control-font-size);
+  font-weight: var(--control-weight);
+  line-height: var(--control-line-height);
+  list-style: none;
+  cursor: pointer;
+}
+
+[data-popover] > summary::-webkit-details-marker {
+  display: none;
+}
+
+[data-popover] > summary::after {
+  width: 5px;
+  height: 5px;
+  margin: -3px 0 0 2px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  content: "";
+  transform: rotate(45deg);
+}
+
+[data-popover][open] > summary {
+  border-color: var(--line-accent);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.settings-dialog,
+.settings-source-dialog,
+.delete-dialog,
+.update-dialog {
+  border-radius: var(--radius);
+}
+
+.delete-dialog[open],
+.update-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+}
+
+.delete-dialog-body,
+.update-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.settings-header,
+.delete-dialog-header,
+.settings-source-dialog .delete-dialog-header,
+.update-dialog-header {
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-dialog::backdrop,
+.delete-dialog::backdrop,
+.update-dialog::backdrop {
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
+}
+
+.delete-dialog-close-button,
+.settings-close-btn,
+.update-dialog-close {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+  color: var(--muted);
+  background: transparent;
+}
+
+.ui-empty-state {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 32px 20px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.settings-origin,
+.settings-health-badge,
+.tool-mode-badge,
+.session-workspace-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: var(--badge-radius);
+  font-size: 0.68rem;
+  font-weight: var(--control-weight);
+  line-height: 1.4;
+}
+
+.detail-tag,
+.message-role,
+.message-tool,
+.raw-event-type {
+  border-radius: var(--badge-radius);
+}
+
+.session-pane-heading #session-count,
+.session-group-count {
+  border-radius: var(--radius-small);
+}
+
+.ui-empty-state--compact {
+  min-height: 140px;
+  padding: 24px 16px;
+}
+
+.ui-empty-title,
+.ui-empty-description {
+  max-width: 48ch;
+  margin: 0;
+}
+
+.ui-empty-title {
+  font-size: 0.85rem;
+  font-weight: var(--control-weight);
+}
+
+.ui-empty-description {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}

@@ -35,6 +35,8 @@ const DICT = {
     loading: "加载中...",
     eyebrowStats: "STATISTICS",
     statsOverview: "统计",
+    statsNoData: "暂无统计数据",
+    statsNoDataHint: "请调整筛选条件，或扫描会话来源后重试。",
     tools: "工具",
     workspaceViews: "工作区视图",
     workspaceStatus: "工作区状态",
@@ -617,6 +619,9 @@ const DICT = {
     loading: "Loading...",
     eyebrowStats: "STATISTICS",
     statsOverview: "Stats",
+    statsNoData: "No statistics yet",
+    statsNoDataHint:
+      "Adjust the filters or scan session sources and try again.",
     tools: "Tools",
     workspaceViews: "Workspace views",
     workspaceStatus: "Workspace status",

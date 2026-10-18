@@ -1,19 +1,23 @@
-[data-theme="greenbar"] {
+[data-theme="greenbar"],
+.settings-theme-option[data-preview-theme="greenbar"] {
   --font-ui: "SF Mono", "Cascadia Mono", Consolas, monospace;
   --font-mono: "SF Mono", "Cascadia Mono", Consolas, monospace;
   --font-display: "SF Mono", "Cascadia Mono", Consolas, monospace;
   --radius: 2px;
   --radius-small: 2px;
   --density: 1;
+  --preview-line-width: 1px;
+  --preview-shadow: none;
+  /* 组件视觉参数；交互行为由共享组件负责。 */
+  --control-weight: 600;
+  --control-round: 2px;
+  --control-thumb-radius: 1px;
+  --badge-radius: 2px;
 }
 
-.settings-theme-option[data-preview-theme="greenbar"] {
-  --preview-bg: #f7f5ec;
-  --preview-surface: #e6efe3;
-  --preview-accent: #2f6b4f;
-}
-
-[data-theme="greenbar"][data-scheme="light"] {
+[data-theme="greenbar"][data-scheme="light"],
+:root[data-scheme="light"]
+  .settings-theme-option[data-preview-theme="greenbar"] {
   --bg: #f7f5ec;
   --surface: #fbfaf2;
   --surface-raised: #fffef8;
@@ -49,7 +53,9 @@
   --focus-ring: #2f6b4f;
 }
 
-[data-theme="greenbar"][data-scheme="dark"] {
+[data-theme="greenbar"][data-scheme="dark"],
+:root[data-scheme="dark"]
+  .settings-theme-option[data-preview-theme="greenbar"] {
   --bg: #11151a;
   --surface: #151b21;
   --surface-raised: #1b232b;
@@ -61,7 +67,7 @@
   --line-accent: #6fbf94;
   --text: #cfe0d5;
   --text-secondary: #adbbb2;
-  --muted: #8c9b92;
+  --muted: #a0afa5;
   --text-inverse: #101510;
   --accent: #6fbf94;
   --accent-strong: #97d5b3;

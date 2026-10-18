@@ -1,6 +1,7 @@
 import { t, getLang } from "./i18n.js";
 import { formatCount } from "./session-format.js";
 import { calendarHeatmapDays, presetHeatmapRange } from "./stats-calendar.js";
+import { createEmptyState } from "./ui-components.js";
 
 const AGENT_PRESENTATION = {
   codex: { label: "Codex", color: "#0f766e" },
@@ -49,9 +50,12 @@ function renderBar(label, count, max, displayLabel = label, tokens = null) {
 }
 
 function renderEmpty(container) {
-  const empty = document.createElement("div");
-  empty.className = "stats-empty";
-  empty.textContent = "—";
+  const empty = createEmptyState({
+    title: t("statsNoData"),
+    description: t("statsNoDataHint"),
+    compact: true,
+  });
+  empty.classList.add("stats-empty");
   container.append(empty);
 }
 

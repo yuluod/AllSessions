@@ -652,7 +652,7 @@ test("详情筛选直接显示，导出保留按需展开", async () => {
   assert.match(html, /<div class="conversation-display-options">/);
   assert.doesNotMatch(html, /<details class="conversation-display-options">/);
   assert.doesNotMatch(html, /<summary data-i18n="displayOptions">/);
-  assert.match(html, /<details class="export-menu">/);
+  assert.match(html, /<details class="export-menu" data-popover>/);
   assert.match(html, /<summary data-i18n="export">/);
 });
 

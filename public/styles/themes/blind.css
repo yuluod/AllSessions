@@ -1,4 +1,5 @@
-[data-theme="blind"] {
+[data-theme="blind"],
+.settings-theme-option[data-preview-theme="blind"] {
   --font-ui:
     "Avenir Next Condensed", "Arial Narrow", -apple-system, BlinkMacSystemFont,
     sans-serif;
@@ -8,15 +9,25 @@
   --radius: 3px;
   --radius-small: 2px;
   --density: 1;
+  --preview-line-width: 1px;
+  --preview-shadow: none;
+  /* 组件视觉参数；交互行为由共享组件负责。 */
+  --control-height: 36px;
+  --control-height-compact: 34px;
+  --control-font-size: 0.85rem;
+  --control-font-compact: 0.8rem;
+  --control-weight: 700;
+  --control-line-height: 1.3;
+  --control-round: 2px;
+  --control-thumb-radius: 1px;
+  --badge-radius: 2px;
+  --segment-height: 32px;
+  --segment-height-compact: 28px;
+  --segment-font-compact: 0.78rem;
 }
 
-.settings-theme-option[data-preview-theme="blind"] {
-  --preview-bg: #1d4a2f;
-  --preview-surface: #14100c;
-  --preview-accent: #f4c400;
-}
-
-[data-theme="blind"][data-scheme="light"] {
+[data-theme="blind"][data-scheme="light"],
+:root[data-scheme="light"] .settings-theme-option[data-preview-theme="blind"] {
   --bg: #efe8d8;
   --surface: #e3dbc6;
   --surface-raised: #f7f0df;
@@ -28,12 +39,12 @@
   --line-accent: #756000;
   --text: #1d3a28;
   --text-secondary: #344b3c;
-  --muted: #566052;
+  --muted: #46513f;
   --text-inverse: #fff8e8;
   --accent: #756000;
   --accent-strong: #564600;
   --accent-soft: #d9ce9b;
-  --signal: #b84a00;
+  --signal: #963900;
   --signal-soft: #f1d4bf;
   --info: #285a7a;
   --info-soft: #d5e3e7;
@@ -52,7 +63,8 @@
   --focus-ring: #1d3a28;
 }
 
-[data-theme="blind"][data-scheme="dark"] {
+[data-theme="blind"][data-scheme="dark"],
+:root[data-scheme="dark"] .settings-theme-option[data-preview-theme="blind"] {
   --bg: #14100c;
   --surface: #1d4a2f;
   --surface-raised: #25583a;
@@ -64,12 +76,12 @@
   --line-accent: #f4c400;
   --text: #f4c400;
   --text-secondary: #e1dcc7;
-  --muted: #b9b6a8;
+  --muted: #d0cbb9;
   --text-inverse: #162719;
   --accent: #f4c400;
   --accent-strong: #ffdc3d;
   --accent-soft: #4a4b1d;
-  --signal: #ff7b1c;
+  --signal: #ffa45f;
   --signal-soft: #56331b;
   --info: #8dc9eb;
   --info-soft: #204154;
@@ -83,7 +95,7 @@
   --src-pi: #f2a5cf;
   --src-kimi: #8dd7dd;
   --src-opencode: #ff9b67;
-  --src-zcode: #88c4e8;
+  --src-zcode: #a9d8f5;
   --shadow-raised: 0 4px 18px rgb(0 0 0 / 42%);
   --focus-ring: #ffdc3d;
 }

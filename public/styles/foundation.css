@@ -1,4 +1,27 @@
 :root {
+  --control-height: 34px;
+  --control-font-size: 0.8rem;
+  --control-height-compact: 32px;
+  --control-font-compact: 0.75rem;
+  --control-weight: 650;
+  --control-line-height: 1.2;
+  --control-motion: 160ms;
+  --control-round: 999px;
+  --badge-radius: 999px;
+  --control-thumb-radius: 50%;
+  --segment-height: 30px;
+  --segment-height-compact: 26px;
+  --segment-font-compact: 0.72rem;
+  --segment-font-size: 0.75rem;
+  --switch-width-compact: 28px;
+  --switch-height-compact: 16px;
+  --switch-thumb-compact: 12px;
+  --switch-width: 34px;
+  --switch-height: 20px;
+  --switch-thumb: 16px;
+}
+
+:root {
   --rail-w: 260px;
   --list-w: clamp(400px, 32vw, 500px);
   --sidebar-w: var(--list-w);

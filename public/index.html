@@ -150,9 +150,7 @@
           >
             <div class="rail__group-header">
               <strong data-i18n="sourceRail">会话来源</strong>
-              <span
-                id="source-rail-hint"
-                data-i18n="sourceRailHint"
+              <span id="source-rail-hint" data-i18n="sourceRailHint"
                 >按来源筛选</span
               >
             </div>
@@ -512,35 +510,36 @@
                         <option value="" data-i18n="all">全部</option>
                       </select>
                     </label>
-                    <button
-                      id="favorite-only-toggle"
-                      class="ghost-button session-list-header__favorite"
-                      type="button"
-                      aria-pressed="false"
-                      aria-label="只看收藏"
-                      title="只看收藏"
-                      data-i18n="favoriteOnly"
-                      data-i18n-attr="aria-label"
-                      data-i18n-title="favoriteOnly"
-                    >
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                        width="13"
-                        height="13"
-                      >
-                        <path
-                          d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="1.7"
-                        />
-                      </svg>
-                      <span data-i18n="favoriteOnly">只看收藏</span>
-                    </button>
                   </div>
+                  <button
+                    id="favorite-only-toggle"
+                    class="ghost-button session-list-header__favorite"
+                    type="button"
+                    aria-pressed="false"
+                    aria-label="只看收藏"
+                    title="只看收藏"
+                    data-i18n="favoriteOnly"
+                    data-i18n-attr="aria-label"
+                    data-i18n-title="favoriteOnly"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      width="13"
+                      height="13"
+                    >
+                      <path
+                        d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                      />
+                    </svg>
+                    <span data-i18n="favoriteOnly">只看收藏</span>
+                  </button>
                   <details
                     id="list-filter-menu"
+                    data-popover
                     class="bar-menu session-visibility-menu"
                   >
                     <summary data-i18n="visibility">显示范围</summary>
@@ -770,6 +769,7 @@
                     </button>
                     <details
                       id="session-organize-menu"
+                      data-popover
                       class="session-organize-menu"
                     >
                       <summary data-i18n="organizeSession">整理</summary>
@@ -850,7 +850,7 @@
                       信息
                     </button>
 
-                    <details class="export-menu">
+                    <details class="export-menu" data-popover>
                       <summary data-i18n="export">导出</summary>
                       <div class="export-actions">
                         <span
@@ -1140,7 +1140,10 @@
                     </div>
 
                     <div class="conversation-body has-outline">
-                      <div id="conversation-list" class="conversation-list"></div>
+                      <div
+                        id="conversation-list"
+                        class="conversation-list"
+                      ></div>
                       <aside
                         id="message-outline"
                         class="message-outline"

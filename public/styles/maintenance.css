@@ -129,50 +129,6 @@
   white-space: nowrap;
 }
 
-.maintenance-toggle input {
-  position: relative;
-  appearance: none;
-  width: 2.35rem;
-  height: 1.25rem;
-  margin: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--surface-subtle);
-  cursor: pointer;
-  transition:
-    background 140ms ease,
-    border-color 140ms ease;
-}
-
-.maintenance-toggle input::after {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 0.82rem;
-  height: 0.82rem;
-  border-radius: 50%;
-  background: var(--muted);
-  content: "";
-  transition:
-    transform 140ms ease,
-    background 140ms ease;
-}
-
-.maintenance-toggle input:checked {
-  border-color: var(--warning);
-  background: var(--warning-soft);
-}
-
-.maintenance-toggle input:checked::after {
-  background: var(--warning);
-  transform: translateX(1.05rem);
-}
-
-.maintenance-toggle input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .tool-mode-badge {
   width: fit-content;
   padding: 3px 7px;

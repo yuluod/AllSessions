@@ -1,4 +1,5 @@
-[data-theme="standard"] {
+[data-theme="standard"],
+.settings-theme-option[data-preview-theme="standard"] {
   --font-ui:
     ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
     sans-serif;
@@ -8,15 +9,19 @@
   --radius: 10px;
   --radius-small: 7px;
   --density: 1;
+  --preview-line-width: 1px;
+  --preview-shadow: none;
+  /* 组件视觉参数；交互行为由共享组件负责。 */
+  --control-height: 36px;
+  --control-height-compact: 32px;
+  --control-weight: 600;
+  --control-round: 999px;
+  --badge-radius: 999px;
 }
 
-.settings-theme-option[data-preview-theme="standard"] {
-  --preview-bg: #fafafa;
-  --preview-surface: #e5e7eb;
-  --preview-accent: #0f7a8d;
-}
-
-[data-theme="standard"][data-scheme="light"] {
+[data-theme="standard"][data-scheme="light"],
+:root[data-scheme="light"]
+  .settings-theme-option[data-preview-theme="standard"] {
   --bg: #fafafa;
   --surface: #ffffff;
   --surface-raised: #ffffff;
@@ -47,14 +52,16 @@
   --src-pi: #a43f82;
   --src-kimi: #0f7490;
   --src-opencode: #c2415b;
-  --src-zcode: #3b6ea5;
+  --src-zcode: #315f91;
   --shadow-raised:
     0 2px 6px rgb(15 17 21 / 6%), 0 12px 32px rgb(15 17 21 / 12%);
   --shadow-hover: 0 2px 4px rgb(15 17 21 / 6%), 0 6px 16px rgb(15 17 21 / 9%);
   --focus-ring: #2563eb;
 }
 
-[data-theme="standard"][data-scheme="dark"] {
+[data-theme="standard"][data-scheme="dark"],
+:root[data-scheme="dark"]
+  .settings-theme-option[data-preview-theme="standard"] {
   --bg: #101114;
   --surface: #17181c;
   --surface-raised: #1e2025;

@@ -115,7 +115,7 @@ test("每套主题为浅色和深色完整实现 token 契约", async () => {
     for (const mode of ["light", "dark"]) {
       const block = source.match(
         new RegExp(
-          `\\[data-theme="${theme}"\\]\\[data-scheme="${mode}"\\] \\{([\\s\\S]*?)\\n\\}`
+          `\\[data-theme="${theme}"\\]\\[data-scheme="${mode}"\\](?:\\s*,[^{}]*)?\\s*\\{([\\s\\S]*?)\\n\\}`
         )
       )?.[1];
       assert.ok(block, `${theme}/${mode} 缺少 token 块`);

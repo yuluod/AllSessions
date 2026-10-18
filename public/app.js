@@ -3,6 +3,7 @@ import { t, getLang, setLang, updateStaticI18n } from "./i18n.js";
 import { initTheme, setScheme } from "./theme-manager.js";
 import { initPaneLayout } from "./pane-layout.js";
 import { initReadingToolbar } from "./reading-toolbar.js";
+import { bindPopoverMenus } from "./ui-components.js";
 import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
 import { bindTauriSessionEvents } from "./session-events.js";
@@ -291,30 +292,7 @@ async function initialize() {
     rerenderLocalizedContent();
   });
   document.addEventListener("allsessions:themechange", syncSchemeToggle);
-  // 弹层菜单互斥：同一时刻只开一个；点击菜单外部时全部收起。
-  const popoverMenus = [...document.querySelectorAll(".bar-menu")].filter(
-    (menu) => menu instanceof HTMLDetailsElement
-  );
-  for (const menu of popoverMenus) {
-    menu.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape" || !menu.open) return;
-      menu.open = false;
-      menu.querySelector("summary")?.focus();
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    menu.addEventListener("toggle", () => {
-      if (!menu.open) return;
-      for (const other of popoverMenus) {
-        if (other !== menu) other.open = false;
-      }
-    });
-  }
-  document.addEventListener("click", (event) => {
-    if (event.target instanceof Element && !event.target.closest(".bar-menu")) {
-      for (const menu of popoverMenus) menu.open = false;
-    }
-  });
+  bindPopoverMenus();
   // 空态快捷操作：直达搜索与统计视图。
   document
     .getElementById("empty-search-action")

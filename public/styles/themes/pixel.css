@@ -1,19 +1,25 @@
-[data-theme="pixel"] {
+[data-theme="pixel"],
+.settings-theme-option[data-preview-theme="pixel"] {
   --font-ui: "Cascadia Mono", "SF Mono", Consolas, monospace;
   --font-mono: "Cascadia Mono", "SF Mono", Consolas, monospace;
   --font-display: "Cascadia Mono", "SF Mono", Consolas, monospace;
   --radius: 0;
   --radius-small: 0;
   --density: 0.98;
+  /* 组件视觉参数；交互行为由共享组件负责。 */
+  --control-height: 34px;
+  --control-height-compact: 32px;
+  --control-weight: 700;
+  --control-round: 0px;
+  --control-thumb-radius: 0px;
+  --badge-radius: 0px;
+  --control-motion: 0ms;
+  --preview-line-width: 2px;
+  --preview-shadow: 1px 1px 0 var(--line-strong);
 }
 
-.settings-theme-option[data-preview-theme="pixel"] {
-  --preview-bg: #f4f2df;
-  --preview-surface: #cfd9bd;
-  --preview-accent: #173622;
-}
-
-[data-theme="pixel"][data-scheme="light"] {
+[data-theme="pixel"][data-scheme="light"],
+:root[data-scheme="light"] .settings-theme-option[data-preview-theme="pixel"] {
   --bg: #e5e7d7;
   --surface: #f4f2df;
   --surface-raised: #fffdf0;
@@ -25,7 +31,7 @@
   --line-accent: #245534;
   --text: #101b14;
   --text-secondary: #27372c;
-  --muted: #526156;
+  --muted: #46554a;
   --text-inverse: #fffdf0;
   --accent: #245534;
   --accent-strong: #173622;
@@ -49,7 +55,8 @@
   --focus-ring: #1d5680;
 }
 
-[data-theme="pixel"][data-scheme="dark"] {
+[data-theme="pixel"][data-scheme="dark"],
+:root[data-scheme="dark"] .settings-theme-option[data-preview-theme="pixel"] {
   --bg: #07100a;
   --surface: #0e1a12;
   --surface-raised: #15241a;
@@ -61,7 +68,7 @@
   --line-accent: #b6d5a3;
   --text: #e5e5c9;
   --text-secondary: #c7cfb7;
-  --muted: #9aa58f;
+  --muted: #b0bda3;
   --text-inverse: #07100a;
   --accent: #8fb87d;
   --accent-strong: #c0dda8;
@@ -190,6 +197,45 @@
   border-color: var(--line-strong);
 }
 
+/* 详情区视图 tab：恢复被扁平下划线规则覆盖的像素效果，并留出阴影间距。 */
+[data-theme="pixel"] .detail-topbar .tabs {
+  gap: 4px;
+  padding: 0 2px 2px 0;
+}
+
+[data-theme="pixel"] .detail-topbar .tabs .tab-button {
+  border-style: solid;
+  border-width: 2px;
+  border-bottom-color: var(--line-strong);
+  box-shadow: 1px 1px 0 var(--line-strong);
+}
+
+[data-theme="pixel"] .detail-topbar .tabs .tab-button.active {
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 密集按钮簇：像素边框与偏移阴影需要空隙，容器自身不再叠加边框。 */
+[data-theme="pixel"] .role-filter {
+  gap: 4px;
+  padding: 4px;
+  border-color: transparent;
+  background: transparent;
+}
+
+[data-theme="pixel"] .role-filter .role-filter-btn {
+  border-style: solid;
+  border-width: 2px;
+  border-bottom-color: var(--line-strong);
+  box-shadow: 1px 1px 0 var(--line-strong);
+  border-radius: 0;
+}
+
+[data-theme="pixel"] .role-filter .role-filter-btn.active {
+  background: var(--accent-soft);
+  border-bottom-color: var(--accent);
+}
+
 [data-theme="pixel"] .session-list > .session-row .session-item.active {
   color: var(--text-inverse);
   background: var(--accent-strong);
@@ -202,13 +248,7 @@
   .session-list
   > .session-row
   .session-item.active
-  :is(
-    .session-time,
-    .session-message-count,
-    .session-cwd-main,
-    .session-cwd-path,
-    .session-tertiary
-  ) {
+  :is(.session-time, .session-cwd-main, .session-cwd-path, .session-tertiary) {
   color: var(--text-inverse);
 }
 

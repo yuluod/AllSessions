@@ -96,14 +96,14 @@ html.settings-modal-open body {
 
 .settings-tab:hover {
   color: var(--text);
-  background: var(--surface-muted);
+  background: var(--surface-subtle);
 }
 
+/* 选中态与侧栏导航同语言：无框软底 + 强调色，不再使用描边盒与投影。 */
 .settings-tab.active {
-  border-color: var(--line);
-  color: var(--text);
-  background: var(--surface-subtle);
-  box-shadow: var(--shadow-raised);
+  border-color: transparent;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
 }
 
 .settings-tab:focus-visible {
@@ -131,6 +131,17 @@ html.settings-modal-open body {
   min-width: 0;
 }
 
+/* 面板页内标题与 tab 重复：视觉隐藏（保留无障碍结构）。 */
+.settings-section > h3 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .settings-general-list {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -138,9 +149,18 @@ html.settings-modal-open body {
   background: var(--surface);
 }
 
+/* 常规页分组卡片：外观与通用行为同构，视觉节奏一致。 */
 .settings-appearance {
   display: grid;
   gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.settings-general-list {
   margin-bottom: 16px;
 }
 

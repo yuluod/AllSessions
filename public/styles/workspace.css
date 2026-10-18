@@ -194,9 +194,8 @@
   cursor: pointer;
 }
 .scheme-control button[aria-pressed="true"] {
-  background: var(--surface);
+  background: var(--accent-soft);
   color: var(--accent-strong);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
 }
 .scheme-control button:hover {
   color: var(--text);

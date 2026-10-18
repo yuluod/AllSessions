@@ -1,4 +1,4 @@
-import { sourceRailItemState } from "../source-rail.js";
+import { sourceAgentForKind, sourceRailItemState } from "../source-rail.js";
 // 状态栏与来源栏:来源计数、扫描健康状态与快捷键提示。
 import { getLang, t } from "../i18n.js";
 import { getThemeState } from "../theme-manager.js";
@@ -64,9 +64,12 @@ export function renderSourceRail() {
       }
     }
     button.classList.toggle("is-empty", item.empty);
-    // 展开态的分组排列：非空（及选中的）来源在前、空来源在后；
-    // 组内保持固定顺序，避免切换项目时行序跳动。用 order 实现，不搬 DOM。
-    button.style.order = item.empty && !item.active ? 1 : 0;
+    // 展开态的分组排列：有会话的来源在前、零会话的在后；
+    // 分组只看计数，与是否选中无关——选中零会话来源时原地高亮，不跳到上方组。
+    button.style.order =
+      item.count === "0" && sourceAgentForKind(button.dataset.sourceKind) !== "all"
+        ? 1
+        : 0;
     // 收起态下零会话行直接隐藏，只留“其他来源 · N”入口；展开态置灰显示。
     button.classList.toggle(
       "is-collapsed-hidden",

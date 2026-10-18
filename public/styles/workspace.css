@@ -149,9 +149,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  /* 高度与相邻状态栏一致（42px），让两者的上边线齐平成一条水平线。 */
-  min-height: 42px;
-  padding: 3px 10px;
+  /* 高度与相邻状态栏共用 --status-h，让两者的上边线恒定齐平（主题无关）。 */
+  height: var(--status-h);
+  min-height: var(--status-h);
+  padding: 0 10px;
   border-top: 1px solid var(--line);
 }
 .sidebar-footer .sidebar-settings-button {
@@ -3617,8 +3618,10 @@ body.is-resizing {
   grid-template-columns: auto auto minmax(80px, 1fr) auto auto auto;
   align-items: center;
   gap: 8px 16px;
+  /* 固定高度（不随主题字体行高变化），与侧栏底栏共用同一令牌保持上边线齐平。 */
+  height: var(--status-h);
   min-height: var(--status-h);
-  padding: 5px 9px;
+  padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 0;
   color: var(--text-secondary);

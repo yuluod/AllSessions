@@ -336,10 +336,14 @@
   max-width: 190px;
 }
 .session-filter-field > span {
-  flex: none;
-  color: var(--muted);
-  font-size: 0.7rem;
-  font-weight: 650;
+  /* 语义由 select 首选项（全部日期/全部 Provider/全部标签）自说明，
+     前置文字标签仅保留给屏幕阅读器，视觉上省出宽度。 */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 .session-filter-field select {

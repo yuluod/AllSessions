@@ -336,7 +336,7 @@
   max-width: 190px;
 }
 .session-filter-field > span {
-  /* 语义由 select 首选项（全部日期/全部 Provider/全部标签）自说明，
+  /* select 首选项即字段名（日期/Provider/标签），语义自说明，
      前置文字标签仅保留给屏幕阅读器，视觉上省出宽度。 */
   position: absolute;
   width: 1px;
@@ -364,7 +364,6 @@
   background-size: 12px;
   background-repeat: no-repeat;
 }
-.session-query-controls .session-list-header__favorite,
 .session-query-controls .session-visibility-menu > summary,
 .session-list-header .session-select-visible {
   height: 32px;
@@ -377,7 +376,6 @@
   font-size: 0.72rem;
   font-weight: 600;
 }
-.session-query-controls .session-list-header__favorite:hover,
 .session-query-controls .session-visibility-menu > summary:hover,
 .session-list-header .session-select-visible:hover {
   background: var(--surface-subtle);
@@ -919,6 +917,18 @@ body.is-resizing {
   min-height: 30px;
   padding: 4px 8px;
   font-size: 0.7rem;
+}
+
+/* 标题行内的收藏切换：无框图标钮，激活时以警示色反馈。 */
+.session-pane-heading .session-list-header__favorite {
+  border-color: transparent;
+  background: transparent;
+}
+
+.session-pane-heading .session-list-header__favorite:hover {
+  border-color: transparent;
+  color: var(--warning);
+  background: var(--surface-subtle);
 }
 
 .session-select-visible {
@@ -3413,10 +3423,6 @@ body.is-resizing {
 
   .session-list-header {
     padding-bottom: 5px;
-  }
-
-  .session-list-header__favorite span {
-    display: none;
   }
 
   .active-filter-label {

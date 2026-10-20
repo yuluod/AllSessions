@@ -186,14 +186,14 @@ export function updateFacetFilters() {
     elements.providerFilter,
     state.facets.providers,
     undefined,
-    t("allProviders")
+    t("provider")
   );
-  fillSelect(elements.dateFilter, state.facets.dates, undefined, t("allDates"));
+  fillSelect(elements.dateFilter, state.facets.dates, undefined, t("date"));
   fillSelect(
     elements.workspaceTagFilter,
     state.facets.workspace_tags || [],
     undefined,
-    t("allTags")
+    t("workspaceTagFilter")
   );
   renderProjectNav();
 }

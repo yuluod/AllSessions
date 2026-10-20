@@ -457,6 +457,31 @@
                   >
                 </div>
                 <button
+                  id="favorite-only-toggle"
+                  class="ghost-button session-list-header__favorite"
+                  type="button"
+                  aria-pressed="false"
+                  aria-label="只看收藏"
+                  title="只看收藏"
+                  data-i18n="favoriteOnly"
+                  data-i18n-attr="aria-label"
+                  data-i18n-title="favoriteOnly"
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    width="13"
+                    height="13"
+                  >
+                    <path
+                      d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                    />
+                  </svg>
+                </button>
+                <button
                   id="bulk-select-toggle"
                   class="ghost-button bulk-select-toggle"
                   type="button"
@@ -506,48 +531,24 @@
                     <label class="session-filter-field">
                       <span data-i18n="date">日期</span>
                       <select id="date-filter">
-                        <option value="" data-i18n="all">全部</option>
+                        <option value="" data-i18n="date">日期</option>
                       </select>
                     </label>
                     <label class="session-filter-field">
                       <span>Provider</span>
                       <select id="provider-filter">
-                        <option value="" data-i18n="all">全部</option>
+                        <option value="" data-i18n="provider">Provider</option>
                       </select>
                     </label>
                     <label class="session-filter-field">
                       <span data-i18n="workspaceTagFilter">标签</span>
                       <select id="workspace-tag-filter">
-                        <option value="" data-i18n="all">全部</option>
+                        <option value="" data-i18n="workspaceTagFilter">
+                          标签
+                        </option>
                       </select>
                     </label>
                   </div>
-                  <button
-                    id="favorite-only-toggle"
-                    class="ghost-button session-list-header__favorite"
-                    type="button"
-                    aria-pressed="false"
-                    aria-label="只看收藏"
-                    title="只看收藏"
-                    data-i18n="favoriteOnly"
-                    data-i18n-attr="aria-label"
-                    data-i18n-title="favoriteOnly"
-                  >
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      width="13"
-                      height="13"
-                    >
-                      <path
-                        d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                      />
-                    </svg>
-                    <span data-i18n="favoriteOnly">只看收藏</span>
-                  </button>
                   <details
                     id="list-filter-menu"
                     data-popover

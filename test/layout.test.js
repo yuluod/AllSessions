@@ -1527,7 +1527,7 @@ test("个人工作台数据独立持久化并提供整理与可选脱敏导出",
   }
   assert.match(
     html,
-    /class="session-filter-fields"[\s\S]*?id="favorite-only-toggle"[\s\S]*?<div\s+id="session-list"/
+    /id="session-count"[\s\S]*?id="favorite-only-toggle"[\s\S]*?id="bulk-select-toggle"/
   );
   assert.doesNotMatch(html, /session-list-hint/);
   assert.match(app, /exportSessionCollection/);

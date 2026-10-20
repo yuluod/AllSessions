@@ -1250,6 +1250,48 @@ body.is-resizing {
   background: color-mix(in srgb, var(--src-zcode) 13%, var(--surface));
 }
 
+.session-source-kind[data-source-kind="cursor"],
+.detail-tag.tag-source[data-source-kind="cursor"] {
+  border-color: color-mix(in srgb, var(--text) 42%, var(--surface));
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text) 13%, var(--surface));
+}
+
+.session-source-kind[data-source-kind="grok"],
+.detail-tag.tag-source[data-source-kind="grok"] {
+  border-color: color-mix(in srgb, var(--text) 42%, var(--surface));
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text) 13%, var(--surface));
+}
+
+.session-source-kind[data-source-kind="devin"],
+.detail-tag.tag-source[data-source-kind="devin"] {
+  border-color: color-mix(in srgb, var(--src-devin) 42%, var(--surface));
+  color: var(--src-devin);
+  background: color-mix(in srgb, var(--src-devin) 13%, var(--surface));
+}
+
+.session-source-kind[data-source-kind="copilot"],
+.detail-tag.tag-source[data-source-kind="copilot"] {
+  border-color: color-mix(in srgb, var(--src-copilot) 42%, var(--surface));
+  color: var(--src-copilot);
+  background: color-mix(in srgb, var(--src-copilot) 13%, var(--surface));
+}
+
+.session-source-kind[data-source-kind="hermes"],
+.detail-tag.tag-source[data-source-kind="hermes"] {
+  border-color: color-mix(in srgb, var(--src-hermes) 42%, var(--surface));
+  color: var(--src-hermes);
+  background: color-mix(in srgb, var(--src-hermes) 13%, var(--surface));
+}
+
+.session-source-kind[data-source-kind="deepseek"],
+.detail-tag.tag-source[data-source-kind="deepseek"] {
+  border-color: color-mix(in srgb, var(--src-deepseek) 42%, var(--surface));
+  color: var(--src-deepseek);
+  background: color-mix(in srgb, var(--src-deepseek) 13%, var(--surface));
+}
+
 .session-source-kind[data-source-kind="codex_archived"],
 .detail-tag.tag-source[data-source-kind="codex_archived"] {
   border-color: var(--line-strong);
@@ -3185,6 +3227,39 @@ body.is-resizing {
 .source-tree__item[data-source-agent="grok"] .source-tree__dot,
 .settings-source-card[data-source-agent="grok"] .source-tree__dot {
   mask-image: url("../assets/agents/grok.svg");
+}
+
+.source-tree__item[data-source-agent="deepseek"] .source-tree__dot,
+.settings-source-card[data-source-agent="deepseek"] .source-tree__dot {
+  mask-image: url("../assets/agents/deepseek.svg");
+}
+
+/* 较新接入的来源：与老来源一致的品牌语义色。cursor/grok 为黑白品牌，随文字色。 */
+.source-tree__item[data-source-agent="cursor"] .source-tree__dot,
+.settings-source-card[data-source-agent="cursor"] .source-tree__dot,
+.source-tree__item[data-source-agent="grok"] .source-tree__dot,
+.settings-source-card[data-source-agent="grok"] .source-tree__dot {
+  color: var(--text);
+}
+
+.source-tree__item[data-source-agent="devin"] .source-tree__dot,
+.settings-source-card[data-source-agent="devin"] .source-tree__dot {
+  color: var(--src-devin);
+}
+
+.source-tree__item[data-source-agent="copilot"] .source-tree__dot,
+.settings-source-card[data-source-agent="copilot"] .source-tree__dot {
+  color: var(--src-copilot);
+}
+
+.source-tree__item[data-source-agent="hermes"] .source-tree__dot,
+.settings-source-card[data-source-agent="hermes"] .source-tree__dot {
+  color: var(--src-hermes);
+}
+
+.source-tree__item[data-source-agent="deepseek"] .source-tree__dot,
+.settings-source-card[data-source-agent="deepseek"] .source-tree__dot {
+  color: var(--src-deepseek);
 }
 
 .session-pane {

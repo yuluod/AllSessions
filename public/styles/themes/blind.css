@@ -59,6 +59,10 @@
   --src-kimi: #17616a;
   --src-opencode: #a14324;
   --src-zcode: #2d4a6b;
+  --src-devin: #3a4550;
+  --src-copilot: #902060;
+  --src-hermes: #7a4010;
+  --src-deepseek: #2040b0;
   --shadow-raised: 0 3px 12px rgb(48 39 25 / 16%);
   --focus-ring: #1d3a28;
 }
@@ -96,6 +100,10 @@
   --src-kimi: #8dd7dd;
   --src-opencode: #ff9b67;
   --src-zcode: #a9d8f5;
+  --src-devin: #98a8b8;
+  --src-copilot: #e070b0;
+  --src-hermes: #d0a060;
+  --src-deepseek: #88a8f0;
   --shadow-raised: 0 4px 18px rgb(0 0 0 / 42%);
   --focus-ring: #ffdc3d;
 }

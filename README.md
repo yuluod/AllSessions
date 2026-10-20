@@ -29,7 +29,7 @@ Browse, search, organize, and manage local sessions from multiple AI coding agen
 
 </div>
 
-AllSessions brings local sessions from **Codex, Claude Code, Claude Cowork, Gemini CLI, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat** into a single desktop app.
+AllSessions brings local sessions from **Codex, Claude Code, Claude Cowork, Gemini CLI, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, VS Code Copilot Chat, and DeepSeek Harness** into a single desktop app.
 
 Instead of hunting through different tools and directories for past history, you can browse sessions, run full-text search, inspect tool calls, organize favorites and tags, review usage statistics, and export sessions — all in one interface.
 
@@ -112,6 +112,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 | **GitHub Copilot** | `~/.copilot/session-state` | Per-session `events.jsonl` plus `workspace.yaml` metadata; messages, thinking, tools, raw events, search, live refresh, resume; read-only source |
 | **Hermes Agent** | `~/.hermes` (macOS/Linux) or `%LOCALAPPDATA%\hermes` (Windows) | SQLite `state.db` including `profiles/<name>` databases; messages, thinking, tools, compaction-archive filtering, subagent exclusion, raw events, search, WAL live refresh, resume; read-only source |
 | **VS Code Copilot Chat** | `Code/User` and `Code - Insiders/User` under the OS config dir | Panel chat sessions (`workspaceStorage`/`globalStorage`, flat `.json` and 1.109+ `.jsonl` append logs); messages, thinking, tools, file edits, custom titles, search, live refresh; empty placeholder sessions excluded; read-only source |
+| **DeepSeek Harness** | `~/.dsh/sessions` | Per-session `session[.vN].jsonl[.zstd]` multi-frame event logs, newest generation per directory; messages, thinking, tools, titles, token usage, raw events, search, live refresh; empty placeholder sessions excluded; read-only source; [support boundaries](./docs/sources/deepseek-harness.md) |
 
 For read-only sources, AllSessions never modifies the agent's original data. You can still remove records locally inside AllSessions; deleting the original records must be done in the corresponding agent.
 
@@ -186,6 +187,8 @@ Set environment variables before starting the desktop app; they are read once at
 | `HERMES_SESSIONS_DIR` | Hermes Agent data roots (path list) | `%LOCALAPPDATA%\hermes` (Windows) or `~/.hermes` |
 | `HERMES_HOME` | Hermes' official data root (single path) | same as above |
 | `VSCODE_COPILOT_SESSIONS_DIR` | VS Code Copilot Chat data roots (path list) | `Code/User` and `Code - Insiders/User` under the OS config dir |
+| `DSH_SESSIONS_DIR` | DeepSeek Harness data roots (path list) | `$DSH_HOME` or `~/.dsh` |
+| `DSH_HOME` | DeepSeek Harness' official data root (single path) | `~/.dsh` |
 | `SESSION_VIEWER_CACHE_DIR` | Rust SQLite index directory | Platform cache directory under `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset |
 | `ALLSESSIONS_WORKSPACE_DB` | AllSessions user-data SQLite path | Platform app-data directory |
@@ -231,7 +234,7 @@ After explicit confirmation of permanent deletion, AllSessions creates a local b
 
 The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
 
-Claude Cowork, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, and VS Code Copilot Chat are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
+Claude Cowork, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, VS Code Copilot Chat, and DeepSeek Harness are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
 
 Favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
 

@@ -24,6 +24,7 @@ const SOURCE_KINDS = [
   { key: "copilot", agent: "copilot", label: "GitHub Copilot" },
   { key: "hermes", agent: "hermes", label: "Hermes Agent" },
   { key: "vscode_copilot", agent: "copilot", label: "VS Code Copilot Chat" },
+  { key: "deepseek", agent: "deepseek", label: "DeepSeek Harness" },
 ];
 
 export function summarizeSourceSupport(payload) {

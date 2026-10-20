@@ -11,6 +11,7 @@ mod claude_cowork;
 mod claude_legacy;
 mod copilot;
 mod cursor;
+mod deepseek;
 mod devin;
 mod gemini;
 mod grok;
@@ -96,6 +97,7 @@ pub(crate) enum SourceFormat {
     Copilot,
     Hermes,
     VsCodeCopilot,
+    DeepSeek,
 }
 
 #[derive(Clone)]
@@ -261,6 +263,7 @@ impl SessionStore {
             "copilot",
             "hermes",
             "vscode_copilot",
+            "deepseek",
         ] {
             let enabled = self
                 .sources_config
@@ -300,6 +303,7 @@ impl SessionStore {
             ("copilot", lists.copilot.as_slice()),
             ("hermes", lists.hermes.as_slice()),
             ("vscode_copilot", lists.vscode_copilot.as_slice()),
+            ("deepseek", lists.deepseek.as_slice()),
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());

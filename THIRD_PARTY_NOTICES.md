@@ -217,6 +217,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | jni-sys | 0.3.1 | MIT OR Apache-2.0 |
 | jni-sys | 0.4.1 | MIT OR Apache-2.0 |
 | jni-sys-macros | 0.4.1 | MIT OR Apache-2.0 |
+| jobserver | 0.1.35 | MIT OR Apache-2.0 |
 | js-sys | 0.3.105 | MIT OR Apache-2.0 |
 | json-patch | 3.0.1 | MIT/Apache-2.0 |
 | jsonptr | 0.6.3 | MIT OR Apache-2.0 |
@@ -558,6 +559,9 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | zip | 4.6.1 | MIT |
 | zlib-rs | 0.6.7 | Zlib |
 | zmij | 1.0.23 | MIT |
+| zstd | 0.14.3 | BSD-3-Clause |
+| zstd-safe | 8.2.0 | BSD-3-Clause |
+| zstd-sys | 2.1.2+zstd.1.5.7 | BSD-3-Clause |
 | zvariant | 5.15.0 | MIT |
 | zvariant_derive | 5.15.0 | MIT |
 | zvariant_utils | 4.2.0 | MIT |

@@ -9,7 +9,8 @@ use serde_json::{json, Value};
 use walkdir::WalkDir;
 
 use super::{
-    claude_cowork, copilot, cursor, devin, grok, hermes, kimi, vscode_copilot, Source, SourceFormat,
+    claude_cowork, copilot, cursor, deepseek, devin, grok, hermes, kimi, vscode_copilot, Source,
+    SourceFormat,
 };
 
 pub(crate) struct RootLists {
@@ -29,6 +30,7 @@ pub(crate) struct RootLists {
     pub copilot: Vec<PathBuf>,
     pub hermes: Vec<PathBuf>,
     pub vscode_copilot: Vec<PathBuf>,
+    pub deepseek: Vec<PathBuf>,
 }
 
 pub(crate) fn resolve_kind(
@@ -268,6 +270,15 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         &["VSCODE_COPILOT_SESSIONS_DIR"],
         vscode_user_dirs,
     );
+    let dsh_home = env::var_os("DSH_HOME").map(PathBuf::from).map(expand_tilde);
+    let (deepseek, mut deepseek_origin) = resolve_kind(
+        config.get("deepseek"),
+        &["DSH_SESSIONS_DIR"],
+        vec![dsh_home.clone().unwrap_or_else(|| home.join(".dsh"))],
+    );
+    if deepseek_origin == "default" && dsh_home.is_some() {
+        deepseek_origin = "env";
+    }
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -285,6 +296,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         "copilot": { "roots": copilot.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": copilot_origin },
         "hermes": { "roots": hermes.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": hermes_origin },
         "vscode_copilot": { "roots": vscode_copilot.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": vscode_copilot_origin },
+        "deepseek": { "roots": deepseek.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": deepseek_origin },
     });
     (
         RootLists {
@@ -304,6 +316,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
             copilot,
             hermes,
             vscode_copilot,
+            deepseek,
         },
         description,
     )
@@ -413,6 +426,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "copilot": describe_protected_source_roots(config.copilot.as_deref().unwrap_or_default(), &inherited.copilot),
         "hermes": describe_protected_source_roots(config.hermes.as_deref().unwrap_or_default(), &inherited.hermes),
         "vscode_copilot": describe_protected_source_roots(config.vscode_copilot.as_deref().unwrap_or_default(), &inherited.vscode_copilot),
+        "deepseek": describe_protected_source_roots(config.deepseek.as_deref().unwrap_or_default(), &inherited.deepseek),
     })
 }
 
@@ -506,6 +520,13 @@ pub(crate) fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Sou
         display_name: "VS Code Copilot Chat",
         root: root.clone(),
         format: SourceFormat::VsCodeCopilot,
+        archived: false,
+    }));
+    sources.extend(lists.deepseek.iter().map(|root| Source {
+        kind: "deepseek",
+        display_name: "DeepSeek Harness",
+        root: deepseek::sessions_root(root),
+        format: SourceFormat::DeepSeek,
         archived: false,
     }));
     sources
@@ -652,6 +673,9 @@ pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
     if matches!(source.format, SourceFormat::VsCodeCopilot) {
         return vscode_copilot::discover_files(source);
     }
+    if matches!(source.format, SourceFormat::DeepSeek) {
+        return deepseek::discover_files(source);
+    }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
             "json"
@@ -701,6 +725,9 @@ pub(crate) fn source_matches_path(source: &Source, path: &Path) -> bool {
     }
     if matches!(source.format, SourceFormat::VsCodeCopilot) {
         return vscode_copilot::matches_path(&source.root, path);
+    }
+    if matches!(source.format, SourceFormat::DeepSeek) {
+        return deepseek::matches_path(&source.root, path);
     }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {

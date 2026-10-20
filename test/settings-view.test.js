@@ -35,7 +35,7 @@ test("来源概览按 Agent 去重并统计当前检测结果", () => {
     },
   });
 
-  assert.deepEqual(result, { supported: 13, detected: 2 });
+  assert.deepEqual(result, { supported: 14, detected: 2 });
 });
 
 const { cloneSourceSettings, hasSourceChanges, sourceHealthState } =

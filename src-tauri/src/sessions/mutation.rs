@@ -119,6 +119,7 @@ impl SessionStore {
                 | SourceFormat::Copilot
                 | SourceFormat::Hermes
                 | SourceFormat::VsCodeCopilot
+                | SourceFormat::DeepSeek
         ) {
             return Err(read_only_source_error());
         }
@@ -141,6 +142,7 @@ impl SessionStore {
                 | SourceFormat::Copilot
                 | SourceFormat::Hermes
                 | SourceFormat::VsCodeCopilot
+                | SourceFormat::DeepSeek
         ) {
             return Err("该来源当前为只读模式；请在原 Agent 中删除消息".into());
         }

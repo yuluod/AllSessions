@@ -12,7 +12,7 @@ use super::helpers::{
     compact, compact_title, error_text, is_synthetic_context, nullable_string, string_at,
 };
 use super::{
-    claude_cowork, copilot, grok, kimi, pi, vscode_copilot, Source, SourceFormat,
+    claude_cowork, copilot, deepseek, grok, kimi, pi, vscode_copilot, Source, SourceFormat,
     DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT,
 };
 
@@ -308,6 +308,8 @@ impl ParseState {
                 SourceFormat::Hermes => "unknown",
                 // VS Code Copilot Chat 同样由 GitHub 代理模型。
                 SourceFormat::VsCodeCopilot => "github",
+                // dsh 消息 source.provider 形如 deepseek-account；未记录时回退 deepseek。
+                SourceFormat::DeepSeek => "deepseek",
             }
         } else {
             &self.provider
@@ -329,6 +331,7 @@ impl ParseState {
                 SourceFormat::Copilot => "copilot_cli",
                 SourceFormat::Hermes => "hermes_agent",
                 SourceFormat::VsCodeCopilot => "vscode_copilot_chat",
+                SourceFormat::DeepSeek => "deepseek_harness",
             }
         } else {
             &self.originator
@@ -344,6 +347,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
         SourceFormat::Copilot => return copilot::parse_summary(path, source),
         SourceFormat::VsCodeCopilot => return vscode_copilot::parse_summary(path, source),
+        SourceFormat::DeepSeek => return deepseek::parse_summary(path, source),
         SourceFormat::OpenCode | SourceFormat::Kilo => {
             return Err("SQLite 数据库必须通过聚合来源解析".into())
         }
@@ -381,6 +385,7 @@ pub(crate) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String
         SourceFormat::Kimi => return kimi::parse_detail(path, source),
         SourceFormat::Copilot => return copilot::parse_detail(path, source),
         SourceFormat::VsCodeCopilot => return vscode_copilot::parse_detail(path, source),
+        SourceFormat::DeepSeek => return deepseek::parse_detail(path, source),
         _ => {}
     }
     visit_detail(path, source, &mut |_| {})
@@ -398,6 +403,7 @@ pub(crate) fn visit_detail(
         SourceFormat::Kimi => return kimi::visit_detail(path, source, visitor),
         SourceFormat::Copilot => return copilot::visit_detail(path, source, visitor),
         SourceFormat::VsCodeCopilot => return vscode_copilot::visit_detail(path, source, visitor),
+        SourceFormat::DeepSeek => return deepseek::visit_detail(path, source, visitor),
         SourceFormat::OpenCode | SourceFormat::Kilo => {
             return Err("SQLite 数据库必须通过详情定位器解析".into())
         }

@@ -29,7 +29,7 @@
 
 </div>
 
-AllSessions 将 **Codex、Claude Code、Claude Cowork、Gemini CLI、Grok Build、Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent 和 VS Code Copilot Chat** 的本地会话集中到一个桌面应用中。
+AllSessions 将 **Codex、Claude Code、Claude Cowork、Gemini CLI、Grok Build、Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 和 DeepSeek Harness** 的本地会话集中到一个桌面应用中。
 
 无需在不同工具和目录之间来回查找历史记录，你可以在一个界面中浏览会话、全文搜索、查看工具调用、整理收藏与标签、统计使用情况，并按需导出会话。
 
@@ -112,6 +112,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 | **GitHub Copilot** | `~/.copilot/session-state` | 每会话 `events.jsonl` 与相邻 `workspace.yaml` 元数据；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读 |
 | **Hermes Agent** | macOS/Linux `~/.hermes`、Windows `%LOCALAPPDATA%\hermes` | SQLite `state.db`（含 `profiles/<name>` 命名库）；消息、Thinking、工具、压缩归档过滤、子代理排除、原始事件、搜索、WAL 实时刷新、恢复；来源只读 |
 | **VS Code Copilot Chat** | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User` | 面板会话（`workspaceStorage`/`globalStorage` 下平铺 `.json` 与 1.109 起 `.jsonl` 追加日志）；消息、Thinking、工具、文件编辑、自定义标题、搜索、实时刷新；排除空占位会话；来源只读 |
+| **DeepSeek Harness** | `~/.dsh/sessions` | 每会话 `session[.vN].jsonl[.zstd]` 多帧事件日志，每个目录只读最新一代；消息、Thinking、工具、标题、Token 用量、原始事件、搜索、实时刷新；排除空占位会话；来源只读；[边界说明](./docs/sources/deepseek-harness.md) |
 
 对于只读来源，AllSessions 不会修改 Agent 的原始数据。你仍然可以在 AllSessions 中执行本地移除；如需删除原始记录，需要在对应 Agent 中操作。
 
@@ -186,6 +187,8 @@ AllSessions/config.json
 | `HERMES_SESSIONS_DIR` | Hermes Agent 数据根目录（路径列表） | `%LOCALAPPDATA%\hermes`（Windows）或 `~/.hermes` |
 | `HERMES_HOME` | Hermes 官方数据根目录（单路径） | 同上 |
 | `VSCODE_COPILOT_SESSIONS_DIR` | VS Code Copilot Chat 数据根目录（路径列表） | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User` |
+| `DSH_SESSIONS_DIR` | DeepSeek Harness 数据根目录（路径列表） | `$DSH_HOME` 或 `~/.dsh` |
+| `DSH_HOME` | DeepSeek Harness 官方数据根目录（单路径） | `~/.dsh` |
 | `SESSION_VIEWER_CACHE_DIR` | Rust SQLite 索引缓存目录 | 系统用户缓存目录下的 `AllSessions` |
 | `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存 | 未设置 |
 | `ALLSESSIONS_WORKSPACE_DB` | AllSessions 用户数据 SQLite 路径 | 系统应用数据目录 |
@@ -231,7 +234,7 @@ AllSessions 处理的是本地 AI 会话数据，其中可能包含：
 
 Codex Provider 维护工具同样只有在用户主动启用维护模式并确认执行后才会修改 Codex 数据。
 
-Claude Cowork、Grok Build、Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent 和 VS Code Copilot Chat 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
+Claude Cowork、Grok Build、Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 和 DeepSeek Harness 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
 
 收藏、标签、备注、常用筛选以及本地归档 / 移除状态属于 AllSessions 自身的用户数据，独立保存在 `workspace.sqlite` 中。它们不会修改 Agent 的原始记录，也不会随着可重建的索引缓存一起清除。
 

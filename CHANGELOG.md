@@ -2,6 +2,21 @@
 
 本文件记录 AllSessions 各版本面向用户的主要变化。
 
+## [0.2.2] - 2026-10-20
+
+### 新增
+
+- 新增 DeepSeek Harness（dsh）只读来源：回放 `~/.dsh/sessions` 下最新一代多帧 zstd / 原始 JSONL 事件日志，覆盖消息、Thinking、工具调用、标题与 Token 用量；注入上下文按合成消息归约，空占位会话与委托子会话不进列表；可用 `DSH_HOME` / `DSH_SESSIONS_DIR` 覆盖默认根。
+
+### 优化
+
+- 收藏筛选与批量导出移入会话标题行，改为图标按钮；筛选下拉首选项直接显示字段名，前置文字标签仅保留给屏幕阅读器。
+- 统一 Devin、GitHub Copilot、Hermes Agent、DeepSeek Harness 在各主题下的来源品牌色；Cursor 与 Grok 图标随文字色；Devin 图标更新为官方标志。
+
+### 修复
+
+- VS Code Copilot Chat 会话纳入只读来源名单，修复其原始会话文件可能被永久删除的问题。
+
 ## [0.2.1] - 2026-10-18
 
 ### 优化

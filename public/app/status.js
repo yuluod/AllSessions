@@ -104,7 +104,6 @@ function updateSourceRailMore() {
     const caret = document.createElement("span");
     caret.className = "more-caret";
     caret.setAttribute("aria-hidden", "true");
-    caret.textContent = "⌄";
     const label = document.createElement("span");
     label.className = "more-label";
     label.dataset.i18n = "sourceRailMore";

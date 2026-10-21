@@ -138,7 +138,7 @@ export function renderProjectNav() {
     name.className = "project-name";
     name.textContent = project.name || project.path;
 
-    const meta = document.createElement("span");
+    const meta = document.createElement("strong");
     meta.className = "project-meta";
     meta.textContent = String(project.count);
     meta.setAttribute("aria-hidden", "true");
@@ -158,14 +158,27 @@ export function renderProjectNav() {
   });
 
   if (projects.length > PROJECT_PREVIEW_LIMIT) {
+    // 与来源树「其他来源」披露行同构：caret + 标签，caret 随展开旋转。
     const moreButton = document.createElement("button");
-    moreButton.className = "project-item project-more";
+    moreButton.className = "project-more";
     moreButton.type = "button";
     moreButton.setAttribute("aria-expanded", String(state.showAllProjects));
     moreButton.setAttribute("aria-controls", "project-list");
-    moreButton.textContent = state.showAllProjects
+    const moreCaret = document.createElement("span");
+    moreCaret.className = "more-caret";
+    moreCaret.setAttribute("aria-hidden", "true");
+    const moreLabel = document.createElement("span");
+    moreLabel.className = "more-label";
+    moreLabel.textContent = state.showAllProjects
       ? t("showFewerProjects")
-      : t("showMoreProjects", { n: projects.length - PROJECT_PREVIEW_LIMIT });
+      : t("showMoreProjects");
+    // 与来源树披露行同构：计数列收起态显示未展示数，展开后清空。
+    const moreCount = document.createElement("strong");
+    moreCount.className = "more-count";
+    moreCount.textContent = state.showAllProjects
+      ? ""
+      : String(projects.length - PROJECT_PREVIEW_LIMIT);
+    moreButton.append(moreCaret, moreLabel, moreCount);
     moreButton.addEventListener("click", () => {
       state.showAllProjects = !state.showAllProjects;
       renderProjectNav();

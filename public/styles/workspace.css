@@ -722,16 +722,12 @@ body.is-resizing {
   display: none;
 }
 
-.project-more {
-  display: block;
-  color: var(--muted);
-  text-align: left;
-  flex: none;
+/* 项目披露行位于无水平内边距的导航容器，用外边距对齐上方列表。
+   提升优先级：披露行共用规则在文件后部声明 width: 100%，
+   同优先级会按顺序压掉这里的收窄宽度，导致计数列溢出容器。 */
+.project-nav .project-more {
   width: calc(100% - 20px);
   margin: 8px 10px 0;
-  border-color: transparent;
-  padding-left: 8px;
-  font-size: 0.7rem;
 }
 
 .visibility-options {
@@ -3038,10 +3034,13 @@ body.is-resizing {
   opacity: 0.65;
 }
 
-/* “其他来源”折叠行：与来源行同构的三列布局，箭头随展开旋转。 */
-.source-tree__more {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+/* 披露行共用语言：来源树与项目列表同构的三列布局（caret + 标签 + 可选计数），
+   caret 随展开旋转；不用文本字符——U+2304 依赖系统字体回退，基线随字体漂移。 */
+/* flex 而非 grid：grid 定宽首列会把裸文本匿名项压成竖排，
+     flex 让未配套标记自然退化为整行文本。 */
+.source-tree__more,
+.project-more {
+  display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -3058,31 +3057,39 @@ body.is-resizing {
   transition: color 150ms var(--ease-out);
 }
 
-.source-tree__more:hover {
+.source-tree__more:hover,
+.project-more:hover {
   color: var(--accent-strong);
 }
 
-.source-tree__more .more-caret {
-  display: inline-block;
-  color: var(--muted);
-  font-size: 0.62rem;
-  text-align: center;
+.source-tree__more .more-caret,
+.project-more .more-caret {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  mask: url("../assets/agents/chevron-down.svg") center / 10px 10px no-repeat;
   transform: rotate(-90deg);
   transition: transform 150ms var(--ease-out);
 }
 
-.source-tree__more[aria-expanded="true"] .more-caret {
+.source-tree__more[aria-expanded="true"] .more-caret,
+.project-more[aria-expanded="true"] .more-caret {
   transform: rotate(0deg);
 }
 
-.source-tree__more .more-label {
+.source-tree__more .more-label,
+.project-more .more-label {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.source-tree__more .more-count {
+.source-tree__more .more-count,
+.project-more .more-count {
+  flex: none;
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.68rem;

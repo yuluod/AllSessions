@@ -67,14 +67,10 @@ export function renderSourceRail() {
     // 展开态的分组排列：有会话的来源在前、零会话的在后；
     // 分组只看计数，与是否选中无关——选中零会话来源时原地高亮，不跳到上方组。
     button.style.order =
-      item.count === "0" && sourceAgentForKind(button.dataset.sourceKind) !== "all"
+      item.count === "0" &&
+      sourceAgentForKind(button.dataset.sourceKind) !== "all"
         ? 1
         : 0;
-    // 收起态下零会话行直接隐藏，只留“其他来源 · N”入口；展开态置灰显示。
-    button.classList.toggle(
-      "is-collapsed-hidden",
-      item.empty && !messageNavSourcesExpanded()
-    );
   });
   updateSourceRailMore();
 }
@@ -112,8 +108,8 @@ function updateSourceRailMore() {
     more.append(caret, label, count);
     tree.append(more);
   }
-  const hiddenCount = elements.sourceRailItems.filter(
-    (button) => button.classList.contains("is-empty")
+  const hiddenCount = elements.sourceRailItems.filter((button) =>
+    button.classList.contains("is-empty")
   ).length;
   const expanded = messageNavSourcesExpanded();
   tree.classList.toggle("expanded", expanded);

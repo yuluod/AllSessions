@@ -139,7 +139,7 @@
   height: var(--switch-thumb);
   border: 0;
   border-radius: var(--control-thumb-radius);
-  background: #fff;
+  background: var(--switch-knob);
   content: "";
   transition: transform var(--control-motion) var(--ease-out);
 }

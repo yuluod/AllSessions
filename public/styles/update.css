@@ -10,7 +10,7 @@ html.update-modal-open body {
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-large);
   color: var(--text);
   background: var(--surface);
   box-shadow: var(--shadow-raised);

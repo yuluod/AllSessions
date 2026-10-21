@@ -5,6 +5,7 @@
   --font-display: "SF Mono", "Cascadia Mono", Consolas, monospace;
   --radius: 2px;
   --radius-small: 2px;
+  --radius-large: 4px;
   --density: 1;
   --preview-line-width: 1px;
   --preview-shadow: none;
@@ -97,4 +98,5 @@
   --src-deepseek: #8fb0e8;
   --shadow-raised: 0 3px 14px rgb(0 0 0 / 30%);
   --focus-ring: #97d5b3;
+  --switch-knob: #d9e2da;
 }

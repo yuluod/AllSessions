@@ -5,6 +5,7 @@
   --font-display: "Cascadia Mono", "SF Mono", Consolas, monospace;
   --radius: 0;
   --radius-small: 0;
+  --radius-large: 0;
   --density: 0.98;
   /* 组件视觉参数；交互行为由共享组件负责。 */
   --control-height: 34px;
@@ -98,6 +99,7 @@
   --src-deepseek: #90aef0;
   --shadow-raised: 2px 2px 0 #9daf8f;
   --focus-ring: #74b7de;
+  --switch-knob: #e0e3d8;
 }
 
 [data-theme="pixel"] body {

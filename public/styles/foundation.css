@@ -19,6 +19,8 @@
   --switch-width: 34px;
   --switch-height: 20px;
   --switch-thumb: 16px;
+  /* 旋钮底色：浅色主题默认纯白，深色块在各主题内覆写。 */
+  --switch-knob: #ffffff;
 }
 
 :root {
@@ -31,6 +33,20 @@
   --density: 1;
   --z-sticky: 20;
   --z-toast: 60;
+  /* 层叠标尺：1–2 为局部表面/粘性层，4–9 为阅读区内部层叠，
+     12–13 为打开的浮层菜单，40 为全局固定提示。新浮层一律引用令牌，不写字面量。 */
+  --z-surface: 1;
+  --z-sticky-group: 2;
+  --z-reading-rail: 4;
+  --z-reading-toolbar: 5;
+  --z-rail-header: 5;
+  --z-reading-marker: 6;
+  --z-reading-heading: 7;
+  --z-reading-dropdown: 8;
+  --z-reading-top: 9;
+  --z-menu: 12;
+  --z-organizer: 13;
+  --z-tooltip: 40;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Phase 1 重写组件前保留旧 token 的语义映射。 */

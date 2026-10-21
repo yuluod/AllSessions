@@ -8,6 +8,7 @@
     "Avenir Next Condensed", "Arial Narrow", -apple-system, sans-serif;
   --radius: 3px;
   --radius-small: 2px;
+  --radius-large: 5px;
   --density: 1;
   --preview-line-width: 1px;
   --preview-shadow: none;
@@ -106,4 +107,5 @@
   --src-deepseek: #88a8f0;
   --shadow-raised: 0 4px 18px rgb(0 0 0 / 42%);
   --focus-ring: #ffdc3d;
+  --switch-knob: #efe6c9;
 }

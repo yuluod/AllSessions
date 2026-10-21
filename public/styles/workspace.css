@@ -884,9 +884,8 @@ body.is-resizing {
 }
 
 .filter-chip-close {
+  display: inline-flex;
   color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1;
 }
 
 .session-list-header {
@@ -2311,15 +2310,32 @@ body.is-resizing {
 }
 
 .message-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 24px;
   margin-left: auto;
-  padding: 3px 7px;
+  padding: 3px 8px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: var(--radius-small);
   color: var(--muted);
   background: var(--surface-raised);
   cursor: pointer;
   font-size: 0.67rem;
+}
+
+.message-copy-btn[data-state="success"] {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+}
+
+.message-copy-btn[data-state="failed"] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.message-copy-btn svg {
+  display: block;
 }
 
 .message-delete-btn,
@@ -2327,7 +2343,7 @@ body.is-resizing {
   min-height: 24px;
   padding: 3px 7px;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--radius-small);
   color: var(--muted);
   background: transparent;
   cursor: pointer;

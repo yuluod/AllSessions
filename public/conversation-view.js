@@ -17,6 +17,41 @@ const ROLE_LABELS = {
   developer: "developer",
 };
 
+// 复制反馈：短暂替换为 SVG check/cross 并着色，超时还原文案；不用文本字符当图标。
+function setCopyFeedback(button, outcome) {
+  if (button._copyTimer) clearTimeout(button._copyTimer);
+  const success = outcome === "success";
+  button.dataset.state = outcome;
+  button.replaceChildren(createCopyResultIcon(success));
+  button.title = t(success ? "copied" : "copyFailed");
+  button.setAttribute("aria-label", button.title);
+  button._copyTimer = setTimeout(() => {
+    delete button.dataset.state;
+    button.title = t("copyMessage");
+    button.removeAttribute("aria-label");
+    button.textContent = t("copy");
+  }, 1500);
+}
+
+function createCopyResultIcon(success) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "12");
+  svg.setAttribute("height", "12");
+  svg.setAttribute("fill", "none");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute(
+    "d",
+    success ? "M5 12.5l4.5 4.5L19 7.5" : "M6 6l12 12M18 6L6 18"
+  );
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2.4");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.append(path);
+  return svg;
+}
+
 function displayRoleLabel(role) {
   const normalized = String(role || "").toLowerCase();
   if (normalized === "user") return t("roleUser");
@@ -83,7 +118,9 @@ export function createConversationView({
           scroller.scrollTop -
           margin
       );
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
     scroller.scrollTo({
       top: targetTop(),
       behavior: reduce ? "auto" : "smooth",
@@ -167,8 +204,7 @@ export function createConversationView({
       dot.className = "message-outline-dot";
       // 初始按索引均分占位；卡片渲染完成后由 layoutMessageOutlineRail
       // 改为按真实内容位置分布（真正的滚动 minimap）。
-      dot.style.top =
-        buckets > 1 ? (b / (buckets - 1)) * 100 + "%" : "50%";
+      dot.style.top = buckets > 1 ? (b / (buckets - 1)) * 100 + "%" : "50%";
       dot.dataset.startIdx = start;
       dot.dataset.tip =
         "#" +
@@ -204,8 +240,7 @@ export function createConversationView({
         `#message-${+dot.dataset.startIdx + 1}`
       );
       if (!card) return;
-      const margin =
-        parseFloat(getComputedStyle(card).scrollMarginTop) || 0;
+      const margin = parseFloat(getComputedStyle(card).scrollMarginTop) || 0;
       const rel =
         card.getBoundingClientRect().top - shellRect.top + scrollTop - margin;
       const pct = Math.min(100, Math.max(0, (rel / maxScroll) * 100));
@@ -233,9 +268,8 @@ export function createConversationView({
     let ticking = false;
     const update = () => {
       ticking = false;
-      const cards = elements.conversationList.querySelectorAll(
-        ".message-card[id]"
-      );
+      const cards =
+        elements.conversationList.querySelectorAll(".message-card[id]");
       if (!cards.length) return;
       // 阈值与 .message-card 的 scroll-margin-top 对齐：点目录跳转后，目标条目即高亮。
       const edge = scroller.getBoundingClientRect().top + 216;
@@ -273,7 +307,9 @@ export function createConversationView({
       const activeBucket = Math.floor(active / step);
       rail
         .querySelectorAll(".message-outline-dot")
-        .forEach((dot, i) => dot.classList.toggle("active", i === activeBucket));
+        .forEach((dot, i) =>
+          dot.classList.toggle("active", i === activeBucket)
+        );
     }
   }
 
@@ -356,18 +392,8 @@ export function createConversationView({
       copyButton.addEventListener("click", () => {
         navigator.clipboard
           .writeText(messageText)
-          .then(() => {
-            copyButton.textContent = "✓";
-            setTimeout(() => {
-              copyButton.textContent = t("copy");
-            }, 1500);
-          })
-          .catch(() => {
-            copyButton.textContent = t("copyFailed");
-            setTimeout(() => {
-              copyButton.textContent = t("copy");
-            }, 1500);
-          });
+          .then(() => setCopyFeedback(copyButton, "success"))
+          .catch(() => setCopyFeedback(copyButton, "failed"));
       });
       const header = fragment.querySelector(".message-card header");
       header.append(copyButton);

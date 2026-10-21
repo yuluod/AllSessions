@@ -385,6 +385,22 @@ export function activeFilterEntries() {
   return entries;
 }
 
+// 筛选 chip 的关闭图标：与删除对话框的 SVG X 同一几何，避免文本字符随字体漂移。
+function createCloseIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "10");
+  svg.setAttribute("height", "10");
+  svg.setAttribute("fill", "none");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M6 6l12 12M18 6L6 18");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2.4");
+  path.setAttribute("stroke-linecap", "round");
+  svg.append(path);
+  return svg;
+}
+
 export function renderActiveFilters() {
   if (!elements.activeFilterBar) return;
   renderWorkspaceStatus();
@@ -428,7 +444,8 @@ export function renderActiveFilters() {
 
     const closeSpan = document.createElement("span");
     closeSpan.className = "filter-chip-close";
-    closeSpan.textContent = "×";
+    closeSpan.setAttribute("aria-hidden", "true");
+    closeSpan.append(createCloseIcon());
 
     button.append(labelSpan, valueSpan, closeSpan);
     button.addEventListener("click", () => {

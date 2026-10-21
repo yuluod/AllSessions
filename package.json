@@ -13,7 +13,7 @@
   "bugs": {
     "url": "https://github.com/yuluod/AllSessions/issues"
   },
-  "packageManager": "pnpm@12.3.4",
+  "packageManager": "pnpm@12.14.0",
   "keywords": [
     "ai",
     "codex",

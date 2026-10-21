@@ -1,4 +1,6 @@
-const LANG_KEY = "codex_viewer_lang";
+const LANG_KEY = "allsessions_lang";
+// 旧版应用遗留的语言键：首次读取时迁移到 allsessions_lang 后移除。
+const LEGACY_LANG_KEY = "codex_viewer_lang";
 
 const DICT = {
   zh: {
@@ -1222,7 +1224,17 @@ const DICT = {
   },
 };
 
-let currentLang = localStorage.getItem(LANG_KEY) || "zh";
+function readStoredLang() {
+  const stored = localStorage.getItem(LANG_KEY);
+  if (stored) return stored;
+  const legacy = localStorage.getItem(LEGACY_LANG_KEY);
+  if (!legacy) return "";
+  localStorage.setItem(LANG_KEY, legacy);
+  localStorage.removeItem(LEGACY_LANG_KEY);
+  return legacy;
+}
+
+let currentLang = readStoredLang() || "zh";
 
 // 将后端错误码翻译为当前语言；未知错误码返回 null 以便调用方回退到原始文案。
 export function translateBackendError(code, raw) {

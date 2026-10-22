@@ -16,7 +16,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
-dirs = "6"
+dirs = "7"
 md5 = "0.8.1"
 notify = "8"
 percent-encoding = "2"

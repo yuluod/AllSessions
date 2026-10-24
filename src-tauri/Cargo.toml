@@ -39,6 +39,12 @@ zstd = "0.14"
 [dev-dependencies]
 tempfile = "3"
 
+# 运行时切换程序坞图标；这些 crate 已作为 wry 的 macOS 依赖在树中，不引入新代码。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage"] }
+objc2-foundation = { version = "0.3", features = ["NSData"] }
+
 [profile.dev]
 debug = 1
 

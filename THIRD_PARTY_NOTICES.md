@@ -262,6 +262,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | objc2-core-image | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-core-location | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-core-text | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-core-video | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-encode | 4.1.0 | MIT |
 | objc2-exception-helper | 0.1.1 | Zlib OR Apache-2.0 OR MIT |
 | objc2-foundation | 0.3.2 | MIT |

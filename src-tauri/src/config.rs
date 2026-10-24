@@ -47,6 +47,8 @@ pub struct Preferences {
     pub terminal_app: String,
     /// 自定义终端的应用名称或可执行文件路径。
     pub terminal_custom: String,
+    /// 应用图标变体；合法取值见 `app_icon::ICON_IDS`。
+    pub app_icon: String,
 }
 
 impl Default for Preferences {
@@ -56,6 +58,7 @@ impl Default for Preferences {
             check_updates_on_startup: true,
             terminal_app: "auto".to_string(),
             terminal_custom: String::new(),
+            app_icon: "default".to_string(),
         }
     }
 }
@@ -223,7 +226,15 @@ pub fn parse_sources(value: &Value) -> Result<SourceRoots, String> {
 }
 
 pub fn parse_preferences(value: &Value) -> Result<Preferences, String> {
-    serde_json::from_value(value.clone()).map_err(|error| format!("常规设置无效：{error}"))
+    let preferences: Preferences =
+        serde_json::from_value(value.clone()).map_err(|error| format!("常规设置无效：{error}"))?;
+    if !crate::app_icon::ICON_IDS.contains(&preferences.app_icon.as_str()) {
+        return Err(format!(
+            "常规设置无效：未知的图标变体 {}",
+            preferences.app_icon
+        ));
+    }
+    Ok(preferences)
 }
 
 #[cfg(test)]
@@ -325,5 +336,18 @@ mod tests {
         assert!(preferences.check_updates_on_startup);
         assert!(parse_preferences(&json!({ "keep_running_in_tray": "yes" })).is_err());
         assert!(parse_preferences(&json!({ "unknown": true })).is_err());
+    }
+
+    #[test]
+    fn 图标设置只接受已知变体且缺省为经典() {
+        assert_eq!(parse_preferences(&json!({})).unwrap().app_icon, "default");
+        assert_eq!(
+            parse_preferences(&json!({ "app_icon": "amber" }))
+                .unwrap()
+                .app_icon,
+            "amber"
+        );
+        assert!(parse_preferences(&json!({ "app_icon": "diamond" })).is_err());
+        assert!(parse_preferences(&json!({ "app_icon": 3 })).is_err());
     }
 }

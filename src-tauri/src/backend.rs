@@ -111,6 +111,13 @@ impl BackendState {
         Ok(())
     }
 
+    pub fn app_icon(&self) -> String {
+        self.config
+            .lock()
+            .map(|config| config.preferences.app_icon.clone())
+            .unwrap_or_else(|_| crate::app_icon::ICON_DEFAULT.to_string())
+    }
+
     pub fn keep_running_in_tray(&self) -> Result<bool, String> {
         Ok(self
             .config
@@ -566,9 +573,12 @@ fn route_request(
                 .ok_or_else(|| "无法确定配置文件位置".to_string())?;
             let mut config = state.config.lock().map_err(lock_error)?;
             config.preferences = preferences;
+            let app_icon = config.preferences.app_icon.clone();
             config::save(&config_path, &config)?;
             drop(config);
             state.clear_startup_error()?;
+            // 图标切换立即生效；失败只在内部记录，不影响设置保存结果。
+            crate::app_icon::apply(&app, &app_icon);
             Ok(state.settings_payload(&app)?)
         }
         ("POST", "/api/settings/clear-cache") => {

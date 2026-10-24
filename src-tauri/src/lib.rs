@@ -1,3 +1,4 @@
+mod app_icon;
 mod backend;
 mod cache;
 mod config;
@@ -97,12 +98,18 @@ fn create_tray(app: &tauri::App) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::DoubleClick {
-                button: MouseButton::Left,
-                ..
-            } = event
-            {
-                show_main_window(tray.app_handle());
+            // 单击与双击左键都直接打开主窗口；菜单保持右键弹出。
+            // 单击被忽略会显得“点了没反应”，与 Dock 图标行为也不一致。
+            match event {
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    ..
+                }
+                | TrayIconEvent::DoubleClick {
+                    button: MouseButton::Left,
+                    ..
+                } => show_main_window(tray.app_handle()),
+                _ => {}
             }
         })
         .build(app)?;
@@ -143,8 +150,27 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("无法启动 AllSessions");
+        .build(tauri::generate_context!())
+        .expect("无法启动 AllSessions")
+        .run(|app, event| match event {
+            // 事件循环完全启动后再恢复应用图标，避开启动阶段的主线程时序。
+            tauri::RunEvent::Ready => {
+                let icon = app.state::<BackendState>().app_icon();
+                if icon != app_icon::ICON_DEFAULT {
+                    app_icon::apply(app, &icon);
+                }
+            }
+            // macOS：应用驻留托盘时点击程序坞图标（或 Finder 里再次打开）
+            // 会触发 Reopen；没有可见窗口时重新显示主窗口，否则用户会
+            // 以为应用“打不开”。该事件仅在 macOS 存在；Windows / Linux
+            // 隐藏窗口后本就只有托盘入口，由平台无关的托盘单击处理覆盖。
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } => show_main_window(app),
+            _ => {}
+        });
 }
 
 #[cfg(test)]

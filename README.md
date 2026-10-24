@@ -54,6 +54,9 @@ AllSessions is built on Tauri 2. Session discovery, parsing, search, caching, fi
 - Whitespace-separated multi-term matching; every term must hit
 - One- and two-character terms use substring matching; longer terms use a local trigram index
 - Order results by relevance or recent activity
+- Filter hits by message role (user / assistant / tool) and tool name
+- Narrow results to a session activity date range
+- Regex mode: match the whole query as a regular expression
 - Click a match snippet to jump to the surrounding messages
 - In-session highlighting with previous/next navigation
 
@@ -69,6 +72,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 - Save reusable filters
 - Manage local archive/removal state
 - Compare session, message, tool, activity, provider, and working-directory statistics by agent
+- Token usage statistics (input / output / cached); only sources that record usage are covered (Codex, Claude Code, ZCode, Pi, DeepSeek Harness, and Gemini CLI chats sessions)
 - Batch-select loaded sessions and export as JSON or Markdown
 - Optional export redaction, off by default
 
@@ -100,7 +104,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 | **Codex Archived** | `~/.codex/archived_sessions` | Browse, search, permanently delete archived sessions; files are not moved and archive state is not restored |
 | **Claude Code** | `~/.claude/{projects,sessions}` | `projects/**/*.jsonl` and legacy `sessions/*.json`; conversations, thinking, tools/results, search, live refresh, with `history.jsonl` enrichment for legacy details when available |
 | **Claude Cowork** | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions` (macOS) | Local task transcripts, thinking, tools, titles, host folders, search, refresh; read-only; [support boundaries](./docs/sources/claude-cowork.md) |
-| **Gemini CLI** | `~/.gemini/tmp/*/logs.json` | Streaming scan, per-`sessionId` aggregation, per-file incremental cache, bounded on-demand details |
+| **Gemini CLI** | `~/.gemini/tmp/*` | `logs.json` plus v0.61+ `chats/session-*.json[l]` full sessions (JSONL replay with `$set`/`$rewindTo`/message updates, chats-wins dedup); messages, thinking, tools, token usage (chats), raw events, search, live refresh; [boundary notes](./docs/sources/gemini-cli.md) |
 | **Grok Build** | `~/.grok/sessions` | `updates.jsonl` and `summary.json`; streamed text, thinking, tools, rewind filtering, raw events, search, refresh, resume; read-only source; [support boundaries](./docs/sources/grok-build.md) |
 | **Pi** | `~/.pi/agent/sessions` | Rebuilds the current branch from v1-v3 JSONL trees; messages, thinking, tools, summaries, raw events, search, live refresh |
 | **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`, working directories, custom titles, streamed content, subagents, tools, raw events, search, live refresh |

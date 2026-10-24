@@ -54,6 +54,9 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 - 支持空格分隔的多关键词匹配，所有关键词均需命中
 - 中文一至两个字使用子串匹配，其余内容使用本地 trigram 索引
 - 搜索结果可按相关度或最近活动时间排序
+- 按消息角色（用户 / 助手 / 工具）与工具名过滤命中
+- 按会话活动日期范围收窄结果
+- 正则模式：查询串整体作为正则匹配消息正文
 - 点击搜索片段即可定位附近消息
 - 支持会话内高亮以及上一处 / 下一处导航
 
@@ -69,6 +72,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 - 保存常用筛选
 - 管理本地归档 / 移除状态
 - 按 Agent 对比会话、消息、工具、活跃度、Provider 和工作目录统计
+- 统计 Token 用量（输入 / 输出 / 缓存）；仅覆盖会记录用量的来源（Codex、Claude Code、ZCode、Pi、DeepSeek Harness、Gemini CLI 的 chats 会话）
 - 批量选择当前已加载的会话并导出为 JSON 或 Markdown
 - 导出时可选择启用脱敏，默认关闭
 
@@ -100,7 +104,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 | **Codex 归档** | `~/.codex/archived_sessions` | 浏览、搜索、永久删除归档会话；不移动文件或恢复归档状态 |
 | **Claude Code** | `~/.claude/{projects,sessions}` | `projects/**/*.jsonl` 与旧版 `sessions/*.json`；对话、Thinking、工具调用/结果、搜索、实时刷新，并在可用时从 `history.jsonl` 补充旧版详情 |
 | **Claude Cowork** | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions`（macOS） | 本地任务转录、Thinking、工具、任务标题与主机目录、搜索及刷新；来源只读；[边界说明](./docs/sources/claude-cowork.md) |
-| **Gemini CLI** | `~/.gemini/tmp/*/logs.json` | 流式扫描、按 `sessionId` 聚合、逐文件增量缓存、按需加载有界详情 |
+| **Gemini CLI** | `~/.gemini/tmp/*` | `logs.json` 与 v0.61+ `chats/session-*.json[l]` 完整会话（JSONL 回放、`$set`/`$rewindTo`/消息更新，chats 优先去重）；消息、Thinking、工具、Token 用量（chats）、原始事件、搜索、实时刷新；[边界说明](./docs/sources/gemini-cli.md) |
 | **Grok Build** | `~/.grok/sessions` | `updates.jsonl` 与 `summary.json`；流式正文、Thinking、工具、回退过滤、原始事件、搜索、刷新、恢复；来源只读；[边界说明](./docs/sources/grok-build.md) |
 | **Pi** | `~/.pi/agent/sessions` | 从 v1-v3 JSONL 树重建当前分支；消息、Thinking、工具、摘要、原始事件、搜索、实时刷新 |
 | **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`、工作目录、自定义标题、流式内容、子 Agent、工具、原始事件、搜索、实时刷新 |

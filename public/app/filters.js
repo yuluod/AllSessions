@@ -49,6 +49,11 @@ export function syncUrl() {
   if (state.filters.cwd) params.set("cwd", state.filters.cwd);
   if (state.filters.tag) params.set("tag", state.filters.tag);
   if (state.searchQuery) params.set("q", state.searchQuery);
+  if (state.searchRole) params.set("role", state.searchRole);
+  if (state.searchTool) params.set("tool", state.searchTool);
+  if (state.searchRegex) params.set("regex", "1");
+  if (state.searchFrom) params.set("from", state.searchFrom);
+  if (state.searchTo) params.set("to", state.searchTo);
   if (state.showArchived) params.set("show_archived", "1");
   if (state.showCodexArchived) params.set("show_codex_archived", "1");
   if (state.showHidden) params.set("show_hidden", "1");
@@ -67,6 +72,11 @@ export function restoreFromUrl() {
   state.filters.cwd = params.get("cwd") || "";
   state.filters.tag = params.get("tag") || "";
   state.searchQuery = params.get("q") || "";
+  state.searchRole = params.get("role") || "";
+  state.searchTool = params.get("tool") || "";
+  state.searchRegex = params.get("regex") === "1";
+  state.searchFrom = params.get("from") || "";
+  state.searchTo = params.get("to") || "";
   state.showArchived =
     params.get("show_archived") === "1" ||
     params.get("show_archived") === "true";
@@ -230,6 +240,18 @@ export function syncFilterControls() {
   if (elements.workspaceTagFilter)
     elements.workspaceTagFilter.value = state.filters.tag;
   if (elements.searchInput) elements.searchInput.value = state.searchQuery;
+  if (elements.searchRoleFilter)
+    elements.searchRoleFilter.value = state.searchRole;
+  if (elements.searchToolInput)
+    elements.searchToolInput.value = state.searchTool;
+  if (elements.searchRegexToggle)
+    elements.searchRegexToggle.setAttribute(
+      "aria-pressed",
+      state.searchRegex ? "true" : "false"
+    );
+  if (elements.searchFromInput)
+    elements.searchFromInput.value = state.searchFrom;
+  if (elements.searchToInput) elements.searchToInput.value = state.searchTo;
   if (elements.showArchivedToggle)
     elements.showArchivedToggle.checked = state.showArchived;
   if (elements.showCodexArchivedToggle) {
@@ -287,6 +309,11 @@ export function buildSearchUrl({ cursor } = {}) {
   const params = new URLSearchParams(buildSessionQuery());
   params.set("q", state.searchQuery);
   params.set("sort", state.searchSort);
+  if (state.searchRole) params.set("role", state.searchRole);
+  if (state.searchTool) params.set("tool", state.searchTool);
+  if (state.searchRegex) params.set("regex", "1");
+  if (state.searchFrom) params.set("from", state.searchFrom);
+  if (state.searchTo) params.set("to", state.searchTo);
   params.set("limit", String(PAGE_LIMIT));
   if (cursor) params.set("cursor", cursor);
   return `/api/search?${params.toString()}`;
@@ -479,6 +506,11 @@ export function resetFilterState() {
     tag: "",
   };
   state.searchQuery = "";
+  state.searchRole = "";
+  state.searchTool = "";
+  state.searchRegex = false;
+  state.searchFrom = "";
+  state.searchTo = "";
   state.showArchived = false;
   state.showCodexArchived = false;
   state.showHidden = false;

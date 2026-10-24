@@ -904,6 +904,64 @@ body.is-resizing {
   gap: 8px;
 }
 
+/* 搜索结果工具栏的结构化筛选：角色、工具名、时间范围与正则开关，
+   视觉对齐筛选区的 32px 控件规格。 */
+.search-filter-group {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.search-filter-group select,
+.search-filter-group input[type="text"],
+.search-filter-group input[type="date"] {
+  height: 30px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.search-filter-group select {
+  appearance: none;
+  padding-right: 24px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23748090' stroke-width='1.4'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  background-size: 12px;
+  background-repeat: no-repeat;
+}
+
+.search-filter-group input[type="text"] {
+  flex: 1 1 110px;
+  max-width: 170px;
+}
+
+.search-filter-group button[aria-pressed] {
+  height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.search-filter-group button[aria-pressed="true"] {
+  border-color: var(--accent, var(--line));
+  color: var(--accent, var(--text));
+  background: var(--surface-subtle);
+}
+
 .session-list-header__favorite {
   display: flex;
   flex: 0 0 auto;

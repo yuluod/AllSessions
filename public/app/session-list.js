@@ -273,7 +273,11 @@ export function appendSessionItems(sessions) {
         label.textContent = t(`searchField_${hit.field}`);
         const excerpt = document.createElement("span");
         excerpt.textContent = hit.snippet;
-        highlightMatches(excerpt, state.searchQuery);
+        // 正则命中词来自后端的实际匹配结果，摘要无需再次执行原始表达式。
+        highlightMatches(
+          excerpt,
+          state.searchRegex ? hit.term : state.searchQuery
+        );
         link.append(label, excerpt);
         link.addEventListener("click", () =>
           selectSession(session._key, button, hit)

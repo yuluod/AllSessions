@@ -189,6 +189,192 @@ fn 全文搜索覆盖中间消息并合并备注标签和排序() {
     assert_eq!(store.search(&query, &workspace).unwrap()["total"], 0);
 }
 
+fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("structured.jsonl");
+    let lines = [
+        json!({"type":"session_meta","payload":{"id":"structured","cwd":"/project"},"timestamp":"2026-02-01T00:00:00Z"}).to_string(),
+        json!({"type":"event_msg","payload":{"type":"user_message","message":"帮我查错误码 E4002 的含义"},"timestamp":"2026-02-01T00:00:01Z"}).to_string(),
+        json!({"type":"response_item","payload":{"type":"tool_use","name":"read_file","call_id":"c1","arguments":"{\"path\":\"a.txt\"}"},"timestamp":"2026-02-01T00:00:02Z"}).to_string(),
+        json!({"type":"response_item","payload":{"type":"tool_result","call_id":"c1","output":"错误码表：客服热线 400-1234"},"timestamp":"2026-02-01T00:00:03Z"}).to_string(),
+        json!({"type":"response_item","payload":{"type":"agent_message","message":"E4002 表示参数缺失，可参考 400-1234 获取帮助"},"timestamp":"2026-02-01T00:00:04Z"}).to_string(),
+    ];
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    (directory, store)
+}
+
+#[test]
+fn 结构化搜索按角色过滤消息() {
+    let (_directory, store) = structured_search_store();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let result = store
+        .search(
+            &HashMap::from([
+                ("q".into(), "E4002".into()),
+                ("role".into(), "assistant".into()),
+            ]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(result["total"], 1);
+    let hits = &result["sessions"][0]["search_hits"];
+    assert!(hits
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|hit| hit["field"].as_str().unwrap() != "tool"));
+
+    // 角色限定为 tool 时，assistant 正文命中被排除，工具结果仍然命中。
+    let result = store
+        .search(
+            &HashMap::from([("q".into(), "E4002".into()), ("role".into(), "tool".into())]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(result["total"], 0);
+
+    let result = store
+        .search(
+            &HashMap::from([
+                ("q".into(), "400-1234".into()),
+                ("role".into(), "user".into()),
+            ]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(result["total"], 0);
+}
+
+#[test]
+fn 结构化搜索按工具名过滤消息() {
+    let (_directory, store) = structured_search_store();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let result = store
+        .search(
+            &HashMap::from([
+                ("q".into(), "错误码表".into()),
+                ("tool".into(), "read_file".into()),
+            ]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(result["total"], 1);
+    // 工具名大小写不敏感。
+    let result = store
+        .search(
+            &HashMap::from([
+                ("q".into(), "错误码表".into()),
+                ("tool".into(), "READ_FILE".into()),
+            ]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(result["total"], 1);
+    let result = store
+        .search(
+            &HashMap::from([
+                ("q".into(), "错误码表".into()),
+                ("tool".into(), "write_file".into()),
+            ]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(result["total"], 0);
+}
+
+#[test]
+fn 结构化搜索支持正则模式() {
+    let (_directory, store) = structured_search_store();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let result = store
+        .search(
+            &HashMap::from([
+                ("q".into(), r"\d{3}-\d{4}".into()),
+                ("regex".into(), "1".into()),
+                ("role".into(), "assistant".into()),
+            ]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(result["total"], 1);
+    let snippet = result["sessions"][0]["search_snippet"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(snippet.contains("400-1234"));
+
+    // 无效正则返回明确错误，不静默当作普通文本。
+    let error = store
+        .search(
+            &HashMap::from([("q".into(), "(未闭合".into()), ("regex".into(), "1".into())]),
+            &workspace,
+        )
+        .unwrap_err();
+    assert!(error.contains("正则表达式无效"));
+}
+
+#[test]
+fn 结构化搜索按会话时间范围过滤() {
+    let directory = tempdir().unwrap();
+    for (name, id, timestamp) in [
+        ("early.jsonl", "early", "2026-01-10T00:00:00Z"),
+        ("late.jsonl", "late", "2026-03-10T00:00:00Z"),
+    ] {
+        let path = directory.path().join(name);
+        let lines = [
+            json!({"type":"session_meta","payload":{"id":id},"timestamp":timestamp}).to_string(),
+            json!({"type":"event_msg","payload":{"type":"user_message","message":"共有关键词仪表盘"},"timestamp":timestamp}).to_string(),
+        ];
+        std::fs::write(&path, lines.join("\n")).unwrap();
+    }
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let in_range = store
+        .search(
+            &HashMap::from([
+                ("q".into(), "仪表盘".into()),
+                ("from".into(), "2026-02-01".into()),
+                ("to".into(), "2026-04-01".into()),
+            ]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(in_range["total"], 1);
+    assert_eq!(in_range["sessions"][0]["id"], "late");
+    let outside = store
+        .search(
+            &HashMap::from([
+                ("q".into(), "仪表盘".into()),
+                ("from".into(), "2026-02-01".into()),
+            ]),
+            &workspace,
+        )
+        .unwrap();
+    assert_eq!(outside["total"], 1);
+    let all = store
+        .search(&HashMap::from([("q".into(), "仪表盘".into())]), &workspace)
+        .unwrap();
+    assert_eq!(all["total"], 2);
+}
+
 #[test]
 fn 工作台筛选默认隐藏归档移除并支持收藏标签() {
     let summary = json!({

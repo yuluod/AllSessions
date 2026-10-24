@@ -675,6 +675,58 @@
                   </select>
                   <span id="search-result-count" role="status"></span>
                 </div>
+                <div class="search-filter-group">
+                  <select
+                    id="search-role-filter"
+                    aria-label="按消息角色过滤"
+                    data-i18n="searchRoleFilter"
+                    data-i18n-attr="aria-label"
+                  >
+                    <option value="" data-i18n="searchRoleAll">全部角色</option>
+                    <option value="user" data-i18n="searchRoleUser">
+                      用户
+                    </option>
+                    <option value="assistant" data-i18n="searchRoleAssistant">
+                      助手
+                    </option>
+                    <option value="tool" data-i18n="searchRoleTool">
+                      工具
+                    </option>
+                  </select>
+                  <input
+                    id="search-tool-input"
+                    type="text"
+                    placeholder="按工具名过滤"
+                    aria-label="按工具名过滤"
+                    data-i18n="searchToolPlaceholder"
+                    data-i18n-attr="placeholder"
+                  />
+                  <input
+                    id="search-from-input"
+                    type="date"
+                    aria-label="开始日期"
+                    data-i18n="searchFromDate"
+                    data-i18n-attr="aria-label"
+                  />
+                  <input
+                    id="search-to-input"
+                    type="date"
+                    aria-label="结束日期"
+                    data-i18n="searchToDate"
+                    data-i18n-attr="aria-label"
+                  />
+                  <button
+                    id="search-regex-toggle"
+                    type="button"
+                    aria-pressed="false"
+                    title="按正则表达式匹配"
+                    aria-label="按正则表达式匹配"
+                    data-i18n-title="searchRegexToggle"
+                    data-i18n-attr="aria-label"
+                  >
+                    .*
+                  </button>
+                </div>
               </div>
               <div
                 id="session-list"

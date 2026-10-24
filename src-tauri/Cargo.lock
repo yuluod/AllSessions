@@ -41,6 +41,7 @@ dependencies = [
  "md5",
  "notify",
  "percent-encoding",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

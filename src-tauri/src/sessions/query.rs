@@ -148,22 +148,68 @@ impl SearchPlan {
             .map(|value| value.to_lowercase())
             .unwrap_or_default();
         let terms = crate::search::terms(&needle);
-        let keys: BTreeSet<&str> = self
+        // 正则模式：查询串整体作为一个正则；索引正文已小写化，统一加不区分大小写。
+        let regex_mode = bool_query(query, "regex");
+        let pattern = if regex_mode {
+            let source = query.get("q").map(String::as_str).unwrap_or_default();
+            Some(
+                regex::Regex::new(&format!("(?i){source}"))
+                    .map_err(|error| format!("正则表达式无效：{error}"))?,
+            )
+        } else {
+            None
+        };
+        // 会话时间范围（本地日期键，含首尾）。
+        let from = query
+            .get("from")
+            .map(String::as_str)
+            .filter(|value| !value.is_empty());
+        let to = query
+            .get("to")
+            .map(String::as_str)
+            .filter(|value| !value.is_empty());
+        let in_range = |summary: &Value| {
+            let date = match super::helpers::local_date_key(timestamp_of(summary)) {
+                Some(date) => date,
+                None => return from.is_none() && to.is_none(),
+            };
+            from.map(|start| date.as_str() >= start).unwrap_or(true)
+                && to.map(|end| date.as_str() <= end).unwrap_or(true)
+        };
+        let keys: BTreeSet<String> = self
             .summaries
             .iter()
-            .filter_map(|summary| summary["_key"].as_str())
+            .filter(|summary| in_range(summary))
+            .filter_map(|summary| summary["_key"].as_str().map(String::from))
             .collect();
-        let mut indexed = snapshot.query_hits(&needle, |key, message| {
-            keys.contains(key)
-                && (bool_query(query, "show_removed") || !workspace.message_removed(key, message))
-        })?;
+        let filters = crate::search::SearchFilters::from_query(query);
+        let mut indexed = if let Some(pattern) = &pattern {
+            snapshot.query_regex(pattern, &filters, |key, message| {
+                keys.contains(key)
+                    && (bool_query(query, "show_removed") || !workspace.message_removed(key, message))
+            })?
+        } else {
+            snapshot.query_hits_filtered(&needle, &filters, |key, message| {
+                keys.contains(key)
+                    && (bool_query(query, "show_removed") || !workspace.message_removed(key, message))
+            })?
+        };
         let mut filtered: Vec<Value> = self
             .summaries
             .into_iter()
             .filter_map(|summary| {
                 let key = summary["_key"].as_str()?;
+                // 时间范围等条件在构建 keys 时已过滤；标题/备注等字段命中
+                // 也必须落在同一集合内，否则范围外的会话会经字段命中回流。
+                if !keys.contains(key) {
+                    return None;
+                }
                 let mut hits = indexed.remove(key).unwrap_or_default();
                 hits.retain(|hit| bool_query(query,"show_removed") || !workspace.message_removed(key,hit["message_key"].as_str().unwrap_or_default()));
+                // 指定了角色或工具筛选时，只在消息正文里匹配；标题等摘要字段
+                // 的命中不参与，避免“只搜用户提问”被标题匹配绕过。
+                let augment_fields = filters.roles.is_empty() && filters.tool.is_none();
+                if augment_fields {
                 for (field, text, score) in [
                     ("title",summary["title"].as_str().unwrap_or_default().to_string(),5.0),
                     ("path",["id","cwd","file_path","source_kind","model_provider"].iter().filter_map(|field|summary[*field].as_str()).collect::<Vec<_>>().join("\n"),1.0),
@@ -171,11 +217,23 @@ impl SearchPlan {
                     ("tag",summary["workspace"]["tags"].as_array().map(|tags|tags.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")).unwrap_or_default(),4.0),
                 ] {
                     let lower = text.to_lowercase();
-                    for term in &terms {
-                        if lower.contains(term) { hits.push(json!({"field":field,"term":term,"snippet":crate::search::snippet(&text,term),"score":score})); }
+                    if let Some(pattern) = &pattern {
+                        if let Some(matched) = pattern.find(&lower) {
+                            hits.push(json!({"field":field,"term":matched.as_str(),"snippet":crate::search::snippet(&text,matched.as_str()),"score":score}));
+                        }
+                    } else {
+                        for term in &terms {
+                            if lower.contains(term) { hits.push(json!({"field":field,"term":term,"snippet":crate::search::snippet(&text,term),"score":score})); }
+                        }
                     }
                 }
-                if !terms.iter().all(|term|hits.iter().any(|hit|hit["term"].as_str()==Some(term))) {return None;}
+                }
+                let matched = if regex_mode {
+                    !hits.is_empty()
+                } else {
+                    !terms.is_empty() && terms.iter().all(|term|hits.iter().any(|hit|hit["term"].as_str()==Some(term)))
+                };
+                if !matched {return None;}
                 hits.sort_by(|a,b|b["score"].as_f64().unwrap_or_default().total_cmp(&a["score"].as_f64().unwrap_or_default()));
                 let score = hits.first().and_then(|hit|hit["score"].as_f64()).unwrap_or_default();
                 let mut seen = BTreeSet::new();

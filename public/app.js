@@ -594,6 +594,47 @@ async function initialize() {
       state.searchSort = event.target.value;
       void loadSessions();
     });
+  // 结构化搜索筛选：改动即重查；日期与正则即时生效。
+  // 输入框（关键词、工具名）必须先写入 state、只对重新查询防抖——
+  // 若把状态更新也延迟，两个输入框会在 300ms 内互相取消尚未写入的值。
+  const cancelPendingSearch = () => {
+    clearTimeout(searchDebounce);
+    sessionRequestGate.cancel();
+    detailRequestGate.cancel();
+    state.selectedSearchHit = null;
+  };
+  const scheduleSearchReload = () => {
+    cancelPendingSearch();
+    searchDebounce = setTimeout(() => {
+      syncUrl();
+      void loadSessions();
+    }, 300);
+  };
+  elements.searchRoleFilter?.addEventListener("change", (event) => {
+    state.searchRole = event.target.value;
+    syncUrl();
+    void loadSessions();
+  });
+  elements.searchToolInput?.addEventListener("input", (event) => {
+    state.searchTool = event.target.value.trim();
+    scheduleSearchReload();
+  });
+  elements.searchFromInput?.addEventListener("change", (event) => {
+    state.searchFrom = event.target.value;
+    syncUrl();
+    void loadSessions();
+  });
+  elements.searchToInput?.addEventListener("change", (event) => {
+    state.searchTo = event.target.value;
+    syncUrl();
+    void loadSessions();
+  });
+  elements.searchRegexToggle?.addEventListener("click", () => {
+    state.searchRegex = !state.searchRegex;
+    syncFilterControls();
+    syncUrl();
+    void loadSessions();
+  });
   document
     .querySelector("#search-full-session")
     ?.addEventListener("click", () => {
@@ -602,16 +643,13 @@ async function initialize() {
     });
   elements.searchInput?.addEventListener("input", (event) => {
     const query = event.target.value.trim();
-    clearTimeout(searchDebounce);
-    sessionRequestGate.cancel();
-    detailRequestGate.cancel();
-    state.selectedSearchHit = null;
+    const switchedView = state.activeView !== "list";
+    state.searchQuery = query;
+    cancelPendingSearch();
     searchDebounce = setTimeout(async () => {
-      const switchedView = state.activeView !== "list";
       if (switchedView) {
         await activateWorkspaceView("list");
       }
-      state.searchQuery = query;
       syncUrl();
       await loadSessions();
       if (switchedView && window.matchMedia(MOBILE_LAYOUT_QUERY).matches) {

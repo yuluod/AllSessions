@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -13,12 +13,72 @@ pub struct SearchIndex(Mutex<Connection>);
 
 pub struct SearchSnapshot<'a>(&'a Connection);
 
+/// 消息级结构化筛选：按消息角色与工具名收窄全文命中。
+/// `roles` 为空表示不过滤；`tool` 做小写包含匹配。
+#[derive(Default, Clone)]
+pub struct SearchFilters {
+    pub roles: Vec<String>,
+    pub tool: Option<String>,
+}
+
+impl SearchFilters {
+    pub fn from_query(query: &std::collections::HashMap<String, String>) -> Self {
+        let roles = query
+            .get("role")
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|role| matches!(*role, "user" | "assistant" | "tool"))
+                    .map(String::from)
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let tool = query
+            .get("tool")
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty());
+        Self { roles, tool }
+    }
+
+    /// 返回 `where` 之后的追加条件与绑定参数；`alias` 为消息表别名或空串。
+    fn clause(&self, alias: &str) -> (String, Vec<String>) {
+        let column = |name: &str| {
+            if alias.is_empty() {
+                name.to_string()
+            } else {
+                format!("{alias}.{name}")
+            }
+        };
+        let mut conditions = Vec::new();
+        let mut values = Vec::new();
+        if !self.roles.is_empty() {
+            let placeholders = self.roles.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            conditions.push(format!("{} in ({placeholders})", column("role")));
+            values.extend(self.roles.iter().cloned());
+        }
+        if let Some(tool) = &self.tool {
+            conditions.push(format!("instr({}, ?) > 0", column("tool_name")));
+            values.push(tool.clone());
+        }
+        if conditions.is_empty() {
+            (String::new(), values)
+        } else {
+            (format!(" and {}", conditions.join(" and ")), values)
+        }
+    }
+}
+
 struct Candidate {
     ordinal: i64,
     field: String,
     message_key: String,
     score: f64,
     id: i64,
+    // 命中词（正则模式下为实际匹配到的文本），用于生成摘要。
+    term: String,
 }
 
 #[derive(Debug)]
@@ -58,6 +118,11 @@ impl SearchIndex {
         if !has_metadata {
             // 派生索引升级后重建，不迁移整份消息正文。
             db.execute_batch("begin; alter table search_messages_v1 add column role text not null default 'assistant'; alter table search_messages_v1 add column message_key text not null default ''; delete from search_messages_v1; delete from search_sessions_v1; commit;").map_err(|e|e.to_string())?;
+        }
+        let has_tool_name: bool = db.query_row("select exists(select 1 from pragma_table_info('search_messages_v1') where name='tool_name')", [], |r| r.get(0)).map_err(|e|e.to_string())?;
+        if !has_tool_name {
+            // 工具名列同样属于派生数据，缺列时清空索引等待重建。
+            db.execute_batch("begin; alter table search_messages_v1 add column tool_name text not null default ''; delete from search_messages_v1; delete from search_sessions_v1; commit;").map_err(|e|e.to_string())?;
         }
         db.execute_batch("create table if not exists search_short_v1(token text not null, message_id integer not null, primary key(token,message_id)) without rowid;
             create index if not exists search_short_message_v1 on search_short_v1(message_id);
@@ -105,7 +170,7 @@ impl SearchIndex {
             .map_err(|e| RefreshError::Database(e.to_string()))?;
         let mut ordinal = 0;
         let mut failure = None;
-        let mut insert = tx.prepare("insert into search_messages_v1(session_key,ordinal,text,payload,role,message_key) values(?1,?2,?3,?4,?5,?6)").map_err(|e|RefreshError::Database(e.to_string()))?;
+        let mut insert = tx.prepare("insert into search_messages_v1(session_key,ordinal,text,payload,role,message_key,tool_name) values(?1,?2,?3,?4,?5,?6,?7)").map_err(|e|RefreshError::Database(e.to_string()))?;
         let parsed = parse(&mut |message| {
             if failure.is_some() {
                 return;
@@ -120,7 +185,11 @@ impl SearchIndex {
                     text.to_lowercase(),
                     payload.to_string(),
                     message["role"].as_str().unwrap_or("assistant"),
-                    message["_message_key"].as_str().unwrap_or_default()
+                    message["_message_key"].as_str().unwrap_or_default(),
+                    message["tool_name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_lowercase()
                 ]) {
                     failure = Some(error.to_string());
                 }
@@ -255,9 +324,19 @@ fn backfill_short(db: &Connection, key: &str) -> Result<(), String> {
 }
 
 impl SearchSnapshot<'_> {
+    #[cfg(test)]
     pub fn query_hits(
         &self,
         query: &str,
+        include: impl Fn(&str, &str) -> bool,
+    ) -> Result<BTreeMap<String, Vec<Value>>, String> {
+        self.query_hits_filtered(query, &SearchFilters::default(), include)
+    }
+
+    pub fn query_hits_filtered(
+        &self,
+        query: &str,
+        filters: &SearchFilters,
         include: impl Fn(&str, &str) -> bool,
     ) -> Result<BTreeMap<String, Vec<Value>>, String> {
         let db = self.0;
@@ -266,21 +345,42 @@ impl SearchSnapshot<'_> {
             let mut candidates: BTreeMap<String, Vec<Candidate>> = BTreeMap::new();
             let indexed = term.chars().count() >= 3;
             let short_indexed = !indexed && term.chars().all(is_han);
-            let sql = if indexed {
-                "select m.session_key,m.ordinal,m.role,m.message_key,-bm25(search_fts_v1),m.id from search_fts_v1 join search_messages_v1 m on m.id=search_fts_v1.rowid where search_fts_v1 match ?1"
+            let (sql, alias) = if indexed {
+                (
+                    "select m.session_key,m.ordinal,m.role,m.message_key,-bm25(search_fts_v1),m.id from search_fts_v1 join search_messages_v1 m on m.id=search_fts_v1.rowid where search_fts_v1 match ?1{CLAUSE}".to_string(),
+                    "m",
+                )
             } else if short_indexed {
                 // 未补齐的会话仍查正文；已补齐的只查倒排表，同一快照内不会漏读。
-                "select session_key,ordinal,role,message_key,0.0,id from search_messages_v1 where id in (select message_id from search_short_v1 where token=?1) union all select m.session_key,m.ordinal,m.role,m.message_key,0.0,m.id from search_messages_v1 m where m.session_key in (select key from search_sessions_v1 where key not in (select session_key from search_short_ready_v1)) and instr(m.text,?1)>0 order by id"
+                (
+                    "select session_key,ordinal,role,message_key,0.0,id from search_messages_v1 where id in (select message_id from search_short_v1 where token=?1){CLAUSE} union all select m.session_key,m.ordinal,m.role,m.message_key,0.0,m.id from search_messages_v1 m where m.session_key in (select key from search_sessions_v1 where key not in (select session_key from search_short_ready_v1)) and instr(m.text,?1)>0{CLAUSE2} order by id".to_string(),
+                    "",
+                )
             } else {
-                "select session_key,ordinal,role,message_key,0.0,id from search_messages_v1 where instr(text,?1)>0"
+                (
+                    "select session_key,ordinal,role,message_key,0.0,id from search_messages_v1 where instr(text,?1)>0{CLAUSE}".to_string(),
+                    "",
+                )
             };
+            let (clause, clause_values) = filters.clause(alias);
+            let sql = sql
+                .replace("{CLAUSE2}", &clause)
+                .replace("{CLAUSE}", &clause);
             let parameter = if indexed {
                 format!("\"{}\"", term.replace('"', "\"\""))
             } else {
                 term.clone()
             };
-            let mut stmt = db.prepare_cached(sql).map_err(|e| e.to_string())?;
-            let mut rows = stmt.query([parameter]).map_err(|e| e.to_string())?;
+            // union 查询的两条分支各需一份筛选参数。
+            let mut bind_values = vec![parameter];
+            bind_values.extend(clause_values.iter().cloned());
+            if short_indexed {
+                bind_values.extend(clause_values.iter().cloned());
+            }
+            let mut stmt = db.prepare_cached(&sql).map_err(|e| e.to_string())?;
+            let mut rows = stmt
+                .query(params_from_iter(bind_values))
+                .map_err(|e| e.to_string())?;
             while let Some(row) = rows.next().map_err(|e| e.to_string())? {
                 let key = row
                     .get_ref(0)
@@ -323,15 +423,91 @@ impl SearchSnapshot<'_> {
                     message_key: message_key.to_owned(),
                     score,
                     id: row.get(5).map_err(|e| e.to_string())?,
+                    term: term.clone(),
                 });
                 best.sort_by(|a, b| b.score.total_cmp(&a.score));
                 best.truncate(2);
             }
             for (key, best) in candidates {
                 hits.entry(key).or_default().extend(best.into_iter().map(|hit| {
-                    json!({"field":hit.field,"ordinal":hit.ordinal,"message_key":hit.message_key,"term":term,"score":hit.score,"_rowid":hit.id})
+                    json!({"field":hit.field,"ordinal":hit.ordinal,"message_key":hit.message_key,"term":hit.term,"score":hit.score,"_rowid":hit.id})
                 }));
             }
+        }
+        Ok(hits)
+    }
+
+    /// 正则模式：不走倒排表，逐行扫描消息正文并按正则匹配。
+    /// 索引正文已小写化，调用方需以 `(?i)` 等方式保证大小写语义。
+    pub fn query_regex(
+        &self,
+        pattern: &regex::Regex,
+        filters: &SearchFilters,
+        include: impl Fn(&str, &str) -> bool,
+    ) -> Result<BTreeMap<String, Vec<Value>>, String> {
+        let db = self.0;
+        let (clause, clause_values) = filters.clause("");
+        let sql = format!(
+            "select session_key,ordinal,role,message_key,text,id from search_messages_v1 where 1=1{clause}"
+        );
+        let mut stmt = db.prepare_cached(&sql).map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query(params_from_iter(clause_values))
+            .map_err(|e| e.to_string())?;
+        let mut candidates: BTreeMap<String, Vec<Candidate>> = BTreeMap::new();
+        let mut hits: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let key = row
+                .get_ref(0)
+                .map_err(|e| e.to_string())?
+                .as_str()
+                .map_err(|e| e.to_string())?;
+            let field = row
+                .get_ref(2)
+                .map_err(|e| e.to_string())?
+                .as_str()
+                .map_err(|e| e.to_string())?;
+            let message_key = row
+                .get_ref(3)
+                .map_err(|e| e.to_string())?
+                .as_str()
+                .map_err(|e| e.to_string())?;
+            if !include(key, message_key) {
+                continue;
+            }
+            let text: String = row.get(4).map_err(|e| e.to_string())?;
+            let Some(matched) = pattern.find(&text) else {
+                continue;
+            };
+            let score: f64 = if field == "user" {
+                2.0
+            } else if field == "tool" {
+                0.0
+            } else {
+                1.0
+            };
+            if candidates
+                .get(key)
+                .is_some_and(|best| best.len() == 2 && best[1].score >= score)
+            {
+                continue;
+            }
+            let best = candidates.entry(key.to_owned()).or_default();
+            best.push(Candidate {
+                ordinal: row.get(1).map_err(|e| e.to_string())?,
+                field: field.to_owned(),
+                message_key: message_key.to_owned(),
+                score,
+                id: row.get(5).map_err(|e| e.to_string())?,
+                term: matched.as_str().to_owned(),
+            });
+            best.sort_by(|a, b| b.score.total_cmp(&a.score));
+            best.truncate(2);
+        }
+        for (key, best) in candidates {
+            hits.entry(key).or_default().extend(best.into_iter().map(|hit| {
+                json!({"field":hit.field,"ordinal":hit.ordinal,"message_key":hit.message_key,"term":hit.term,"score":hit.score,"_rowid":hit.id})
+            }));
         }
         Ok(hits)
     }

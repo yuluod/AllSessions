@@ -25,6 +25,7 @@ export const conversationView = createConversationView({
   isMessageRemoved,
   onRequestDelete: (message) => openDeleteDialog({ kind: "message", message }),
   onRestoreMessage: (message) => restoreRemovedMessage(message),
+  onHighlightError: showError,
 });
 export const settingsController = createSettingsController({
   elements,

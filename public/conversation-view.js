@@ -7,7 +7,11 @@ import {
 } from "./session-format.js";
 import { displayMessageText } from "./session-export.js";
 import { filterConversationMessages } from "./conversation-filter.js";
-import { highlightMatches, bindMatchNavigation } from "./search-view.js";
+import {
+  highlightMatches,
+  highlightRegexMatches,
+  bindMatchNavigation,
+} from "./search-view.js";
 
 const ROLE_LABELS = {
   user: "user",
@@ -67,7 +71,9 @@ export function createConversationView({
   isMessageRemoved,
   onRequestDelete,
   onRestoreMessage,
+  onHighlightError,
 }) {
+  let highlightController = null;
   function filtered(messages) {
     const decorated = messages.map((message) => ({
       ...message,
@@ -314,6 +320,9 @@ export function createConversationView({
   }
 
   function renderConversation(messages) {
+    highlightController?.abort();
+    highlightController = new AbortController();
+    const { signal } = highlightController;
     elements.conversationList.replaceChildren();
     const visibleMessages = displayed(messages);
     renderMessageNavigation(messages);
@@ -328,6 +337,7 @@ export function createConversationView({
     }
 
     const batch = document.createDocumentFragment();
+    const messageContents = [];
     visibleMessages.forEach((message) => {
       const fragment =
         elements.conversationItemTemplate.content.cloneNode(true);
@@ -366,7 +376,9 @@ export function createConversationView({
       const messageContent = fragment.querySelector(".message-text");
       messageContent.id = `message-content-${message._origIdx + 1}`;
       renderMarkdown(messageContent, messageText);
-      highlightMatches(messageContent, state.detailQuery);
+      messageContents.push(messageContent);
+      if (!state.searchRegex)
+        highlightMatches(messageContent, state.detailQuery);
 
       const shouldCollapse =
         message.role === "tool" ||
@@ -421,6 +433,15 @@ export function createConversationView({
     });
     elements.conversationList.append(batch);
     bindMatchNavigation(elements.conversationList);
+    if (state.searchRegex) {
+      void highlightRegexMatches(messageContents, state.detailQuery, { signal })
+        .then(() => {
+          if (!signal.aborted) bindMatchNavigation(elements.conversationList);
+        })
+        .catch((error) => {
+          if (error.name !== "AbortError") onHighlightError(error.message);
+        });
+    }
     // 卡片就位后：校准导航高亮，并把进度轨圆点对齐到真实内容位置。
     messageNavSpyUpdate?.();
     layoutMessageOutlineRail(visibleMessages);

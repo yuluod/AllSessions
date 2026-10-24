@@ -1,8 +1,10 @@
 import { t } from "./i18n.js";
+import { regexMatchRanges } from "./search-highlight.js";
 
 export function searchPattern(query) {
-  const terms = [...new Set(String(query).trim().split(/\s+/).filter(Boolean))];
-  if (!terms.length) return null;
+  const source = String(query).trim();
+  if (!source) return null;
+  const terms = [...new Set(source.split(/\s+/).filter(Boolean))];
   return new RegExp(
     terms
       .sort((a, b) => b.length - a.length)
@@ -12,30 +14,55 @@ export function searchPattern(query) {
   );
 }
 
-export function highlightMatches(container, query) {
-  const pattern = searchPattern(query);
-  if (!pattern) return;
+function textNodes(container) {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
-  for (const node of nodes) {
-    const fragment = document.createDocumentFragment();
-    let offset = 0;
-    for (const match of node.textContent.matchAll(pattern)) {
-      fragment.append(
-        document.createTextNode(node.textContent.slice(offset, match.index))
-      );
-      const mark = document.createElement("mark");
-      mark.className = "search-highlight";
-      mark.textContent = match[0];
-      fragment.append(mark);
-      offset = match.index + match[0].length;
-    }
-    if (offset) {
-      fragment.append(document.createTextNode(node.textContent.slice(offset)));
-      node.replaceWith(fragment);
-    }
+  return nodes;
+}
+
+function highlightRanges(node, ranges) {
+  if (!ranges.length) return;
+  const text = node.textContent;
+  const fragment = document.createDocumentFragment();
+  let offset = 0;
+  for (const [start, end] of ranges) {
+    fragment.append(document.createTextNode(text.slice(offset, start)));
+    const mark = document.createElement("mark");
+    mark.className = "search-highlight";
+    mark.textContent = text.slice(start, end);
+    fragment.append(mark);
+    offset = end;
   }
+  fragment.append(document.createTextNode(text.slice(offset)));
+  node.replaceWith(fragment);
+}
+
+export function highlightMatches(container, query) {
+  const pattern = searchPattern(query);
+  if (!pattern) return;
+  for (const node of textNodes(container)) {
+    const ranges = [...node.textContent.matchAll(pattern)].map((match) => [
+      match.index,
+      match.index + match[0].length,
+    ]);
+    highlightRanges(node, ranges);
+  }
+}
+
+export async function highlightRegexMatches(containers, query, options) {
+  if (!String(query).trim()) return;
+  const nodes = [...containers].flatMap(textNodes);
+  if (!nodes.length) return;
+  const texts = nodes.map((node) => node.textContent);
+  const ranges = await regexMatchRanges(texts, query, options);
+  if (options?.signal?.aborted) return;
+  nodes.forEach((node, index) => {
+    // 异步返回时只更新仍在页面中且正文未被重绘的节点。
+    if (node.isConnected && node.textContent === texts[index]) {
+      highlightRanges(node, ranges[index]);
+    }
+  });
 }
 
 export function bindMatchNavigation(container) {

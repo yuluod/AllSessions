@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AllSessions 应用图标 · 琥珀（amber）变体源文件。
+  与 v3 经典图标同一设计语言：近黑底色、单一强调色、中轴对称图腾、
+  负空间分隔、圆角几何。图腾语义：多路会话（两侧弧臂与端点）汇聚为
+  一条主线（立柱经节点收束向上）。弧臂只定义一侧，另一侧镜像生成。
+  重新生成命令见同目录 README.md。
+-->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 底色：近黑圆角方（系统程序坞会再做 squircle 裁切） -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="#0B0D0F" />
+
+  <!-- 底层暖色锥形：提亮一档保证可读；顶边嵌入节点圆下方约 1/3，
+       图腾明确“扎根”在底座里而不是悬浮擦边 -->
+  <path d="M 512 588
+           L 726 790
+           C 662 862 590 896 512 896
+           C 434 896 362 862 298 790 Z"
+        fill="#443017" />
+
+  <!-- 主色：琥珀 -->
+  <g>
+    <!-- 中央立柱：圆头柱，底端与节点留 18px 负空间 -->
+    <rect x="472" y="168" width="80" height="332" rx="40" fill="#D08A2B" />
+
+    <!-- 汇聚节点 -->
+    <circle cx="512" cy="566" r="48" fill="#D08A2B" />
+
+    <!-- 会话弧臂 + 端点圆：定义右侧，整体镜像得到左侧 -->
+    <g id="arm">
+      <path d="M 512 566
+               C 624 530 694 556 714 634"
+            stroke="#D08A2B" stroke-width="72" stroke-linecap="round" fill="none" />
+      <circle cx="716" cy="658" r="44" fill="#D08A2B" />
+    </g>
+    <use href="#arm" transform="translate(1024 0) scale(-1 1)" />
+  </g>
+</svg>

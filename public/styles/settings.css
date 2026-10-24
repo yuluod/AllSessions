@@ -1089,3 +1089,62 @@ html.settings-modal-open body {
   flex: 1 1 240px;
   font-size: 0.75rem;
 }
+
+/* 应用图标选择：卡片带预览图，交互对齐主题选择卡（hover/选中/焦点）。 */
+.settings-icon-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 96px));
+  gap: 7px;
+}
+
+.settings-icon-option {
+  min-width: 0;
+  cursor: pointer;
+}
+
+.settings-icon-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 9px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  transition:
+    border-color 140ms var(--ease-out),
+    background-color 140ms var(--ease-out);
+}
+
+.settings-icon-option:hover .settings-icon-card {
+  border-color: var(--line-strong);
+}
+
+.settings-icon-option input:checked + .settings-icon-card {
+  border-color: var(--line-accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.settings-icon-option input:focus-visible + .settings-icon-card {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-icon-card img {
+  width: 44px;
+  height: 44px;
+  border-radius: calc(var(--radius-small) + 2px);
+}
+
+.settings-icon-card strong {
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.settings-icon-hint {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+}

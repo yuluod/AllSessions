@@ -793,6 +793,7 @@ export function createSettingsController({
       check_updates_on_startup: preferences.check_updates_on_startup !== false,
       terminal_app: preferences.terminal_app || "auto",
       terminal_custom: preferences.terminal_custom || "",
+      app_icon: preferences.app_icon || "default",
     };
     if (elements.settingsKeepRunning) {
       elements.settingsKeepRunning.checked =
@@ -801,6 +802,13 @@ export function createSettingsController({
     if (elements.settingsStartupUpdates) {
       elements.settingsStartupUpdates.checked =
         savedPreferences.check_updates_on_startup;
+    }
+    const iconInputs = elements.settingsAppIconInputs || [];
+    const knownIcons = iconInputs.some(
+      ({ value }) => value === savedPreferences.app_icon
+    );
+    for (const input of iconInputs) {
+      input.checked = knownIcons && input.value === savedPreferences.app_icon;
     }
     if (elements.settingsTerminalApp) {
       const options = (payload?.terminal_options || []).filter(
@@ -858,6 +866,9 @@ export function createSettingsController({
     }
     if (elements.settingsTerminalCustomPick) {
       elements.settingsTerminalCustomPick.disabled = disabled;
+    }
+    for (const input of elements.settingsAppIconInputs || []) {
+      input.disabled = disabled;
     }
   }
 
@@ -972,6 +983,11 @@ export function createSettingsController({
         savedPreferences.terminal_app ||
         "auto",
       terminal_custom: savedPreferences.terminal_custom ?? "",
+      app_icon:
+        (elements.settingsAppIconInputs || []).find(({ checked }) => checked)
+          ?.value ||
+        savedPreferences.app_icon ||
+        "default",
     };
     setPreferenceControlsDisabled(true);
     setStatus(t("settingsSaving"));
@@ -1118,6 +1134,9 @@ export function createSettingsController({
       "change",
       savePreferences
     );
+    for (const input of elements.settingsAppIconInputs || []) {
+      input.addEventListener("change", savePreferences);
+    }
     elements.settingsTerminalApp?.addEventListener("change", () => {
       syncTerminalCustomPick();
       savePreferences();

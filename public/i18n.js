@@ -24,6 +24,11 @@ const DICT = {
     searchHighlightTimeout: "正则高亮超时，请简化表达式后重试。",
     searchHighlightLimit: "正则高亮匹配过多，请缩小搜索范围。",
     searchHighlightFailed: "正则高亮失败，请检查表达式后重试。",
+    settingsAppIcon: "应用图标",
+    settingsAppIconClassic: "经典",
+    settingsAppIconAmber: "琥珀",
+    settingsAppIconHint:
+      "更改程序坞与窗口图标，立即生效；安装包内图标保持不变。",
     searchMatches: "{n} 处匹配",
     searchPrevious: "上一处",
     searchNext: "下一处",
@@ -630,6 +635,11 @@ const DICT = {
     searchHighlightLimit: "Too many regex highlights. Narrow your search.",
     searchHighlightFailed:
       "Regex highlighting failed. Check the expression and try again.",
+    settingsAppIcon: "App icon",
+    settingsAppIconClassic: "Classic",
+    settingsAppIconAmber: "Amber",
+    settingsAppIconHint:
+      "Changes the dock and window icon immediately; the bundled package icon stays unchanged.",
     searchMatches: "{n} matches",
     searchPrevious: "Previous",
     searchNext: "Next",

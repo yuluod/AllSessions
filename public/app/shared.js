@@ -221,6 +221,9 @@ export const elements = {
   ),
   settingsKeepRunning: document.querySelector("#settings-keep-running"),
   settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
+  settingsAppIconInputs: Array.from(
+    document.querySelectorAll('[name="settings-app-icon"]')
+  ),
   settingsTerminalApp: document.querySelector("#settings-terminal-app"),
   settingsTerminalCustomPick: document.querySelector(
     "#settings-terminal-custom-pick"

@@ -3606,7 +3606,7 @@ body.is-resizing {
 .props-panel {
   position: sticky;
   top: 12px;
-  align-self: start;
+  /* 随列拉伸撑满，避免内容下方露出整段页面底色；内容超高时走内部滚动。 */
   width: auto;
   max-height: calc(100dvh - 24px);
 }

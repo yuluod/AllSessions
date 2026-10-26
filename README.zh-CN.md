@@ -45,7 +45,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 - 在一个界面中浏览多个 AI Coding Agent 的本地会话
 - 按来源、Provider、日期、项目和工作目录筛选
 - 查看归一化后的对话、Thinking、工具调用和原始事件
-- 默认隐藏 subagent、sidechain、Thinking 和注入的系统上下文
+- 默认隐藏标记为 subagent、sidechain 的会话，可通过筛选显示；详情默认显示注入的系统上下文，可单独切换，Thinking 随归一化消息展示
 - 监听来源文件变化并自动刷新
 
 ### 全文搜索

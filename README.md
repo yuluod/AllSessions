@@ -45,7 +45,7 @@ AllSessions is built on Tauri 2. Session discovery, parsing, search, caching, fi
 - Browse local sessions from multiple AI coding agents in one interface
 - Filter by source, provider, date, project, and working directory
 - Inspect normalized conversations, thinking, tool calls, and raw events
-- Hide subagents, sidechains, thinking, and injected context by default
+- Hide sessions marked as subagents or sidechains by default, with a filter to show them; injected context is shown by default in session details and can be toggled, while thinking appears within normalized messages
 - Watch source files and refresh automatically
 
 ### Full-text search

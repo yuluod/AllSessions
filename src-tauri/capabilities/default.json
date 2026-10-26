@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "dialog:allow-open",
+    "dialog:allow-ask",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

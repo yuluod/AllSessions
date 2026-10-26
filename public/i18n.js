@@ -28,7 +28,15 @@ const DICT = {
     settingsAppIconClassic: "经典",
     settingsAppIconAmber: "琥珀",
     settingsAppIconHint:
-      "更改程序坞与窗口图标，立即生效；安装包内图标保持不变。",
+      "更改程序坞与窗口图标，Windows 同步更改系统托盘图标，立即生效；安装包内图标保持不变。",
+    settingsAppIconRestartTitle: "应用图标已保存",
+    settingsAppIconRestartMessage:
+      "若系统托盘图标尚未刷新，可重启 AllSessions。现在重启吗？",
+    settingsAppIconRestartUnsaved: "重启会丢弃尚未保存的来源目录修改。",
+    settingsRestartNow: "立即重启",
+    settingsRestartLater: "稍后",
+    settingsRestarting: "正在重启应用…",
+    settingsRestartFailed: "重启应用失败",
     searchMatches: "{n} 处匹配",
     searchPrevious: "上一处",
     searchNext: "下一处",
@@ -639,7 +647,16 @@ const DICT = {
     settingsAppIconClassic: "Classic",
     settingsAppIconAmber: "Amber",
     settingsAppIconHint:
-      "Changes the dock and window icon immediately; the bundled package icon stays unchanged.",
+      "Changes dock and window icons immediately, including the system tray icon on Windows; the bundled package icon stays unchanged.",
+    settingsAppIconRestartTitle: "App icon saved",
+    settingsAppIconRestartMessage:
+      "If the system tray icon has not refreshed, you can restart AllSessions. Restart now?",
+    settingsAppIconRestartUnsaved:
+      "Restarting will discard unsaved source directory changes.",
+    settingsRestartNow: "Restart now",
+    settingsRestartLater: "Later",
+    settingsRestarting: "Restarting the app…",
+    settingsRestartFailed: "Could not restart the app",
     searchMatches: "{n} matches",
     searchPrevious: "Previous",
     searchNext: "Next",

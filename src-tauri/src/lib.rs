@@ -81,7 +81,7 @@ fn create_tray(app: &tauri::App) -> tauri::Result<()> {
         ],
     )?;
 
-    TrayIconBuilder::new()
+    TrayIconBuilder::with_id(app_icon::TRAY_ID)
         .icon(transparent_tray_icon()?)
         .icon_as_template(true)
         .tooltip("AllSessions")

@@ -4,7 +4,10 @@ import {
   fetchJson as requestJson,
 } from "./api-client.js";
 import { getThemeState, setScheme, setTheme } from "./theme-manager.js";
-import { open as openPathDialog } from "@tauri-apps/plugin-dialog";
+import {
+  ask as askDialog,
+  open as openPathDialog,
+} from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 const SOURCE_KINDS = [
@@ -88,6 +91,7 @@ export function createSettingsController({
   elements,
   onLanguageChanged,
   onSaved,
+  confirmRestart = askDialog,
 }) {
   let draft = null;
   let activeTab = "general";
@@ -991,6 +995,7 @@ export function createSettingsController({
     };
     setPreferenceControlsDisabled(true);
     setStatus(t("settingsSaving"));
+    let restartAvailable = false;
     try {
       const payload = await fetchJson("/api/settings/preferences", {
         method: "POST",
@@ -998,11 +1003,37 @@ export function createSettingsController({
       });
       renderPreferences(payload);
       setStatus(t("settingsPreferencesSaved"));
+      restartAvailable = payload.app_icon_restart_available === true;
     } catch (error) {
       renderPreferences({ preferences: savedPreferences });
       setStatus(error.message, true);
     } finally {
       setPreferenceControlsDisabled(false);
+    }
+    if (!restartAvailable || !dialog()?.open) return;
+    try {
+      const message = [
+        t("settingsAppIconRestartMessage"),
+        hasSourceChanges(draft, savedSources)
+          ? t("settingsAppIconRestartUnsaved")
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      const confirmed = await confirmRestart(message, {
+        title: t("settingsAppIconRestartTitle"),
+        kind: "info",
+        okLabel: t("settingsRestartNow"),
+        cancelLabel: t("settingsRestartLater"),
+      });
+      if (confirmed !== true) return;
+      setStatus(t("settingsRestarting"));
+      await fetchJson("/api/settings/restart", {
+        method: "POST",
+        body: { confirmed: true },
+      });
+    } catch (error) {
+      setStatus(`${t("settingsRestartFailed")}: ${error.message}`, true);
     }
   }
 

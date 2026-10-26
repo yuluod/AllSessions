@@ -572,6 +572,7 @@ fn route_request(
                 .clone()
                 .ok_or_else(|| "无法确定配置文件位置".to_string())?;
             let mut config = state.config.lock().map_err(lock_error)?;
+            let icon_changed = config.preferences.app_icon != preferences.app_icon;
             config.preferences = preferences;
             let app_icon = config.preferences.app_icon.clone();
             config::save(&config_path, &config)?;
@@ -579,7 +580,18 @@ fn route_request(
             state.clear_startup_error()?;
             // 图标切换立即生效；失败只在内部记录，不影响设置保存结果。
             crate::app_icon::apply(&app, &app_icon);
-            Ok(state.settings_payload(&app)?)
+            let mut payload = state.settings_payload(&app)?;
+            // Windows 托盘可能受系统刷新时机影响，切换后提供可选重启入口。
+            payload["app_icon_restart_available"] =
+                json!(cfg!(target_os = "windows") && icon_changed);
+            Ok(payload)
+        }
+        ("POST", "/api/settings/restart") => {
+            if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {
+                return Err(ApiError::invalid("重启应用需要确认"));
+            }
+            app.request_restart();
+            Ok(json!({ "ok": true }))
         }
         ("POST", "/api/settings/clear-cache") => {
             state.store.lock().map_err(lock_error)?.clear_index_cache();

@@ -21,6 +21,7 @@ pub(crate) struct RootLists {
     pub gemini: Vec<PathBuf>,
     pub grok: Vec<PathBuf>,
     pub pi: Vec<PathBuf>,
+    pub omp: Vec<PathBuf>,
     pub kimi: Vec<PathBuf>,
     pub opencode: Vec<PathBuf>,
     pub kilo: Vec<PathBuf>,
@@ -115,6 +116,20 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
     );
     if pi_origin == "default" && pi_agent_dir.is_some() {
         pi_origin = "env";
+    }
+    // Oh My Pi（omp）沿用 Pi 的目录布局：默认 `~/.omp/agent/sessions`，
+    // `OMP_AGENT_DIR` 对应上游的 agent 目录概念（上游亦响应 PI_CODING_AGENT_DIR）。
+    let omp_agent_dir = env::var_os("OMP_AGENT_DIR")
+        .map(PathBuf::from)
+        .map(expand_tilde);
+    let omp_fallback = omp_agent_dir
+        .as_ref()
+        .map(|path| path.join("sessions"))
+        .unwrap_or_else(|| home.join(".omp").join("agent").join("sessions"));
+    let (omp, mut omp_origin) =
+        resolve_kind(config.get("omp"), &["OMP_SESSIONS_DIR"], vec![omp_fallback]);
+    if omp_origin == "default" && omp_agent_dir.is_some() {
+        omp_origin = "env";
     }
     let kimi_home = env::var_os("KIMI_CODE_HOME")
         .map(PathBuf::from)
@@ -287,6 +302,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         "gemini": { "roots": gemini.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": gemini_origin },
         "grok": { "roots": grok.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": grok_origin },
         "pi": { "roots": pi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": pi_origin },
+        "omp": { "roots": omp.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": omp_origin },
         "kimi": { "roots": kimi.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kimi_origin },
         "opencode": { "roots": opencode.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": opencode_origin },
         "kilo": { "roots": kilo.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": kilo_origin },
@@ -307,6 +323,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
             gemini,
             grok,
             pi,
+            omp,
             kimi,
             opencode,
             kilo,
@@ -417,6 +434,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "gemini": describe_protected_source_roots(config.gemini.as_deref().unwrap_or_default(), &inherited.gemini),
         "grok": describe_protected_source_roots(config.grok.as_deref().unwrap_or_default(), &inherited.grok),
         "pi": describe_protected_source_roots(config.pi.as_deref().unwrap_or_default(), &inherited.pi),
+        "omp": describe_protected_source_roots(config.omp.as_deref().unwrap_or_default(), &inherited.omp),
         "kimi": describe_protected_source_roots(config.kimi.as_deref().unwrap_or_default(), &inherited.kimi),
         "opencode": describe_protected_source_roots(config.opencode.as_deref().unwrap_or_default(), &inherited.opencode),
         "kilo": describe_protected_source_roots(config.kilo.as_deref().unwrap_or_default(), &inherited.kilo),
@@ -443,6 +461,13 @@ pub(crate) fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Sou
         display_name: "Pi",
         root: root.clone(),
         format: SourceFormat::Pi,
+        archived: false,
+    }));
+    sources.extend(lists.omp.iter().map(|root| Source {
+        kind: "omp",
+        display_name: "Oh My Pi",
+        root: root.clone(),
+        format: SourceFormat::Omp,
         archived: false,
     }));
     sources.extend(lists.claude_cowork.iter().map(|root| Source {

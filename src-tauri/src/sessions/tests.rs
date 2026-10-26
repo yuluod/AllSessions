@@ -45,13 +45,13 @@ use tempfile::tempdir;
 use crate::cache::IndexCache;
 
 use super::{
-    compact, delete_jsonl_message, delete_legacy_session, describe_inherited_sources,
-    describe_protected_source_roots, describe_sources, existing_watch_root,
-    existing_watch_root_within, generic_conversation_message, is_synthetic_context, local_date_key,
-    matches_filters, opencode_event_matches, parse_detail, parse_summary, resolve_kind,
-    search_query_matches, sources_from_paths, split_path_list, timestamp_of, watch_roots_for,
-    DetailCache, HeadTail, ScanDiagnostics, SessionStore, Source, SourceFormat, DETAIL_CACHE_BYTES,
-    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+    compact, configured_sources, delete_jsonl_message, delete_legacy_session,
+    describe_inherited_sources, describe_protected_source_roots, describe_sources,
+    existing_watch_root, existing_watch_root_within, generic_conversation_message,
+    is_synthetic_context, local_date_key, matches_filters, opencode_event_matches, parse_detail,
+    parse_summary, resolve_kind, search_query_matches, sources_from_paths, split_path_list,
+    timestamp_of, watch_roots_for, DetailCache, HeadTail, ScanDiagnostics, SessionStore, Source,
+    SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -72,6 +72,7 @@ fn codex_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
         gemini: Some(Vec::new()),
         grok: Some(Vec::new()),
         pi: Some(Vec::new()),
+        omp: Some(Vec::new()),
         kimi: Some(Vec::new()),
         opencode: Some(Vec::new()),
         kilo: Some(Vec::new()),
@@ -544,6 +545,7 @@ fn refresh_records_source_errors_without_blocking_valid_sessions() {
             gemini: Some(Vec::new()),
             grok: Some(Vec::new()),
             pi: Some(Vec::new()),
+            omp: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
             kilo: Some(Vec::new()),
@@ -753,6 +755,7 @@ fn 增量刷新单文件失败不丢弃同批其他变更() {
             gemini: Some(Vec::new()),
             grok: Some(Vec::new()),
             pi: Some(Vec::new()),
+            omp: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
             kilo: Some(Vec::new()),
@@ -815,6 +818,7 @@ fn 缺失的_opencode_数据库属于不可用而不是扫描错误() {
             gemini: Some(Vec::new()),
             grok: Some(Vec::new()),
             pi: Some(Vec::new()),
+            omp: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(vec![database.to_string_lossy().into_owned()]),
             kilo: Some(Vec::new()),
@@ -880,6 +884,7 @@ fn refresh_paths_rebuilds_claude_priority_after_layout_change() {
             gemini: Some(Vec::new()),
             grok: Some(Vec::new()),
             pi: Some(Vec::new()),
+            omp: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
             kilo: Some(Vec::new()),
@@ -1073,6 +1078,42 @@ fn 继承来源描述不会采用用户配置() {
 
     assert_eq!(describe_sources(&config)["codex"]["origin"], "config");
     assert_ne!(describe_inherited_sources()["codex"]["origin"], "config");
+}
+
+#[test]
+fn omp来源声明独立于pi且根目录可配置() {
+    let config = crate::config::SourceRoots {
+        omp: Some(vec!["~/omp-custom".to_string()]),
+        ..Default::default()
+    };
+
+    assert_eq!(describe_sources(&config)["omp"]["origin"], "config");
+
+    let omp_sources: Vec<_> = configured_sources(&config)
+        .into_iter()
+        .filter(|source| source.kind == "omp")
+        .collect();
+    assert_eq!(omp_sources.len(), 1);
+    assert_eq!(omp_sources[0].display_name, "Oh My Pi");
+    assert_eq!(
+        omp_sources[0].root,
+        dirs::home_dir().unwrap().join("omp-custom")
+    );
+    assert!(matches!(omp_sources[0].format, SourceFormat::Omp));
+    // 同配置下 Pi 来源保留默认根，不受 omp 配置影响。
+    let pi_sources: Vec<_> = configured_sources(&config)
+        .into_iter()
+        .filter(|source| source.kind == "pi")
+        .collect();
+    assert_eq!(pi_sources.len(), 1);
+    assert_eq!(
+        pi_sources[0].root,
+        dirs::home_dir()
+            .unwrap()
+            .join(".pi")
+            .join("agent")
+            .join("sessions")
+    );
 }
 
 #[test]
@@ -1652,6 +1693,7 @@ fn claude_modern_and_legacy_sessions_are_scanned_together() {
             gemini: Some(Vec::new()),
             grok: Some(Vec::new()),
             pi: Some(Vec::new()),
+            omp: Some(Vec::new()),
             kimi: Some(Vec::new()),
             opencode: Some(Vec::new()),
             kilo: Some(Vec::new()),

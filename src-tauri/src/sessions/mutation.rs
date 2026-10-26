@@ -108,6 +108,7 @@ impl SessionStore {
         if matches!(
             record.source.format,
             SourceFormat::Pi
+                | SourceFormat::Omp
                 | SourceFormat::Grok
                 | SourceFormat::ClaudeCowork
                 | SourceFormat::Kimi
@@ -131,6 +132,7 @@ impl SessionStore {
         if matches!(
             record.source.format,
             SourceFormat::Pi
+                | SourceFormat::Omp
                 | SourceFormat::Grok
                 | SourceFormat::ClaudeCowork
                 | SourceFormat::Kimi

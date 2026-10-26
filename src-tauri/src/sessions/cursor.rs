@@ -898,6 +898,7 @@ mod tests {
                 gemini: Some(vec![]),
                 grok: Some(Vec::new()),
                 pi: Some(vec![]),
+                omp: Some(vec![]),
                 kimi: Some(vec![]),
                 opencode: Some(vec![]),
                 kilo: Some(vec![]),

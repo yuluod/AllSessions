@@ -292,6 +292,7 @@ impl ParseState {
                 SourceFormat::Grok => "unknown",
                 SourceFormat::Codex => "unknown",
                 SourceFormat::Pi => "unknown",
+                SourceFormat::Omp => "unknown",
                 // Kimi Code CLI 可配置不同模型 Provider；wire.jsonl 未记录时不做推断。
                 SourceFormat::Kimi => "unknown",
                 SourceFormat::OpenCode => "unknown",
@@ -322,6 +323,7 @@ impl ParseState {
                 SourceFormat::Grok => "grok_build",
                 SourceFormat::Codex => "",
                 SourceFormat::Pi => "pi",
+                SourceFormat::Omp => "omp",
                 SourceFormat::Kimi => "kimi_code_cli",
                 SourceFormat::OpenCode => "opencode",
                 SourceFormat::Kilo => "kilo",
@@ -341,7 +343,7 @@ impl ParseState {
 }
 pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
     match source.format {
-        SourceFormat::Pi => return pi::parse_summary(path, source),
+        SourceFormat::Pi | SourceFormat::Omp => return pi::parse_summary(path, source),
         SourceFormat::Grok => return grok::parse_summary(path, source),
         SourceFormat::ClaudeCowork => return claude_cowork::parse_summary(path, source),
         SourceFormat::Kimi => return kimi::parse_summary(path, source),
@@ -377,7 +379,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
 
 pub(crate) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String> {
     match source.format {
-        SourceFormat::Pi => return pi::parse_detail(path, source),
+        SourceFormat::Pi | SourceFormat::Omp => return pi::parse_detail(path, source),
         SourceFormat::Grok => return grok::parse_detail(path, source),
         SourceFormat::ClaudeCowork => {
             return claude_cowork::visit_detail(path, source, &mut |_| {})
@@ -397,7 +399,7 @@ pub(crate) fn visit_detail(
     visitor: &mut dyn FnMut(&Value),
 ) -> Result<Value, String> {
     match source.format {
-        SourceFormat::Pi => return pi::visit_detail(path, source, visitor),
+        SourceFormat::Pi | SourceFormat::Omp => return pi::visit_detail(path, source, visitor),
         SourceFormat::Grok => return grok::visit_detail(path, source, visitor),
         SourceFormat::ClaudeCowork => return claude_cowork::visit_detail(path, source, visitor),
         SourceFormat::Kimi => return kimi::visit_detail(path, source, visitor),

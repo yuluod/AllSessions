@@ -29,7 +29,7 @@ Browse, search, organize, and manage local sessions from multiple AI coding agen
 
 </div>
 
-AllSessions brings local sessions from **Codex, Claude Code, Claude Cowork, Gemini CLI, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, VS Code Copilot Chat, and DeepSeek Harness** into a single desktop app.
+AllSessions brings local sessions from **Codex, Claude Code, Claude Cowork, Gemini CLI, Grok Build, Pi, Oh My Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, VS Code Copilot Chat, and DeepSeek Harness** into a single desktop app.
 
 Instead of hunting through different tools and directories for past history, you can browse sessions, run full-text search, inspect tool calls, organize favorites and tags, review usage statistics, and export sessions — all in one interface.
 
@@ -107,6 +107,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 | **Gemini CLI** | `~/.gemini/tmp/*` | `logs.json` plus v0.61+ `chats/session-*.json[l]` full sessions (JSONL replay with `$set`/`$rewindTo`/message updates, chats-wins dedup); messages, thinking, tools, token usage (chats), raw events, search, live refresh; [boundary notes](./docs/sources/gemini-cli.md) |
 | **Grok Build** | `~/.grok/sessions` | `updates.jsonl` and `summary.json`; streamed text, thinking, tools, rewind filtering, raw events, search, refresh, resume; read-only source; [support boundaries](./docs/sources/grok-build.md) |
 | **Pi** | `~/.pi/agent/sessions` | Rebuilds the current branch from v1-v3 JSONL trees; messages, thinking, tools, summaries, raw events, search, live refresh |
+| **Oh My Pi** | `~/.omp/agent/sessions` | Oh My Pi (Pi fork) JSONL sessions, parsed via the Pi adapter; messages, thinking, tools, raw events, search, live refresh, resume; read-only source; [support boundaries](./docs/sources/oh-my-pi.md) |
 | **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`, working directories, custom titles, streamed content, subagents, tools, raw events, search, live refresh |
 | **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source |
 | **Kilo** | `~/.local/share/kilo/kilo.db` | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source |
@@ -181,6 +182,8 @@ Set environment variables before starting the desktop app; they are read once at
 | `PI_SESSIONS_DIR` | Pi session roots (path list) | `~/.pi/agent/sessions` |
 | `PI_CODING_AGENT_SESSION_DIR` | Pi's official session directory | — |
 | `PI_CODING_AGENT_DIR` | Pi's official data directory | `~/.pi/agent` |
+| `OMP_SESSIONS_DIR` | Oh My Pi session roots (path list) | `~/.omp/agent/sessions` |
+| `OMP_AGENT_DIR` | Oh My Pi data directory (single path) | `~/.omp/agent` |
 | `KIMI_SESSIONS_DIR` | Kimi Code CLI data roots (path list) | `~/.kimi` |
 | `KIMI_SHARE_DIR` | Kimi Code CLI's official data directory | `~/.kimi` |
 | `OPENCODE_DB` | OpenCode's official SQLite database path | `~/.local/share/opencode/opencode.db` |
@@ -238,7 +241,7 @@ After explicit confirmation of permanent deletion, AllSessions creates a local b
 
 The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
 
-Claude Cowork, Grok Build, Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, VS Code Copilot Chat, and DeepSeek Harness are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
+Claude Cowork, Grok Build, Pi, Oh My Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, VS Code Copilot Chat, and DeepSeek Harness are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
 
 Favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
 

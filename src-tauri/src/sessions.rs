@@ -60,8 +60,8 @@ pub(crate) use roots::{
 };
 #[cfg(test)]
 pub(crate) use roots::{
-    describe_protected_source_roots, existing_watch_root, existing_watch_root_within, resolve_kind,
-    sources_from_paths, split_path_list,
+    configured_sources, describe_protected_source_roots, existing_watch_root,
+    existing_watch_root_within, resolve_kind, sources_from_paths, split_path_list,
 };
 
 const PAGE_LIMIT: usize = 50;
@@ -88,6 +88,8 @@ pub(crate) enum SourceFormat {
     Gemini,
     Grok,
     Pi,
+    /// Oh My Pi（Pi fork）；复用 Pi JSONL 解析器，仅来源标签与根目录不同。
+    Omp,
     Kimi,
     OpenCode,
     Kilo,
@@ -254,6 +256,7 @@ impl SessionStore {
             "gemini",
             "grok",
             "pi",
+            "omp",
             "kimi",
             "opencode",
             "kilo",
@@ -294,6 +297,7 @@ impl SessionStore {
             ("gemini", lists.gemini.as_slice()),
             ("grok", lists.grok.as_slice()),
             ("pi", lists.pi.as_slice()),
+            ("omp", lists.omp.as_slice()),
             ("kimi", lists.kimi.as_slice()),
             ("opencode", lists.opencode.as_slice()),
             ("kilo", lists.kilo.as_slice()),

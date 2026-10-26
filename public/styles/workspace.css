@@ -1276,6 +1276,13 @@ body.is-resizing {
   background: color-mix(in srgb, var(--src-pi) 13%, var(--surface));
 }
 
+.session-source-kind[data-source-kind="omp"],
+.detail-tag.tag-source[data-source-kind="omp"] {
+  border-color: color-mix(in srgb, var(--src-omp) 42%, var(--surface));
+  color: var(--src-omp);
+  background: color-mix(in srgb, var(--src-omp) 13%, var(--surface));
+}
+
 .session-source-kind[data-source-kind="kimi"],
 .detail-tag.tag-source[data-source-kind="kimi"] {
   border-color: color-mix(in srgb, var(--src-kimi) 42%, var(--surface));
@@ -3225,6 +3232,11 @@ body.is-resizing {
   color: var(--src-pi);
 }
 
+.source-tree__item[data-source-agent="omp"] .source-tree__dot,
+.settings-source-card[data-source-agent="omp"] .source-tree__dot {
+  color: var(--src-omp);
+}
+
 .source-tree__item[data-source-agent="kimi"] .source-tree__dot,
 .settings-source-card[data-source-agent="kimi"] .source-tree__dot {
   color: var(--src-kimi);
@@ -3263,6 +3275,11 @@ body.is-resizing {
 .source-tree__item[data-source-agent="pi"] .source-tree__dot,
 .settings-source-card[data-source-agent="pi"] .source-tree__dot {
   mask-image: url("../assets/agents/pi.svg");
+}
+
+.source-tree__item[data-source-agent="omp"] .source-tree__dot,
+.settings-source-card[data-source-agent="omp"] .source-tree__dot {
+  mask-image: url("../assets/agents/omp.svg");
 }
 
 .source-tree__item[data-source-agent="kimi"] .source-tree__dot,

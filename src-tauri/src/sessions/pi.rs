@@ -629,6 +629,48 @@ mod tests {
     }
 
     #[test]
+    fn omp来源复用pi解析并保留独立标签() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("omp-session.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                "{\"type\":\"session\",\"version\":3,\"id\":\"omp-1\",\"timestamp\":\"2026-10-20T00:00:00Z\",\"cwd\":\"/work/omp\"}\n",
+                "{\"type\":\"message\",\"id\":\"u1\",\"parentId\":null,\"timestamp\":\"2026-10-20T00:00:01Z\",\"message\":{\"role\":\"user\",\"content\":\"omp 问题\"}}\n",
+                "{\"type\":\"message\",\"id\":\"a1\",\"parentId\":\"u1\",\"timestamp\":\"2026-10-20T00:00:02Z\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"omp 回答\"}],\"provider\":\"openai\"}}\n",
+                "{\"type\":\"broken not-json\n"
+            ),
+        )
+        .unwrap();
+        let omp_source = Source {
+            kind: "omp",
+            display_name: "Oh My Pi",
+            root: directory.path().into(),
+            format: SourceFormat::Omp,
+            archived: false,
+        };
+
+        let (summary, search) = parse_summary(&path, &omp_source).unwrap();
+        assert_eq!(summary["source_kind"], "omp");
+        assert_eq!(summary["display_source"], "Oh My Pi");
+        assert_eq!(summary["originator"], "omp");
+        assert_eq!(summary["_key"], "omp:omp-1");
+        assert_eq!(summary["message_count"], 2);
+        assert!(search.contains("omp 问题"));
+
+        let detail = parse_detail(&path, &omp_source).unwrap();
+        let messages = detail["conversation_messages"].as_array().unwrap();
+        assert!(messages
+            .iter()
+            .any(|message| message["role"] == "user" && message["text"] == "omp 问题"));
+        // 损坏行标记为 parse_error 且不阻断其余记录。
+        let events = detail["raw_events"].as_array().unwrap();
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[3]["type"], "parse_error");
+        assert_eq!(events[3]["line_number"], 4);
+    }
+
+    #[test]
     fn 父会话标识读取自父文件头() {
         let directory = tempdir().unwrap();
         let parent = directory

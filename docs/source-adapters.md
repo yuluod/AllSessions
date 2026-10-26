@@ -15,7 +15,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/stats.rs`：筛选 facets 与按 Agent/日期/来源统计。
 - `sessions/helpers.rs`：文本截断、筛选、分页、统计聚合等跨模块小工具。
 - `sessions/gemini.rs`：Gemini 日志流式扫描、逐文件摘要缓存、跨文件会话合并和按需详情解析。
-- `sessions/pi.rs`：Pi JSONL 树的活动分支重建，以及消息、工具与扩展上下文归一化。
+- `sessions/pi.rs`：Pi JSONL 树的活动分支重建，以及消息、工具与扩展上下文归一化；Oh My Pi 来源（`sessions/roots.rs` 中独立声明）复用同一解析器，仅来源标签与根目录不同。
 - `sessions/grok.rs`：Grok Build ACP 展示日志的只读回放、流式内容与工具更新归约、回退过滤及摘要元数据关联。
 - `sessions/kimi.rs`：Kimi 新旧布局发现、旧版 `wire.jsonl` 解析、工作目录/标题关联和子 Agent 识别；`sessions/kimi/modern.rs` 归约新版 Wire 的消息位置与撤回关系，再读取有效正文。
 - `sessions/opencode.rs`：OpenCode 最新正式版 SQLite 数据库的只读聚合、按需详情解析和 WAL 刷新。
@@ -53,7 +53,7 @@ Kimi 官方迁移副本有明确的旧会话 ID，沿用 `kimi:<旧 id>` 工作�
 
 Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合。每个日志文件只缓存有界摘要贡献，完整消息和原始事件在用户打开会话时重新流式读取，并应用与其他来源相同的首尾窗口。Kimi 以 `wire.jsonl` 作为会话事件流，但工作目录和标题分别来自根目录 `kimi.json` 与相邻 `state.json`；这两个元数据文件变化时必须重新解析摘要，不能只依赖 `wire.jsonl` 指纹缓存。OpenCode 的一份 `opencode.db` 包含多条会话，摘要通过批量查询聚合，详情按会话 ID 查询；`opencode.db`、`-wal` 或 `-shm` 变化时均全量刷新该聚合来源。
 
-Pi、Kimi Code CLI、OpenCode、Kilo 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 与 DeepSeek Harness 同为只读来源。
+Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 与 DeepSeek Harness 同为只读来源。
 
 Devin 来源同时覆盖桌面版与 CLI 两种布局：桌面版按会话拆分 `acp-messages/<uuid>.db` 消息库，摘要逐库聚合，标题与时间戳优先取 `globalStorage/state.vscdb` 索引；CLI 的 `sessions.db` 是单库聚合，`sessions` 表提供元数据，`message_nodes` 的消息森林按 `main_chain_id` 所在链重建。桌面版镜像的 CLI 会话（`acp/devin-cli/<slug>`）与 CLI 库记录按 slug 去重，`devin:<slug>` 键冲突时保留 CLI 记录。任一消息库、索引库或 `sessions.db` 变化时全量刷新该聚合来源。详细边界见 [Devin 来源说明](./sources/devin.md)。
 
@@ -71,6 +71,7 @@ OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 
 - [Claude Cowork](./sources/claude-cowork.md)
 - [Gemini CLI](./sources/gemini-cli.md)
 - [Pi](./sources/pi.md)
+- [Oh My Pi](./sources/oh-my-pi.md)
 - [Grok Build](./sources/grok-build.md)
 - [Kimi Code CLI](./sources/kimi-code-cli.md)
 - [OpenCode](./sources/opencode.md)

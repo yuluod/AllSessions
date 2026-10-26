@@ -302,6 +302,8 @@ export function resumeCommandForKind(kind, sessionId) {
       return `grok --resume ${sessionId}`;
     case "pi":
       return `pi --session ${sessionId}`;
+    case "omp":
+      return `omp --resume ${sessionId}`;
     case "kimi":
       return `kimi --resume ${sessionId}`;
     case "opencode":

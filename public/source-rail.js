@@ -6,6 +6,7 @@ export const SOURCE_RAIL_AGENTS = [
   { agent: "gemini", kinds: ["gemini"] },
   { agent: "grok", kinds: ["grok"] },
   { agent: "pi", kinds: ["pi"] },
+  { agent: "omp", kinds: ["omp"] },
   { agent: "kimi", kinds: ["kimi"] },
   { agent: "opencode", kinds: ["opencode"] },
   { agent: "kilo", kinds: ["kilo"] },

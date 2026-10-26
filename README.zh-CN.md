@@ -29,7 +29,7 @@
 
 </div>
 
-AllSessions 将 **Codex、Claude Code、Claude Cowork、Gemini CLI、Grok Build、Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 和 DeepSeek Harness** 的本地会话集中到一个桌面应用中。
+AllSessions 将 **Codex、Claude Code、Claude Cowork、Gemini CLI、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 和 DeepSeek Harness** 的本地会话集中到一个桌面应用中。
 
 无需在不同工具和目录之间来回查找历史记录，你可以在一个界面中浏览会话、全文搜索、查看工具调用、整理收藏与标签、统计使用情况，并按需导出会话。
 
@@ -107,6 +107,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 | **Gemini CLI** | `~/.gemini/tmp/*` | `logs.json` 与 v0.61+ `chats/session-*.json[l]` 完整会话（JSONL 回放、`$set`/`$rewindTo`/消息更新，chats 优先去重）；消息、Thinking、工具、Token 用量（chats）、原始事件、搜索、实时刷新；[边界说明](./docs/sources/gemini-cli.md) |
 | **Grok Build** | `~/.grok/sessions` | `updates.jsonl` 与 `summary.json`；流式正文、Thinking、工具、回退过滤、原始事件、搜索、刷新、恢复；来源只读；[边界说明](./docs/sources/grok-build.md) |
 | **Pi** | `~/.pi/agent/sessions` | 从 v1-v3 JSONL 树重建当前分支；消息、Thinking、工具、摘要、原始事件、搜索、实时刷新 |
+| **Oh My Pi** | `~/.omp/agent/sessions` | Oh My Pi（Pi fork）的 JSONL 会话，复用 Pi 解析；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读；[边界说明](./docs/sources/oh-my-pi.md) |
 | **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`、工作目录、自定义标题、流式内容、子 Agent、工具、原始事件、搜索、实时刷新 |
 | **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读 |
 | **Kilo** | `~/.local/share/kilo/kilo.db` | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读 |
@@ -181,6 +182,8 @@ AllSessions/config.json
 | `PI_SESSIONS_DIR` | Pi 会话根目录（路径列表） | `~/.pi/agent/sessions` |
 | `PI_CODING_AGENT_SESSION_DIR` | Pi 官方会话目录 | — |
 | `PI_CODING_AGENT_DIR` | Pi 官方数据目录 | `~/.pi/agent` |
+| `OMP_SESSIONS_DIR` | Oh My Pi 会话根目录（路径列表） | `~/.omp/agent/sessions` |
+| `OMP_AGENT_DIR` | Oh My Pi 数据目录（单路径） | `~/.omp/agent` |
 | `KIMI_SESSIONS_DIR` | Kimi Code CLI 数据根目录（路径列表） | `~/.kimi` |
 | `KIMI_SHARE_DIR` | Kimi Code CLI 官方数据目录 | `~/.kimi` |
 | `OPENCODE_DB` | OpenCode 官方 SQLite 数据库路径 | `~/.local/share/opencode/opencode.db` |
@@ -238,7 +241,7 @@ AllSessions 处理的是本地 AI 会话数据，其中可能包含：
 
 Codex Provider 维护工具同样只有在用户主动启用维护模式并确认执行后才会修改 Codex 数据。
 
-Claude Cowork、Grok Build、Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 和 DeepSeek Harness 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
+Claude Cowork、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 和 DeepSeek Harness 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
 
 收藏、标签、备注、常用筛选以及本地归档 / 移除状态属于 AllSessions 自身的用户数据，独立保存在 `workspace.sqlite` 中。它们不会修改 Agent 的原始记录，也不会随着可重建的索引缓存一起清除。
 

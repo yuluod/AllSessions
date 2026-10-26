@@ -9,6 +9,7 @@ const AGENT_PRESENTATION = {
   gemini: { label: "Gemini CLI", color: "#4f46e5" },
   grok: { label: "Grok Build", color: "#52525b" },
   pi: { label: "Pi", color: "#2563eb" },
+  omp: { label: "Oh My Pi", color: "#7c3aed" },
   kimi: { label: "Kimi Code CLI", color: "#b42318" },
   opencode: { label: "OpenCode", color: "#16794f" },
   kilo: { label: "Kilo", color: "#c45038" },

@@ -16,6 +16,8 @@ fn resume_command(kind: &str, id: &str) -> Option<String> {
         "gemini" => "gemini --resume",
         "grok" => "grok --resume",
         "pi" => "pi --session",
+        // Oh My Pi 的 CLI 为 omp；`--resume <id>` 恢复指定会话（上游 Args 定义）。
+        "omp" => "omp --resume",
         "kimi" => "kimi --resume",
         "opencode" => "opencode --session",
         "zcode" => "zcode --resume",
@@ -422,6 +424,10 @@ mod tests {
         assert_eq!(
             resume_command("pi", "abc"),
             Some("pi --session abc".to_string())
+        );
+        assert_eq!(
+            resume_command("omp", "abc"),
+            Some("omp --resume abc".to_string())
         );
         assert_eq!(
             resume_command("claude_code", "abc"),

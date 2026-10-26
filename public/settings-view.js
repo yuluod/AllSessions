@@ -18,6 +18,7 @@ const SOURCE_KINDS = [
   { key: "gemini", agent: "gemini", label: "Gemini CLI" },
   { key: "grok", agent: "grok", label: "Grok Build" },
   { key: "pi", agent: "pi", label: "Pi" },
+  { key: "omp", agent: "omp", label: "Oh My Pi" },
   { key: "kimi", agent: "kimi", label: "Kimi Code CLI" },
   { key: "opencode", agent: "opencode", label: "OpenCode" },
   { key: "kilo", agent: "kilo", label: "Kilo" },

@@ -9,7 +9,7 @@ edition = "2021"
 
 [lib]
 name = "allsessions_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -46,13 +46,13 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage"] }
 objc2-foundation = { version = "0.3", features = ["NSData"] }
 
 [profile.dev]
-debug = 1
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
 
 [profile.test]
-debug = 1
+debug = "line-tables-only"
 
 [profile.test.package."*"]
 debug = false

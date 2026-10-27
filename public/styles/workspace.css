@@ -2879,14 +2879,19 @@ body.is-resizing {
 
 .props-close-btn {
   display: inline-grid;
-  width: 28px;
-  min-height: 28px;
+  width: var(--control-height);
+  min-height: var(--control-height);
   padding: 0;
   place-items: center;
   border-radius: 50%;
   border-color: transparent;
   color: var(--muted);
   background: transparent;
+}
+
+.props-close-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .props-close-btn:hover {

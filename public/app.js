@@ -495,6 +495,18 @@ async function initialize() {
     setInspectorOpen(false);
     elements.sessionInspectorToggle?.focus();
   });
+  // 抽屉布局下信息面板为浮动层：点击面板与开关以外的区域视为关闭意图。
+  // pointerdown 先于目标元素自身的 click 生效，避免外部按钮"点了没反应"的观感。
+  document.addEventListener("pointerdown", (event) => {
+    const panel = elements.propsContent?.closest(".props-panel");
+    if (!panel?.classList.contains("is-open")) return;
+    if (!window.matchMedia(INSPECTOR_DRAWER_QUERY).matches) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (panel.contains(target)) return;
+    if (elements.sessionInspectorToggle?.contains(target)) return;
+    setInspectorOpen(false);
+  });
 
   const workspaceTabs = Array.from(document.querySelectorAll(".sidebar-tab"));
   workspaceTabs.forEach((tab) => {

@@ -1345,11 +1345,12 @@ body.is-resizing {
   background: color-mix(in srgb, var(--src-hermes) 13%, var(--surface));
 }
 
+/* DeepSeek Harness 官方站点使用黑白鲸鱼标志，与 cursor/grok 一致随文字色。 */
 .session-source-kind[data-source-kind="deepseek"],
 .detail-tag.tag-source[data-source-kind="deepseek"] {
-  border-color: color-mix(in srgb, var(--src-deepseek) 42%, var(--surface));
-  color: var(--src-deepseek);
-  background: color-mix(in srgb, var(--src-deepseek) 13%, var(--surface));
+  border-color: color-mix(in srgb, var(--text) 42%, var(--surface));
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text) 13%, var(--surface));
 }
 
 .session-source-kind[data-source-kind="codex_archived"],
@@ -3337,11 +3338,14 @@ body.is-resizing {
   mask-image: url("../assets/agents/deepseek.svg");
 }
 
-/* 较新接入的来源：与老来源一致的品牌语义色。cursor/grok 为黑白品牌，随文字色。 */
+/* 较新接入的来源：与老来源一致的品牌语义色。cursor/grok/deepseek 为黑白
+   品牌（官方站点即黑白标志），图标随文字色。 */
 .source-tree__item[data-source-agent="cursor"] .source-tree__dot,
 .settings-source-card[data-source-agent="cursor"] .source-tree__dot,
 .source-tree__item[data-source-agent="grok"] .source-tree__dot,
-.settings-source-card[data-source-agent="grok"] .source-tree__dot {
+.settings-source-card[data-source-agent="grok"] .source-tree__dot,
+.source-tree__item[data-source-agent="deepseek"] .source-tree__dot,
+.settings-source-card[data-source-agent="deepseek"] .source-tree__dot {
   color: var(--text);
 }
 
@@ -3358,11 +3362,6 @@ body.is-resizing {
 .source-tree__item[data-source-agent="hermes"] .source-tree__dot,
 .settings-source-card[data-source-agent="hermes"] .source-tree__dot {
   color: var(--src-hermes);
-}
-
-.source-tree__item[data-source-agent="deepseek"] .source-tree__dot,
-.settings-source-card[data-source-agent="deepseek"] .source-tree__dot {
-  color: var(--src-deepseek);
 }
 
 .session-pane {
@@ -3563,6 +3562,9 @@ body.is-resizing {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 .session-provider {
+  /* 共享徽章规则为 inline-flex，flex 容器上 text-overflow 不生效，
+     这里回到块级让长模型名按 max-width 截出省略号。 */
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -58,7 +58,6 @@
   --src-devin: #4b5563;
   --src-copilot: #be185d;
   --src-hermes: #9a3412;
-  --src-deepseek: #3b5bdb;
   --shadow-raised:
     0 2px 6px rgb(15 17 21 / 6%), 0 12px 32px rgb(15 17 21 / 12%);
   --shadow-hover: 0 2px 4px rgb(15 17 21 / 6%), 0 6px 16px rgb(15 17 21 / 9%);
@@ -103,7 +102,6 @@
   --src-devin: #9ca3af;
   --src-copilot: #f472b6;
   --src-hermes: #e8a87c;
-  --src-deepseek: #7c94ff;
   --shadow-raised: 0 4px 12px rgb(0 0 0 / 35%), 0 14px 40px rgb(0 0 0 / 42%);
   --shadow-hover: 0 2px 6px rgb(0 0 0 / 30%), 0 8px 20px rgb(0 0 0 / 35%);
   --focus-ring: #7fd9e5;

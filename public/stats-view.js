@@ -18,7 +18,7 @@ const AGENT_PRESENTATION = {
   devin: { label: "Devin", color: "#0891b2" },
   copilot: { label: "GitHub Copilot", color: "#6f42c1" },
   hermes: { label: "Hermes Agent", color: "#be185d" },
-  deepseek: { label: "DeepSeek", color: "#4d6bfe" },
+  deepseek: { label: "DeepSeek", color: "#52525b" },
 };
 
 function renderBar(label, count, max, displayLabel = label, tokens = null) {

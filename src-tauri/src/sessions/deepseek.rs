@@ -467,11 +467,16 @@ fn parse(
             }
             "assistant/message" => {
                 let source_info = &record["data"]["message"]["source"];
-                if let Some(provider) = source_info["provider"].as_str() {
-                    state.provider = provider.into();
-                }
-                if let Some(name) = source_info["model"].as_str() {
+                // provider 形如 deepseek-account，是账号域标识，对用户没有辨识度；
+                // 徽章与 Provider 筛选优先展示模型名，未记录模型时回退 provider。
+                if let Some(name) = source_info["model"]
+                    .as_str()
+                    .filter(|value| !value.trim().is_empty())
+                {
                     model = name.into();
+                    state.provider = name.into();
+                } else if let Some(provider) = source_info["provider"].as_str() {
+                    state.provider = provider.into();
                 }
                 let usage = &record["data"]["usage"];
                 state.input_tokens += usage["inputTokens"].as_u64().unwrap_or(0);
@@ -684,7 +689,7 @@ mod tests {
         assert_eq!(summary["_key"], "deepseek:session-abc");
         assert_eq!(summary["title"], "分析项目结构");
         assert_eq!(summary["cwd"], "/work/repo");
-        assert_eq!(summary["model_provider"], "deepseek-account");
+        assert_eq!(summary["model_provider"], "deepseek-flash");
         assert_eq!(summary["model"], "deepseek-flash");
         assert_eq!(summary["message_count"], 4);
         assert_eq!(summary["context_count"], 3);
@@ -700,6 +705,23 @@ mod tests {
         assert!(search.contains("file.txt"));
         // 注入的时间上下文属于合成上下文，不进搜索正文。
         assert!(!search.contains("时间上下文"));
+    }
+
+    #[test]
+    fn 缺少模型名时回退_provider() {
+        let directory = tempdir().unwrap();
+        let session = directory
+            .path()
+            .join("sessions/--work-repo--/session-provider")
+            .to_path_buf();
+        let records = vec![
+            json!({"type":"session","version":4,"id":"session-provider","createdAt":1792377434881_i64,"cwd":"/work/repo"}),
+            json!({"type":"assistant/message","seq":1,"time":1792377448200_i64,"data":{"message":{"role":"assistant","content":[{"type":"text","text":"回答"}],"source":{"kind":"model","provider":"deepseek-account"},"id":"a1"}}}),
+        ];
+        let path = write_session(&session, &records, true);
+        let (summary, _) = parse_summary(&path, &source(directory.path())).unwrap();
+        assert_eq!(summary["model_provider"], "deepseek-account");
+        assert!(summary.get("model").is_none());
     }
 
     #[test]

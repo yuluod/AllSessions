@@ -55,7 +55,6 @@
   --src-devin: #4e5a66;
   --src-copilot: #a03060;
   --src-hermes: #8a4a20;
-  --src-deepseek: #3450c0;
   --shadow-raised: 0 3px 12px rgb(31 35 40 / 12%);
   --focus-ring: #0969da;
 }
@@ -97,7 +96,6 @@
   --src-devin: #9aabb8;
   --src-copilot: #e080b0;
   --src-hermes: #d09050;
-  --src-deepseek: #90a8f0;
   --shadow-raised: 0 3px 16px rgb(0 0 0 / 38%);
   --focus-ring: #79c0ff;
   --switch-knob: #dce3ec;

@@ -182,8 +182,10 @@ export function appendSessionItems(sessions) {
     timeEl.textContent = formatListTimestamp(sessionTimestamp(session));
     timeEl.title = formatTimestamp(sessionTimestamp(session));
     timeEl.dateTime = sessionTimestamp(session);
-    button.querySelector(".session-provider").textContent =
-      providerLabel(session);
+    const providerEl = button.querySelector(".session-provider");
+    providerEl.textContent = providerLabel(session);
+    // 徽章按 max-width 截断，完整模型名通过悬浮提示查看。
+    providerEl.title = providerEl.textContent;
     const pathParts = cwdParts(session.cwd);
     const cwdMain = button.querySelector(".session-cwd-main");
     const cwdPath = button.querySelector(".session-cwd-path");
@@ -202,8 +204,14 @@ export function appendSessionItems(sessions) {
     previewEl.classList.toggle("hidden", !preview);
     cwdMain.classList.remove("hidden");
     if (cwdPath) cwdPath.classList.toggle("hidden", !pathParts.path);
-    button.querySelector(".session-source").textContent =
-      session.source || session.originator || t("unknownSource");
+    // cli 是普通会话的默认值，逐行重复没有信息量；只保留 subagent/desktop 等区分。
+    const sourceEl = button.querySelector(".session-source");
+    const sourceText =
+      session.source === "cli"
+        ? ""
+        : session.source || session.originator || t("unknownSource");
+    sourceEl.textContent = sourceText;
+    sourceEl.classList.toggle("hidden", !sourceText);
     const sourceKindEl = button.querySelector(".session-source-kind");
     const sourceLabel = displaySourceLabel(session);
     sourceKindEl.textContent = compactSourceLabel(sourceLabel);

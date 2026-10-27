@@ -80,7 +80,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 
 - 在系统文件管理器中定位会话来源文件或项目目录
 - 从会话工作目录打开系统终端
-- 恢复对应 Agent 的会话（Cursor、Devin 和 VS Code Copilot Chat 为只读来源，不支持恢复）
+- 恢复对应 Agent 的会话（Cursor 和 VS Code Copilot Chat 为只读来源，不支持恢复）
 - 可选择终端应用或配置自定义可执行文件
 - 提供五套界面主题
 - 支持浅色、深色和跟随系统模式
@@ -113,7 +113,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 | **Kilo** | `~/.local/share/kilo/kilo.db` | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读 |
 | **ZCode** | `~/.zcode/cli/db/db.sqlite` | SQLite；消息、Thinking、工具、压缩标记、原始事件、搜索、WAL 实时刷新；排除子 Agent 会话；来源只读 |
 | **Cursor** | 系统配置目录下的 `Cursor/User` | IDE conversation 与 agent-transcripts；浏览、搜索、统计、导出、本地移除；来源只读 |
-| **Devin** | 系统配置目录下的 `Devin/User` 与 `~/.local/share/devin/cli` | 桌面版 `acp-messages`/`state.vscdb` 与 CLI `sessions.db`；浏览、搜索、统计、导出、本地移除；来源只读 |
+| **Devin** | 系统配置目录下的 `Devin/User` 与 `~/.local/share/devin/cli` | 桌面版 `acp-messages`/`state.vscdb` 与 CLI `sessions.db`；浏览、搜索、统计、导出、本地移除、恢复；来源只读；[边界说明](./docs/sources/devin.md) |
 | **GitHub Copilot** | `~/.copilot/session-state` | 每会话 `events.jsonl` 与相邻 `workspace.yaml` 元数据；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读 |
 | **Hermes Agent** | macOS/Linux `~/.hermes`、Windows `%LOCALAPPDATA%\hermes` | SQLite `state.db`（含 `profiles/<name>` 命名库）；消息、Thinking、工具、压缩归档过滤、子代理排除、原始事件、搜索、WAL 实时刷新、恢复；来源只读 |
 | **VS Code Copilot Chat** | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User` | 面板会话（`workspaceStorage`/`globalStorage` 下平铺 `.json` 与 1.109 起 `.jsonl` 追加日志）；消息、Thinking、工具、文件编辑、自定义标题、搜索、实时刷新；排除空占位会话；来源只读 |

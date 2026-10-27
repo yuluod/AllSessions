@@ -310,6 +310,8 @@ export function resumeCommandForKind(kind, sessionId) {
       return `opencode --session ${sessionId}`;
     case "zcode":
       return `zcode --resume ${sessionId}`;
+    case "devin":
+      return `devin --resume ${sessionId}`;
     case "copilot":
       return `copilot --resume ${sessionId}`;
     case "hermes":

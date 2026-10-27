@@ -21,6 +21,8 @@ fn resume_command(kind: &str, id: &str) -> Option<String> {
         "kimi" => "kimi --resume",
         "opencode" => "opencode --session",
         "zcode" => "zcode --resume",
+        // Devin CLI 的会话 id 即 `devin --resume <slug>` 所需的标识。
+        "devin" => "devin --resume",
         "copilot" => "copilot --resume",
         "hermes" => "hermes --resume",
         _ => return None,
@@ -447,7 +449,11 @@ mod tests {
         );
         assert_eq!(
             resume_command("hermes", "abc"),
-            Some("hermes --resume abc".to_string())
+            Some("hermes --resume abc".into())
+        );
+        assert_eq!(
+            resume_command("devin", "trusted-judo"),
+            Some("devin --resume trusted-judo".into())
         );
         assert_eq!(resume_command("unknown", "abc"), None);
     }

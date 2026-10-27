@@ -80,7 +80,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 
 - Reveal a session source file or project directory in the system file manager
 - Open a system terminal in the session's working directory
-- Resume the session in the corresponding agent (Cursor, Devin, and VS Code Copilot Chat are read-only sources and do not support resume)
+- Resume the session in the corresponding agent (Cursor and VS Code Copilot Chat are read-only sources and do not support resume)
 - Pick a terminal app or configure a custom executable
 - Five visual themes
 - Light, dark, and system color schemes
@@ -113,7 +113,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 | **Kilo** | `~/.local/share/kilo/kilo.db` | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source |
 | **ZCode** | `~/.zcode/cli/db/db.sqlite` | SQLite; messages, thinking, tools, compaction markers, raw events, search, WAL live refresh; subagent sessions excluded; read-only source |
 | **Cursor** | `Cursor/User` under the OS config dir | IDE `conversation` records and agent transcripts; browsing, search, statistics, export, local removal; read-only source |
-| **Devin** | `Devin/User` under the OS config dir and `~/.local/share/devin/cli` | Desktop `acp-messages`/`state.vscdb` and CLI `sessions.db`; browsing, search, statistics, export, local removal; read-only source |
+| **Devin** | `Devin/User` under the OS config dir and `~/.local/share/devin/cli` | Desktop `acp-messages`/`state.vscdb` and CLI `sessions.db`; browsing, search, statistics, export, local removal, resume; read-only source; [support boundaries](./docs/sources/devin.md) |
 | **GitHub Copilot** | `~/.copilot/session-state` | Per-session `events.jsonl` plus `workspace.yaml` metadata; messages, thinking, tools, raw events, search, live refresh, resume; read-only source |
 | **Hermes Agent** | `~/.hermes` (macOS/Linux) or `%LOCALAPPDATA%\hermes` (Windows) | SQLite `state.db` including `profiles/<name>` databases; messages, thinking, tools, compaction-archive filtering, subagent exclusion, raw events, search, WAL live refresh, resume; read-only source |
 | **VS Code Copilot Chat** | `Code/User` and `Code - Insiders/User` under the OS config dir | Panel chat sessions (`workspaceStorage`/`globalStorage`, flat `.json` and 1.109+ `.jsonl` append logs); messages, thinking, tools, file edits, custom titles, search, live refresh; empty placeholder sessions excluded; read-only source |

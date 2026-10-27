@@ -9,19 +9,20 @@ globalThis.localStorage = {
 const { formatListTimestamp, sessionTimestamp, providerLabel } =
   await import("../public/session-format.js");
 
-test("Provider 优先显示服务商，缺失时明确标注模型且不修改数据", () => {
+test("Provider 优先显示服务商，缺失时回退模型名且不修改数据", () => {
   assert.equal(
     providerLabel({ model_provider: "anthropic", model: "claude" }),
     "anthropic"
   );
   const summary = Object.freeze({ model_provider: "unknown", model: "claude" });
-  assert.equal(providerLabel(summary), "模型：claude");
-  assert.equal(providerLabel({ model: "gpt" }), "模型：gpt");
+  assert.equal(providerLabel(summary), "claude");
+  assert.equal(providerLabel({ model: "gpt" }), "gpt");
+  assert.equal(providerLabel({ model: "default" }), "default");
   assert.equal(providerLabel({ model: null }), "unknown");
   assert.equal(providerLabel(undefined), "unknown");
 });
 
-test("模型回退标签支持英文", async () => {
+test("模型回退不依赖语言文案", async () => {
   const { setLang, getLang } = await import("../public/i18n.js");
   const previous = getLang();
   globalThis.document = {
@@ -31,7 +32,7 @@ test("模型回退标签支持英文", async () => {
   };
   try {
     setLang("en");
-    assert.equal(providerLabel({ model: "claude" }), "Model: claude");
+    assert.equal(providerLabel({ model: "claude" }), "claude");
   } finally {
     setLang(previous);
     delete globalThis.document;

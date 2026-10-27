@@ -46,8 +46,7 @@ export function providerLabel(summary) {
   const provider = summary?.model_provider;
   if (provider && provider !== "unknown") return provider;
   const model = summary?.model;
-  if (typeof model === "string" && model)
-    return t("modelFallbackLabel", { model });
+  if (typeof model === "string" && model) return model;
   return provider || "unknown";
 }
 

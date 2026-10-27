@@ -293,6 +293,20 @@ fn readable_json(value: &Value) -> String {
     }
 }
 
+fn file_placeholder(part: &Value) -> String {
+    let name = part["filename"].as_str().unwrap_or("file");
+    let mime = part["mime"].as_str().unwrap_or_default();
+    if mime.starts_with("image/") {
+        format!("[image: {name}]")
+    } else if mime.starts_with("audio/") {
+        format!("[audio: {name}]")
+    } else if mime.starts_with("video/") {
+        format!("[video: {name}]")
+    } else {
+        format!("[file: {name}]")
+    }
+}
+
 fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
     let role = message.data["role"].as_str().unwrap_or("unknown");
     let timestamp = message_timestamp(message, part);
@@ -329,6 +343,31 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
             })
             .into_iter()
             .collect(),
+        "file" => vec![message_value(
+            role,
+            &file_placeholder(&part.data),
+            &timestamp,
+            "zcode_part",
+            "file",
+            false,
+        )],
+        "subtask" => {
+            let agent = part.data["agent"].as_str().unwrap_or("subtask");
+            let description = part.data["description"].as_str().unwrap_or_default();
+            let prompt = part.data["prompt"].as_str().unwrap_or_default();
+            let text = [description, prompt]
+                .into_iter()
+                .filter(|value| !value.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            if text.is_empty() {
+                return Vec::new();
+            }
+            let mut value = message_value("tool", &text, &timestamp, "zcode_part", "subtask", true);
+            value["tool_name"] = Value::String(agent.to_string());
+            value["tool_kind"] = Value::String("subtask".into());
+            vec![value]
+        }
         "compaction" => vec![message_value(
             "system",
             "[ZCode context compaction]",
@@ -1077,5 +1116,50 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("缺少最新正式版所需的 session 表"));
+    }
+
+    #[test]
+    fn 文件附件显示占位() {
+        let (directory, source) = fixture();
+        {
+            let connection = Connection::open(directory.path().join("db.sqlite")).unwrap();
+            connection
+                .execute(
+                    "insert into message values (?1, ?2, ?3, ?4)",
+                    params![
+                        "msg_file",
+                        "ses_main",
+                        1_787_184_030_000_i64,
+                        json!({"role":"user","time":{"created":1_787_184_030_000_i64}}).to_string()
+                    ],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "insert into part values (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        "prt_file",
+                        "msg_file",
+                        "ses_main",
+                        1_787_184_030_000_i64,
+                        json!({"type":"file","filename":"shot.png","mime":"image/png","url":"file:///tmp/shot.png"}).to_string()
+                    ],
+                )
+                .unwrap();
+        }
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
+        let session = parsed
+            .sessions
+            .into_iter()
+            .find(|session| session.summary["id"] == "ses_main")
+            .unwrap();
+        let detail = parse_detail(&source, &session.detail_locator).unwrap();
+        let file = detail["conversation_messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message["source_subtype"] == "file")
+            .unwrap();
+        assert_eq!(file["text"], "[image: shot.png]");
     }
 }

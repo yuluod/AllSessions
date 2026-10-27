@@ -9,7 +9,8 @@ use serde_json::{json, Value};
 use super::helpers::{error_text, nullable_string, string_at};
 use super::parse::ParseState;
 use super::{
-    attach_message_delete_ref, json_fingerprint, message_value, search_text_from_detail, Source,
+    attach_message_delete_ref, json_fingerprint, message_value, search_text_from_detail,
+    truncate_message, HeadTail, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
 };
 
 pub(crate) fn parse_legacy_claude_summary(
@@ -18,7 +19,8 @@ pub(crate) fn parse_legacy_claude_summary(
 ) -> Result<(Value, String), String> {
     let value: Value =
         serde_json::from_reader(File::open(path).map_err(error_text)?).map_err(error_text)?;
-    let detail = parse_legacy_claude_detail(path, source, value)
+    // 摘要与搜索索引使用完整消息，详情截断不能反向影响索引。
+    let detail = parse_legacy_claude_detail_with_limit(path, source, value, false)
         .ok_or_else(|| "旧版 Claude 会话缺少 ID".to_string())?;
     Ok((detail["summary"].clone(), search_text_from_detail(&detail)))
 }
@@ -26,6 +28,15 @@ pub(crate) fn parse_legacy_claude_detail(
     path: &Path,
     source: &Source,
     value: Value,
+) -> Option<Value> {
+    parse_legacy_claude_detail_with_limit(path, source, value, true)
+}
+
+fn parse_legacy_claude_detail_with_limit(
+    path: &Path,
+    source: &Source,
+    value: Value,
+    limit: bool,
 ) -> Option<Value> {
     let id = string_at(&value, &["sessionId"]).or_else(|| string_at(&value, &["id"]))?;
     let timestamp = legacy_timestamp(&value, &["startedAt", "createdAt", "timestamp"]);
@@ -187,10 +198,57 @@ pub(crate) fn parse_legacy_claude_detail(
     state.event_count = raw_events.len();
     let mut summary = state.summary(path, source);
     summary["legacy_format"] = Value::Bool(true);
+    if !limit {
+        return Some(json!({
+            "summary": summary,
+            "conversation_messages": messages,
+            "raw_events": raw_events
+        }));
+    }
+    // 与其余来源统一：详情保留首尾、限制单条长度，并显式标注省略数量。
+    let mut message_tail = HeadTail::new(DETAIL_MESSAGE_LIMIT);
+    for mut message in messages {
+        truncate_message(&mut message);
+        message_tail.push(message);
+    }
+    let (mut message_values, omitted_messages, total_messages) = message_tail.finish(json!({
+        "role": "system",
+        "text": "",
+        "timestamp": Value::Null,
+        "source_type": "viewer",
+        "source_subtype": "truncation",
+        "is_truncation_marker": true,
+    }));
+    if omitted_messages > 0 {
+        if let Some(marker) = message_values
+            .iter_mut()
+            .find(|value| value["is_truncation_marker"] == true)
+        {
+            marker["omitted_count"] = json!(omitted_messages);
+        }
+    }
+    let mut event_tail = HeadTail::new(DETAIL_EVENT_LIMIT);
+    for event in raw_events {
+        event_tail.push(event);
+    }
+    let (event_values, omitted_events, total_events) = event_tail.finish(json!({
+        "line_number": Value::Null,
+        "timestamp": Value::Null,
+        "type": "viewer_truncation",
+        "payload": { "omitted_events": 0 },
+    }));
+    if omitted_messages + omitted_events > 0 {
+        summary["detail_truncated"] = Value::Bool(true);
+    }
     Some(json!({
         "summary": summary,
-        "conversation_messages": messages,
-        "raw_events": raw_events
+        "conversation_messages": message_values,
+        "raw_events": event_values,
+        "truncation": {
+            "truncated": omitted_messages + omitted_events > 0,
+            "messages": { "total": total_messages, "omitted": omitted_messages },
+            "raw_events": { "total": total_events, "omitted": omitted_events }
+        }
     }))
 }
 

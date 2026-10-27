@@ -48,9 +48,9 @@ pub(crate) use mutation::replace_file_contents;
 #[cfg(test)]
 pub(crate) use mutation::{delete_jsonl_message, delete_legacy_session};
 pub(crate) use parse::{
-    append_limited, attach_message_delete_ref, attach_message_key, extract_text, json_fingerprint,
-    message_value, search_text_from_detail, summary_search_text, truncate_message, DetailCache,
-    HeadTail, ParseState,
+    append_limited, attach_message_delete_ref, attach_message_key, content_block_placeholder,
+    extract_text, is_context_role, json_fingerprint, message_value, search_text_from_detail,
+    summary_search_text, truncate_message, DetailCache, HeadTail, ParseState,
 };
 #[cfg(test)]
 pub(crate) use parse::{generic_conversation_message, parse_detail, parse_summary};

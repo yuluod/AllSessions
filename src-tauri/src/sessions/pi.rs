@@ -91,10 +91,27 @@ fn metadata(path: &Path) -> Result<SessionMetadata, String> {
 }
 
 fn content_text(value: &Value) -> String {
-    extract_text(value).unwrap_or_else(|| match value {
-        Value::Object(_) | Value::Array(_) => serde_json::to_string(value).unwrap_or_default(),
+    match value {
+        Value::String(text) => text.clone(),
+        // 内容块数组逐块提取：图片等媒体走占位，不能回退成含 base64 的原始 JSON。
+        Value::Array(items) => items
+            .iter()
+            .filter_map(extract_text)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        // 工具结果等结构化对象仍保留 JSON，便于排查。
+        Value::Object(_) => {
+            extract_text(value).unwrap_or_else(|| serde_json::to_string(value).unwrap_or_default())
+        }
         _ => String::new(),
-    })
+    }
+}
+
+fn structured_text(value: &Value) -> String {
+    match value {
+        Value::Null | Value::String(_) => String::new(),
+        _ => serde_json::to_string(value).unwrap_or_default(),
+    }
 }
 
 fn assistant_messages(message: &Value, timestamp: &str) -> Vec<Value> {
@@ -204,7 +221,11 @@ fn record_messages(record: &Value) -> Vec<Value> {
                         .collect()
                 }
                 "toolResult" | "tool_result" => {
-                    let text = content_text(&message["content"]);
+                    // 图片等媒体走占位；无文本的结构化结果保留 JSON，避免丢数据。
+                    let text = match content_text(&message["content"]) {
+                        text if text.trim().is_empty() => structured_text(&message["content"]),
+                        text => text,
+                    };
                     let name = message["toolName"]
                         .as_str()
                         .or_else(|| message["tool_name"].as_str())
@@ -484,6 +505,7 @@ pub(super) fn visit_detail(
 mod tests {
     use std::path::Path;
 
+    use serde_json::json;
     use tempfile::tempdir;
 
     use super::{parse_detail, parse_summary};
@@ -668,6 +690,39 @@ mod tests {
         assert_eq!(events.len(), 4);
         assert_eq!(events[3]["type"], "parse_error");
         assert_eq!(events[3]["line_number"], 4);
+    }
+
+    #[test]
+    fn 用户图片内容使用占位而不是原始_json() {
+        let record = json!({
+            "type": "message",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "看这张图"},
+                    {"type": "image", "data": "AAA", "mimeType": "image/png"}
+                ]
+            }
+        });
+        let messages = super::record_messages(&record);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["text"], "看这张图\n[image]");
+    }
+
+    #[test]
+    fn 结构化工具结果保留_json() {
+        let record = json!({
+            "type": "message",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "role": "toolResult",
+                "toolName": "read",
+                "content": [{"foo": "bar"}]
+            }
+        });
+        let messages = super::record_messages(&record);
+        assert_eq!(messages[0]["text"], "[{\"foo\":\"bar\"}]");
     }
 
     #[test]

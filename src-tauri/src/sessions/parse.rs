@@ -695,6 +695,11 @@ pub(crate) fn conversation_messages(
         .collect()
 }
 
+/// 系统/开发者角色属于指令上下文，统一按 synthetic_context 处理。
+pub(crate) fn is_context_role(role: &str) -> bool {
+    matches!(role, "system" | "developer")
+}
+
 pub(crate) fn message_value(
     role: &str,
     text: &str,
@@ -703,7 +708,7 @@ pub(crate) fn message_value(
     subtype: &str,
     synthetic: bool,
 ) -> Value {
-    json!({ "role": role, "text": text.trim(), "timestamp": nullable_string(timestamp), "source_type": source_type, "source_subtype": subtype, "synthetic_context": synthetic || role == "developer" || (role == "user" && is_synthetic_context(text)) })
+    json!({ "role": role, "text": text.trim(), "timestamp": nullable_string(timestamp), "source_type": source_type, "source_subtype": subtype, "synthetic_context": synthetic || is_context_role(role) || (role == "user" && is_synthetic_context(text)) })
 }
 
 pub(crate) fn attach_message_key(message: &mut Value, mut identity_ref: Value) {
@@ -809,7 +814,7 @@ pub(crate) fn generic_conversation_message(
     if text.trim().is_empty() {
         return None;
     }
-    let synthetic = role == "developer" || (role == "user" && is_synthetic_context(&text));
+    let synthetic = is_context_role(role) || (role == "user" && is_synthetic_context(&text));
     let mut value = json!({ "role": role, "text": text.trim(), "timestamp": nullable_string(timestamp), "source_type": record_type, "source_subtype": subtype, "synthetic_context": synthetic });
     if let Some(name) = tool_name {
         value["tool_name"] = Value::String(name);
@@ -845,8 +850,53 @@ pub(crate) fn extract_text(value: &Value) -> Option<String> {
             .and_then(extract_text)
             .or_else(|| object.get("thinking").and_then(extract_text))
             .or_else(|| object.get("content").and_then(extract_text))
-            .or_else(|| object.get("summary").and_then(extract_text)),
+            .or_else(|| object.get("summary").and_then(extract_text))
+            // 图片/音视频/附件只给占位，避免把 base64 写进正文与搜索索引。
+            .or_else(|| content_block_placeholder(value)),
         _ => None,
+    }
+}
+
+/// 非文本内容块的占位文本；未知类型返回 None。
+pub(crate) fn content_block_placeholder(block: &Value) -> Option<String> {
+    let kind = block["type"].as_str().unwrap_or_default();
+    match kind {
+        "image" | "input_image" | "image_url" => Some("[image]".into()),
+        "audio" | "input_audio" | "audio_url" => Some("[audio]".into()),
+        "video" | "video_url" => Some("[video]".into()),
+        "file" | "input_file" | "document" | "resource_link" => Some(file_placeholder(block)),
+        _ => {
+            if block.get("inlineData").is_some() || block.get("inline_data").is_some() {
+                return Some("[image]".into());
+            }
+            let file = block.get("fileData").or_else(|| block.get("file_data"))?;
+            let uri = file["fileUri"]
+                .as_str()
+                .or_else(|| file["file_uri"].as_str())
+                .unwrap_or_default()
+                .trim();
+            Some(if uri.is_empty() {
+                "[file]".into()
+            } else {
+                format!("[file] {uri}")
+            })
+        }
+    }
+}
+
+fn file_placeholder(block: &Value) -> String {
+    let name = block["filename"]
+        .as_str()
+        .or_else(|| block["name"].as_str())
+        .or_else(|| block["title"].as_str())
+        .or_else(|| block["uri"].as_str())
+        .or_else(|| block["source"]["uri"].as_str())
+        .unwrap_or_default()
+        .trim();
+    if name.is_empty() {
+        "[file]".into()
+    } else {
+        format!("[file] {name}")
     }
 }
 pub(crate) fn truncate_message(message: &mut Value) {

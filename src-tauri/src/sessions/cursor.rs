@@ -1,6 +1,7 @@
 use super::{
-    attach_message_key, json_fingerprint, message_value, timestamp_from_millis, truncate_message,
-    HeadTail, ParseState, Source, StoredSession, DETAIL_MESSAGE_LIMIT,
+    attach_message_key, content_block_placeholder, extract_text, is_context_role,
+    json_fingerprint, message_value, timestamp_from_millis, truncate_message, HeadTail, ParseState,
+    Source, StoredSession, DETAIL_MESSAGE_LIMIT,
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -136,49 +137,85 @@ fn visit(locator: &DetailLocator, visitor: &mut dyn FnMut(Value)) -> Result<(), 
             if let Some(text) = row["message"]["content"].as_str() {
                 emit(
                     locator,
-                    &format!("line:{line}:0"),
-                    role,
-                    text,
-                    "",
-                    "text",
+                    EmitMessage {
+                        id: &format!("line:{line}:0"),
+                        role,
+                        text,
+                        time: "",
+                        subtype: "text",
+                        synthetic: false,
+                    },
                     visitor,
                 );
             } else if let Some(parts) = row["message"]["content"].as_array() {
                 for (part, block) in parts.iter().enumerate() {
-                    let (role, text, subtype) = match block["type"].as_str() {
-                        Some("text") => (
-                            role,
-                            block["text"].as_str().unwrap_or_default().to_string(),
-                            "text",
+                    let id = format!("line:{line}:{part}");
+                    match block["type"].as_str() {
+                        Some("text") => emit(
+                            locator,
+                            EmitMessage {
+                                id: &id,
+                                role,
+                                text: block["text"].as_str().unwrap_or_default(),
+                                time: "",
+                                subtype: "text",
+                                synthetic: false,
+                            },
+                            visitor,
                         ),
-                        Some("tool_use") => (
-                            "tool",
-                            format!(
-                                "{}\n{}",
-                                block["name"].as_str().unwrap_or("tool"),
-                                block["input"]
-                            ),
-                            "tool_call",
-                        ),
-                        Some("tool_result") => (
-                            "tool",
-                            block["content"]
+                        Some("tool_use") => {
+                            let name = block["name"].as_str().unwrap_or("tool");
+                            let text = format!("[{name}] {}", readable_text(&block["input"]));
+                            emit_tool(
+                                locator,
+                                EmitTool {
+                                    id: &id,
+                                    text: &text,
+                                    time: "",
+                                    name,
+                                    call_id: block["id"].as_str().unwrap_or_default(),
+                                    kind: "tool_call",
+                                    is_error: false,
+                                },
+                                visitor,
+                            );
+                        }
+                        Some("tool_result") => {
+                            let text = block["content"]
                                 .as_str()
                                 .map(str::to_owned)
-                                .unwrap_or_else(|| block["content"].to_string()),
-                            "tool_result",
-                        ),
-                        _ => continue,
-                    };
-                    emit(
-                        locator,
-                        &format!("line:{line}:{part}"),
-                        role,
-                        &text,
-                        "",
-                        subtype,
-                        visitor,
-                    );
+                                .unwrap_or_else(|| block["content"].to_string());
+                            emit_tool(
+                                locator,
+                                EmitTool {
+                                    id: &id,
+                                    text: &text,
+                                    time: "",
+                                    name: "tool_result",
+                                    call_id: "",
+                                    kind: "tool_result",
+                                    is_error: block["is_error"].as_bool() == Some(true),
+                                },
+                                visitor,
+                            );
+                        }
+                        _ => {
+                            if let Some(placeholder) = content_block_placeholder(block) {
+                                emit(
+                                    locator,
+                                    EmitMessage {
+                                        id: &id,
+                                        role,
+                                        text: &placeholder,
+                                        time: "",
+                                        subtype: "media",
+                                        synthetic: false,
+                                    },
+                                    visitor,
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -241,53 +278,170 @@ fn bubble_message(
         .unwrap_or_default();
     emit(
         locator,
-        id,
-        role,
-        bubble["text"].as_str().unwrap_or_default(),
-        &timestamp,
-        "text",
+        EmitMessage {
+            id,
+            role,
+            text: bubble["text"].as_str().unwrap_or_default(),
+            time: &timestamp,
+            subtype: "text",
+            synthetic: false,
+        },
         visitor,
     );
     if let Some(text) = bubble["thinking"].as_str() {
+        // thinking 与其余来源一致按上下文处理：不计入消息数，受「系统上下文」开关控制。
         emit(
             locator,
-            &format!("{id}:thinking"),
-            "assistant",
-            text,
-            &timestamp,
-            "thinking",
+            EmitMessage {
+                id: &format!("{id}:thinking"),
+                role: "assistant",
+                text,
+                time: &timestamp,
+                subtype: "thinking",
+                synthetic: true,
+            },
             visitor,
         );
     }
     if bubble["toolFormerData"].is_object() {
-        emit(
+        tool_former_messages(locator, id, &bubble["toolFormerData"], &timestamp, visitor);
+    }
+}
+
+fn readable_text(value: &Value) -> String {
+    extract_text(value).unwrap_or_else(|| {
+        if value.is_null() {
+            String::new()
+        } else {
+            serde_json::to_string(value).unwrap_or_default()
+        }
+    })
+}
+
+/// toolFormerData 的结构随 Cursor 版本变化：优先拆成调用与结果两条消息，
+/// 结构无法识别时保留原始 JSON，避免丢数据。
+fn tool_former_messages(
+    locator: &DetailLocator,
+    id: &str,
+    tool: &Value,
+    timestamp: &str,
+    visitor: &mut dyn FnMut(Value),
+) {
+    let name = tool["name"]
+        .as_str()
+        .or_else(|| tool["toolName"].as_str())
+        .or_else(|| tool["tool"].as_str())
+        .unwrap_or("tool");
+    let call_id = tool["toolCallId"]
+        .as_str()
+        .or_else(|| tool["tool_call_id"].as_str())
+        .unwrap_or_default();
+    let input = tool
+        .get("params")
+        .or_else(|| tool.get("rawArgs"))
+        .or_else(|| tool.get("arguments"))
+        .or_else(|| tool.get("input"));
+    let output = tool
+        .get("result")
+        .or_else(|| tool.get("output"))
+        .or_else(|| tool.get("resultText"))
+        .or_else(|| tool.get("error"));
+    let input_text = input.map(readable_text).unwrap_or_default();
+    let output_text = output.map(readable_text).unwrap_or_default();
+    let call_text = if input_text.trim().is_empty() {
+        if output_text.trim().is_empty() {
+            tool.to_string()
+        } else {
+            format!("[{name}]")
+        }
+    } else {
+        format!("[{name}] {input_text}")
+    };
+    emit_tool(
+        locator,
+        EmitTool {
+            id: &format!("{id}:tool"),
+            text: &call_text,
+            time: timestamp,
+            name,
+            call_id,
+            kind: "tool_call",
+            is_error: false,
+        },
+        visitor,
+    );
+    if !output_text.trim().is_empty() {
+        emit_tool(
             locator,
-            &format!("{id}:tool"),
-            "tool",
-            &bubble["toolFormerData"].to_string(),
-            &timestamp,
-            "tool_call",
+            EmitTool {
+                id: &format!("{id}:tool:result"),
+                text: &output_text,
+                time: timestamp,
+                name,
+                call_id,
+                kind: "tool_result",
+                is_error: tool["status"].as_str() == Some("error")
+                    || tool.get("error").is_some_and(|value| !value.is_null()),
+            },
             visitor,
         );
     }
 }
 
-fn emit(
-    locator: &DetailLocator,
-    id: &str,
-    role: &str,
-    text: &str,
-    time: &str,
-    subtype: &str,
-    visitor: &mut dyn FnMut(Value),
-) {
-    if text.is_empty() {
+struct EmitMessage<'a> {
+    id: &'a str,
+    role: &'a str,
+    text: &'a str,
+    time: &'a str,
+    subtype: &'a str,
+    synthetic: bool,
+}
+
+struct EmitTool<'a> {
+    id: &'a str,
+    text: &'a str,
+    time: &'a str,
+    name: &'a str,
+    call_id: &'a str,
+    kind: &'a str,
+    is_error: bool,
+}
+
+fn emit(locator: &DetailLocator, spec: EmitMessage<'_>, visitor: &mut dyn FnMut(Value)) {
+    if spec.text.is_empty() {
         return;
     }
-    let mut message = message_value(role, text, time, "cursor", subtype, false);
+    let mut message = message_value(
+        spec.role,
+        spec.text,
+        spec.time,
+        "cursor",
+        spec.subtype,
+        spec.synthetic || is_context_role(spec.role),
+    );
     attach_message_key(
         &mut message,
-        json!({"source_kind":"cursor","session_id":locator.id,"message_id":id}),
+        json!({"source_kind":"cursor","session_id":locator.id,"message_id":spec.id}),
+    );
+    visitor(message);
+}
+
+fn emit_tool(locator: &DetailLocator, spec: EmitTool<'_>, visitor: &mut dyn FnMut(Value)) {
+    if spec.text.is_empty() {
+        return;
+    }
+    let mut message = message_value("tool", spec.text, spec.time, "cursor", spec.kind, false);
+    message["tool_name"] = json!(spec.name);
+    message["tool_kind"] = json!(spec.kind);
+    if !spec.call_id.is_empty() {
+        message["tool_call_id"] = json!(spec.call_id);
+    }
+    if spec.is_error {
+        message["is_error"] = json!(true);
+    }
+    attach_message_key(
+        &mut message,
+        json!({"source_kind":"cursor","session_id":locator.id,"message_id":spec.id}),
     );
     visitor(message);
 }
@@ -639,6 +793,57 @@ mod tests {
             rusqlite::params![key, value.to_string()],
         )
         .unwrap();
+    }
+
+    #[test]
+    fn 气泡思考按上下文处理且工具拆分调用与结果() {
+        use std::path::PathBuf;
+
+        let locator = DetailLocator {
+            path: PathBuf::from("/tmp/cursor"),
+            id: "session-1".into(),
+            metadata: json!({}),
+            transcript: false,
+            content_fingerprint: String::new(),
+        };
+        let mut messages = Vec::new();
+        bubble_message(
+            &locator,
+            "bubble-1",
+            &json!({
+                "type": 2,
+                "text": "回答",
+                "thinking": "先想一下",
+                "toolFormerData": {
+                    "name": "read_file",
+                    "params": {"path": "a.txt"},
+                    "result": "ok",
+                    "toolCallId": "call-1",
+                    "status": "completed"
+                }
+            }),
+            &mut |message| messages.push(message),
+        );
+        let thinking = messages
+            .iter()
+            .find(|message| message["source_subtype"] == "thinking")
+            .unwrap();
+        assert_eq!(thinking["synthetic_context"], true);
+
+        let call = messages
+            .iter()
+            .find(|message| message["tool_kind"] == "tool_call")
+            .unwrap();
+        assert_eq!(call["tool_name"], "read_file");
+        assert_eq!(call["tool_call_id"], "call-1");
+        assert!(call["text"].as_str().unwrap().contains("a.txt"));
+
+        let result = messages
+            .iter()
+            .find(|message| message["tool_kind"] == "tool_result")
+            .unwrap();
+        assert_eq!(result["text"], "ok");
+        assert_eq!(result["tool_name"], "read_file");
     }
 
     #[test]

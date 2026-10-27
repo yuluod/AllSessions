@@ -2302,3 +2302,81 @@ fn 热启动按当前根目录过滤缓存并保留来源归属() {
         assert_eq!(aliased.records["codex:second"].source.root, alias);
     }
 }
+
+#[test]
+fn 媒体内容块使用占位而不是原始_json() {
+    let claude = json!({"type":"user","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAA"}}]}});
+    let messages = super::parse::conversation_messages(&claude, "", &mut HashMap::new());
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["role"], "user");
+    assert_eq!(messages[0]["text"], "[image]");
+
+    let codex = json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AAA"}]}});
+    let messages = super::parse::conversation_messages(&codex, "", &mut HashMap::new());
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["text"], "[image]");
+
+    assert_eq!(
+        super::parse::extract_text(&json!({"inlineData":{"mimeType":"image/png","data":"AAA"}}))
+            .as_deref(),
+        Some("[image]")
+    );
+    assert_eq!(
+        super::parse::extract_text(&json!({"fileData":{"fileUri":"file:///a.pdf"}})).as_deref(),
+        Some("[file] file:///a.pdf")
+    );
+}
+
+#[test]
+fn 旧版_claude_详情截断但索引保留完整消息() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("legacy.json");
+    let entries = (0..810)
+        .map(|index| {
+            json!({
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": format!("消息 {index}")}]
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let value = json!({"sessionId": "legacy-1", "entries": entries});
+    std::fs::write(&path, value.to_string()).unwrap();
+    let source = Source {
+        kind: "claude_code",
+        display_name: "Claude Code",
+        root: directory.path().into(),
+        format: SourceFormat::Claude,
+        archived: false,
+    };
+
+    let detail = super::claude_legacy::parse_legacy_claude_detail(&path, &source, value).unwrap();
+    let messages = detail["conversation_messages"].as_array().unwrap();
+    assert!(messages.len() <= DETAIL_MESSAGE_LIMIT + 1);
+    assert!(
+        detail["truncation"]["messages"]["omitted"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(messages
+        .iter()
+        .any(|message| message["is_truncation_marker"] == true));
+
+    let (_, search) = super::claude_legacy::parse_legacy_claude_summary(&path, &source).unwrap();
+    assert!(search.contains("消息 400"));
+}
+
+#[test]
+fn 系统与开发者角色统一按上下文处理() {
+    for role in ["system", "developer"] {
+        let message = super::message_value(role, "指令", "", "test", "text", false);
+        assert_eq!(message["synthetic_context"], true, "{role}");
+    }
+    let user = super::message_value("user", "普通消息", "", "test", "text", false);
+    assert_eq!(user["synthetic_context"], false);
+    let assistant = super::message_value("assistant", "回答", "", "test", "text", false);
+    assert_eq!(assistant["synthetic_context"], false);
+}

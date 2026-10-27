@@ -17,7 +17,8 @@ use serde_json::Value;
 /// 必须递增：版本不匹配的旧缓存会在打开时被整体清空，避免历史文件复用过期摘要。
 /// 版本 5：zcode 会话改用 modelID 作为 model_provider（账号域 providerID 无辨识度）。
 /// 版本 6：deepseek 会话改用模型名作为 model_provider（账号域 providerID 无辨识度）。
-const CACHE_VERSION: i32 = 6;
+/// 版本 7：媒体块改占位、system/developer 统一按上下文、Cursor/Devin/ZCode 消息结构修正。
+const CACHE_VERSION: i32 = 7;
 
 pub struct IndexCache {
     /// Arc 共享的全文索引：搜索在会话锁之外克隆句柄执行查询。

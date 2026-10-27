@@ -14,10 +14,10 @@ use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use super::{
-    append_limited, attach_message_delete_ref, attach_message_key, error_text, extract_text,
-    json_fingerprint, legacy_timestamp, message_value, nullable_string, replace_file_contents,
-    truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
-    DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT,
+    append_limited, attach_message_delete_ref, attach_message_key, content_block_placeholder,
+    error_text, extract_text, is_context_role, json_fingerprint, legacy_timestamp, message_value,
+    nullable_string, replace_file_contents, truncate_message, HeadTail, ParseState, Source,
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT,
 };
 use crate::cache::IndexCache;
 
@@ -604,7 +604,12 @@ fn chat_part_text(value: &Value) -> Option<String> {
     let parts = value.as_array()?;
     let text = parts
         .iter()
-        .filter_map(|part| part.get("text").and_then(Value::as_str))
+        .filter_map(|part| {
+            part.get("text")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| content_block_placeholder(part))
+        })
         .collect::<Vec<_>>()
         .join("\n");
     (!text.is_empty()).then_some(text)
@@ -914,7 +919,7 @@ impl MergedSession {
             "timestamp": nullable_string(timestamp),
             "source_type": "artifact",
             "source_subtype": subtype,
-            "synthetic_context": false,
+            "synthetic_context": is_context_role(role),
         });
         self.state.accept_message(message);
     }
@@ -1353,7 +1358,7 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
                 "timestamp": nullable_string(timestamp),
                 "source_type": "artifact",
                 "source_subtype": subtype,
-                "synthetic_context": false,
+                "synthetic_context": is_context_role(role),
             });
             if let Some(mut accepted) = state.accept_message(message) {
                 attach_message_delete_ref(
@@ -1512,7 +1517,7 @@ fn parse_chat_detail(source: &Source, locator: &DetailLocator) -> Result<Value, 
                 "timestamp": nullable_string(timestamp),
                 "source_type": "artifact",
                 "source_subtype": subtype,
-                "synthetic_context": false,
+                "synthetic_context": is_context_role(role),
             });
             if let Some(mut accepted) = state.accept_message(message) {
                 attach_message_delete_ref(
@@ -1977,13 +1982,25 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        delete_message, delete_session, parse_detail, parse_source, session_backup_paths,
-        visit_detail,
+        chat_message_values, delete_message, delete_session, parse_detail, parse_source,
+        session_backup_paths, visit_detail,
     };
     use crate::{
         cache::IndexCache,
         sessions::{Source, SourceFormat, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT},
     };
+
+    #[test]
+    fn chats_图片部分使用占位() {
+        let record = json!({
+            "type": "user",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "content": [{"text": "看这张图"}, {"type": "image", "data": "AAA"}]
+        });
+        let messages = chat_message_values(&record);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["text"], "看这张图\n[image]");
+    }
 
     fn source(root: &Path) -> Source {
         Source {
@@ -2801,5 +2818,17 @@ mod tests {
         chat.rewind("missing");
         assert_eq!(chat.retained_bytes, 0);
         assert!(chat.message_bytes.is_empty());
+    }
+
+    #[test]
+    fn info_系统消息按上下文处理() {
+        let record = json!({
+            "type": "info",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "content": [{"text": "提示"}]
+        });
+        let messages = chat_message_values(&record);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[0]["synthetic_context"], true);
     }
 }

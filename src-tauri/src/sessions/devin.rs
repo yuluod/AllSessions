@@ -39,9 +39,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use super::{
-    append_limited, attach_message_key, message_value, summary_search_text, timestamp_from_millis,
-    truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
-    SEARCH_TEXT_LIMIT,
+    append_limited, attach_message_key, extract_text, message_value, summary_search_text,
+    timestamp_from_millis, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
+    DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
 };
 use crate::cache::IndexCache;
 
@@ -878,19 +878,32 @@ fn cli_timestamp(seconds: i64) -> String {
     timestamp_from_millis(seconds.saturating_mul(1000)).unwrap_or_default()
 }
 
+/// CLI 的 chat content 既可能是字符串，也可能是 ACP 内容块数组。
+fn cli_content_text(content: &Value) -> String {
+    match content {
+        Value::String(text) => text.clone(),
+        Value::Array(items) => items
+            .iter()
+            .filter_map(extract_text)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Value::Object(_) => extract_text(content)
+            .unwrap_or_else(|| serde_json::to_string(content).unwrap_or_default()),
+        _ => String::new(),
+    }
+}
+
 fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec<Value> {
     let chat = &node.chat;
     let timestamp = cli_timestamp(node.created_at);
     let mut messages = Vec::new();
     match chat["role"].as_str() {
         Some("system") => {
-            if let Some(text) = chat["content"]
-                .as_str()
-                .filter(|text| !text.trim().is_empty())
-            {
+            let text = cli_content_text(&chat["content"]);
+            if !text.trim().is_empty() {
                 messages.push(message_value(
                     "system",
-                    text,
+                    &text,
                     &timestamp,
                     "devin_cli",
                     "context",
@@ -902,13 +915,11 @@ fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec
             // is_user_input 区分真实输入与注入的 user 角色上下文
             //（如 Lint 反馈、压缩摘要提示）。
             let input = chat["metadata"]["is_user_input"].as_bool() == Some(true);
-            if let Some(text) = chat["content"]
-                .as_str()
-                .filter(|text| !text.trim().is_empty())
-            {
+            let text = cli_content_text(&chat["content"]);
+            if !text.trim().is_empty() {
                 messages.push(message_value(
                     "user",
-                    text,
+                    &text,
                     &timestamp,
                     "devin_cli",
                     if input { "text" } else { "context" },
@@ -934,13 +945,11 @@ fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec
                     true,
                 ));
             }
-            if let Some(text) = chat["content"]
-                .as_str()
-                .filter(|text| !text.trim().is_empty())
-            {
+            let text = cli_content_text(&chat["content"]);
+            if !text.trim().is_empty() {
                 messages.push(message_value(
                     "assistant",
-                    text,
+                    &text,
                     &timestamp,
                     "devin_cli",
                     "text",
@@ -968,12 +977,12 @@ fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec
             }
         }
         Some("tool") => {
-            let text = chat["content"].as_str().unwrap_or_default();
+            let text = cli_content_text(&chat["content"]);
             if text.trim().is_empty() {
                 return messages;
             }
             let mut value =
-                message_value("tool", text, &timestamp, "devin_cli", "tool_result", false);
+                message_value("tool", &text, &timestamp, "devin_cli", "tool_result", false);
             value["tool_kind"] = Value::String("tool_result".into());
             if let Some(call_id) = chat["tool_call_id"].as_str() {
                 value["tool_call_id"] = Value::String(call_id.to_string());
@@ -1931,5 +1940,15 @@ mod tests {
         for (path, id, error) in &errors {
             eprintln!("  错误 {} · {} · {}", path.display(), id, error);
         }
+    }
+
+    #[test]
+    fn cli_内容数组按块提取并保留图片占位() {
+        let content = json!([
+            {"type": "text", "text": "看图"},
+            {"type": "image", "data": "AAA"}
+        ]);
+        assert_eq!(super::cli_content_text(&content), "看图\n[image]");
+        assert_eq!(super::cli_content_text(&json!("纯文本")), "纯文本");
     }
 }

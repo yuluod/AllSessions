@@ -400,6 +400,29 @@ fn 工作台筛选默认隐藏归档移除并支持收藏标签() {
 }
 
 #[test]
+fn 来源筛选按来源栏分组匹配归档与_copilot_chat() {
+    let codex = json!({ "source_kind": "codex", "archived": false });
+    let archived = json!({ "source_kind": "codex_archived", "archived": true });
+    let copilot = json!({ "source_kind": "copilot" });
+    let vscode = json!({ "source_kind": "vscode_copilot" });
+    let claude = json!({ "source_kind": "claude_code" });
+
+    let codex_query = HashMap::from([("source_kind".to_string(), "codex".to_string())]);
+    assert!(matches_filters(&codex, &codex_query));
+    // 归档会话仍受显示开关约束，与来源栏计数口径一致。
+    assert!(!matches_filters(&archived, &codex_query));
+    let mut with_archived = codex_query.clone();
+    with_archived.insert("show_codex_archived".to_string(), "true".to_string());
+    assert!(matches_filters(&archived, &with_archived));
+
+    let copilot_query = HashMap::from([("source_kind".to_string(), "copilot".to_string())]);
+    assert!(matches_filters(&copilot, &copilot_query));
+    assert!(matches_filters(&vscode, &copilot_query));
+    assert!(!matches_filters(&claude, &copilot_query));
+    assert!(!matches_filters(&codex, &copilot_query));
+}
+
+#[test]
 fn 统计按_agent_归并归档和兼容来源() {
     let store = SessionStore {
         summaries: vec![
@@ -2081,11 +2104,75 @@ fn facets_sources_dedupe_kinds_but_keep_all_roots() {
         scan_diagnostics: ScanDiagnostics::default(),
     };
     store.refresh().unwrap();
-    let facets = store.facets();
+    let facets = store.facets(
+        &HashMap::new(),
+        &crate::workspace::WorkspaceSnapshot::default(),
+    );
     let sources = facets["sources"].as_array().unwrap();
     assert_eq!(sources.len(), 1);
     assert_eq!(sources[0]["kind"], "codex");
     assert_eq!(facets["session_roots"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn 项目计数随显示开关变化() {
+    let store = SessionStore {
+        summaries: vec![
+            json!({ "source_kind": "codex", "cwd": "/work/a", "last_timestamp": "2026-10-01T00:00:00Z" }),
+            json!({ "source_kind": "codex", "cwd": "/work/a", "hidden": true, "hidden_reason": "subagent", "last_timestamp": "2026-10-02T00:00:00Z" }),
+            json!({ "source_kind": "codex_archived", "cwd": "/work/a", "archived": true, "last_timestamp": "2026-10-03T00:00:00Z" }),
+            json!({ "source_kind": "claude_code", "cwd": "/work/b", "last_timestamp": "2026-10-04T00:00:00Z" }),
+        ],
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+
+    let visible = store.facets(&HashMap::new(), &workspace);
+    // 来源栏与项目计数同口径：默认不含隐藏、归档会话；
+    // claude_code 归一为诊断使用的 claude 键。
+    assert_eq!(visible["source_counts"]["codex"], 1);
+    assert_eq!(visible["source_counts"]["claude"], 1);
+    assert!(visible["source_counts"].get("codex_archived").is_none());
+    let alpha = visible["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|project| project["path"] == "/work/a")
+        .unwrap();
+    assert_eq!(alpha["count"], 1);
+    assert_eq!(alpha["source_counts"]["codex"], 1);
+    assert_eq!(
+        alpha["source_last_timestamps"]["codex"],
+        "2026-10-01T00:00:00Z"
+    );
+
+    let all = store.facets(
+        &HashMap::from([
+            ("show_hidden".to_string(), "true".to_string()),
+            ("show_codex_archived".to_string(), "true".to_string()),
+        ]),
+        &workspace,
+    );
+    assert_eq!(all["source_counts"]["codex"], 2);
+    assert_eq!(all["source_counts"]["codex_archived"], 1);
+    let alpha = all["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|project| project["path"] == "/work/a")
+        .unwrap();
+    assert_eq!(alpha["count"], 3);
+    assert_eq!(alpha["source_counts"]["codex"], 2);
+    assert_eq!(alpha["source_counts"]["codex_archived"], 1);
+    assert_eq!(
+        alpha["source_last_timestamps"]["codex"],
+        "2026-10-02T00:00:00Z"
+    );
 }
 
 #[test]

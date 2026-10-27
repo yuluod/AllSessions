@@ -16,6 +16,7 @@ import {
   visibleSessions,
 } from "./shared.js";
 import {
+  buildFacetsQuery,
   buildSearchUrl,
   buildSessionQuery,
   buildSessionsUrl,
@@ -317,7 +318,8 @@ export async function loadStats() {
 }
 
 export async function loadFacets() {
-  state.facets = await fetchJson("/api/facets");
+  const query = buildFacetsQuery();
+  state.facets = await fetchJson(`/api/facets${query ? `?${query}` : ""}`);
   syncSessionRoot();
   updateFacetFilters();
   syncFilterControls();

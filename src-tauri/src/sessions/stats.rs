@@ -5,19 +5,30 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use super::helpers::{
-    agent_kind, count_values, increment, insert_string, local_date_key, matches_filters,
-    timestamp_of,
+    agent_kind, count_values, diagnostic_source_kind, increment, insert_string, local_date_key,
+    matches_filters, timestamp_of,
 };
 use super::SessionStore;
 
+/// 只影响列表可见性、不改变导航维度的查询开关。
+const DISPLAY_FLAGS: [&str; 4] = [
+    "show_archived",
+    "show_codex_archived",
+    "show_removed",
+    "show_hidden",
+];
+
 impl SessionStore {
-    pub fn facets(&self) -> Value {
+    pub fn facets(
+        &self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Value {
         let mut providers = BTreeSet::new();
         let mut source_kinds = BTreeSet::new();
         let mut dates = BTreeSet::new();
         let mut cwds = BTreeSet::new();
         let mut hidden_reasons = BTreeSet::new();
-        let mut projects: BTreeMap<String, ProjectFacet> = BTreeMap::new();
         for summary in &self.summaries {
             insert_string(&mut providers, &summary["model_provider"]);
             insert_string(&mut source_kinds, &summary["source_kind"]);
@@ -27,6 +38,28 @@ impl SessionStore {
             }
             if let Some(date) = local_date_key(timestamp_of(summary)) {
                 dates.insert(date);
+            }
+        }
+        // 项目计数应用显示开关：隐藏、归档与本地移除的会话默认不计入，
+        // 与列表可见口径一致；来源/项目筛选本身不收窄项目计数。
+        let display_query = DISPLAY_FLAGS
+            .iter()
+            .filter_map(|key| {
+                query
+                    .get(*key)
+                    .map(|value| ((*key).to_string(), value.clone()))
+            })
+            .collect::<HashMap<String, String>>();
+        let mut projects: BTreeMap<String, ProjectFacet> = BTreeMap::new();
+        let mut source_counts: BTreeMap<String, u64> = BTreeMap::new();
+        for summary in self.filtered(&display_query, workspace) {
+            if let Some(kind) = summary["source_kind"]
+                .as_str()
+                .filter(|value| !value.is_empty())
+            {
+                *source_counts
+                    .entry(diagnostic_source_kind(kind).into())
+                    .or_insert(0) += 1;
             }
             if let Some(cwd) = summary["cwd"].as_str().filter(|value| !value.is_empty()) {
                 let project = projects.entry(cwd.into()).or_insert_with(|| ProjectFacet {
@@ -39,14 +72,24 @@ impl SessionStore {
                     ..ProjectFacet::default()
                 });
                 project.count += 1;
-                let timestamp = timestamp_of(summary).to_string();
+                let timestamp = timestamp_of(&summary).to_string();
                 if timestamp > project.last_timestamp {
-                    project.last_timestamp = timestamp;
+                    project.last_timestamp = timestamp.clone();
                 }
                 insert_string(&mut project.providers, &summary["model_provider"]);
                 insert_string(&mut project.source_kinds, &summary["source_kind"]);
-                if let Some(kind) = summary["source_kind"].as_str().filter(|value| !value.is_empty()) {
+                if let Some(kind) = summary["source_kind"]
+                    .as_str()
+                    .filter(|value| !value.is_empty())
+                {
                     *project.source_counts.entry(kind.into()).or_insert(0) += 1;
+                    let last = project
+                        .source_last_timestamps
+                        .entry(kind.into())
+                        .or_default();
+                    if timestamp > *last {
+                        *last = timestamp;
+                    }
                 }
             }
         }
@@ -70,7 +113,8 @@ impl SessionStore {
             .filter(|source| seen_source_kinds.insert(source.kind))
             .map(|source| json!({ "kind": source.kind, "display_name": source.display_name }))
             .collect::<Vec<_>>();
-        json!({ "session_roots": self.session_roots(), "sources": sources, "providers": providers, "source_kinds": source_kinds, "dates": date_values, "cwds": cwds, "hidden_reasons": hidden_reasons, "projects": project_values })
+        // source_counts 与项目计数同口径：只统计当前显示开关下可见的会话。
+        json!({ "session_roots": self.session_roots(), "sources": sources, "providers": providers, "source_kinds": source_kinds, "source_counts": source_counts, "dates": date_values, "cwds": cwds, "hidden_reasons": hidden_reasons, "projects": project_values })
     }
 
     pub fn stats(
@@ -183,6 +227,7 @@ struct ProjectFacet {
     providers: BTreeSet<String>,
     source_kinds: BTreeSet<String>,
     source_counts: BTreeMap<String, u64>,
+    source_last_timestamps: BTreeMap<String, String>,
 }
 
 /// 按日聚合的会话数与 token 用量（input + output + cached）。
@@ -193,6 +238,6 @@ struct DayUsage {
 }
 impl ProjectFacet {
     fn value(self) -> Value {
-        json!({ "name": self.name, "path": self.path, "count": self.count, "last_timestamp": self.last_timestamp, "providers": self.providers, "source_kinds": self.source_kinds, "source_counts": self.source_counts })
+        json!({ "name": self.name, "path": self.path, "count": self.count, "last_timestamp": self.last_timestamp, "providers": self.providers, "source_kinds": self.source_kinds, "source_counts": self.source_counts, "source_last_timestamps": self.source_last_timestamps })
     }
 }

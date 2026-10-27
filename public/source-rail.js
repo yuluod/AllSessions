@@ -25,13 +25,10 @@ export function sourceAgentForKind(sourceKind) {
   return sourceKind || "all";
 }
 
-export function sourceRailItemState(sourceKind, activeKind, diagnostics, projectCounts = null) {
+// 计数来自 facets 的 source_counts：与项目计数同口径，只含当前显示开关下可见的会话。
+export function sourceRailItemState(sourceKind, activeKind, sourceCounts) {
   const group = sourceAgentForKind(sourceKind);
-  // 选中项目时按项目内的来源计数展示，未选中时回退到全局索引诊断。
-  const kindCount = (kind) =>
-    projectCounts
-      ? Number(projectCounts[kind] || 0)
-      : Number(diagnostics?.sources?.[kind]?.indexed_sessions || 0);
+  const kindCount = (kind) => Number(sourceCounts?.[kind] || 0);
   const counts = new Map(
     SOURCE_RAIL_AGENTS.map(({ agent, kinds }) => [
       agent,
@@ -43,7 +40,7 @@ export function sourceRailItemState(sourceKind, activeKind, diagnostics, project
       ? [...counts.values()].reduce((total, count) => total + count, 0)
       : counts.get(group) || 0;
   const active = group === sourceAgentForKind(activeKind);
-  const hasData = Boolean(diagnostics || projectCounts);
+  const hasData = Boolean(sourceCounts);
   return {
     count: hasData ? String(count) : "-",
     active,

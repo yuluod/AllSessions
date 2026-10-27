@@ -117,6 +117,7 @@ export const elements = {
   appLayout: document.querySelector(".app-layout"),
   sidebarLeft: document.querySelector(".sidebar-left"),
   projectNav: document.querySelector(".project-nav"),
+  projectNavHint: document.querySelector("#project-nav-hint"),
   sessionRoot: document.querySelector("#session-root"),
   sessionCount: document.querySelector("#session-count"),
   sourceRailItems: Array.from(
@@ -170,7 +171,6 @@ export const elements = {
   showContextToggle: document.querySelector("#show-context-toggle"),
   conversationDescToggle: document.querySelector("#conversation-desc-toggle"),
   messageNavInlineList: document.querySelector("#message-nav-inline-list"),
-  sourceRailHint: document.querySelector("#source-rail-hint"),
   sourceRailList: document.querySelector("#source-rail-list"),
   messageOutline: document.querySelector("#message-outline"),
   messageOutlineList: document.querySelector("#message-outline-list"),

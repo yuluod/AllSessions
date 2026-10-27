@@ -108,15 +108,17 @@ pub(crate) fn local_date_key(timestamp: &str) -> Option<String> {
         .or_else(|| timestamp.get(..10).map(ToOwned::to_owned))
 }
 pub(crate) fn matches_filters(summary: &Value, query: &HashMap<String, String>) -> bool {
-    for (name, field) in [
-        ("provider", "model_provider"),
-        ("source_kind", "source_kind"),
-        ("cwd", "cwd"),
-    ] {
+    for (name, field) in [("provider", "model_provider"), ("cwd", "cwd")] {
         if let Some(expected) = query.get(name).filter(|value| !value.is_empty()) {
             if summary[field].as_str() != Some(expected) {
                 return false;
             }
+        }
+    }
+    if let Some(expected) = query.get("source_kind").filter(|value| !value.is_empty()) {
+        let kind = summary["source_kind"].as_str().unwrap_or_default();
+        if !source_kind_matches(expected, kind) {
+            return false;
         }
     }
     if let Some(date) = query.get("date").filter(|value| !value.is_empty()) {
@@ -152,6 +154,16 @@ pub(crate) fn matches_filters(summary: &Value, query: &HashMap<String, String>) 
     }
     true
 }
+/// 来源栏把归档 Codex 与 VS Code Copilot Chat 归入对应分组，
+/// 筛选沿用同一口径，避免徽章计数与列表结果不一致。
+fn source_kind_matches(filter: &str, kind: &str) -> bool {
+    kind == filter
+        || matches!(
+            (filter, kind),
+            ("codex", "codex_archived") | ("copilot", "vscode_copilot")
+        )
+}
+
 pub(crate) fn bool_query(query: &HashMap<String, String>, key: &str) -> bool {
     matches!(query.get(key).map(String::as_str), Some("1" | "true"))
 }

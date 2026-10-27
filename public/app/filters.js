@@ -1,5 +1,6 @@
 // 筛选与查询:筛选状态、URL 同步、查询串构造、活动筛选 chips 与项目导航。
 import { t } from "../i18n.js";
+import { projectNavEntries } from "../project-nav.js";
 import { cwdParts, fillSelect } from "../session-format.js";
 import {
   PAGE_LIMIT,
@@ -105,10 +106,32 @@ export async function setCwdFilter(cwd) {
   syncUrl();
   await Promise.all([loadSessions(), loadStats()]);
 }
+// 组头提示优先取来源栏按钮的现有文案，避免依赖 facets 中可能缺失的来源显示名。
+function sourceFilterLabel(sourceKind) {
+  const button = elements.sourceRailItems.find(
+    (item) => item.dataset.sourceKind === sourceKind
+  );
+  return (
+    button?.querySelector("span:not(.source-tree__dot)")?.textContent?.trim() ||
+    sourceKindLabel(sourceKind)
+  );
+}
+
 export function renderProjectNav() {
   if (!elements.projectList) return;
 
-  const projects = state.facets?.projects || [];
+  const sourceKind = state.filters.source_kind;
+  // 来源筛选决定项目列表：只保留该来源有会话的项目，计数换成该来源的会话数。
+  const entries = projectNavEntries(
+    state.facets?.projects || [],
+    sourceKind,
+    state.filters.cwd
+  );
+  if (elements.projectNavHint) {
+    elements.projectNavHint.textContent = sourceKind
+      ? t("projectNavSourceHint", { name: sourceFilterLabel(sourceKind) })
+      : t("recentProjects");
+  }
   elements.projectList.innerHTML = "";
   elements.projectNav?.querySelector(".project-more")?.remove();
 
@@ -121,7 +144,7 @@ export function renderProjectNav() {
   allName.textContent = t("allProjects");
   const allMeta = document.createElement("span");
   allMeta.className = "project-meta";
-  allMeta.textContent = t("projectCount", { n: projects.length });
+  allMeta.textContent = t("projectCount", { n: entries.length });
   allButton.append(allName, allMeta);
   allButton.addEventListener("click", () => {
     setCwdFilter("").catch((error) => {
@@ -131,17 +154,24 @@ export function renderProjectNav() {
   });
   elements.projectList.append(allButton);
 
+  if (sourceKind && !entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "project-empty";
+    empty.textContent = t("projectSourceEmpty");
+    elements.projectList.append(empty);
+  }
+
   const visibleProjects = state.showAllProjects
-    ? projects
-    : projects.slice(0, PROJECT_PREVIEW_LIMIT);
-  visibleProjects.forEach((project) => {
+    ? entries
+    : entries.slice(0, PROJECT_PREVIEW_LIMIT);
+  visibleProjects.forEach(({ project, count }) => {
     const button = document.createElement("button");
     button.className = "project-item";
     button.type = "button";
     button.classList.toggle("active", state.filters.cwd === project.path);
     button.setAttribute(
       "aria-label",
-      `${project.name || project.path} · ${t("projectSessionCount", { n: project.count })} · ${project.path}`
+      `${project.name || project.path} · ${t("projectSessionCount", { n: count })} · ${project.path}`
     );
 
     const name = document.createElement("span");
@@ -150,7 +180,8 @@ export function renderProjectNav() {
 
     const meta = document.createElement("strong");
     meta.className = "project-meta";
-    meta.textContent = String(project.count);
+    meta.textContent = String(count);
+    meta.classList.toggle("count-zero", count === 0);
     meta.setAttribute("aria-hidden", "true");
 
     const pathEl = document.createElement("span");
@@ -167,7 +198,7 @@ export function renderProjectNav() {
     elements.projectList.append(button);
   });
 
-  if (projects.length > PROJECT_PREVIEW_LIMIT) {
+  if (entries.length > PROJECT_PREVIEW_LIMIT) {
     // 与来源树「其他来源」披露行同构：caret + 标签，caret 随展开旋转。
     const moreButton = document.createElement("button");
     moreButton.className = "project-more";
@@ -187,7 +218,7 @@ export function renderProjectNav() {
     moreCount.className = "more-count";
     moreCount.textContent = state.showAllProjects
       ? ""
-      : String(projects.length - PROJECT_PREVIEW_LIMIT);
+      : String(entries.length - PROJECT_PREVIEW_LIMIT);
     moreButton.append(moreCaret, moreLabel, moreCount);
     moreButton.addEventListener("click", () => {
       state.showAllProjects = !state.showAllProjects;
@@ -294,6 +325,16 @@ export function buildSessionQuery() {
   if (state.favoriteOnly) {
     params.set("favorite", "true");
   }
+  return params.toString();
+}
+
+// facets 只应用显示开关：项目计数与列表可见口径一致，导航维度不反向收窄。
+export function buildFacetsQuery() {
+  const params = new URLSearchParams();
+  if (state.showArchived) params.set("show_archived", "true");
+  if (state.showCodexArchived) params.set("show_codex_archived", "true");
+  if (state.showHidden) params.set("show_hidden", "true");
+  if (state.showRemoved) params.set("show_removed", "true");
   return params.toString();
 }
 

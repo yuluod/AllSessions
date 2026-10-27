@@ -615,7 +615,11 @@ fn route_request(
         }
         ("GET", "/api/facets") => {
             let workspace = state.workspace_snapshot()?;
-            let mut facets = state.store.lock().map_err(lock_error)?.facets();
+            let mut facets = state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .facets(&query, &workspace);
             facets["workspace_tags"] = json!(workspace.tags());
             Ok(facets)
         }

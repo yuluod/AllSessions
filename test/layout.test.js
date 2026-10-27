@@ -616,6 +616,26 @@ test("页面提供项目导航入口并复用 cwd 筛选", async () => {
   assert.match(css, /\.project-item\b/);
 });
 
+test("来源筛选决定项目计数，项目筛选不再改变来源栏", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const status = await readProjectFile("public/app/status.js");
+  const i18n = await readProjectFile("public/i18n.js");
+
+  assert.match(html, /id="project-nav-hint"/);
+  assert.match(source, /projectNavEntries\(/);
+  assert.match(source, /projectNavSourceHint/);
+  assert.equal((i18n.match(/projectNavSourceHint:/g) || []).length, 2);
+  assert.doesNotMatch(source, /sourceRailProjectHint/);
+  assert.doesNotMatch(source, /source-count-global/);
+  // 来源栏不再读取项目状态；显示开关参与 facets 聚合。
+  assert.doesNotMatch(status, /filters\.cwd|projectCounts/);
+  assert.match(source, /buildFacetsQuery\(\)/);
+  assert.match(source, /show_hidden/);
+  assert.equal((i18n.match(/projectSourceEmpty:/g) || []).length, 2);
+  assert.equal((i18n.match(/noResultsCrossFilter:/g) || []).length, 2);
+});
+
 test("详情页提供会话内搜索、工具消息开关和消息导航", async () => {
   const html = await readProjectFile("public/index.html");
   const app = await readProjectFile("public/app.js");

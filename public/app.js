@@ -354,7 +354,7 @@ async function initialize() {
     elements.showArchivedToggle.addEventListener("change", async () => {
       state.showArchived = elements.showArchivedToggle.checked;
       syncUrl();
-      await Promise.all([loadSessions(), loadStats()]);
+      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
     });
   }
 
@@ -362,7 +362,7 @@ async function initialize() {
     elements.showCodexArchivedToggle.addEventListener("change", async () => {
       state.showCodexArchived = elements.showCodexArchivedToggle.checked;
       syncUrl();
-      await Promise.all([loadSessions(), loadStats()]);
+      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
     });
   }
 
@@ -370,7 +370,7 @@ async function initialize() {
     elements.showHiddenToggle.addEventListener("change", async () => {
       state.showHidden = elements.showHiddenToggle.checked;
       syncUrl();
-      await Promise.all([loadSessions(), loadStats()]);
+      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
     });
   }
 
@@ -378,7 +378,7 @@ async function initialize() {
     elements.showRemovedToggle.addEventListener("change", async () => {
       state.showRemoved = elements.showRemovedToggle.checked;
       syncUrl();
-      await Promise.all([loadSessions(), loadStats()]);
+      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
     });
   }
 
@@ -420,7 +420,7 @@ async function initialize() {
     syncFilterControls();
     syncUrl();
     await activateWorkspaceView("list");
-    await Promise.all([loadSessions(), loadStats()]);
+    await Promise.all([loadSessions(), loadStats(), loadFacets()]);
     elements.sidebarLeft?.scrollIntoView({ block: "start" });
   });
 

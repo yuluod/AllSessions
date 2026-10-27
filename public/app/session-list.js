@@ -358,6 +358,11 @@ export function renderSessionList() {
   if (!visible.length) {
     const empty = createEmptyState({
       title: t(state.scanning ? "scanningSessions" : "noResults"),
+      // 来源与项目同时生效时说明空集原因，避免用户误以为索引缺失。
+      description:
+        !state.scanning && state.filters.source_kind && state.filters.cwd
+          ? t("noResultsCrossFilter")
+          : "",
       compact: true,
     });
     elements.sessionList.append(empty);

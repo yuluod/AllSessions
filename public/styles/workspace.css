@@ -718,6 +718,19 @@ body.is-resizing {
   white-space: nowrap;
 }
 
+/* 保留的当前项目在该来源下没有会话时弱化计数，与来源树的零值一致。 */
+.project-meta.count-zero {
+  opacity: 0.7;
+}
+
+/* 来源筛选下没有可选项目时的占位，与项目行保持同样缩进。 */
+.project-empty {
+  margin: 0;
+  padding: 6px 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .project-path {
   display: none;
 }
@@ -3195,14 +3208,6 @@ body.is-resizing {
 
 .source-tree__item strong.count-zero {
   opacity: 0.7;
-}
-
-/* 项目筛选时弱化展示的全局总数（嵌在数字元素内部，行内显示） */
-.source-count-global {
-  margin-left: 3px;
-  color: var(--muted);
-  font-size: 0.9em;
-  font-variant-numeric: tabular-nums;
 }
 
 .source-tree__dot {

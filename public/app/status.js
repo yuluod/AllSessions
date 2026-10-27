@@ -11,54 +11,23 @@ import {
 import { activeFilterEntries } from "./filters.js";
 
 export function renderSourceRail() {
-  // 项目筛选生效时：主数字为项目内分布，全局总数弱化跟在后面；
-  // 组头提示同步切换为项目名，让数字的含义变化显式可见。
-  const project = state.filters.cwd
-    ? (state.facets?.projects || []).find(
-        (project) => project.path === state.filters.cwd
-      )
-    : null;
-  const projectCounts = project?.source_counts || null;
-  if (elements.sourceRailHint) {
-    elements.sourceRailHint.textContent = project
-      ? t("sourceRailProjectHint", { name: project.name })
-      : t("sourceRailHint");
-  }
+  // 来源计数与项目计数同口径：只含当前显示开关下可见的会话，
+  // 项目筛选不再改变来源栏的数字与提示。
+  const sourceCounts = state.facets?.source_counts || null;
   elements.sourceRailItems.forEach((button) => {
     const item = sourceRailItemState(
       button.dataset.sourceKind,
       state.filters.source_kind,
-      state.diagnostics,
-      projectCounts
+      sourceCounts
     );
     button.classList.toggle("active", item.active);
     button.setAttribute("aria-pressed", item.active ? "true" : "false");
     const count = button.querySelector("[data-source-count]");
     if (count) {
-      // 全局总数嵌在数字元素内部（行内 span），不能作为独立 grid 子元素，
-      // 否则会被三列布局挤到下一行。
-      const globalCount = sourceRailItemState(
-        button.dataset.sourceKind,
-        "",
-        state.diagnostics
-      ).count;
-      const showGlobal =
-        Boolean(projectCounts) &&
-        globalCount !== "-" &&
-        globalCount !== item.count;
       const changed = (count.firstChild?.textContent ?? "") !== item.count;
       if (changed) count.classList.add("count-flash");
       count.classList.toggle("count-zero", item.count === "0");
-      const globalEl = showGlobal
-        ? Object.assign(document.createElement("span"), {
-            className: "source-count-global",
-            textContent: ` / ${globalCount}`,
-          })
-        : null;
-      count.replaceChildren(
-        document.createTextNode(item.count),
-        ...(globalEl ? [globalEl] : [])
-      );
+      count.replaceChildren(document.createTextNode(item.count));
       if (changed) {
         requestAnimationFrame(() => count.classList.remove("count-flash"));
       }

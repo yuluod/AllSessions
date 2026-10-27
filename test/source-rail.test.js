@@ -3,38 +3,42 @@ import test from "node:test";
 import { sourceRailItemState } from "../public/source-rail.js";
 
 test("Claude Code 与 Cowork 分别计数且仅选中点击来源", () => {
-  const diagnostics = {
-    sources: {
-      claude: { indexed_sessions: 32 },
-      claude_cowork: { indexed_sessions: 1 },
-      codex: { indexed_sessions: 100 },
-      codex_archived: { indexed_sessions: 2 },
-    },
+  const counts = {
+    claude: 32,
+    claude_cowork: 1,
+    codex: 100,
+    codex_archived: 2,
   };
   for (const selected of ["claude_code", "claude_cowork"]) {
-    const code = sourceRailItemState("claude_code", selected, diagnostics);
-    const cowork = sourceRailItemState("claude_cowork", selected, diagnostics);
+    const code = sourceRailItemState("claude_code", selected, counts);
+    const cowork = sourceRailItemState("claude_cowork", selected, counts);
     assert.equal(code.active, selected === "claude_code");
     assert.equal(cowork.active, selected === "claude_cowork");
     assert.equal(code.count, "32");
     assert.equal(cowork.count, "1");
-    assert.equal(sourceRailItemState("", selected, diagnostics).count, "135");
+    assert.equal(sourceRailItemState("", selected, counts).count, "135");
   }
   assert.equal(
-    sourceRailItemState("codex", "codex_archived", diagnostics).count,
+    sourceRailItemState("codex", "codex_archived", counts).count,
     "102"
   );
   assert.equal(
-    sourceRailItemState("codex", "codex_archived", diagnostics).active,
+    sourceRailItemState("codex", "codex_archived", counts).active,
     true
   );
-  diagnostics.sources.claude_cowork.indexed_sessions = 0;
+  counts.claude_cowork = 0;
   assert.equal(
-    sourceRailItemState("claude_cowork", "claude_code", diagnostics).empty,
+    sourceRailItemState("claude_cowork", "claude_code", counts).empty,
     true
   );
   assert.equal(
-    sourceRailItemState("claude_cowork", "claude_cowork", diagnostics).empty,
+    sourceRailItemState("claude_cowork", "claude_cowork", counts).empty,
     false
   );
+});
+
+test("facets 尚未加载时计数显示占位", () => {
+  const item = sourceRailItemState("codex", "", null);
+  assert.equal(item.count, "-");
+  assert.equal(item.empty, false);
 });

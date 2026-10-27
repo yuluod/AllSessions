@@ -1290,12 +1290,13 @@ function readStoredLang() {
 let currentLang = readStoredLang() || "zh";
 
 // 将后端错误码翻译为当前语言；未知错误码返回 null 以便调用方回退到原始文案。
+// 后端 message 携带具体原因（如"iTerm2 未安装"），统一拼在码文案之后，
+// 避免界面只剩笼统的码文案而无法定位问题。
 export function translateBackendError(code, raw) {
   const key = `backendError_${code}`;
   const translated = DICT[currentLang]?.[key] ?? DICT.zh[key] ?? null;
-  return code === "session_read_failed" && raw && translated
-    ? `${translated}: ${raw}`
-    : translated;
+  if (!translated) return null;
+  return raw && raw !== translated ? `${translated}: ${raw}` : translated;
 }
 
 export function t(key, vars = {}) {

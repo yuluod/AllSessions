@@ -207,16 +207,33 @@ fn spawn_in_terminal(
     } else {
         format!("tell application \"Terminal\" to do script \"{script_line}\"")
     };
-    let status = Command::new("osascript")
+    let output = Command::new("osascript")
         .arg("-e")
         .arg(&script)
-        .status()
+        .output()
         .map_err(|error| ApiError::from(format!("无法启动终端：{error}")))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(ApiError::from("终端拒绝了恢复命令"))
+    if output.status.success() {
+        return Ok(());
     }
+    Err(osascript_failure_error(&String::from_utf8_lossy(
+        &output.stderr,
+    )))
+}
+
+/// osascript 控制终端受 macOS 自动化授权（TCC）约束，被拒时以 -1743 失败，
+/// 笼统的"拒绝执行"会让用户无从排查，这里区分授权问题并给出系统设置的修复路径。
+#[cfg(target_os = "macos")]
+fn osascript_failure_error(stderr: &str) -> ApiError {
+    let detail = stderr.trim();
+    if detail.contains("-1743") || detail.contains("Not authorized") {
+        return ApiError::from(
+            "macOS 未授权控制终端：请在 系统设置 → 隐私与安全性 → 自动化 中允许 AllSessions 控制对应终端",
+        );
+    }
+    if detail.is_empty() {
+        return ApiError::from("终端拒绝了恢复命令");
+    }
+    ApiError::from(format!("终端拒绝了恢复命令：{detail}"))
 }
 
 #[cfg(target_os = "macos")]
@@ -463,6 +480,21 @@ mod tests {
     fn shell_引号转义单引号() {
         assert_eq!(shell_quote("/a/b c"), "'/a/b c'");
         assert_eq!(shell_quote("a'b"), "'a'\\''b'");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn osascript_失败区分自动化授权与未知原因() {
+        let denied = osascript_failure_error(
+            "65:75: execution error: Not authorized to send Apple events to System Events. (-1743)",
+        );
+        assert!(denied.message.contains("隐私与安全性"));
+        assert_eq!(
+            osascript_failure_error("  \n"),
+            ApiError::from("终端拒绝了恢复命令")
+        );
+        let other = osascript_failure_error("execution error: 无此应用");
+        assert!(other.message.contains("execution error"));
     }
 
     #[test]

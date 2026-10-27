@@ -55,6 +55,19 @@ test("普通导出记录消息数量且读取错误保留实际原因", () => {
   );
 });
 
+test("所有错误码都保留后端具体原因且不重复拼接", () => {
+  assert.equal(
+    translateBackendError("invalid_request", "该来源不支持恢复会话"),
+    "请求参数无效: 该来源不支持恢复会话"
+  );
+  assert.equal(
+    translateBackendError("invalid_request", "请求参数无效"),
+    "请求参数无效"
+  );
+  assert.equal(translateBackendError("unknown_code", "原始消息"), null);
+  assert.equal(translateBackendError("invalid_request", ""), "请求参数无效");
+});
+
 test("仅原始事件载荷被截断时也标记部分导出", () => {
   const detail = detailFixture();
   detail.conversation_messages[0].text = "a".repeat(11_000);

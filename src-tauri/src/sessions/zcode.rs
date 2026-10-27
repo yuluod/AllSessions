@@ -395,9 +395,14 @@ fn initial_state(path: &Path, row: &SessionRow) -> Result<ParseState, String> {
     Ok(state)
 }
 
+/// 徽章与 Provider 筛选展示模型名。新版 zcode 的 providerID 是账号域标识
+/// （如 account:bigmodel-individual-coding-plan），对用户没有辨识度，
+/// 因此优先取 modelID；旧格式仅含 providerID 时保持原样。
 fn message_provider(message: &Value) -> Option<String> {
-    message["providerID"]
+    message["modelID"]
         .as_str()
+        .or_else(|| message["model"]["modelID"].as_str())
+        .or_else(|| message["providerID"].as_str())
         .or_else(|| message["model"]["providerID"].as_str())
         .map(str::to_string)
 }
@@ -894,6 +899,63 @@ mod tests {
         assert_eq!(main.summary["model_provider"], "zhipu");
         assert_eq!(main.summary["source_read_only"], true);
         assert!(main.search_text.contains("请检查发布构建"));
+    }
+
+    #[test]
+    fn 模型名优先于账号域_provider_id() {
+        let (_directory, source) = fixture();
+        {
+            let connection = Connection::open(&source.root).unwrap();
+            connection
+                .execute(
+                    "insert into session values (?1, null, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        "ses_model",
+                        "/work/project",
+                        "新格式模型字段",
+                        "main",
+                        1_787_184_020_000_i64,
+                        1_787_184_030_000_i64,
+                    ],
+                )
+                .unwrap();
+            let user = json!({
+                "role":"user",
+                "time":{"created":1_787_184_020_000_i64},
+            });
+            let assistant = json!({
+                "role":"assistant",
+                "time":{"created":1_787_184_021_000_i64,"completed":1_787_184_022_000_i64},
+                "model":{"providerID":"account:bigmodel-individual-coding-plan","modelID":"GLM-5.3-Flash","variant":"max"},
+            });
+            for (id, data) in [("msg_model_user", user), ("msg_model_assistant", assistant)] {
+                connection
+                    .execute(
+                        "insert into message values (?1, ?2, ?3, ?4)",
+                        params![id, "ses_model", 1_787_184_020_000_i64, data.to_string()],
+                    )
+                    .unwrap();
+            }
+            connection
+                .execute(
+                    "insert into part values (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        "prt_model",
+                        "msg_model_assistant",
+                        "ses_model",
+                        1_787_184_021_000_i64,
+                        json!({"type":"text","text":"已切换到 Flash 模型。"}).to_string()
+                    ],
+                )
+                .unwrap();
+        }
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
+        let session = parsed
+            .sessions
+            .iter()
+            .find(|s| s.summary["id"] == "ses_model")
+            .unwrap();
+        assert_eq!(session.summary["model_provider"], "GLM-5.3-Flash");
     }
 
     #[test]

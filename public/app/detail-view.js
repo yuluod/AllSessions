@@ -1,5 +1,6 @@
 // 详情视图:标签行、属性面板、信息抽屉、原始事件与详情占位。
 import { t } from "../i18n.js";
+import { roleCounts } from "../conversation-filter.js";
 import { formatTimestamp, providerLabel } from "../session-format.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
@@ -314,10 +315,16 @@ export function syncInspectorLayout() {
 }
 
 export function syncRoleFilterButtons() {
+  const counts = roleCounts(state.currentDetail?.conversation_messages || []);
   document
     .querySelectorAll("#role-filter .role-filter-btn")
     .forEach((button) => {
-      const active = button.dataset.role === state.roleFilter;
+      const role = button.dataset.role;
+      // 只保留当前会话实际存在的角色，避免点进必然为空的筛选。
+      const available = !role || (counts.get(role) || 0) > 0;
+      button.classList.toggle("hidden", !available);
+      button.disabled = !available;
+      const active = role === state.roleFilter;
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
     });
@@ -390,7 +397,11 @@ export function updateTabs() {
     conversationActive ? "true" : "false"
   );
 }
-export function setDetailPlaceholder(title, description = "", showActions = false) {
+export function setDetailPlaceholder(
+  title,
+  description = "",
+  showActions = false
+) {
   const heading = elements.detailEmpty.querySelector("h2");
   heading.textContent = title;
   const copy = elements.detailEmpty.querySelector("p");

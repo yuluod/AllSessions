@@ -1,5 +1,14 @@
 import { displayMessageText } from "./session-export.js";
 
+export function roleCounts(messages) {
+  const counts = new Map();
+  for (const message of messages) {
+    const role = String(message?.role || "").toLowerCase();
+    if (role) counts.set(role, (counts.get(role) || 0) + 1);
+  }
+  return counts;
+}
+
 export function filterConversationMessages(messages, options = {}) {
   const query = String(options.query || "")
     .trim()

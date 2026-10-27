@@ -13,12 +13,12 @@ import {
   bindMatchNavigation,
 } from "./search-view.js";
 
-const ROLE_LABELS = {
-  user: "user",
-  assistant: "assistant",
-  tool: "tool",
-  system: "system",
-  developer: "developer",
+const ROLE_LABEL_KEYS = {
+  user: "roleUser",
+  assistant: "roleAssistant",
+  tool: "roleTool",
+  system: "roleSystem",
+  developer: "roleDeveloper",
 };
 
 // 复制反馈：短暂替换为 SVG check/cross 并着色，超时还原文案；不用文本字符当图标。
@@ -58,11 +58,7 @@ function createCopyResultIcon(success) {
 
 function displayRoleLabel(role) {
   const normalized = String(role || "").toLowerCase();
-  if (normalized === "user") return t("roleUser");
-  if (normalized === "assistant") return t("roleAssistant");
-  if (ROLE_LABELS[normalized]) return ROLE_LABELS[normalized];
-  if (!normalized) return "system";
-  return "system";
+  return t(ROLE_LABEL_KEYS[normalized] || "roleUnknown");
 }
 
 export function createConversationView({
@@ -331,7 +327,9 @@ export function createConversationView({
       bindMatchNavigation(elements.conversationList);
       const empty = document.createElement("p");
       empty.className = "hero-copy";
-      empty.textContent = t("noConversations");
+      // 会话本身有消息但被角色/显示选项过滤掉时，说明是筛选结果为空。
+      empty.textContent =
+        messages.length > 0 ? t("noMessagesForFilter") : t("noConversations");
       elements.conversationList.append(empty);
       return;
     }

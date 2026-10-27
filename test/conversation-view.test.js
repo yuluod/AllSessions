@@ -6,7 +6,7 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { filterConversationMessages } =
+const { filterConversationMessages, roleCounts } =
   await import("../public/conversation-filter.js");
 
 const messages = [
@@ -15,6 +15,15 @@ const messages = [
   { role: "tool", text: "cargo test", tool_name: "shell" },
   { role: "user", text: "<environment_context>", synthetic_context: true },
 ];
+
+test("角色计数用于只显示当前会话存在的角色", () => {
+  const counts = roleCounts(messages);
+  assert.equal(counts.get("user"), 2);
+  assert.equal(counts.get("assistant"), 1);
+  assert.equal(counts.get("tool"), 1);
+  assert.equal(counts.get("developer"), undefined);
+  assert.equal(roleCounts([]).size, 0);
+});
 
 test("搜索定位仅临时显示目标工具消息且不改变偏好", () => {
   const tools = [

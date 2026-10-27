@@ -301,7 +301,10 @@ const DICT = {
     all: "全部",
     roleUser: "用户",
     roleAssistant: "助手",
-    roleDeveloper: "开发者",
+    roleTool: "工具",
+    roleSystem: "系统",
+    roleDeveloper: "指令",
+    roleUnknown: "消息",
     sortDesc: "按时间倒序",
     resizeRailPane: "拖动调整来源栏宽度（双击重置）",
     resizeListPane: "拖动调整会话列表宽度（双击重置）",
@@ -357,6 +360,8 @@ const DICT = {
     sessionId: "会话 ID",
     filePath: "文件路径",
     noConversations: "这个会话没有可整理的对话消息，建议切到原始事件流查看。",
+    noMessagesForFilter:
+      "当前显示条件下没有可显示的消息，可调整角色筛选或显示选项。",
     noRawEvents: "这个会话没有原始事件记录，建议切到对话视图查看。",
     partialDetail: "安全截断",
     detailMessagesOmitted: "为安全展示已省略中间 {n} 条消息",
@@ -938,7 +943,10 @@ const DICT = {
     all: "All",
     roleUser: "User",
     roleAssistant: "Assistant",
-    roleDeveloper: "Developer",
+    roleTool: "Tool",
+    roleSystem: "System",
+    roleDeveloper: "Instructions",
+    roleUnknown: "Message",
     sortDesc: "Newest first",
     resizeRailPane: "Drag to resize the source rail (double-click to reset)",
     resizeListPane: "Drag to resize the session list (double-click to reset)",
@@ -997,6 +1005,8 @@ const DICT = {
     filePath: "File Path",
     noConversations:
       "This session has no structured conversation messages. Switch to the Raw Events tab.",
+    noMessagesForFilter:
+      "No messages match the current display filters. Adjust the role filter or display options.",
     noRawEvents:
       "This session has no raw event records. Switch to the Conversation tab.",
     partialDetail: "Safely truncated",

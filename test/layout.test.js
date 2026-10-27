@@ -641,6 +641,7 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   const app = await readProjectFile("public/app.js");
   const filter = await readProjectFile("public/conversation-filter.js");
   const view = await readProjectFile("public/conversation-view.js");
+  const i18n = await readProjectFile("public/i18n.js");
   const css = await readProjectFile("public/styles.css");
 
   assert.match(html, /id="detail-search-input"/);
@@ -664,6 +665,16 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   assert.match(filter, /showContext \|\| message\.synthetic_context !== true/);
   assert.match(css, /\.conversation-toolbar\b/);
   assert.match(css, /\.message-nav-list\b/);
+  // 角色标签统一走文案表；developer 在中文界面显示为「指令」。
+  assert.match(view, /ROLE_LABEL_KEYS/);
+  assert.match(view, /roleDeveloper/);
+  assert.match(view, /noMessagesForFilter/);
+  assert.match(i18n, /roleDeveloper: "指令"/);
+  assert.match(i18n, /roleDeveloper: "Instructions"/);
+  assert.equal((i18n.match(/noMessagesForFilter:/g) || []).length, 2);
+  // 当前会话没有的角色按钮直接隐藏。
+  assert.match(app, /roleCounts\(state\.currentDetail/);
+  assert.match(app, /classList\.toggle\("hidden", !available\)/);
 });
 
 test("详情筛选直接显示，导出保留按需展开", async () => {

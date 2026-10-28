@@ -5,7 +5,10 @@ use serde_json::{json, Value};
 
 use super::helpers::{bool_query, paginate, timestamp_of};
 use super::parse::parse_detail;
-use super::{cursor, devin, gemini, hermes, opencode, zcode, DetailLocator, SessionStore};
+use super::{
+    cursor, deepseek, devin, gemini, hermes, opencode, zcode, DetailLocator, SessionStore,
+    SourceFormat,
+};
 
 impl SessionStore {
     pub fn list(
@@ -105,6 +108,28 @@ impl SessionStore {
             .unwrap_or_default();
         self.detail_cache.insert(resolved, detail.clone(), size);
         Ok(detail)
+    }
+
+    /// 按详情里的定位信息回读单张内嵌图片；不重新解析整份会话。
+    pub fn read_attachment(
+        &self,
+        key: &str,
+        request: &Value,
+    ) -> Result<Value, crate::error::ApiError> {
+        use crate::error::ApiError;
+        let missing = || ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在");
+        let resolved = self.resolve_record_key(key).ok_or_else(missing)?;
+        let record = self.records.get(&resolved).ok_or_else(missing)?;
+        let result = match &record.detail_locator {
+            Some(DetailLocator::ZCode(locator)) => zcode::read_attachment(locator, request),
+            Some(DetailLocator::Devin(locator)) => devin::read_attachment(locator, request),
+            Some(_) => Err("当前来源暂不支持图片预览".into()),
+            None if record.source.format == SourceFormat::DeepSeek => {
+                deepseek::read_attachment(&record.path, &record.source, request)
+            }
+            None => super::attachment::read_image(record, request),
+        };
+        result.map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))
     }
 
     /// 仅取摘要（不解析详情），供恢复会话这类只需要 id/cwd/source_kind 的操作使用。

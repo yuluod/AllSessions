@@ -199,10 +199,32 @@ fn tool_result(payload: &Value, timestamp: &str) -> Value {
     message
 }
 
-fn content_parts(parts: &Value, timestamp: &str) -> Vec<Value> {
-    parts.as_array().into_iter().flatten().flat_map(|part| {
-        envelope_messages(&json!({"timestamp": timestamp, "message": {"type": "ContentPart", "payload": part}}))
-    }).collect()
+fn content_parts(parts: &Value, timestamp: &str, base: &[Value], indexed: bool) -> Vec<Value> {
+    parts
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .flat_map(|(index, part)| {
+            let mut messages = envelope_messages(
+                &json!({"timestamp": timestamp, "message": {"type": "ContentPart", "payload": part}}),
+            );
+            let mut path = base.to_vec();
+            if indexed {
+                path.push(json!(index));
+            }
+            for message in &mut messages {
+                if let Some(attachments) = message["attachments"].as_array_mut() {
+                    for attachment in attachments {
+                        if let Some(locator) = attachment.get_mut("locator") {
+                            locator["path"] = Value::Array(path.clone());
+                        }
+                    }
+                }
+            }
+            messages
+        })
+        .collect()
 }
 
 fn tool_call(call: &Value, timestamp: &str) -> Vec<Value> {
@@ -219,16 +241,30 @@ fn messages(record: &Value) -> Vec<Value> {
             let role = message["role"].as_str().unwrap_or("unknown");
             match role {
                 "assistant" => {
-                    let mut result = content_parts(&message["content"], &time);
+                    let mut result = content_parts(
+                        &message["content"],
+                        &time,
+                        &[json!("message"), json!("content")],
+                        true,
+                    );
                     for call in message["toolCalls"].as_array().into_iter().flatten() {
                         result.extend(tool_call(call, &time));
                     }
                     result
                 }
-                "tool" => vec![tool_result(
-                    &json!({"output": message["content"], "toolCallId": message["toolCallId"], "isError": message["isError"]}),
-                    &time,
-                )],
+                "tool" => {
+                    let mut value = tool_result(
+                        &json!({"output": message["content"], "toolCallId": message["toolCallId"], "isError": message["isError"]}),
+                        &time,
+                    );
+                    if let Some(attachments) = image_attachments(
+                        &message["content"],
+                        &[json!("message"), json!("content")],
+                    ) {
+                        value["attachments"] = attachments;
+                    }
+                    vec![value]
+                }
                 "user" | "system" => {
                     let text = input_text(&message["content"]);
                     let synthetic = role == "system"
@@ -239,14 +275,15 @@ fn messages(record: &Value) -> Vec<Value> {
                     if text.is_empty() {
                         Vec::new()
                     } else {
-                        vec![message_value(
-                            role,
-                            &text,
-                            &time,
-                            "kimi_wire",
-                            "text",
-                            synthetic,
-                        )]
+                        let mut value =
+                            message_value(role, &text, &time, "kimi_wire", "text", synthetic);
+                        if let Some(attachments) = image_attachments(
+                            &message["content"],
+                            &[json!("message"), json!("content")],
+                        ) {
+                            value["attachments"] = attachments;
+                        }
+                        vec![value]
                     }
                 }
                 _ => Vec::new(),
@@ -255,15 +292,29 @@ fn messages(record: &Value) -> Vec<Value> {
         "context.append_loop_event" => {
             let event = &record["event"];
             match event["type"].as_str().unwrap_or_default() {
-                "content.part" => content_parts(&json!([event["part"]]), &time),
+                "content.part" => content_parts(
+                    &json!([event["part"]]),
+                    &time,
+                    &[json!("event"), json!("part")],
+                    false,
+                ),
                 "tool.call" => tool_call(
                     &json!({"id": event["toolCallId"], "name": event["name"], "arguments": event["args"]}),
                     &time,
                 ),
-                "tool.result" => vec![tool_result(
-                    &json!({"output": event["result"]["output"], "toolCallId": event["toolCallId"], "isError": event["result"]["isError"]}),
-                    &time,
-                )],
+                "tool.result" => {
+                    let mut value = tool_result(
+                        &json!({"output": event["result"]["output"], "toolCallId": event["toolCallId"], "isError": event["result"]["isError"]}),
+                        &time,
+                    );
+                    if let Some(attachments) = image_attachments(
+                        &event["result"]["output"],
+                        &[json!("event"), json!("result"), json!("output")],
+                    ) {
+                        value["attachments"] = attachments;
+                    }
+                    vec![value]
+                }
                 _ => Vec::new(),
             }
         }
@@ -355,6 +406,7 @@ pub(super) fn parse_wire(
             line.clear();
             reader.read_line(&mut line).map_err(error_text)?;
             let record: Value = serde_json::from_str(&line).map_err(error_text)?;
+            let fingerprint = json_fingerprint(&record);
             for mut message in messages(&record) {
                 if let Some(id) = message["tool_call_id"].as_str().map(str::to_string) {
                     if message["tool_kind"] == "tool_call" {
@@ -364,6 +416,7 @@ pub(super) fn parse_wire(
                         message["tool_name"] = json!(name);
                     }
                 }
+                attach_attachment_locator(&mut message, reference.line, &fingerprint);
                 collector.push(message, reference.line);
             }
         }

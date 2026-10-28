@@ -503,6 +503,24 @@ fn route_request(
                 .map_err(|error| error.to_string())?;
             Ok(result)
         }
+        ("POST", "/api/sessions/attachment") => {
+            let session_key = request
+                .body
+                .get("sessionKey")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| ApiError::invalid("缺少 sessionKey"))?;
+            let locator = request
+                .body
+                .get("locator")
+                .filter(|value| value.is_object())
+                .ok_or_else(|| ApiError::invalid("缺少 locator"))?;
+            state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .read_attachment(session_key, locator)
+        }
         ("GET", "/api/index-status") => {
             Ok(state.index_progress.lock().map_err(lock_error)?.clone())
         }

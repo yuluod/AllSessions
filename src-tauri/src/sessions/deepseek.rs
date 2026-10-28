@@ -3,7 +3,7 @@
 //! `session[.vN].jsonl[.zstd]`，只读最新一代；.zstd 为追加写入的多帧 JSONL。
 use std::{
     collections::HashMap,
-    fs::File,
+    fs::{self, File},
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
 };
@@ -147,6 +147,56 @@ fn block_text(block: &Value) -> String {
     }
 }
 
+fn image_block_id(block: &Value) -> Option<&str> {
+    (block["type"].as_str() == Some("image"))
+        .then(|| block["attachment"]["attachmentId"].as_str())
+        .flatten()
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn attach_block_image(message: &mut Value, block: &Value, base: &[Value], index: usize) {
+    if image_block_id(block).is_none() {
+        return;
+    }
+    let mut path = base.to_vec();
+    path.push(json!(index));
+    message["attachments"] = json!([{ "kind": "image", "locator": { "path": path } }]);
+}
+
+fn attach_content_images(message: &mut Value, content: &Value, base: &[Value]) {
+    let Some(blocks) = content.as_array() else {
+        return;
+    };
+    let attachments = blocks
+        .iter()
+        .enumerate()
+        .filter(|(_, block)| image_block_id(block).is_some())
+        .map(|(index, _)| {
+            let mut path = base.to_vec();
+            path.push(json!(index));
+            json!({ "kind": "image", "locator": { "path": path } })
+        })
+        .collect::<Vec<_>>();
+    if !attachments.is_empty() {
+        message["attachments"] = Value::Array(attachments);
+    }
+}
+
+/// 详情只带行号与事件序号，读取时按行回放并校验序号。
+fn attach_deepseek_locator(message: &mut Value, line_number: usize, seq: Option<i64>) {
+    let Some(attachments) = message.get_mut("attachments").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for attachment in attachments {
+        if let Some(locator) = attachment.get_mut("locator") {
+            locator["line_number"] = json!(line_number);
+            if let Some(seq) = seq {
+                locator["seq"] = json!(seq);
+            }
+        }
+    }
+}
+
 fn content_text(content: &Value) -> String {
     // 部分版本的 dsh 会把 content 写成纯字符串而非块数组，先按字符串取。
     if let Some(text) = content.as_str() {
@@ -214,6 +264,11 @@ fn tool_result_message(
         "tool_result",
         false,
     );
+    attach_content_images(
+        &mut value,
+        &message["content"],
+        &[json!("data"), json!("message"), json!("content")],
+    );
     value["tool_name"] = Value::String(name.into());
     value["tool_kind"] = Value::String("tool_result".into());
     if !id.is_empty() {
@@ -246,7 +301,12 @@ fn assistant_messages(
         }
         return messages;
     }
-    for block in message["content"].as_array().into_iter().flatten() {
+    for (block_index, block) in message["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
         match block["type"].as_str().unwrap_or_default() {
             "reasoning" | "thinking" => {
                 let text = block["text"]
@@ -278,14 +338,21 @@ fn assistant_messages(
             _ => {
                 let text = block_text(block);
                 if !text.trim().is_empty() {
-                    messages.push(message_value(
+                    let mut value = message_value(
                         "assistant",
                         &text,
                         timestamp,
                         "assistant/message",
                         block["type"].as_str().unwrap_or("text"),
                         false,
-                    ));
+                    );
+                    attach_block_image(
+                        &mut value,
+                        block,
+                        &[json!("data"), json!("message"), json!("content")],
+                        block_index,
+                    );
+                    messages.push(value);
                 }
             }
         }
@@ -308,32 +375,31 @@ fn event_messages(
             let kind = data["source"]["kind"].as_str().unwrap_or("user");
             // runtime-context/time-context 等注入内容按合成上下文处理，
             // 不计入用户消息也不进搜索正文。
-            if kind == "user" {
-                vec![message_value(
-                    "user",
-                    &text,
-                    timestamp,
-                    "user/message",
-                    "text",
-                    false,
-                )]
+            let mut value = if kind == "user" {
+                message_value("user", &text, timestamp, "user/message", "text", false)
             } else {
-                vec![message_value(
-                    "system",
-                    &text,
-                    timestamp,
-                    "user/message",
-                    kind,
-                    true,
-                )]
-            }
+                message_value("system", &text, timestamp, "user/message", kind, true)
+            };
+            attach_content_images(
+                &mut value,
+                &data["content"],
+                &[json!("data"), json!("content")],
+            );
+            vec![value]
         }
         "assistant/message" => assistant_messages(record, timestamp, tool_names),
         "system/message" => {
             let text = content_text(&record["data"]["message"]["content"]);
             (!text.trim().is_empty())
                 .then(|| {
-                    message_value("system", &text, timestamp, "system/message", "system", true)
+                    let mut value =
+                        message_value("system", &text, timestamp, "system/message", "system", true);
+                    attach_content_images(
+                        &mut value,
+                        &record["data"]["message"]["content"],
+                        &[json!("data"), json!("message"), json!("content")],
+                    );
+                    value
                 })
                 .into_iter()
                 .collect()
@@ -497,6 +563,7 @@ fn parse(
                         "message_index": sequence,
                     }),
                 );
+                attach_deepseek_locator(&mut message, index + 1, record["seq"].as_i64());
                 visitor(&message);
                 truncate_message(&mut message);
                 messages.push(message);
@@ -574,6 +641,100 @@ pub(super) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String
     visit_detail(path, source, &mut |_| {})
 }
 
+/// 读取 DeepSeek 图片块：优先对象库原件，其次请求缓存中的处理后副本。
+pub(super) fn read_attachment(
+    path: &Path,
+    source: &Source,
+    request: &Value,
+) -> Result<Value, String> {
+    validate_path(path, source)?;
+    let line_number = request["line_number"]
+        .as_u64()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| "图片定位信息无效".to_string())?;
+    let record = read_record_at_line(path, line_number)?;
+    if let Some(seq) = request["seq"].as_i64() {
+        if record["seq"].as_i64() != Some(seq) {
+            return Err("会话内容已变化，请刷新后重试".into());
+        }
+    }
+    let block = super::attachment::value_at_path(&record, &request["path"])?;
+    let attachment_id = image_block_id(block)
+        .and_then(|value| value.strip_prefix("sha256:"))
+        .filter(|value| is_sha256(value))
+        .ok_or_else(|| "图片定位信息无效".to_string())?;
+    let media_type = block["attachment"]["mediaType"].as_str();
+    let home = dsh_home(&source.root);
+    let object = home
+        .join("attachments/v1/objects")
+        .join(&attachment_id[..2])
+        .join(attachment_id);
+    if object.is_file() {
+        return super::attachment::image_value_from_path(
+            &object,
+            super::attachment::MAX_IMAGE_BYTES,
+            media_type,
+        );
+    }
+    if let Some(variant) = variant_id(home, attachment_id) {
+        let cache = home
+            .join("cache/attachments/request-images")
+            .join(&variant[..2])
+            .join(&variant);
+        if cache.is_file() {
+            return super::attachment::image_value_from_path(
+                &cache,
+                super::attachment::MAX_IMAGE_BYTES,
+                media_type,
+            );
+        }
+    }
+    Err("图片缓存已被清理，无法读取".into())
+}
+
+/// 根目录可指向 `~/.dsh` 或其 `sessions` 子目录，附件库始终相对 dsh 主目录。
+fn dsh_home(root: &Path) -> &Path {
+    if root.file_name().and_then(|value| value.to_str()) == Some("sessions") {
+        root.parent().unwrap_or(root)
+    } else {
+        root
+    }
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn read_record_at_line(path: &Path, line_number: u64) -> Result<Value, String> {
+    for (index, line) in open_events(path)?.lines().enumerate() {
+        if index as u64 + 1 == line_number {
+            let line = line.map_err(error_text)?;
+            return serde_json::from_str(&line)
+                .map_err(|error| format!("会话记录解析失败：{error}"));
+        }
+    }
+    Err("图片所在记录已不存在，请刷新会话".into())
+}
+
+/// `files-v3.json` 把附件 ID 映射到请求缓存里的 variant ID。
+fn variant_id(root: &Path, attachment_id: &str) -> Option<String> {
+    let path = root.join("llm-deepseek/files-v3.json");
+    let metadata = fs::metadata(&path).ok()?;
+    if metadata.len() > 16 * 1024 * 1024 {
+        return None;
+    }
+    let value: Value = serde_json::from_str(&fs::read_to_string(&path).ok()?).ok()?;
+    let variant = value["records"].as_array()?.iter().find(|record| {
+        record["attachmentId"]
+            .as_str()
+            .and_then(|value| value.strip_prefix("sha256:"))
+            == Some(attachment_id)
+    })?["variantId"]
+        .as_str()?
+        .strip_prefix("sha256:")?;
+    is_sha256(variant).then(|| variant.to_string())
+}
+
 pub(super) fn visit_detail(
     path: &Path,
     source: &Source,
@@ -647,6 +808,53 @@ mod tests {
             json!({"type":"tool/result","seq":13,"time":1792377448282_i64,"data":{"turn":1,"step":1,"message":{"role":"tool","source":{"kind":"tool","callId":"call_1"},"toolCallId":"call_1","content":[{"type":"text","text":"file.txt"}],"isError":false,"id":"t1"}}}),
             json!({"type":"session/title","seq":14,"time":1792377448300_i64,"data":{"title":"分析项目结构","messageSeqs":[8],"source":{"kind":"llm"}}}),
         ]
+    }
+
+    #[test]
+    fn 图片按对象库与请求缓存读取() {
+        let directory = tempdir().unwrap();
+        let attachment_id = "346a66e7e14b37118bc8c4b7bc05f4571953156e789297c91d7a818166cee477";
+        let object = directory
+            .path()
+            .join("attachments/v1/objects")
+            .join(&attachment_id[..2])
+            .join(attachment_id);
+        std::fs::create_dir_all(object.parent().unwrap()).unwrap();
+        std::fs::write(&object, "data:image/png;base64,QUJD").unwrap();
+        let session = directory
+            .path()
+            .join("sessions/work/session-image")
+            .to_path_buf();
+        let records = [
+            json!({"type":"session","version":4,"id":"session-image","createdAt":1792377434881_i64,"cwd":"/work/repo"}),
+            json!({"type":"user/message","seq":8,"time":1792377447184_i64,"data":{"content":[
+                {"type":"image","attachment":{"attachmentId":format!("sha256:{attachment_id}"),"mediaType":"image/png","width":1,"height":1,"bytes":3,"name":"shot.png"}},
+                {"type":"text","text":"看图"}
+            ],"source":{"kind":"user"},"role":"user","id":"u1"}}),
+        ];
+        let path = write_session(&session, &records, false);
+        let detail = parse_detail(&path, &source(directory.path())).unwrap();
+        let message = detail["conversation_messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message["attachments"].is_array())
+            .unwrap();
+        assert_eq!(message["text"], "[image]\n看图");
+        let locator = &message["attachments"][0]["locator"];
+        assert_eq!(locator["line_number"], 2);
+        assert_eq!(locator["seq"], 8);
+        assert_eq!(locator["path"], json!(["data", "content", 0]));
+        let payload = super::read_attachment(&path, &source(directory.path()), locator).unwrap();
+        assert_eq!(payload["data_url"], "data:image/png;base64,QUJD");
+
+        // 对象库被清理时返回明确错误，不回退成空白图片。
+        std::fs::remove_file(&object).unwrap();
+        assert!(
+            super::read_attachment(&path, &source(directory.path()), locator)
+                .unwrap_err()
+                .contains("清理")
+        );
     }
 
     #[test]

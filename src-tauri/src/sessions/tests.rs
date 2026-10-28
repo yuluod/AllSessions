@@ -2328,6 +2328,199 @@ fn 媒体内容块使用占位而不是原始_json() {
 }
 
 #[test]
+fn 图片附件只保留定位信息并按需读取() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("image.jsonl");
+    let png = "QUJD";
+    let content = [
+        json!({"type":"session_meta","payload":{"id":"image-session"}}).to_string(),
+        json!({"type":"user","message":{"role":"user","content":[
+            {"type":"text","text":"看这张图"},
+            {"type":"image","source":{"type":"base64","media_type":"image/png","data":png}}
+        ]}})
+        .to_string(),
+    ]
+    .join("\n");
+    std::fs::write(&path, content).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("codex:image-session").unwrap();
+    let messages = detail["conversation_messages"].as_array().unwrap();
+    assert_eq!(messages[0]["text"], "看这张图");
+    let image = messages
+        .iter()
+        .find(|message| message["text"] == "[image]")
+        .unwrap();
+    let attachment = &image["attachments"][0];
+    assert_eq!(attachment["kind"], "image");
+    let locator = &attachment["locator"];
+    assert_eq!(locator["line_number"], 2);
+    assert_eq!(locator["path"], json!(["message", "content", 1]));
+
+    let result = store
+        .read_attachment("codex:image-session", locator)
+        .unwrap();
+    assert_eq!(result["media_type"], "image/png");
+    assert_eq!(result["data_url"], format!("data:image/png;base64,{png}"));
+    assert_eq!(result["bytes"], 3);
+
+    // 搜索索引只含占位，不包含 base64。
+    let search = super::search_text_from_detail(&detail);
+    assert!(search.contains("[image]"));
+    assert!(!search.contains(png));
+
+    // 原文变化后拒绝旧定位。
+    let mut stale = locator.clone();
+    stale["record_fingerprint"] = json!("stale");
+    assert!(store
+        .read_attachment("codex:image-session", &stale)
+        .unwrap_err()
+        .message
+        .contains("变化"));
+
+    // 体积上限在解码前按 base64 长度计算。
+    let record = store.records.get("codex:image-session").unwrap();
+    assert!(super::attachment::read_image_with_limit(record, locator, 2)
+        .unwrap_err()
+        .contains("上限"));
+}
+
+#[test]
+fn 新版kimi图片按真实记录定位并回读() {
+    let directory = tempdir().unwrap();
+    let agent = directory
+        .path()
+        .join("sessions/work/image-session/agents/main");
+    std::fs::create_dir_all(&agent).unwrap();
+    let data_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=";
+    let image = json!({"type":"image_url","imageUrl":{"url":data_url}});
+    let records = [
+        json!({"type":"metadata","protocol_version":"1.5"}),
+        json!({"type":"context.append_message","message":{"role":"user","content":[image.clone()]}}),
+        json!({"type":"context.append_message","message":{"role":"assistant","content":[image.clone()]}}),
+        json!({"type":"context.append_message","message":{"role":"tool","content":[image.clone()],"toolCallId":"old-call"}}),
+        json!({"type":"context.append_loop_event","event":{"type":"step.begin","uuid":"step1"}}),
+        json!({"type":"context.append_loop_event","event":{"type":"content.part","stepUuid":"step1","part":image.clone()}}),
+        json!({"type":"context.append_loop_event","event":{"type":"tool.call","stepUuid":"step1","toolCallId":"c1","name":"Image","args":{}}}),
+        json!({"type":"context.append_loop_event","event":{"type":"tool.result","toolCallId":"c1","result":{"output":[image]}}}),
+        json!({"type":"context.append_loop_event","event":{"type":"step.end","uuid":"step1","finishReason":"stop"}}),
+    ];
+    let path = agent.join("wire.jsonl");
+    std::fs::write(
+        &path,
+        records
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
+    let mut config = codex_roots_config(&[]);
+    config.kimi = Some(vec![directory.path().to_string_lossy().into_owned()]);
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: config,
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let key = "kimi:image-session";
+    let detail = store.detail(key).unwrap();
+    let locators = detail["conversation_messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|message| message["attachments"].as_array().into_iter().flatten())
+        .map(|attachment| &attachment["locator"])
+        .collect::<Vec<_>>();
+    let expected = [
+        (2, json!(["message", "content", 0])),
+        (3, json!(["message", "content", 0])),
+        (4, json!(["message", "content", 0])),
+        (6, json!(["event", "part"])),
+        (8, json!(["event", "result", "output", 0])),
+    ];
+    assert_eq!(locators.len(), expected.len());
+    for (locator, (line, content_path)) in locators.iter().zip(expected) {
+        assert_eq!(locator["line_number"], line);
+        assert_eq!(locator["path"], content_path);
+        assert_eq!(
+            locator["record_fingerprint"],
+            super::json_fingerprint(&records[line as usize - 1])
+        );
+        let result = store.read_attachment(key, locator).unwrap();
+        assert_eq!(result["data_url"], data_url);
+        let mut stale = (*locator).clone();
+        stale["record_fingerprint"] = json!("stale");
+        assert!(store
+            .read_attachment(key, &stale)
+            .unwrap_err()
+            .message
+            .contains("变化"));
+    }
+}
+
+#[test]
+fn 图片附件拒绝_svg_与远程地址() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("unsafe.jsonl");
+    let content = [
+        json!({"type":"session_meta","payload":{"id":"unsafe-image"}}).to_string(),
+        json!({"type":"user","message":{"role":"user","content":[
+            {"type":"image","source":{"type":"base64","media_type":"image/svg+xml","data":"QUJD"}}
+        ]}})
+        .to_string(),
+        json!({"type":"user","message":{"role":"user","content":[
+            {"type":"input_image","image_url":"https://example.com/a.png"}
+        ]}})
+        .to_string(),
+    ]
+    .join("\n");
+    std::fs::write(&path, content).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("codex:unsafe-image").unwrap();
+    let messages = detail["conversation_messages"].as_array().unwrap();
+    let svg = messages
+        .iter()
+        .find(|message| message["attachments"][0]["locator"]["line_number"] == 2)
+        .unwrap();
+    assert!(store
+        .read_attachment("codex:unsafe-image", &svg["attachments"][0]["locator"])
+        .unwrap_err()
+        .message
+        .contains("SVG"));
+    let remote = messages
+        .iter()
+        .find(|message| message["attachments"][0]["locator"]["line_number"] == 3)
+        .unwrap();
+    assert!(store
+        .read_attachment("codex:unsafe-image", &remote["attachments"][0]["locator"])
+        .unwrap_err()
+        .message
+        .contains("内嵌"));
+}
+
+#[test]
 fn 旧版_claude_详情截断但索引保留完整消息() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("legacy.json");

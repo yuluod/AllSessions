@@ -10,9 +10,10 @@ use serde_json::{json, Value};
 use walkdir::WalkDir;
 
 use super::{
-    append_limited, attach_message_key, compact, error_text, extract_text, message_value,
-    mixed_stamp, summary_search_text, truncate_message, HeadTail, ParseState, Source,
-    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    append_limited, attach_attachment_locator, attach_message_key, compact, error_text,
+    extract_text, image_attachments, json_fingerprint, message_value, mixed_stamp,
+    summary_search_text, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
+    DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
 };
 
 mod modern;
@@ -242,7 +243,16 @@ fn envelope_messages(record: &Value) -> Vec<Value> {
         "TurnBegin" | "SteerInput" => {
             let text = input_text(&payload["user_input"]);
             (!text.trim().is_empty())
-                .then(|| message_value("user", &text, &timestamp, kind, "text", false))
+                .then(|| {
+                    let mut value = message_value("user", &text, &timestamp, kind, "text", false);
+                    if let Some(attachments) = image_attachments(
+                        &payload["user_input"],
+                        &[json!("message"), json!("payload"), json!("user_input")],
+                    ) {
+                        value["attachments"] = attachments;
+                    }
+                    value
+                })
                 .into_iter()
                 .collect()
         }
@@ -259,14 +269,16 @@ fn envelope_messages(record: &Value) -> Vec<Value> {
                 .map(|text| message_value("assistant", text, &timestamp, kind, "thinking", true))
                 .into_iter()
                 .collect(),
-            Some("image_url") => vec![message_value(
-                "assistant",
-                "[image]",
-                &timestamp,
-                kind,
-                "image",
-                false,
-            )],
+            Some("image_url") => {
+                let mut value =
+                    message_value("assistant", "[image]", &timestamp, kind, "image", false);
+                if let Some(attachments) =
+                    image_attachments(payload, &[json!("message"), json!("payload")])
+                {
+                    value["attachments"] = attachments;
+                }
+                vec![value]
+            }
             Some("audio_url") => vec![message_value(
                 "assistant",
                 "[audio]",
@@ -328,6 +340,17 @@ fn envelope_messages(record: &Value) -> Vec<Value> {
                 &output
             };
             let mut value = message_value("tool", text, &timestamp, kind, "tool_result", false);
+            if let Some(attachments) = image_attachments(
+                &return_value["output"],
+                &[
+                    json!("message"),
+                    json!("payload"),
+                    json!("return_value"),
+                    json!("output"),
+                ],
+            ) {
+                value["attachments"] = attachments;
+            }
             value["tool_name"] = Value::String("tool_result".into());
             value["tool_kind"] = Value::String("tool_result".into());
             if let Some(id) = payload["tool_call_id"].as_str() {
@@ -476,6 +499,7 @@ fn parse_wire(
                 if !timestamp.is_empty() {
                     collector.state.last_timestamp = timestamp.clone();
                 }
+                let fingerprint = json_fingerprint(&record);
                 for mut message in envelope_messages(&record) {
                     if let Some(id) = message["tool_call_id"].as_str().map(str::to_string) {
                         if message["tool_kind"].as_str() == Some("tool_call") {
@@ -486,6 +510,7 @@ fn parse_wire(
                             message["tool_name"] = Value::String(name.clone());
                         }
                     }
+                    attach_attachment_locator(&mut message, index + 1, &fingerprint);
                     collector.push(message, index + 1);
                 }
                 if let Some(events) = events.as_mut() {
@@ -614,7 +639,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{parse_detail, parse_summary};
-    use crate::sessions::{Source, SourceFormat};
+    use crate::sessions::{Source, SourceFormat, StoredSession};
 
     fn source(root: &Path) -> Source {
         Source {
@@ -674,6 +699,11 @@ mod tests {
         assert_eq!(messages[1]["text"], "先检查状态");
         assert_eq!(messages[2]["text"], "已经完成");
         assert_eq!(messages[3]["text"], "[image]");
+        assert_eq!(
+            messages[3]["attachments"][0]["locator"]["path"],
+            json!(["message", "payload"])
+        );
+        assert_eq!(messages[3]["attachments"][0]["locator"]["line_number"], 6);
         assert_eq!(messages[5]["text"], "命令执行失败");
         assert_eq!(messages[5]["tool_name"], "Shell");
         assert_eq!(messages[5]["is_error"], true);
@@ -683,6 +713,60 @@ mod tests {
         assert!(messages
             .iter()
             .all(|message| message["_message_key"].is_string()));
+    }
+
+    #[test]
+    fn 新版图片按真实记录路径定位并可读取() {
+        let directory = tempdir().unwrap();
+        let session = directory
+            .path()
+            .join("sessions/hash/kimi-modern/agents/main");
+        std::fs::create_dir_all(&session).unwrap();
+        std::fs::write(
+            session
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("state.json"),
+            json!({"cwd":"/work/kimi-modern"}).to_string(),
+        )
+        .unwrap();
+        let path = session.join("wire.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                "{\"type\":\"metadata\",\"protocol_version\":\"1.5\"}\n",
+                "{\"type\":\"context.append_message\",\"time\":1787184000000,\"message\":{\"role\":\"assistant\",\"id\":\"a1\",\"origin\":{\"kind\":\"model\"},\"content\":[{\"type\":\"text\",\"text\":\"看图\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,QUJD\"}}]}}\n"
+            ),
+        )
+        .unwrap();
+
+        let detail = parse_detail(&path, &source(directory.path())).unwrap();
+        let messages = detail["conversation_messages"].as_array().unwrap();
+        let image = messages
+            .iter()
+            .find(|message| message["text"] == "[image]")
+            .unwrap();
+        let locator = &image["attachments"][0]["locator"];
+        assert_eq!(locator["path"], json!(["message", "content", 1]));
+        assert_eq!(locator["line_number"], 2);
+        assert!(locator["record_fingerprint"].is_string());
+
+        let record = StoredSession {
+            summary: detail["summary"].clone(),
+            search_text: String::new(),
+            source: source(directory.path()),
+            path: path.clone(),
+            detail_locator: None,
+        };
+        let payload = super::super::attachment::read_image_with_limit(
+            &record,
+            locator,
+            super::super::attachment::MAX_IMAGE_BYTES,
+        )
+        .unwrap();
+        assert_eq!(payload["data_url"], "data:image/png;base64,QUJD");
     }
 
     #[test]

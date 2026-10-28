@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use rusqlite::{Connection, OpenFlags, Row};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -343,14 +343,26 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
             })
             .into_iter()
             .collect(),
-        "file" => vec![message_value(
-            role,
-            &file_placeholder(&part.data),
-            &timestamp,
-            "zcode_part",
-            "file",
-            false,
-        )],
+        "file" => {
+            let mut value = message_value(
+                role,
+                &file_placeholder(&part.data),
+                &timestamp,
+                "zcode_part",
+                "file",
+                false,
+            );
+            if part.data["mime"]
+                .as_str()
+                .is_some_and(|mime| mime.to_ascii_lowercase().starts_with("image/"))
+            {
+                value["attachments"] = json!([{
+                    "kind": "image",
+                    "locator": { "part_id": part.id },
+                }]);
+            }
+            vec![value]
+        }
         "subtask" => {
             let agent = part.data["agent"].as_str().unwrap_or("subtask");
             let description = part.data["description"].as_str().unwrap_or_default();
@@ -648,6 +660,107 @@ fn raw_payload(message: &MessageRow, part: &PartRow) -> Value {
 
 pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<Value, String> {
     visit_detail(source, locator, &mut |_| {})
+}
+
+/// 读取 ZCode 文件型 part 的图片：优先用 artifact 副本，回退到原始文件路径。
+pub(crate) fn read_attachment(locator: &DetailLocator, request: &Value) -> Result<Value, String> {
+    let part_id = request["part_id"]
+        .as_str()
+        .filter(|value| !value.is_empty() && value.len() <= 128)
+        .ok_or_else(|| "图片定位信息无效".to_string())?;
+    let connection = open_database(&locator.database_path)?;
+    validate_tables(&connection)?;
+    let raw: Option<String> = connection
+        .query_row(
+            "select data from part where id = ?1 and session_id = ?2",
+            params![part_id, locator.session_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("读取 ZCode 图片记录失败：{error}"))?;
+    let data: Value =
+        serde_json::from_str(&raw.ok_or_else(|| "图片所在消息已不存在，请刷新会话".to_string())?)
+            .map_err(|error| format!("ZCode 图片记录无效：{error}"))?;
+    if data["type"].as_str() != Some("file") {
+        return Err("该记录不是图片附件".into());
+    }
+    let mime = data["mime"]
+        .as_str()
+        .filter(|value| value.to_ascii_lowercase().starts_with("image/"))
+        .ok_or_else(|| "该附件不是图片".to_string())?;
+    if let Some((session, name)) = artifact_reference(&data) {
+        if let Some(path) = artifact_path(&locator.database_path, &session, &name) {
+            return super::attachment::image_value_from_path(
+                &path,
+                super::attachment::MAX_IMAGE_BYTES,
+                Some(mime),
+            );
+        }
+    }
+    for candidate in [&data["source"]["path"], &data["metadata"]["originalUrl"]] {
+        if let Some(value) = candidate.as_str().filter(|value| !value.trim().is_empty()) {
+            let path = PathBuf::from(value);
+            if path.is_file() {
+                return super::attachment::image_value_from_path(
+                    &path,
+                    super::attachment::MAX_IMAGE_BYTES,
+                    Some(mime),
+                );
+            }
+        }
+    }
+    Err("图片文件已不存在，可能已被原应用或截图工具清理".into())
+}
+
+fn artifact_reference(data: &Value) -> Option<(String, String)> {
+    let uri = data["metadata"]["artifactUri"]
+        .as_str()
+        .or_else(|| data["url"].as_str())?;
+    let rest = uri.strip_prefix("zcode-artifact://")?;
+    let (session, name) = rest.split_once('/')?;
+    let valid = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+    };
+    (valid(session) && valid(name)).then(|| (session.to_string(), name.to_string()))
+}
+
+fn artifact_path(database_path: &Path, session: &str, name: &str) -> Option<PathBuf> {
+    // 标准布局是 `<cli>/db/db.sqlite` 对应 `<cli>/artifacts`；
+    // 自定义数据库路径允许 artifacts 与数据库同级。
+    let database_dir = database_path.parent()?;
+    let root = [database_dir.parent(), Some(database_dir)]
+        .into_iter()
+        .flatten()
+        .map(|base| base.join("artifacts"))
+        .find(|base| base.is_dir())?
+        .join(session);
+    let direct = root.join(name);
+    if direct.is_file() {
+        return Some(direct);
+    }
+    let text_name = format!("{name}.txt");
+    let text = root.join(&text_name);
+    if text.is_file() {
+        return Some(text);
+    }
+    // 用户附件会以 `attachment-<n>-<name>.txt` 落盘，按后缀匹配同目录副本。
+    let suffix = format!("-{name}");
+    let text_suffix = format!("{suffix}.txt");
+    let mut fallback = None;
+    for entry in fs::read_dir(&root).ok()?.flatten().take(5_000) {
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if file_name == name || file_name == text_name {
+            return Some(entry.path());
+        }
+        if file_name.ends_with(&text_suffix) || file_name.ends_with(&suffix) {
+            fallback = Some(entry.path());
+        }
+    }
+    fallback
 }
 
 pub(super) fn visit_detail(
@@ -1119,8 +1232,17 @@ mod tests {
     }
 
     #[test]
-    fn 文件附件显示占位() {
+    fn 文件附件显示占位并可读取图片() {
         let (directory, source) = fixture();
+        let artifact = directory
+            .path()
+            .join("artifacts/ses_main/attachment-1-shot-artifact.txt");
+        std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        std::fs::write(
+            &artifact,
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=",
+        )
+        .unwrap();
         {
             let connection = Connection::open(directory.path().join("db.sqlite")).unwrap();
             connection
@@ -1142,7 +1264,7 @@ mod tests {
                         "msg_file",
                         "ses_main",
                         1_787_184_030_000_i64,
-                        json!({"type":"file","filename":"shot.png","mime":"image/png","url":"file:///tmp/shot.png"}).to_string()
+                        json!({"type":"file","filename":"shot.png","mime":"image/png","url":"zcode-artifact://ses_main/shot-artifact","metadata":{"artifactUri":"zcode-artifact://ses_main/shot-artifact"}}).to_string()
                     ],
                 )
                 .unwrap();
@@ -1161,5 +1283,16 @@ mod tests {
             .find(|message| message["source_subtype"] == "file")
             .unwrap();
         assert_eq!(file["text"], "[image: shot.png]");
+        let attachment = &file["attachments"][0];
+        assert_eq!(attachment["kind"], "image");
+        assert_eq!(attachment["locator"]["part_id"], "prt_file");
+        let image =
+            super::read_attachment(&session.detail_locator, &attachment["locator"]).unwrap();
+        assert_eq!(image["media_type"], "image/png");
+        assert!(image["data_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,iVBOR"));
+        assert!(image["bytes"].as_u64().unwrap() > 0);
     }
 }

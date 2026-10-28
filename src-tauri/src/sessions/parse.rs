@@ -440,6 +440,7 @@ pub(crate) fn visit_detail(
         }
         match serde_json::from_str::<Value>(&line) {
             Ok(record) => {
+                let fingerprint = json_fingerprint(&record);
                 for (message_index, mut message) in state.accept(&record).into_iter().enumerate() {
                     attach_message_delete_ref(
                         &mut message,
@@ -447,9 +448,10 @@ pub(crate) fn visit_detail(
                             "kind": "jsonl_record",
                             "line_number": index + 1,
                             "message_index": message_index,
-                            "record_fingerprint": json_fingerprint(&record),
+                            "record_fingerprint": fingerprint.clone(),
                         }),
                     );
+                    attach_attachment_locator(&mut message, index + 1, &fingerprint);
                     visitor(&message);
                     truncate_message(&mut message);
                     messages.push(message);
@@ -586,13 +588,21 @@ pub(crate) fn conversation_messages(
             .unwrap_or(record_type);
         let synthetic = record.get("isMeta").and_then(Value::as_bool) == Some(true)
             || record.get("isSidechain").and_then(Value::as_bool) == Some(true);
-        let blocks = message
-            .get("content")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_else(|| vec![message.get("content").cloned().unwrap_or(Value::Null)]);
+        let (blocks, content_path) = match message.get("content").and_then(Value::as_array) {
+            Some(blocks) => (
+                blocks.clone(),
+                vec![
+                    Value::String("message".into()),
+                    Value::String("content".into()),
+                ],
+            ),
+            None => (
+                vec![message.get("content").cloned().unwrap_or(Value::Null)],
+                Vec::new(),
+            ),
+        };
         let mut messages = Vec::new();
-        for block in blocks {
+        for (block_index, block) in blocks.into_iter().enumerate() {
             if let Some(text) = block.as_str().filter(|text| !text.trim().is_empty()) {
                 messages.push(message_value(
                     role,
@@ -658,7 +668,12 @@ pub(crate) fn conversation_messages(
                     if block.get("is_error").and_then(Value::as_bool) == Some(true) {
                         value["is_error"] = Value::Bool(true);
                     }
-                    messages.push(value);
+                    messages.push(with_block_attachments(
+                        value,
+                        &block,
+                        &content_path,
+                        block_index,
+                    ));
                 }
                 "thinking" => {
                     if let Some(text) = extract_text(&block).filter(|text| !text.trim().is_empty())
@@ -676,13 +691,11 @@ pub(crate) fn conversation_messages(
                 _ => {
                     if let Some(text) = extract_text(&block).filter(|text| !text.trim().is_empty())
                     {
-                        messages.push(message_value(
-                            role,
-                            &text,
-                            timestamp,
-                            record_type,
-                            kind,
-                            synthetic,
+                        messages.push(with_block_attachments(
+                            message_value(role, &text, timestamp, record_type, kind, synthetic),
+                            &block,
+                            &content_path,
+                            block_index,
                         ));
                     }
                 }
@@ -832,7 +845,44 @@ pub(crate) fn generic_conversation_message(
     {
         value["is_error"] = Value::Bool(true);
     }
+    if let Some((content, mut base)) = content_with_path(record) {
+        let mut paths = Vec::new();
+        collect_image_paths(content, &mut base, &mut paths);
+        if !paths.is_empty() {
+            value["attachments"] = attachments_from_paths(paths);
+        }
+    }
     Some(value)
+}
+
+/// 定位记录里的内容数组；返回值同时给出该数组在记录中的路径，
+/// 供前端按需回读图片时原样定位。
+fn content_with_path(record: &Value) -> Option<(&Value, Vec<Value>)> {
+    if let Some(content) = record
+        .get("message")
+        .and_then(|message| message.get("content"))
+    {
+        return Some((content, vec![json!("message"), json!("content")]));
+    }
+    if let Some(content) = record
+        .get("payload")
+        .and_then(|payload| payload.get("message"))
+        .and_then(|message| message.get("content"))
+    {
+        return Some((
+            content,
+            vec![json!("payload"), json!("message"), json!("content")],
+        ));
+    }
+    if let Some(content) = record
+        .get("payload")
+        .and_then(|payload| payload.get("content"))
+    {
+        return Some((content, vec![json!("payload"), json!("content")]));
+    }
+    record
+        .get("content")
+        .map(|content| (content, vec![json!("content")]))
 }
 pub(crate) fn extract_text(value: &Value) -> Option<String> {
     match value {
@@ -880,6 +930,95 @@ pub(crate) fn content_block_placeholder(block: &Value) -> Option<String> {
             } else {
                 format!("[file] {uri}")
             })
+        }
+    }
+}
+
+/// 单条消息最多保留的图片附件数；只存定位信息，不复制图片数据。
+const MAX_IMAGE_ATTACHMENTS: usize = 8;
+
+fn is_image_block(block: &Value) -> bool {
+    matches!(
+        block["type"].as_str(),
+        Some("image" | "input_image" | "image_url")
+    ) || block.get("inlineData").is_some()
+        || block.get("inline_data").is_some()
+}
+
+fn collect_image_paths(value: &Value, path: &mut Vec<Value>, out: &mut Vec<Vec<Value>>) {
+    if out.len() >= MAX_IMAGE_ATTACHMENTS {
+        return;
+    }
+    match value {
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                path.push(json!(index));
+                collect_image_paths(item, path, out);
+                path.pop();
+            }
+        }
+        Value::Object(_) => {
+            if is_image_block(value) {
+                out.push(path.clone());
+            } else if let Some(content) = value.get("content").filter(|value| value.is_array()) {
+                path.push(json!("content"));
+                collect_image_paths(content, path, out);
+                path.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
+fn attachments_from_paths(paths: Vec<Vec<Value>>) -> Value {
+    Value::Array(
+        paths
+            .into_iter()
+            .map(|path| json!({ "kind": "image", "locator": { "path": path } }))
+            .collect(),
+    )
+}
+
+fn with_block_attachments(
+    mut message: Value,
+    block: &Value,
+    base: &[Value],
+    index: usize,
+) -> Value {
+    if base.is_empty() {
+        return message;
+    }
+    let mut path = base.to_vec();
+    path.push(json!(index));
+    let mut paths = Vec::new();
+    collect_image_paths(block, &mut path, &mut paths);
+    if !paths.is_empty() {
+        message["attachments"] = attachments_from_paths(paths);
+    }
+    message
+}
+
+/// 从内容块或数组里收集图片附件；base 是它在记录中的起始路径。
+pub(crate) fn image_attachments(value: &Value, base: &[Value]) -> Option<Value> {
+    let mut paths = Vec::new();
+    let mut path = base.to_vec();
+    collect_image_paths(value, &mut path, &mut paths);
+    (!paths.is_empty()).then(|| attachments_from_paths(paths))
+}
+
+/// 详情输出只带行号与指纹，真正读取图片由按需接口完成。
+pub(crate) fn attach_attachment_locator(
+    message: &mut Value,
+    line_number: usize,
+    fingerprint: &str,
+) {
+    let Some(attachments) = message.get_mut("attachments").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for attachment in attachments {
+        if let Some(locator) = attachment.get_mut("locator") {
+            locator["line_number"] = json!(line_number);
+            locator["record_fingerprint"] = Value::String(fingerprint.to_string());
         }
     }
 }

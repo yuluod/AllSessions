@@ -33,7 +33,7 @@ use std::{
     time::Duration,
 };
 
-use rusqlite::{Connection, OpenFlags, Row};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -253,8 +253,8 @@ fn chunked_messages(row: &MessageRow, role: &str, subtype: &str, synthetic: bool
     };
     let timestamp = chunk_timestamp(&row.payload);
     let mut texts = Vec::new();
-    let mut images = 0usize;
-    for chunk in chunks {
+    let mut images = Vec::new();
+    for (index, chunk) in chunks.iter().enumerate() {
         match chunk["content"]["type"].as_str() {
             Some("text") => {
                 if let Some(text) = chunk["content"]["text"].as_str() {
@@ -263,7 +263,7 @@ fn chunked_messages(row: &MessageRow, role: &str, subtype: &str, synthetic: bool
                     }
                 }
             }
-            Some("image") => images += 1,
+            Some("image") => images.push(index),
             _ => {}
         }
     }
@@ -278,15 +278,14 @@ fn chunked_messages(row: &MessageRow, role: &str, subtype: &str, synthetic: bool
             synthetic,
         ));
     }
-    for _ in 0..images {
-        messages.push(message_value(
-            role,
-            "[image]",
-            &timestamp,
-            "devin_chunk",
-            "image",
-            true,
-        ));
+    for index in images {
+        // 图片是用户实际发送的内容，不是隐藏上下文；按普通消息展示。
+        let mut value = message_value(role, "[image]", &timestamp, "devin_chunk", "image", false);
+        value["attachments"] = json!([{
+            "kind": "image",
+            "locator": { "position": row.position, "chunk_index": index },
+        }]);
+        messages.push(value);
     }
     messages
 }
@@ -893,6 +892,38 @@ fn cli_content_text(content: &Value) -> String {
     }
 }
 
+fn is_image_chunk(chunk: &Value) -> bool {
+    let content = chunk.get("content").unwrap_or(chunk);
+    matches!(
+        content["type"].as_str(),
+        Some("image" | "image_url" | "input_image")
+    ) || content.get("inlineData").is_some()
+}
+
+fn cli_image_attachments(node: &CliNode) -> Option<Value> {
+    let mut attachments = Vec::new();
+    if let Some(chunks) = node.chat["content"].as_array() {
+        for (index, chunk) in chunks.iter().enumerate() {
+            if is_image_chunk(chunk) {
+                attachments.push(json!({
+                    "kind": "image",
+                    "locator": { "node_id": node.node_id, "chunk_index": index },
+                }));
+            }
+        }
+    }
+    // CLI 也会把粘贴图片单独放在 images 数组里，正文只留 [Image N: path] 文本。
+    if let Some(images) = node.chat["images"].as_array() {
+        for index in 0..images.len() {
+            attachments.push(json!({
+                "kind": "image",
+                "locator": { "node_id": node.node_id, "image_index": index },
+            }));
+        }
+    }
+    (!attachments.is_empty()).then_some(Value::Array(attachments))
+}
+
 fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec<Value> {
     let chat = &node.chat;
     let timestamp = cli_timestamp(node.created_at);
@@ -917,14 +948,18 @@ fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec
             let input = chat["metadata"]["is_user_input"].as_bool() == Some(true);
             let text = cli_content_text(&chat["content"]);
             if !text.trim().is_empty() {
-                messages.push(message_value(
+                let mut value = message_value(
                     "user",
                     &text,
                     &timestamp,
                     "devin_cli",
                     if input { "text" } else { "context" },
                     !input,
-                ));
+                );
+                if let Some(attachments) = cli_image_attachments(node) {
+                    value["attachments"] = attachments;
+                }
+                messages.push(value);
             }
         }
         Some("assistant") => {
@@ -947,14 +982,12 @@ fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec
             }
             let text = cli_content_text(&chat["content"]);
             if !text.trim().is_empty() {
-                messages.push(message_value(
-                    "assistant",
-                    &text,
-                    &timestamp,
-                    "devin_cli",
-                    "text",
-                    false,
-                ));
+                let mut value =
+                    message_value("assistant", &text, &timestamp, "devin_cli", "text", false);
+                if let Some(attachments) = cli_image_attachments(node) {
+                    value["attachments"] = attachments;
+                }
+                messages.push(value);
             }
             for call in chat["tool_calls"].as_array().into_iter().flatten() {
                 let name = call["name"].as_str().unwrap_or("tool");
@@ -983,6 +1016,9 @@ fn cli_messages(node: &CliNode, tool_names: &mut HashMap<String, String>) -> Vec
             }
             let mut value =
                 message_value("tool", &text, &timestamp, "devin_cli", "tool_result", false);
+            if let Some(attachments) = cli_image_attachments(node) {
+                value["attachments"] = attachments;
+            }
             value["tool_kind"] = Value::String("tool_result".into());
             if let Some(call_id) = chat["tool_call_id"].as_str() {
                 value["tool_call_id"] = Value::String(call_id.to_string());
@@ -1216,6 +1252,126 @@ fn visit_cli_detail(
 
 pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<Value, String> {
     visit_detail(source, locator, &mut |_| {})
+}
+
+/// 读取 Devin 消息里的图片块；桌面版按 position，CLI 按 node_id。
+pub(crate) fn read_attachment(locator: &DetailLocator, request: &Value) -> Result<Value, String> {
+    let image_index = request["image_index"]
+        .as_u64()
+        .filter(|value| *value < 1_000)
+        .map(|value| value as usize);
+    let chunk_index = request["chunk_index"]
+        .as_u64()
+        .filter(|value| *value < 10_000)
+        .map(|value| value as usize);
+    if image_index.is_none() && chunk_index.is_none() {
+        return Err("图片定位信息无效".into());
+    }
+    let connection = open_database(&locator.database_path)?;
+    let root: Value = if locator.cli {
+        validate_cli_tables(&connection)?;
+        let node_id = request["node_id"]
+            .as_i64()
+            .ok_or_else(|| "图片定位信息无效".to_string())?;
+        let raw: Option<String> = connection
+            .query_row(
+                "select chat_message from message_nodes where session_id = ?1 and node_id = ?2",
+                params![locator.session_id, node_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("读取 Devin 消息失败：{error}"))?;
+        serde_json::from_str(&raw.ok_or_else(|| "图片所在消息已不存在，请刷新会话".to_string())?)
+            .map_err(|error| format!("Devin 消息格式无效：{error}"))?
+    } else {
+        validate_tables(&connection)?;
+        let position = request["position"]
+            .as_i64()
+            .ok_or_else(|| "图片定位信息无效".to_string())?;
+        let raw: Option<String> = connection
+            .query_row(
+                "select payload from messages where position = ?1",
+                [position],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("读取 Devin 消息失败：{error}"))?;
+        serde_json::from_str(&raw.ok_or_else(|| "图片所在消息已不存在，请刷新会话".to_string())?)
+            .map_err(|error| format!("Devin 消息格式无效：{error}"))?
+    };
+    if let Some(index) = image_index {
+        let image = root["images"]
+            .get(index)
+            .ok_or_else(|| "图片所在内容已变化，请刷新会话".to_string())?;
+        return image_from_entry(image);
+    }
+    let chunk = root["content"]
+        .get(chunk_index.unwrap_or_default())
+        .ok_or_else(|| "图片所在内容已变化，请刷新会话".to_string())?;
+    let content = chunk.get("content").unwrap_or(chunk);
+    let (data, media_type) = if content["type"].as_str() == Some("image") {
+        let data = content["data"]
+            .as_str()
+            .or_else(|| content["source"]["data"].as_str())
+            .ok_or_else(|| "图片缺少内嵌数据".to_string())?;
+        let media_type = content["mimeType"]
+            .as_str()
+            .or_else(|| content["mime_type"].as_str())
+            .or_else(|| content["source"]["media_type"].as_str());
+        (data.to_string(), media_type)
+    } else if matches!(content["type"].as_str(), Some("image_url" | "input_image")) {
+        let url = content["image_url"]
+            .as_str()
+            .or_else(|| content["image_url"]["url"].as_str())
+            .or_else(|| content["url"].as_str())
+            .ok_or_else(|| "图片缺少地址".to_string())?;
+        (url.to_string(), None)
+    } else {
+        let inline = content
+            .get("inlineData")
+            .or_else(|| content.get("inline_data"))
+            .ok_or_else(|| "该附件不是图片".to_string())?;
+        let data = inline["data"]
+            .as_str()
+            .ok_or_else(|| "图片缺少内嵌数据".to_string())?;
+        let media_type = inline["mimeType"]
+            .as_str()
+            .or_else(|| inline["mime_type"].as_str());
+        (data.to_string(), media_type)
+    };
+    super::attachment::image_value_from_data(
+        &data,
+        media_type.or(Some("image/png")),
+        super::attachment::MAX_IMAGE_BYTES,
+    )
+}
+
+/// CLI 的 `images` 数组带 base64_data 与 source_path，二者取其一。
+fn image_from_entry(image: &Value) -> Result<Value, String> {
+    let media_type = image["mime_type"]
+        .as_str()
+        .or_else(|| image["mimeType"].as_str());
+    if let Some(data) = image["base64_data"]
+        .as_str()
+        .filter(|value| !value.trim().is_empty())
+    {
+        return super::attachment::image_value_from_data(
+            data,
+            media_type,
+            super::attachment::MAX_IMAGE_BYTES,
+        );
+    }
+    if let Some(path) = image["source_path"]
+        .as_str()
+        .filter(|value| !value.trim().is_empty())
+    {
+        return super::attachment::image_value_from_path(
+            Path::new(path),
+            super::attachment::MAX_IMAGE_BYTES,
+            media_type,
+        );
+    }
+    Err("图片缺少内嵌数据".into())
 }
 
 pub(super) fn visit_detail(
@@ -1570,9 +1726,20 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("[done] 后端：刷新索引"));
-        // 图片以合成占位消息出现，不携带 base64。
+        // 图片以独立消息出现，不携带 base64。
         let image = find("image");
         assert_eq!(image["text"], "[image]");
+        assert_eq!(image["synthetic_context"], false);
+        let attachment = &image["attachments"][0];
+        assert_eq!(attachment["kind"], "image");
+        assert_eq!(attachment["locator"]["position"], 0);
+        assert_eq!(attachment["locator"]["chunk_index"], 1);
+        let payload =
+            super::read_attachment(&session.detail_locator, &attachment["locator"]).unwrap();
+        assert!(payload["data_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,iVBOR"));
         assert!(messages
             .iter()
             .all(|message| !message["text"].as_str().unwrap_or("").contains("iVBOR")));
@@ -1940,6 +2107,87 @@ mod tests {
         for (path, id, error) in &errors {
             eprintln!("  错误 {} · {} · {}", path.display(), id, error);
         }
+    }
+
+    #[test]
+    fn cli_图片按需读取() {
+        let directory = tempdir().unwrap();
+        let database = directory.path().join("sessions.db");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "create table sessions (
+                    id text primary key, working_directory text not null,
+                    backend_type text not null, model text not null,
+                    agent_mode text not null, created_at integer not null,
+                    last_activity_at integer not null, title text,
+                    main_chain_id integer, hidden integer not null default 0);
+                 create table message_nodes (
+                    row_id integer primary key autoincrement,
+                    session_id text not null, node_id integer not null,
+                    parent_node_id integer, chat_message text not null,
+                    created_at integer not null, metadata text,
+                    unique(session_id, node_id));",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "insert into sessions values ('img-cli','/work/cli','windsurf','swe-2-max','smart',1789450000,1789450100,'图片会话',0,0)",
+                [],
+            )
+            .unwrap();
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=";
+        connection
+            .execute(
+                "insert into message_nodes (session_id, node_id, parent_node_id, chat_message, created_at, metadata) values (?1, 0, null, ?2, 1789450001, null)",
+                params![
+                    "img-cli",
+                    json!({
+                        "role":"user",
+                        "content":[
+                            {"type":"text","text":"看图"},
+                            {"type":"image","data":png,"mimeType":"image/png"}
+                        ],
+                        "images":[
+                            {"base64_data":png,"mime_type":"image/png","source_path":"/tmp/missing.png","width":1,"height":1}
+                        ],
+                        "metadata":{"is_user_input":true}
+                    })
+                    .to_string()
+                ],
+            )
+            .unwrap();
+        drop(connection);
+        let parsed = parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap();
+        let session = parsed
+            .sessions
+            .into_iter()
+            .find(|session| session.summary["id"] == "img-cli")
+            .unwrap();
+        let detail = parse_detail(&source(directory.path()), &session.detail_locator).unwrap();
+        let message = detail["conversation_messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message["source_subtype"] == "text")
+            .unwrap();
+        assert_eq!(message["text"], "看图\n[image]");
+        let attachments = message["attachments"].as_array().unwrap();
+        assert_eq!(attachments.len(), 2);
+        let chunk = &attachments[0];
+        assert_eq!(chunk["locator"]["node_id"], 0);
+        assert_eq!(chunk["locator"]["chunk_index"], 1);
+        let payload = super::read_attachment(&session.detail_locator, &chunk["locator"]).unwrap();
+        assert_eq!(payload["media_type"], "image/png");
+        assert!(payload["data_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,iVBOR"));
+        // CLI 的 images 数组单独定位，优先用 base64_data 而不是已失效的 source_path。
+        let entry = &attachments[1];
+        assert_eq!(entry["locator"]["image_index"], 0);
+        let payload = super::read_attachment(&session.detail_locator, &entry["locator"]).unwrap();
+        assert_eq!(payload["media_type"], "image/png");
     }
 
     #[test]

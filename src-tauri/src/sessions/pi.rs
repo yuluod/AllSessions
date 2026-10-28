@@ -8,9 +8,10 @@ use std::{
 use serde_json::{json, Value};
 
 use super::{
-    append_limited, attach_message_key, compact, error_text, extract_text, message_value,
-    summary_search_text, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
-    DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    append_limited, attach_attachment_locator, attach_message_key, compact, error_text,
+    extract_text, image_attachments, json_fingerprint, message_value, summary_search_text,
+    truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+    SEARCH_TEXT_LIMIT,
 };
 
 #[derive(Default)]
@@ -120,7 +121,7 @@ fn assistant_messages(message: &Value, timestamp: &str) -> Vec<Value> {
         .cloned()
         .unwrap_or_else(|| vec![message["content"].clone()]);
     let mut messages = Vec::new();
-    for block in blocks {
+    for (block_index, block) in blocks.into_iter().enumerate() {
         if let Some(text) = block.as_str().filter(|value| !value.trim().is_empty()) {
             messages.push(message_value(
                 "assistant",
@@ -180,14 +181,17 @@ fn assistant_messages(message: &Value, timestamp: &str) -> Vec<Value> {
                     ));
                 }
             }
-            "image" => messages.push(message_value(
-                "assistant",
-                "[image]",
-                timestamp,
-                "message",
-                "image",
-                false,
-            )),
+            "image" => {
+                let mut value =
+                    message_value("assistant", "[image]", timestamp, "message", "image", false);
+                if let Some(attachments) = image_attachments(
+                    &block,
+                    &[json!("message"), json!("content"), json!(block_index)],
+                ) {
+                    value["attachments"] = attachments;
+                }
+                messages.push(value);
+            }
             _ => {
                 let text = content_text(&block);
                 if !text.trim().is_empty() {
@@ -216,7 +220,17 @@ fn record_messages(record: &Value) -> Vec<Value> {
                 "user" => {
                     let text = content_text(&message["content"]);
                     (!text.trim().is_empty())
-                        .then(|| message_value("user", &text, timestamp, "message", "text", false))
+                        .then(|| {
+                            let mut value =
+                                message_value("user", &text, timestamp, "message", "text", false);
+                            if let Some(attachments) = image_attachments(
+                                &message["content"],
+                                &[json!("message"), json!("content")],
+                            ) {
+                                value["attachments"] = attachments;
+                            }
+                            value
+                        })
                         .into_iter()
                         .collect()
                 }
@@ -232,6 +246,12 @@ fn record_messages(record: &Value) -> Vec<Value> {
                         .unwrap_or("tool_result");
                     let mut value =
                         message_value("tool", &text, timestamp, "message", "tool_result", false);
+                    if let Some(attachments) = image_attachments(
+                        &message["content"],
+                        &[json!("message"), json!("content")],
+                    ) {
+                        value["attachments"] = attachments;
+                    }
                     value["tool_name"] = Value::String(name.to_string());
                     value["tool_kind"] = Value::String("tool_result".into());
                     if let Some(id) = message["toolCallId"]
@@ -274,14 +294,21 @@ fn record_messages(record: &Value) -> Vec<Value> {
                     let text = content_text(&message["content"]);
                     (!text.trim().is_empty())
                         .then(|| {
-                            message_value(
+                            let mut value = message_value(
                                 "system",
                                 &text,
                                 timestamp,
                                 "message",
                                 message["customType"].as_str().unwrap_or("custom"),
                                 true,
-                            )
+                            );
+                            if let Some(attachments) = image_attachments(
+                                &message["content"],
+                                &[json!("message"), json!("content")],
+                            ) {
+                                value["attachments"] = attachments;
+                            }
+                            value
                         })
                         .into_iter()
                         .collect()
@@ -309,14 +336,20 @@ fn record_messages(record: &Value) -> Vec<Value> {
             let text = content_text(&record["content"]);
             (!text.trim().is_empty())
                 .then(|| {
-                    message_value(
+                    let mut value = message_value(
                         "system",
                         &text,
                         timestamp,
                         "custom_message",
                         record["customType"].as_str().unwrap_or("custom"),
                         true,
-                    )
+                    );
+                    if let Some(attachments) =
+                        image_attachments(&record["content"], &[json!("content")])
+                    {
+                        value["attachments"] = attachments;
+                    }
+                    value
                 })
                 .into_iter()
                 .collect()
@@ -412,6 +445,7 @@ pub(super) fn visit_detail(
         }
         match serde_json::from_str::<Value>(&line) {
             Ok(record) => {
+                let fingerprint = json_fingerprint(&record);
                 let active = !metadata.tree
                     || record["type"].as_str() == Some("session")
                     || record["id"]
@@ -430,6 +464,7 @@ pub(super) fn visit_detail(
                                 "message_index": message_index,
                             }),
                         );
+                        attach_attachment_locator(&mut message, index + 1, &fingerprint);
                         visitor(&message);
                         truncate_message(&mut message);
                         messages.push(message);
@@ -708,6 +743,10 @@ mod tests {
         let messages = super::record_messages(&record);
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["text"], "看这张图\n[image]");
+        assert_eq!(
+            messages[0]["attachments"][0]["locator"]["path"],
+            json!(["message", "content", 1])
+        );
     }
 
     #[test]

@@ -8,12 +8,15 @@ const { searchPattern, bindMatchNavigation } =
 const { regexMatchRanges } = await import("../public/search-highlight.js");
 
 // 以真实线程运行同一份浏览器 Worker，验证超时能终止正在回溯的表达式。
-function createHighlightWorker() {
+async function createHighlightWorker() {
   const worker = new Worker(
     `const { parentPort, workerData } = require("node:worker_threads");
      globalThis.self = { postMessage: data => parentPort.postMessage(data) };
-     const ready = import(workerData);
-     parentPort.on("message", data => ready.then(() => self.onmessage({ data })));`,
+     const ready = import(workerData).then(() => parentPort.postMessage({ ready: true }));
+     parentPort.on("message", data => ready.then(() => {
+       parentPort.postMessage({ started: true });
+       self.onmessage({ data });
+     }));`,
     {
       eval: true,
       workerData: new URL(
@@ -22,13 +25,48 @@ function createHighlightWorker() {
       ).href,
     }
   );
+  // Windows CI 的线程启动与模块加载可能较慢，完成预热后再计量匹配超时。
+  await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      worker.removeListener("error", fail);
+      worker.removeListener("exit", exited);
+      worker.removeListener("message", ready);
+    };
+    const fail = (error) => {
+      cleanup();
+      void worker.terminate();
+      reject(error);
+    };
+    const exited = (code) => fail(new Error(`高亮线程在就绪前退出：${code}`));
+    const ready = () => {
+      cleanup();
+      resolve();
+    };
+    const timer = setTimeout(() => fail(new Error("高亮线程启动超时")), 15_000);
+    worker.once("error", fail);
+    worker.once("exit", exited);
+    worker.once("message", ready);
+  });
   const adapter = {
+    started: false,
     postMessage: (data) => worker.postMessage(data),
     terminate: () => void worker.terminate(),
   };
-  worker.on("message", (data) => adapter.onmessage?.({ data }));
+  worker.on("message", (data) => {
+    if (data.started) adapter.started = true;
+    else adapter.onmessage?.({ data });
+  });
   worker.on("error", () => adapter.onerror?.({ preventDefault() {} }));
   return adapter;
+}
+
+async function matchInWorker(texts, query) {
+  const worker = await createHighlightWorker();
+  return regexMatchRanges(texts, query, {
+    timeoutMs: 10_000,
+    createWorker: () => worker,
+  });
 }
 
 test("搜索高亮按字面量处理代码符号和中文并保留大小写", () => {
@@ -45,26 +83,26 @@ test("搜索高亮按字面量处理代码符号和中文并保留大小写", ()
 
 test("正则高亮在线程中返回区间并明确报告无效表达式", async () => {
   const texts = ["客服热线 400-1234", "aXb", "无匹配"];
-  const options = { createWorker: createHighlightWorker };
-  assert.deepEqual(
-    await regexMatchRanges(texts, "\\d{3}-\\d{4}|a.b", options),
-    [[[5, 13]], [[0, 3]], []]
-  );
+  assert.deepEqual(await matchInWorker(texts, "\\d{3}-\\d{4}|a.b"), [
+    [[5, 13]],
+    [[0, 3]],
+    [],
+  ]);
   assert.equal("aXb".match(searchPattern("a.b")), null);
-  await assert.rejects(regexMatchRanges(texts, "(未闭合", options));
-  assert.deepEqual(await regexMatchRanges(["你好"], "(?=.)", options), [[]]);
+  await assert.rejects(matchInWorker(texts, "(未闭合"), /失败|failed/);
+  assert.deepEqual(await matchInWorker(["你好"], "(?=.)"), [[]]);
 });
 
 test("灾难性回溯会超时终止且主线程仍响应", async () => {
   let terminated = false;
   let responsive = false;
+  const worker = await createHighlightWorker();
   const pending = regexMatchRanges(
     ["a".repeat(32) + "! needle"],
     "(a+)+$|needle",
     {
       timeoutMs: 250,
       createWorker: () => {
-        const worker = createHighlightWorker();
         return {
           set onmessage(value) {
             worker.onmessage = value;
@@ -90,21 +128,25 @@ test("灾难性回溯会超时终止且主线程仍响应", async () => {
   await assert.rejects(pending, /超时|timed out/);
   assert.equal(responsive, true);
   assert.equal(terminated, true);
+  assert.equal(
+    worker.started,
+    true,
+    "必须实际开始匹配，不能仅因线程启动慢而超时"
+  );
   await heartbeat;
 });
 
 test("切换会话可以取消正则任务，过多匹配明确报错", async () => {
   const controller = new AbortController();
+  const worker = await createHighlightWorker();
   const pending = regexMatchRanges(["a".repeat(32) + "!"], "(a+)+$", {
-    createWorker: createHighlightWorker,
+    createWorker: () => worker,
     signal: controller.signal,
   });
   controller.abort();
   await assert.rejects(pending, { name: "AbortError" });
   await assert.rejects(
-    regexMatchRanges(["a".repeat(10_001)], "a", {
-      createWorker: createHighlightWorker,
-    }),
+    matchInWorker(["a".repeat(10_001)], "a"),
     /过多|Too many/
   );
 });

@@ -11,6 +11,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/claude_cowork.rs`：Cowork 本地任务发现、Claude 转录复用及 Desktop 元数据关联；来源只读。
 - `sessions/scan.rs`：全量/增量元数据刷新与搜索索引重建。
 - `sessions/query.rs`：列表、搜索计划（锁外全文查询）、搜索上下文与详情读取。
+- `sessions/attachment.rs`：按详情定位信息回读单张内嵌或本地图片，校验记录指纹、媒体类型与体积上限。
 - `sessions/mutation.rs`：永久删除、原子写回与备份路径。
 - `sessions/stats.rs`：筛选 facets 与按 Agent/日期/来源统计。
 - `sessions/helpers.rs`：文本截断、筛选、分页、统计聚合等跨模块小工具。
@@ -62,6 +63,20 @@ OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 
 来源列表会保留尚不存在的声明目录，以便后续刷新发现新创建的数据；监听器会回溯到最近的现有父目录，但不会监听用户主目录或文件系统根。设置对话框保存根目录后会重建来源并重挂监听，无需重启。每个 Claude 根目录会同时注册 `projects` 与 `sessions` 布局；旧版 `history.jsonl` 只会在解析对应旧版会话详情时作为补充数据读取，它本身不是独立监听目标。
 
 同一类来源可声明多个根。根列表按 `config.json` 设置（设置对话框实时生效）→ `*_SESSIONS_DIR` 环境变量（启动时读取一次，路径列表，支持 `~` 展开）→ 系统默认路径的顺序解析，逐来源独立判定。多根按声明顺序去重：同一物理文件只索引一次（归属首个前缀匹配的根）；相同 `${source_kind}:${id}` 出现在多个根时保留首个根的记录，`_key` 格式保持稳定以兼容前端已保存状态。
+
+## 图片附件
+
+图片正文统一保留 `[image]` 占位，base64 不进入 `conversation_messages[].text`、搜索文本或详情缓存。详情消息可额外携带 `attachments`，每项只有 `kind` 与 `locator`（JSONL 类来源使用行号、记录指纹与记录内路径；DeepSeek 使用行号、事件序号与路径；ZCode 使用 part id；Devin 使用 position/node_id 与块或图片下标），不复制图片数据。
+
+前端在附件进入视口时调用 `POST /api/sessions/attachment`。后端按来源回读：JSONL 只读取定位行并校验指纹；ZCode 只读 part 记录并从 artifacts 目录取副本，副本缺失时才回退到原始路径；Devin 只查对应消息并取出指定图片块。各来源都只允许 PNG/JPEG/WebP/GIF，解码后上限 8 MB，拒绝 SVG；只读取会话自身的附件副本或内嵌数据，不加载远程 URL。原文变化或文件缺失时返回明确错误，不回退到过期内容。
+
+当前覆盖：通用 JSONL（Claude Code、Codex）、Pi/Oh My Pi、Kimi、ZCode、Devin 桌面/CLI、DeepSeek Harness。
+
+- ZCode 优先读取 `~/.zcode/cli/artifacts/<session>/` 下的 artifact 副本（data URL 文本或二进制图片），再回退到 part 记录的原始路径。
+- Devin 桌面版按消息 `position`、CLI 按 `node_id` 定位图片块；CLI 正文里的 `[Image N: path]` 对应同一条消息的 `images` 数组，优先读取其中的 `base64_data`，缺失时才回退到 `source_path`。
+- DeepSeek 优先读取 `~/.dsh/attachments/v1/objects/<xx>/<attachmentId>` 原件；原件缺失时用 `llm-deepseek/files-v3.json` 把附件 ID 映射到 `cache/attachments/request-images` 中的处理后副本。
+
+Cursor、GitHub Copilot、VS Code Copilot、Claude Cowork 的本机数据已检查，没有图片内容；Gemini、Grok、OpenCode/Kilo、Hermes 尚未接入图片读取，仍只显示占位。后续接入时复用同一 `attachments` 契约与按需接口，不在详情里内联图片。
 
 ## 来源文档
 

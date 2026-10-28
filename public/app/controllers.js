@@ -26,6 +26,11 @@ export const conversationView = createConversationView({
   onRequestDelete: (message) => openDeleteDialog({ kind: "message", message }),
   onRestoreMessage: (message) => restoreRemovedMessage(message),
   onHighlightError: showError,
+  onLoadAttachment: (sessionKey, locator) =>
+    fetchJson("/api/sessions/attachment", {
+      method: "POST",
+      body: { sessionKey, locator },
+    }),
 });
 export const settingsController = createSettingsController({
   elements,

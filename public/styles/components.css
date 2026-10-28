@@ -351,8 +351,48 @@
 
 .settings-dialog::backdrop,
 .delete-dialog::backdrop,
-.update-dialog::backdrop {
+.update-dialog::backdrop,
+.image-preview-dialog::backdrop {
   background: color-mix(in srgb, var(--bg) 68%, transparent);
+}
+
+.image-preview-dialog {
+  position: relative;
+  max-width: 92vw;
+  max-height: 92dvh;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.image-preview-dialog[open] {
+  display: grid;
+  place-items: center;
+}
+
+.image-preview-dialog img {
+  display: block;
+  max-width: 92vw;
+  max-height: 92dvh;
+  object-fit: contain;
+}
+
+.image-preview-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  background: var(--surface-subtle);
+  cursor: pointer;
 }
 
 .delete-dialog-close-button,

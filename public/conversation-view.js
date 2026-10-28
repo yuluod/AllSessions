@@ -1,4 +1,8 @@
 import { t } from "./i18n.js";
+import {
+  renderAttachments,
+  resetAttachmentObservers,
+} from "./attachment-view.js";
 import { markdownToPlainText, renderMarkdown } from "./markdown.js";
 import {
   compactText,
@@ -68,6 +72,7 @@ export function createConversationView({
   onRequestDelete,
   onRestoreMessage,
   onHighlightError,
+  onLoadAttachment,
 }) {
   let highlightController = null;
   function filtered(messages) {
@@ -317,6 +322,7 @@ export function createConversationView({
 
   function renderConversation(messages) {
     highlightController?.abort();
+    resetAttachmentObservers();
     highlightController = new AbortController();
     const { signal } = highlightController;
     elements.conversationList.replaceChildren();
@@ -374,6 +380,13 @@ export function createConversationView({
       const messageContent = fragment.querySelector(".message-text");
       messageContent.id = `message-content-${message._origIdx + 1}`;
       renderMarkdown(messageContent, messageText);
+      const attachmentsHost = fragment.querySelector(".message-attachments");
+      if (attachmentsHost) {
+        renderAttachments(attachmentsHost, message.attachments, {
+          sessionKey: state.currentDetail?.summary?._key,
+          loadAttachment: onLoadAttachment,
+        });
+      }
       messageContents.push(messageContent);
       if (!state.searchRegex)
         highlightMatches(messageContent, state.detailQuery);

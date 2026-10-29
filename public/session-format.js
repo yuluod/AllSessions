@@ -8,6 +8,14 @@ export function formatCount(value) {
   return new Intl.NumberFormat(locale()).format(Number(value || 0));
 }
 
+// 各来源的默认会话形态：普通会话为 cli，Cursor 为 ide。
+// 列表里逐行重复没有信息量，只保留 subagent/desktop 这类有区分度的值。
+const DEFAULT_SESSION_SOURCES = new Set(["cli", "ide"]);
+
+export function isDefaultSessionSource(source) {
+  return DEFAULT_SESSION_SOURCES.has(source);
+}
+
 export function formatTimestamp(value) {
   if (!value) return t("unknownTime");
 

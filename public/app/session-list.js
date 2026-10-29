@@ -6,6 +6,7 @@ import {
   formatDateGroup,
   formatListTimestamp,
   formatTimestamp,
+  isDefaultSessionSource,
   providerLabel,
   sessionTimestamp,
 } from "../session-format.js";
@@ -204,12 +205,11 @@ export function appendSessionItems(sessions) {
     previewEl.classList.toggle("hidden", !preview);
     cwdMain.classList.remove("hidden");
     if (cwdPath) cwdPath.classList.toggle("hidden", !pathParts.path);
-    // cli 是普通会话的默认值，逐行重复没有信息量；只保留 subagent/desktop 等区分。
+    // cli / ide 是来源的默认形态，逐行重复没有信息量；只保留 subagent/desktop 等区分。
     const sourceEl = button.querySelector(".session-source");
-    const sourceText =
-      session.source === "cli"
-        ? ""
-        : session.source || session.originator || t("unknownSource");
+    const sourceText = isDefaultSessionSource(session.source)
+      ? ""
+      : session.source || session.originator || t("unknownSource");
     sourceEl.textContent = sourceText;
     sourceEl.classList.toggle("hidden", !sourceText);
     const sourceKindEl = button.querySelector(".session-source-kind");

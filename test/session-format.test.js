@@ -6,8 +6,12 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { formatListTimestamp, sessionTimestamp, providerLabel } =
-  await import("../public/session-format.js");
+const {
+  formatListTimestamp,
+  isDefaultSessionSource,
+  sessionTimestamp,
+  providerLabel,
+} = await import("../public/session-format.js");
 
 test("Provider 优先显示服务商，缺失时回退模型名且不修改数据", () => {
   assert.equal(
@@ -51,6 +55,15 @@ test("会话列表优先展示最近活动时间", () => {
     sessionTimestamp({ timestamp: "2026-08-20T12:53:50Z" }),
     "2026-08-20T12:53:50Z"
   );
+});
+
+test("默认来源形态不在会话列表重复展示", () => {
+  assert.equal(isDefaultSessionSource("cli"), true);
+  assert.equal(isDefaultSessionSource("ide"), true);
+  assert.equal(isDefaultSessionSource("subagent"), false);
+  assert.equal(isDefaultSessionSource("desktop"), false);
+  assert.equal(isDefaultSessionSource(""), false);
+  assert.equal(isDefaultSessionSource(undefined), false);
 });
 
 test("列表当天显示时间，跨日期与跨年份补充日期", () => {

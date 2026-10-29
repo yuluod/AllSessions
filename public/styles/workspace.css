@@ -483,6 +483,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 展开来源或项目后出现滚动条时不再挤占内容宽度，右侧计数保持原位。 */
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
   overflow-x: hidden;

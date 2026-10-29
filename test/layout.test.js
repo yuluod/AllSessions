@@ -22,6 +22,13 @@ test("项目列表随侧栏统一滚动，收起按钮保留在列表之后", as
   assert.doesNotMatch(app, /button.title = project.path/);
 });
 
+test("侧栏滚动条出现时不再挤占内容宽度", async () => {
+  const css = await readProjectFile("public/styles/workspace.css");
+  const railScroll = css.match(/\n\.rail-scroll\s*\{([^}]*)\}/)[1];
+  // 展开来源或项目后滚动条会随内容出现；预留 gutter 才能让右侧计数不位移。
+  assert.match(railScroll, /scrollbar-gutter:\s*stable;/);
+});
+
 test("局部扫描异常单独展示且保留来源详情入口", async () => {
   const app = await readProjectFile("public/app.js");
   const html = await readProjectFile("public/index.html");

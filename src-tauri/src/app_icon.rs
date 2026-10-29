@@ -98,7 +98,7 @@ fn set_dock_icon(id: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{tray_icon, ICON_AMBER, ICON_DEFAULT};
+    use super::{ICON_AMBER, ICON_DEFAULT, tray_icon};
 
     #[test]
     fn 托盘图标变体可解码且尺寸适合_windows() {
@@ -110,12 +110,13 @@ mod tests {
                 icon.rgba().len(),
                 (icon.width() * icon.height() * 4) as usize
             );
-            assert!(icon
-                .rgba()
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .any(|pixel| pixel[3] > 0));
+            assert!(
+                icon.rgba()
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|pixel| pixel[3] > 0)
+            );
             assert_eq!(icon.rgba()[3], 0);
         }
     }

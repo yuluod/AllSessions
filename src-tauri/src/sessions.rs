@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::cache::IndexCache;
 
@@ -49,10 +49,10 @@ pub(crate) use mutation::replace_file_contents;
 #[cfg(test)]
 pub(crate) use mutation::{delete_jsonl_message, delete_legacy_session};
 pub(crate) use parse::{
-    append_limited, attach_attachment_locator, attach_message_delete_ref, attach_message_key,
-    content_block_placeholder, extract_text, image_attachments, is_context_role, json_fingerprint,
-    message_value, search_text_from_detail, summary_search_text, truncate_message, DetailCache,
-    HeadTail, ParseState,
+    DetailCache, HeadTail, ParseState, append_limited, attach_attachment_locator,
+    attach_message_delete_ref, attach_message_key, content_block_placeholder, extract_text,
+    image_attachments, is_context_role, json_fingerprint, message_value, search_text_from_detail,
+    summary_search_text, truncate_message,
 };
 #[cfg(test)]
 pub(crate) use parse::{generic_conversation_message, parse_detail, parse_summary};
@@ -313,14 +313,16 @@ impl SessionStore {
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());
-            entry["available_roots"] = json!(roots
-                .iter()
-                .filter(|root| match kind {
-                    "opencode" | "kilo" | "zcode" => root.is_file(),
-                    "cursor" => root.is_file() || root.is_dir(),
-                    _ => root.is_dir(),
-                })
-                .count());
+            entry["available_roots"] = json!(
+                roots
+                    .iter()
+                    .filter(|root| match kind {
+                        "opencode" | "kilo" | "zcode" => root.is_file(),
+                        "cursor" => root.is_file() || root.is_dir(),
+                        _ => root.is_dir(),
+                    })
+                    .count()
+            );
         }
         for record in self.records.values() {
             let kind = diagnostic_source_kind(record.source.kind);

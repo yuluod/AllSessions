@@ -7,13 +7,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use walkdir::WalkDir;
 
 use super::{
-    append_limited, attach_message_key, compact_title, error_text, message_value, mixed_stamp,
-    summary_search_text, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
-    DETAIL_MESSAGE_LIMIT,
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, Source, append_limited,
+    attach_message_key, compact_title, error_text, message_value, mixed_stamp, summary_search_text,
+    truncate_message,
 };
 
 /// 事件文件与相邻 summary.json 的复合指纹。

@@ -6,14 +6,14 @@ use std::{
 };
 
 use chrono::{SecondsFormat, TimeZone, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use walkdir::WalkDir;
 
 use super::{
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, SEARCH_TEXT_LIMIT, Source,
     append_limited, attach_attachment_locator, attach_message_key, compact, error_text,
     extract_text, image_attachments, json_fingerprint, message_value, mixed_stamp,
-    summary_search_text, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
-    DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    summary_search_text, truncate_message,
 };
 
 mod modern;
@@ -411,18 +411,16 @@ impl<'a> MessageCollector<'a> {
                 message["source_subtype"].as_str(),
                 Some("text" | "thinking")
             );
-        if mergeable {
-            if let Some((pending, _)) = self.pending.as_mut() {
-                if pending["role"] == message["role"]
-                    && pending["source_subtype"] == message["source_subtype"]
-                {
-                    let incoming = message["text"].as_str().unwrap_or_default();
-                    if let Value::String(text) = &mut pending["text"] {
-                        text.push_str(incoming);
-                    }
-                    return;
-                }
+        if mergeable
+            && let Some((pending, _)) = self.pending.as_mut()
+            && pending["role"] == message["role"]
+            && pending["source_subtype"] == message["source_subtype"]
+        {
+            let incoming = message["text"].as_str().unwrap_or_default();
+            if let Value::String(text) = &mut pending["text"] {
+                text.push_str(incoming);
             }
+            return;
         }
         self.flush();
         self.pending = Some((message, line_number));
@@ -552,14 +550,12 @@ fn build_summary(path: &Path, source: &Source, state: &ParseState) -> Result<Val
     if modern_session_dir(path).is_some()
         && !state.hidden
         && metadata["custom"]["imported_from_kimi_cli"] == true
-    {
-        if let Some(legacy_id) = metadata["custom"]["kimi_cli_session_id"]
+        && let Some(legacy_id) = metadata["custom"]["kimi_cli_session_id"]
             .as_str()
             .filter(|id| !id.is_empty())
-        {
-            // 沿用旧工作区键以保留收藏和备注；恢复命令仍使用新版真实 id。
-            summary["_key"] = json!(format!("{}:{legacy_id}", source.kind));
-        }
+    {
+        // 沿用旧工作区键以保留收藏和备注；恢复命令仍使用新版真实 id。
+        summary["_key"] = json!(format!("{}:{legacy_id}", source.kind));
     }
     summary["source_read_only"] = Value::Bool(true);
     Ok(summary)
@@ -592,13 +588,12 @@ pub(super) fn visit_detail(
             "source_subtype": "truncation",
             "is_truncation_marker": true,
         }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let (mut event_values, omitted_events, total_events) =
         events.expect("详情解析必须收集原始事件").finish(json!({
@@ -607,13 +602,12 @@ pub(super) fn visit_detail(
             "type": "viewer_truncation",
             "payload": { "omitted_events": 0 },
         }));
-    if omitted_events > 0 {
-        if let Some(marker) = event_values
+    if omitted_events > 0
+        && let Some(marker) = event_values
             .iter_mut()
             .find(|value| value["type"] == "viewer_truncation")
-        {
-            marker["payload"]["omitted_events"] = json!(omitted_events);
-        }
+    {
+        marker["payload"]["omitted_events"] = json!(omitted_events);
     }
     let mut summary = build_summary(path, source, &state)?;
     if omitted_messages + omitted_events > 0 {
@@ -707,12 +701,16 @@ mod tests {
         assert_eq!(messages[5]["text"], "命令执行失败");
         assert_eq!(messages[5]["tool_name"], "Shell");
         assert_eq!(messages[5]["is_error"], true);
-        assert!(messages
-            .iter()
-            .all(|message| message["_delete_ref"].is_null()));
-        assert!(messages
-            .iter()
-            .all(|message| message["_message_key"].is_string()));
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["_delete_ref"].is_null())
+        );
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["_message_key"].is_string())
+        );
     }
 
     #[test]

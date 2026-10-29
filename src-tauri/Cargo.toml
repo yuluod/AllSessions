@@ -5,7 +5,7 @@ description = "本地 AI 会话工作台"
 authors = ["yuluo"]
 license = "Apache-2.0"
 repository = "https://github.com/yuluod/AllSessions"
-edition = "2021"
+edition = "2024"
 rust-version = "1.99"
 
 [lib]

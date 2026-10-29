@@ -7,13 +7,13 @@ use std::{
 
 use rusqlite::{Connection, OpenFlags, Row};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::{
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, SEARCH_TEXT_LIMIT, Source,
     append_limited, attach_message_key, message_value, summary_search_text, timestamp_from_millis,
-    truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
-    SEARCH_TEXT_LIMIT,
+    truncate_message,
 };
 use crate::cache::IndexCache;
 
@@ -416,10 +416,10 @@ fn initial_state(path: &Path, row: &SessionRow, source: &Source) -> Result<Parse
 }
 
 fn accept_part(state: &mut ParseState, message: &MessageRow, part: &PartRow) -> Vec<Value> {
-    if state.provider == "unknown" {
-        if let Some(provider) = message_provider(&message.data) {
-            state.provider = provider;
-        }
+    if state.provider == "unknown"
+        && let Some(provider) = message_provider(&message.data)
+    {
+        state.provider = provider;
     }
     state.event_count += 1;
     part_messages(message, part, &state.originator)
@@ -496,16 +496,16 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
     // 指纹必须在解析前计算：解析期间库被写入时，用解析后的新指纹配
     // 解析前的旧内容会把过期数据钉死在缓存里，直到库再次变化。
     let stamp = source_stamp(&path);
-    if let Some(stamp) = &stamp {
-        if let Some(cached) = cached_at(source, cache, &path, stamp) {
-            return Ok(cached);
-        }
+    if let Some(stamp) = &stamp
+        && let Some(cached) = cached_at(source, cache, &path, stamp)
+    {
+        return Ok(cached);
     }
     let parsed = parse_source_uncached(source)?;
-    if let Some(stamp) = stamp {
-        if let Ok(payload) = serde_json::to_value(&parsed) {
-            cache.put_source(source.kind, &path, &stamp, &payload);
-        }
+    if let Some(stamp) = stamp
+        && let Ok(payload) = serde_json::to_value(&parsed)
+    {
+        cache.put_source(source.kind, &path, &stamp, &payload);
     }
     Ok(parsed)
 }
@@ -649,13 +649,12 @@ pub(super) fn visit_detail(
         "source_subtype": "truncation",
         "is_truncation_marker": true,
     }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let (mut event_values, omitted_events, total_events) = events.finish(json!({
         "line_number": Value::Null,
@@ -663,13 +662,12 @@ pub(super) fn visit_detail(
         "type": "viewer_truncation",
         "payload": { "omitted_events": 0 },
     }));
-    if omitted_events > 0 {
-        if let Some(marker) = event_values
+    if omitted_events > 0
+        && let Some(marker) = event_values
             .iter_mut()
             .find(|value| value["type"] == "viewer_truncation")
-        {
-            marker["payload"]["omitted_events"] = json!(omitted_events);
-        }
+    {
+        marker["payload"]["omitted_events"] = json!(omitted_events);
     }
     let (mut summary, _) = finish_summary(&state, &row, &locator.database_path, source);
     if omitted_messages + omitted_events > 0 {
@@ -690,7 +688,7 @@ pub(super) fn visit_detail(
 #[cfg(test)]
 mod tests {
     use crate::cache::IndexCache;
-    use rusqlite::{params, Connection};
+    use rusqlite::{Connection, params};
     use serde_json::json;
     use tempfile::tempdir;
 
@@ -964,17 +962,23 @@ mod tests {
         assert_eq!(messages[3]["text"], "已经找到问题。");
         assert_eq!(messages[4]["tool_name"], "bash");
         assert_eq!(messages[4]["tool_kind"], "tool_result");
-        assert!(messages[4]["text"]
-            .as_str()
-            .unwrap()
-            .contains("/work/project"));
+        assert!(
+            messages[4]["text"]
+                .as_str()
+                .unwrap()
+                .contains("/work/project")
+        );
         assert_eq!(messages[5]["is_error"], true);
-        assert!(messages
-            .iter()
-            .all(|message| message["_message_key"].is_string()));
-        assert!(messages
-            .iter()
-            .all(|message| message["_delete_ref"].is_null()));
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["_message_key"].is_string())
+        );
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["_delete_ref"].is_null())
+        );
         assert_eq!(detail["raw_events"].as_array().unwrap().len(), 7);
     }
 

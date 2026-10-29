@@ -9,9 +9,9 @@ use std::{
 };
 
 use chrono::Utc;
-use rusqlite::{backup::Backup, params, Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, backup::Backup, params};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -605,11 +605,11 @@ fn backup_database(source_path: &Path, backup_path: &Path) -> Result<(), String>
     let source = Connection::open_with_flags(source_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(error_text)?;
     let mut destination = Connection::open(backup_path).map_err(error_text)?;
-    let result = Backup::new(&source, &mut destination)
+
+    Backup::new(&source, &mut destination)
         .map_err(error_text)?
         .run_to_completion(16, Duration::from_millis(10), None)
-        .map_err(error_text);
-    result
+        .map_err(error_text)
 }
 
 fn update_databases(plan: &MigrationPlan) -> Result<(), String> {
@@ -886,10 +886,9 @@ fn read_backup_metadata(backup_dir: &Path) -> Result<BackupMetadata, String> {
     if let Some(expected) = metadata_value
         .pointer("/manifest/hash")
         .and_then(Value::as_str)
+        && hash_file(&manifest_path)? != expected
     {
-        if hash_file(&manifest_path)? != expected {
-            return Err("旧版 Provider 清单校验失败".into());
-        }
+        return Err("旧版 Provider 清单校验失败".into());
     }
     let mut rows_by_path = HashMap::new();
     for database in manifest
@@ -1225,9 +1224,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        active_state_database, assignment_from_line, build_plan_for_home, contains_codex_process,
-        hash_raw, parse_providers, rewrite_jsonl, scan_jsonl, valid_provider, Connection,
-        ProviderAssignment,
+        Connection, ProviderAssignment, active_state_database, assignment_from_line,
+        build_plan_for_home, contains_codex_process, hash_raw, parse_providers, rewrite_jsonl,
+        scan_jsonl, valid_provider,
     };
 
     #[test]
@@ -1263,10 +1262,12 @@ mod tests {
     fn session_root_must_be_a_directory() {
         let directory = tempdir().unwrap();
         fs::write(directory.path().join("sessions"), "not a directory").unwrap();
-        assert!(scan_jsonl(directory.path(), None)
-            .err()
-            .unwrap()
-            .contains("会话目录不是文件夹"));
+        assert!(
+            scan_jsonl(directory.path(), None)
+                .err()
+                .unwrap()
+                .contains("会话目录不是文件夹")
+        );
     }
 
     #[test]
@@ -1359,18 +1360,22 @@ mod tests {
         })
         .unwrap();
         let updated = std::fs::read_to_string(&path).unwrap();
-        assert!(updated
-            .lines()
-            .next()
-            .unwrap()
-            .contains("\"model_provider\":\"current\""));
+        assert!(
+            updated
+                .lines()
+                .next()
+                .unwrap()
+                .contains("\"model_provider\":\"current\"")
+        );
         assert!(updated.contains("\"message\":\"keep me\""));
         rewrite_jsonl(&path, &assignments, Some("current"), |_, assignment| {
             assignment.provider.clone()
         })
         .unwrap();
-        assert!(std::fs::read_to_string(&path)
-            .unwrap()
-            .contains("\"model_provider\":\"legacy\""));
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("\"model_provider\":\"legacy\"")
+        );
     }
 }

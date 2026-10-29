@@ -3,12 +3,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use chrono::{SecondsFormat, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::ApiError;
 
 use super::json_fingerprint;
-use super::{Source, SourceFormat, PAGE_LIMIT};
+use super::{PAGE_LIMIT, Source, SourceFormat};
 
 /// 诊断逐条原因的展示上限；剩余条数由前端按 error_count 差值提示。
 const DIAGNOSTIC_ENTRY_LIMIT: usize = 20;
@@ -109,10 +109,10 @@ pub(crate) fn local_date_key(timestamp: &str) -> Option<String> {
 }
 pub(crate) fn matches_filters(summary: &Value, query: &HashMap<String, String>) -> bool {
     for (name, field) in [("provider", "model_provider"), ("cwd", "cwd")] {
-        if let Some(expected) = query.get(name).filter(|value| !value.is_empty()) {
-            if summary[field].as_str() != Some(expected) {
-                return false;
-            }
+        if let Some(expected) = query.get(name).filter(|value| !value.is_empty())
+            && summary[field].as_str() != Some(expected)
+        {
+            return false;
         }
     }
     if let Some(expected) = query.get("source_kind").filter(|value| !value.is_empty()) {
@@ -172,13 +172,12 @@ pub(crate) fn paginate(
     query: &HashMap<String, String>,
     mut base: Value,
 ) -> Value {
-    if let Some(cursor) = query.get("cursor") {
-        if let Some(index) = sessions
+    if let Some(cursor) = query.get("cursor")
+        && let Some(index) = sessions
             .iter()
             .position(|summary| summary["_key"].as_str() == Some(cursor))
-        {
-            sessions = sessions.into_iter().skip(index + 1).collect();
-        }
+    {
+        sessions = sessions.into_iter().skip(index + 1).collect();
     }
     let limit = query
         .get("limit")

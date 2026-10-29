@@ -9,15 +9,15 @@ use std::{
 };
 
 use serde::de::{DeserializeSeed, Deserializer, SeqAccess, Visitor};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use super::{
-    append_limited, attach_message_delete_ref, attach_message_key, content_block_placeholder,
-    error_text, extract_text, is_context_role, json_fingerprint, legacy_timestamp, message_value,
-    nullable_string, replace_file_contents, truncate_message, HeadTail, ParseState, Source,
-    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT,
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, HeadTail, ParseState,
+    SEARCH_TEXT_LIMIT, Source, append_limited, attach_message_delete_ref, attach_message_key,
+    content_block_placeholder, error_text, extract_text, is_context_role, json_fingerprint,
+    legacy_timestamp, message_value, nullable_string, replace_file_contents, truncate_message,
 };
 use crate::cache::IndexCache;
 
@@ -272,11 +272,11 @@ fn chat_paths(source: &Source) -> (Vec<PathBuf>, BTreeMap<PathBuf, PathBuf>) {
     }
     let mut shadowed = BTreeMap::new();
     paths.retain(|path| {
-        if path.extension().and_then(|value| value.to_str()) == Some("json") {
-            if let Some(jsonl) = jsonl_by_key.get(&chat_file_key(path)) {
-                shadowed.insert(jsonl.clone(), path.clone());
-                return false;
-            }
+        if path.extension().and_then(|value| value.to_str()) == Some("json")
+            && let Some(jsonl) = jsonl_by_key.get(&chat_file_key(path))
+        {
+            shadowed.insert(jsonl.clone(), path.clone());
+            return false;
         }
         true
     });
@@ -562,27 +562,27 @@ fn cached_file_contributions(
     parse: impl FnOnce() -> Result<Vec<Value>, String>,
 ) -> Result<Vec<Value>, String> {
     let metadata = fs::metadata(path).map_err(error_text)?;
-    if let Some(cached) = cache.get(path, cache_kind, &metadata) {
-        if let Some(contributions) = cached.summary["contributions"].as_array() {
-            let mut restored = Vec::with_capacity(contributions.len());
-            for contribution in contributions {
-                let mut contribution = contribution.clone();
-                let has_user_artifacts = contribution["session_id"]
-                    .as_str()
-                    .and_then(|session_id| brain_messages.get(session_id))
-                    .is_some_and(|messages| messages.iter().any(|message| message.role == "user"));
-                let keys = if has_user_artifacts {
-                    duplicate_keys_from_json(&contribution["duplicate_user_keys"])
-                        .ok_or_else(|| "Gemini 缓存缺少 artifact 去重字段".to_string())?
-                } else {
-                    BTreeSet::new()
-                };
-                contribution["duplicate_user_keys"] =
-                    Value::Array(keys.iter().map(DuplicateUserKey::to_json).collect());
-                restored.push(contribution);
-            }
-            return Ok(restored);
+    if let Some(cached) = cache.get(path, cache_kind, &metadata)
+        && let Some(contributions) = cached.summary["contributions"].as_array()
+    {
+        let mut restored = Vec::with_capacity(contributions.len());
+        for contribution in contributions {
+            let mut contribution = contribution.clone();
+            let has_user_artifacts = contribution["session_id"]
+                .as_str()
+                .and_then(|session_id| brain_messages.get(session_id))
+                .is_some_and(|messages| messages.iter().any(|message| message.role == "user"));
+            let keys = if has_user_artifacts {
+                duplicate_keys_from_json(&contribution["duplicate_user_keys"])
+                    .ok_or_else(|| "Gemini 缓存缺少 artifact 去重字段".to_string())?
+            } else {
+                BTreeSet::new()
+            };
+            contribution["duplicate_user_keys"] =
+                Value::Array(keys.iter().map(DuplicateUserKey::to_json).collect());
+            restored.push(contribution);
         }
+        return Ok(restored);
     }
 
     let contributions = parse()?;
@@ -774,10 +774,10 @@ fn chat_file_contributions(path: &Path, source: &Source) -> Result<Vec<Value>, S
         }
         state.event_count += 1;
         for message in chat_message_values(record) {
-            if message["role"].as_str() == Some("user") {
-                if let Some(text) = message["text"].as_str() {
-                    duplicate_keys.insert(DuplicateUserKey::from_text(text));
-                }
+            if message["role"].as_str() == Some("user")
+                && let Some(text) = message["text"].as_str()
+            {
+                duplicate_keys.insert(DuplicateUserKey::from_text(text));
             }
             state.accept_message(message);
         }
@@ -1200,8 +1200,8 @@ pub(super) fn visit_detail(
             if record["sessionId"].as_str() != Some(locator.session_id.as_str()) {
                 return;
             }
-            if failure.is_none() {
-                if let Err(error) = records.execute(
+            if failure.is_none()
+                && let Err(error) = records.execute(
                     "insert into records values(?1,?2,?3,?4,?5)",
                     rusqlite::params![
                         record["messageId"].as_i64().unwrap_or_default(),
@@ -1210,9 +1210,9 @@ pub(super) fn visit_detail(
                         path.to_string_lossy(),
                         record_index
                     ],
-                ) {
-                    failure = Some(error.to_string());
-                }
+                )
+            {
+                failure = Some(error.to_string());
             }
         })?;
         if let Some(error) = failure {
@@ -1978,7 +1978,7 @@ fn read_text_limited(path: &Path, char_limit: usize) -> Option<String> {
 mod tests {
     use std::{io::Write, path::PathBuf};
 
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use tempfile::tempdir;
 
     use super::{
@@ -1987,7 +1987,7 @@ mod tests {
     };
     use crate::{
         cache::IndexCache,
-        sessions::{Source, SourceFormat, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT},
+        sessions::{DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, Source, SourceFormat},
     };
 
     #[test]
@@ -2081,30 +2081,38 @@ mod tests {
         delete_message(&source, &session.detail_locator, &delete_ref).unwrap();
         let after_message: Value =
             serde_json::from_str(&std::fs::read_to_string(&log_path).unwrap()).unwrap();
-        assert!(!after_message
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|record| record["message"] == "删除消息"));
-        assert!(after_message
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|record| record["message"] == "必须保留"));
+        assert!(
+            !after_message
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|record| record["message"] == "删除消息")
+        );
+        assert!(
+            after_message
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|record| record["message"] == "必须保留")
+        );
 
         delete_session(&source, &session.detail_locator).unwrap();
         let after_session: Value =
             serde_json::from_str(&std::fs::read_to_string(&log_path).unwrap()).unwrap();
-        assert!(after_session
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|record| record["sessionId"] != "g1"));
-        assert!(after_session
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|record| record["sessionId"] == "g2"));
+        assert!(
+            after_session
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|record| record["sessionId"] != "g1")
+        );
+        assert!(
+            after_session
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|record| record["sessionId"] == "g2")
+        );
     }
 
     #[test]
@@ -2403,10 +2411,12 @@ mod tests {
             .find(|session| session.detail_locator.session_id == "g1")
             .unwrap();
         assert_eq!(session.detail_locator.paths.len(), 2);
-        assert!(!session
-            .detail_locator
-            .paths
-            .contains(&unrelated_dir.join("logs.json")));
+        assert!(
+            !session
+                .detail_locator
+                .paths
+                .contains(&unrelated_dir.join("logs.json"))
+        );
 
         let detail = parse_detail(&source, &session.detail_locator).unwrap();
         let messages = detail["conversation_messages"].as_array().unwrap();
@@ -2733,16 +2743,20 @@ mod tests {
         assert!(!legacy_path.exists());
         let after: Value =
             serde_json::from_str(&std::fs::read_to_string(&log_path).unwrap()).unwrap();
-        assert!(after
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|record| record["sessionId"] != "c7"));
-        assert!(after
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|record| record["sessionId"] == "other"));
+        assert!(
+            after
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|record| record["sessionId"] != "c7")
+        );
+        assert!(
+            after
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|record| record["sessionId"] == "other")
+        );
     }
 
     #[test]

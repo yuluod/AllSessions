@@ -1,10 +1,10 @@
 //! Cowork 本地任务只读适配，正文复用 Claude 转录解析。
 use std::path::{Component, Path, PathBuf};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use walkdir::WalkDir;
 
-use super::{error_text, parse, summary_search_text, Source, SourceFormat};
+use super::{Source, SourceFormat, error_text, parse, summary_search_text};
 
 pub(super) fn default_roots() -> Vec<PathBuf> {
     let base = dirs::data_dir().unwrap_or_default();
@@ -12,12 +12,12 @@ pub(super) fn default_roots() -> Vec<PathBuf> {
         base.join("Claude/local-agent-mode-sessions"),
         base.join("Claude-3p/local-agent-mode-sessions"),
     ];
-    if cfg!(windows) {
-        if let Some(local) = dirs::data_local_dir() {
-            roots.push(local.join(
-                "Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude/local-agent-mode-sessions",
-            ));
-        }
+    if cfg!(windows)
+        && let Some(local) = dirs::data_local_dir()
+    {
+        roots.push(local.join(
+            "Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude/local-agent-mode-sessions",
+        ));
     }
     roots
 }
@@ -324,11 +324,13 @@ mod tests {
             )
             .unwrap();
         assert_eq!(hits["sessions"].as_array().unwrap().len(), 1);
-        assert!(detail["conversation_messages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|message| message["source_subtype"] == "thinking"));
+        assert!(
+            detail["conversation_messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| message["source_subtype"] == "thinking")
+        );
         std::fs::write(&metadata, json!({"cliSessionId":"cli-id","title":"更新标题","userSelectedFolders":["/one","/two"]}).to_string()).unwrap();
         let (summary, _) = parse_summary(&path, &source).unwrap();
         assert_eq!(summary["title"], "更新标题");

@@ -3,9 +3,9 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::{json_fingerprint, StoredSession};
+use super::{StoredSession, json_fingerprint};
 
 /// 单张图片解码后的字节上限；超过时不传输，避免详情通道被大图拖垮。
 pub(crate) const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;

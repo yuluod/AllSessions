@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::claude_legacy::{parse_legacy_claude_detail, parse_legacy_claude_summary};
@@ -12,8 +12,8 @@ use super::helpers::{
     compact, compact_title, error_text, is_synthetic_context, nullable_string, string_at,
 };
 use super::{
-    claude_cowork, copilot, deepseek, grok, kimi, pi, vscode_copilot, Source, SourceFormat,
-    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT,
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT, Source,
+    SourceFormat, claude_cowork, copilot, deepseek, grok, kimi, pi, vscode_copilot,
 };
 
 pub(crate) struct ParseState {
@@ -133,10 +133,10 @@ impl ParseState {
             "projectRoot",
             "project_root",
         ] {
-            if self.cwd.is_empty() {
-                if let Some(value) = string_at(record, &[key]) {
-                    self.cwd = value;
-                }
+            if self.cwd.is_empty()
+                && let Some(value) = string_at(record, &[key])
+            {
+                self.cwd = value;
             }
         }
         if let Some(value) = string_at(record, &["sessionId"]) {
@@ -235,14 +235,13 @@ impl ParseState {
         let role = message["role"].as_str().unwrap_or("unknown");
         let text = message["text"].as_str().unwrap_or_default();
         let source_type = message["source_type"].as_str().unwrap_or_default();
-        if let Some((previous_role, previous_text, previous_type)) = &self.previous_message {
-            if previous_role == role
-                && previous_text == text
-                && ((previous_type == "event_msg" && source_type == "response_item")
-                    || (previous_type == "response_item" && source_type == "event_msg"))
-            {
-                return None;
-            }
+        if let Some((previous_role, previous_text, previous_type)) = &self.previous_message
+            && previous_role == role
+            && previous_text == text
+            && ((previous_type == "event_msg" && source_type == "response_item")
+                || (previous_type == "response_item" && source_type == "event_msg"))
+        {
+            return None;
         }
         self.previous_message = Some((role.into(), text.into(), source_type.into()));
         if message["synthetic_context"].as_bool() == Some(true) {
@@ -351,7 +350,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
         SourceFormat::VsCodeCopilot => return vscode_copilot::parse_summary(path, source),
         SourceFormat::DeepSeek => return deepseek::parse_summary(path, source),
         SourceFormat::OpenCode | SourceFormat::Kilo => {
-            return Err("SQLite 数据库必须通过聚合来源解析".into())
+            return Err("SQLite 数据库必须通过聚合来源解析".into());
         }
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过聚合来源解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过聚合来源解析".into()),
@@ -382,7 +381,7 @@ pub(crate) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String
         SourceFormat::Pi | SourceFormat::Omp => return pi::parse_detail(path, source),
         SourceFormat::Grok => return grok::parse_detail(path, source),
         SourceFormat::ClaudeCowork => {
-            return claude_cowork::visit_detail(path, source, &mut |_| {})
+            return claude_cowork::visit_detail(path, source, &mut |_| {});
         }
         SourceFormat::Kimi => return kimi::parse_detail(path, source),
         SourceFormat::Copilot => return copilot::parse_detail(path, source),
@@ -407,7 +406,7 @@ pub(crate) fn visit_detail(
         SourceFormat::VsCodeCopilot => return vscode_copilot::visit_detail(path, source, visitor),
         SourceFormat::DeepSeek => return deepseek::visit_detail(path, source, visitor),
         SourceFormat::OpenCode | SourceFormat::Kilo => {
-            return Err("SQLite 数据库必须通过详情定位器解析".into())
+            return Err("SQLite 数据库必须通过详情定位器解析".into());
         }
         SourceFormat::ZCode => return Err("ZCode 数据库必须通过详情定位器解析".into()),
         SourceFormat::Devin => return Err("Devin 消息库必须通过详情定位器解析".into()),
@@ -473,13 +472,12 @@ pub(crate) fn visit_detail(
         }
     }
     let (mut message_values, omitted_messages, total_messages) = messages.finish(json!({ "role": "system", "text": "", "timestamp": Value::Null, "source_type": "viewer", "source_subtype": "truncation", "is_truncation_marker": true }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let (event_values, omitted_events, total_events) = events.finish(json!({ "line_number": Value::Null, "timestamp": Value::Null, "type": "viewer_truncation", "payload": { "omitted_events": 0 } }));
     let mut summary = state.summary(path, source);
@@ -557,10 +555,10 @@ impl DetailCache {
         self.order.push_back(key.clone());
         self.values.insert(key, (value, size));
         while self.bytes > self.max_bytes {
-            if let Some(old) = self.order.pop_front() {
-                if let Some((_, size)) = self.values.remove(&old) {
-                    self.bytes -= size;
-                }
+            if let Some(old) = self.order.pop_front()
+                && let Some((_, size)) = self.values.remove(&old)
+            {
+                self.bytes -= size;
             }
         }
     }
@@ -812,10 +810,10 @@ pub(crate) fn generic_conversation_message(
     let tool_name = string_at(payload, &["name"])
         .or_else(|| string_at(payload, &["tool_name"]))
         .or_else(|| call_id.as_ref().and_then(|id| tool_names.get(id).cloned()));
-    if matches!(subtype, "function_call" | "tool_call" | "tool_use") {
-        if let (Some(id), Some(name)) = (&call_id, &tool_name) {
-            tool_names.insert(id.clone(), name.clone());
-        }
+    if matches!(subtype, "function_call" | "tool_call" | "tool_use")
+        && let (Some(id), Some(name)) = (&call_id, &tool_name)
+    {
+        tool_names.insert(id.clone(), name.clone());
     }
     let text = extract_text(message.get("content").unwrap_or(message))
         .or_else(|| extract_text(payload.get("content").unwrap_or(payload)))

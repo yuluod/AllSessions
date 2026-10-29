@@ -10,7 +10,7 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
 /// 摘要缓存格式版本。当 parse_summary 的字段、隐藏规则或消息解析逻辑发生变化时
@@ -516,7 +516,7 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
-    use super::{modified_millis, open_database, IndexCache, CACHE_VERSION};
+    use super::{CACHE_VERSION, IndexCache, modified_millis, open_database};
 
     #[test]
     fn source_blob_roundtrip_and_invalidation() {

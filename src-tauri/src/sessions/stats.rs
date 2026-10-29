@@ -2,13 +2,13 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
+use super::SessionStore;
 use super::helpers::{
     agent_kind, count_values, diagnostic_source_kind, increment, insert_string, local_date_key,
     matches_filters, timestamp_of,
 };
-use super::SessionStore;
 
 /// 只影响列表可见性、不改变导航维度的查询开关。
 const DISPLAY_FLAGS: [&str; 4] = [
@@ -162,13 +162,12 @@ impl SessionStore {
             increment(&mut by_source_kind, &summary["source_kind"]);
             increment(&mut by_provider, &summary["model_provider"]);
             // Provider 同口径提供 token 维度,无 token 统计的条目不进入。
-            if tokens > 0 {
-                if let Some(provider) = summary["model_provider"]
+            if tokens > 0
+                && let Some(provider) = summary["model_provider"]
                     .as_str()
                     .filter(|value| !value.is_empty())
-                {
-                    *by_provider_tokens.entry(provider.into()).or_default() += tokens;
-                }
+            {
+                *by_provider_tokens.entry(provider.into()).or_default() += tokens;
             }
             increment(&mut by_cwd, &summary["cwd"]);
         }

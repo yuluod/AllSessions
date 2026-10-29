@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::Emitter;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -50,13 +50,13 @@ fn spawn_update_check(app: tauri::AppHandle, mode: UpdateCheckMode) {
     }
     tauri::async_runtime::spawn(async move {
         let _guard = UpdateGuard;
-        if let Err(error) = run_update_check(&app, mode).await {
-            if mode == UpdateCheckMode::Interactive {
-                emit_status(
-                    &app,
-                    json!({ "phase": "error", "message": update_error_message(&error) }),
-                );
-            }
+        if let Err(error) = run_update_check(&app, mode).await
+            && mode == UpdateCheckMode::Interactive
+        {
+            emit_status(
+                &app,
+                json!({ "phase": "error", "message": update_error_message(&error) }),
+            );
         }
     });
 }
@@ -106,10 +106,10 @@ fn bounded_notes(body: Option<&str>) -> String {
     }
 
     let mut truncated: String = notes.chars().take(MAX_NOTES_CHARS).collect();
-    if let Some(line_break) = truncated.rfind('\n') {
-        if truncated[..line_break].chars().count() >= MAX_NOTES_CHARS / 2 {
-            truncated.truncate(line_break);
-        }
+    if let Some(line_break) = truncated.rfind('\n')
+        && truncated[..line_break].chars().count() >= MAX_NOTES_CHARS / 2
+    {
+        truncated.truncate(line_break);
     }
     format!("{truncated}\n\n以上为部分更新内容，完整更新日志请前往 GitHub Releases 查看。")
 }
@@ -191,7 +191,7 @@ async fn run_install(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{bounded_notes, update_error_message, UpdateCheckMode};
+    use super::{UpdateCheckMode, bounded_notes, update_error_message};
 
     #[test]
     fn 缺少当前平台时提供可执行的提示() {

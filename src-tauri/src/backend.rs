@@ -2,15 +2,15 @@ use std::{
     collections::{BTreeSet, HashMap},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     time::Instant,
 };
 
 use percent_encoding::percent_decode_str;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State};
 use url::Url;
 
@@ -215,10 +215,10 @@ impl BackendState {
             "error": result.as_ref().err(),
             "elapsed_ms": started.elapsed().as_millis()
         });
-        if result.is_ok() {
-            if let Ok(store) = self.store.lock() {
-                store.checkpoint_cache();
-            }
+        if result.is_ok()
+            && let Ok(store) = self.store.lock()
+        {
+            store.checkpoint_cache();
         }
         // 索引零变化时不再广播：列表在元数据阶段已发布，索引进度由前端
         // 轮询 index-status 获知，重复事件只会让前端整表重拉一遍。
@@ -378,10 +378,9 @@ fn route_request(
                 .lock()
                 .map_err(lock_error)?
                 .as_ref()
+                && state.store.lock().map_err(lock_error)?.scanning()
             {
-                if state.store.lock().map_err(lock_error)?.scanning() {
-                    return Err(ApiError::from(error.clone()));
-                }
+                return Err(ApiError::from(error.clone()));
             }
             let workspace = state.workspace_snapshot()?;
             Ok(state

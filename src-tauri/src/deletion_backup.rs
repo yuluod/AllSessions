@@ -5,7 +5,7 @@ use std::{
 };
 
 use chrono::{SecondsFormat, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
@@ -106,13 +106,14 @@ fn create_at(
             "created_at": created_at,
         }))
     })();
-    if result.is_err() && staging_dir.exists() {
-        if let Err(error) = fs::remove_dir_all(&staging_dir) {
-            eprintln!(
-                "清理未完成的删除备份失败（{}）：{error}",
-                staging_dir.display()
-            );
-        }
+    if result.is_err()
+        && staging_dir.exists()
+        && let Err(error) = fs::remove_dir_all(&staging_dir)
+    {
+        eprintln!(
+            "清理未完成的删除备份失败（{}）：{error}",
+            staging_dir.display()
+        );
     }
     result
 }

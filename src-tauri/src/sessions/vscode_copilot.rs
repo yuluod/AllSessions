@@ -26,12 +26,12 @@ use std::{
 };
 
 use percent_encoding::percent_decode_str;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, SEARCH_TEXT_LIMIT, Source,
     append_limited, attach_message_key, compact_title, error_text, extract_text, message_value,
-    summary_search_text, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
-    DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    summary_search_text, truncate_message,
 };
 
 fn collect_session_dir(dir: &Path, paths: &mut Vec<PathBuf>) {
@@ -740,13 +740,12 @@ pub(super) fn visit_detail(
         "source_subtype": "truncation",
         "is_truncation_marker": true,
     }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let (mut event_values, omitted_events, total_events) = events.finish(json!({
         "line_number": Value::Null,
@@ -754,13 +753,12 @@ pub(super) fn visit_detail(
         "type": "viewer_truncation",
         "payload": { "omitted_events": 0 },
     }));
-    if omitted_events > 0 {
-        if let Some(marker) = event_values
+    if omitted_events > 0
+        && let Some(marker) = event_values
             .iter_mut()
             .find(|value| value["type"] == "viewer_truncation")
-        {
-            marker["payload"]["omitted_events"] = json!(omitted_events);
-        }
+    {
+        marker["payload"]["omitted_events"] = json!(omitted_events);
     }
     let mut summary = state.summary(path, source);
     apply_session_meta(&mut summary, &doc);

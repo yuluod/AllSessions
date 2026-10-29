@@ -5,12 +5,12 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use walkdir::WalkDir;
 
 use super::{
-    claude_cowork, copilot, cursor, deepseek, devin, grok, hermes, kimi, vscode_copilot, Source,
-    SourceFormat,
+    Source, SourceFormat, claude_cowork, copilot, cursor, deepseek, devin, grok, hermes, kimi,
+    vscode_copilot,
 };
 
 pub(crate) struct RootLists {
@@ -94,10 +94,12 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
     let (grok, mut grok_origin) = resolve_kind(
         config.get("grok"),
         &["GROK_SESSIONS_DIR"],
-        vec![grok_home
-            .clone()
-            .unwrap_or_else(|| home.join(".grok"))
-            .join("sessions")],
+        vec![
+            grok_home
+                .clone()
+                .unwrap_or_else(|| home.join(".grok"))
+                .join("sessions"),
+        ],
     );
     if grok_origin == "default" && grok_home.is_some() {
         grok_origin = "env";

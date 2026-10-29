@@ -4,13 +4,13 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use chrono::{SecondsFormat, TimeZone, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::helpers::{error_text, nullable_string, string_at};
 use super::parse::ParseState;
 use super::{
-    attach_message_delete_ref, json_fingerprint, message_value, search_text_from_detail,
-    truncate_message, HeadTail, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, Source, attach_message_delete_ref,
+    json_fingerprint, message_value, search_text_from_detail, truncate_message,
 };
 
 pub(crate) fn parse_legacy_claude_summary(
@@ -79,30 +79,29 @@ fn parse_legacy_claude_detail_with_limit(
         "type": "info",
         "payload": { "message": "Legacy Claude Code metadata; full project transcript is unavailable." }
     })];
-    if !has_entries {
-        if let Some(text) =
+    if !has_entries
+        && let Some(text) =
             string_at(&value, &["prompt"]).or_else(|| string_at(&value, &["message"]))
-        {
-            let timestamp = state.timestamp.clone();
-            if let Some(mut message) = state.accept_message(message_value(
-                "user", &text, &timestamp, "legacy", "prompt", false,
-            )) {
-                attach_message_delete_ref(
-                    &mut message,
-                    json!({
-                        "kind": "legacy_prompt",
-                        "record_fingerprint": json_fingerprint(&Value::String(text.clone())),
-                    }),
-                );
-                messages.push(message);
-            }
-            raw_events.push(json!({
-                "line_number": 1,
-                "timestamp": nullable_string(&timestamp),
-                "type": "user",
-                "payload": { "message": text }
-            }));
+    {
+        let timestamp = state.timestamp.clone();
+        if let Some(mut message) = state.accept_message(message_value(
+            "user", &text, &timestamp, "legacy", "prompt", false,
+        )) {
+            attach_message_delete_ref(
+                &mut message,
+                json!({
+                    "kind": "legacy_prompt",
+                    "record_fingerprint": json_fingerprint(&Value::String(text.clone())),
+                }),
+            );
+            messages.push(message);
         }
+        raw_events.push(json!({
+            "line_number": 1,
+            "timestamp": nullable_string(&timestamp),
+            "type": "user",
+            "payload": { "message": text }
+        }));
     }
 
     let history_path = path
@@ -163,25 +162,25 @@ fn parse_legacy_claude_detail_with_limit(
                             "pasted_contents": record.get("pastedContents").cloned().unwrap_or_else(|| json!({}))
                         }
                     }));
-                    if let Some(display) = record.get("display").and_then(Value::as_str) {
-                        if let Some(mut message) = state.accept_message(message_value(
+                    if let Some(display) = record.get("display").and_then(Value::as_str)
+                        && let Some(mut message) = state.accept_message(message_value(
                             "user",
                             display,
                             &record_timestamp,
                             "user_input",
                             "display",
                             false,
-                        )) {
-                            attach_message_delete_ref(
-                                &mut message,
-                                json!({
-                                    "kind": "legacy_history",
-                                    "line_number": index + 1,
-                                    "record_fingerprint": json_fingerprint(&record),
-                                }),
-                            );
-                            messages.push(message);
-                        }
+                        ))
+                    {
+                        attach_message_delete_ref(
+                            &mut message,
+                            json!({
+                                "kind": "legacy_history",
+                                "line_number": index + 1,
+                                "record_fingerprint": json_fingerprint(&record),
+                            }),
+                        );
+                        messages.push(message);
                     }
                 }
             }
@@ -219,13 +218,12 @@ fn parse_legacy_claude_detail_with_limit(
         "source_subtype": "truncation",
         "is_truncation_marker": true,
     }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let mut event_tail = HeadTail::new(DETAIL_EVENT_LIMIT);
     for event in raw_events {

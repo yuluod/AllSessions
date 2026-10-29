@@ -38,20 +38,20 @@ fn 数据库来源保留四元素内容指纹() {
     );
 }
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tempfile::tempdir;
 
 #[cfg(windows)]
 use crate::cache::IndexCache;
 
 use super::{
-    compact, configured_sources, delete_jsonl_message, delete_legacy_session,
-    describe_inherited_sources, describe_protected_source_roots, describe_sources,
-    existing_watch_root, existing_watch_root_within, generic_conversation_message,
-    is_synthetic_context, local_date_key, matches_filters, opencode_event_matches, parse_detail,
-    parse_summary, resolve_kind, search_query_matches, sources_from_paths, split_path_list,
-    timestamp_of, watch_roots_for, DetailCache, HeadTail, ScanDiagnostics, SessionStore, Source,
-    SourceFormat, DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
+    DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DetailCache, HeadTail,
+    ScanDiagnostics, SessionStore, Source, SourceFormat, compact, configured_sources,
+    delete_jsonl_message, delete_legacy_session, describe_inherited_sources,
+    describe_protected_source_roots, describe_sources, existing_watch_root,
+    existing_watch_root_within, generic_conversation_message, is_synthetic_context, local_date_key,
+    matches_filters, opencode_event_matches, parse_detail, parse_summary, resolve_kind,
+    search_query_matches, sources_from_paths, split_path_list, timestamp_of, watch_roots_for,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -151,11 +151,13 @@ fn 全文搜索覆盖中间消息并合并备注标签和排序() {
             "HTTP_404",
         )
         .unwrap();
-    assert!(context["conversation_messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|m| m["text"].as_str().unwrap().contains("HTTP_404")));
+    assert!(
+        context["conversation_messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["text"].as_str().unwrap().contains("HTTP_404"))
+    );
     assert!(
         !store.detail("codex:long").unwrap()["conversation_messages"]
             .as_array()
@@ -229,11 +231,12 @@ fn 结构化搜索按角色过滤消息() {
         .unwrap();
     assert_eq!(result["total"], 1);
     let hits = &result["sessions"][0]["search_hits"];
-    assert!(hits
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|hit| hit["field"].as_str().unwrap() != "tool"));
+    assert!(
+        hits.as_array()
+            .unwrap()
+            .iter()
+            .all(|hit| hit["field"].as_str().unwrap() != "tool")
+    );
 
     // 角色限定为 tool 时，assistant 正文命中被排除，工具结果仍然命中。
     let result = store
@@ -1509,9 +1512,11 @@ fn file_change_refreshes_only_the_affected_session() {
         .unwrap();
 
     assert!(store.records.contains_key("codex:second"));
-    assert!(store.records["codex:first"]
-        .search_text
-        .contains("new first"));
+    assert!(
+        store.records["codex:first"]
+            .search_text
+            .contains("new first")
+    );
 }
 
 #[test]
@@ -1868,34 +1873,46 @@ fn 新版kimi读取回退历史并刷新元数据及去重迁移副本() {
     .unwrap();
     let messages = detail["conversation_messages"].as_array().unwrap();
     assert_eq!(&exported, messages);
-    assert!(messages
-        .iter()
-        .any(|message| message["text"] == "第一条完整回复"));
-    assert!(messages
-        .iter()
-        .any(|message| message["text"] == "第二条完整回复"));
+    assert!(
+        messages
+            .iter()
+            .any(|message| message["text"] == "第一条完整回复")
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message["text"] == "第二条完整回复")
+    );
     assert!(messages.iter().any(|message| message["text"] == "检查项目"));
-    assert!(messages
-        .iter()
-        .any(|message| message["text"] == "历史摘要" && message["synthetic_context"] == true));
-    assert!(messages.last().unwrap()["text"]
-        .as_str()
-        .unwrap()
-        .contains("[image]"));
+    assert!(
+        messages
+            .iter()
+            .any(|message| message["text"] == "历史摘要" && message["synthetic_context"] == true)
+    );
+    assert!(
+        messages.last().unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .contains("[image]")
+    );
     let result = messages
         .iter()
         .find(|message| message["tool_kind"] == "tool_result")
         .unwrap();
     assert_eq!(result["tool_name"], "Bash");
     assert_eq!(result["is_error"], true);
-    assert!(messages
-        .iter()
-        .all(|message| message["_delete_ref"].is_null()));
-    assert!(detail["raw_events"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|event| event["type"] == "context.undo"));
+    assert!(
+        messages
+            .iter()
+            .all(|message| message["_delete_ref"].is_null())
+    );
+    assert!(
+        detail["raw_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "context.undo")
+    );
     metadata["title"] = json!("改名后");
     std::fs::write(&state_path, metadata.to_string()).unwrap();
     std::fs::write(
@@ -2008,13 +2025,17 @@ fn grok展示回放接入搜索刷新并保持只读() {
     assert!(messages.iter().any(|m| m["text"] == "检查项目"));
     assert!(messages.iter().any(|m| m["text"] == "正在检查"));
     assert!(messages.iter().any(|m| m["source_subtype"] == "thinking"));
-    assert!(messages
-        .iter()
-        .any(|m| m["text"] == "后台上下文" && m["synthetic_context"] == true));
+    assert!(
+        messages
+            .iter()
+            .any(|m| m["text"] == "后台上下文" && m["synthetic_context"] == true)
+    );
     assert!(messages.iter().any(|m| m["text"] == "新的回复[image]"));
-    assert!(!messages
-        .iter()
-        .any(|m| m["text"].as_str().unwrap_or_default().contains("撤回")));
+    assert!(
+        !messages
+            .iter()
+            .any(|m| m["text"].as_str().unwrap_or_default().contains("撤回"))
+    );
     let tools = messages
         .iter()
         .filter(|m| m["tool_call_id"] == "call-1")
@@ -2023,14 +2044,18 @@ fn grok展示回放接入搜索刷新并保持只读() {
     assert_eq!(tools[1]["text"], "权限不足");
     assert_eq!(tools[1]["tool_name"], "Bash");
     assert_eq!(tools[1]["is_error"], true);
-    assert!(messages
-        .iter()
-        .all(|m| m["_message_key"].is_string() && m["_delete_ref"].is_null()));
-    assert!(detail["raw_events"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|e| e["type"] == "rewind_marker"));
+    assert!(
+        messages
+            .iter()
+            .all(|m| m["_message_key"].is_string() && m["_delete_ref"].is_null())
+    );
+    assert!(
+        detail["raw_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["type"] == "rewind_marker")
+    );
     let workspace = crate::workspace::WorkspaceSnapshot::default();
     let hits = store
         .search(
@@ -2380,17 +2405,21 @@ fn 图片附件只保留定位信息并按需读取() {
     // 原文变化后拒绝旧定位。
     let mut stale = locator.clone();
     stale["record_fingerprint"] = json!("stale");
-    assert!(store
-        .read_attachment("codex:image-session", &stale)
-        .unwrap_err()
-        .message
-        .contains("变化"));
+    assert!(
+        store
+            .read_attachment("codex:image-session", &stale)
+            .unwrap_err()
+            .message
+            .contains("变化")
+    );
 
     // 体积上限在解码前按 base64 长度计算。
     let record = store.records.get("codex:image-session").unwrap();
-    assert!(super::attachment::read_image_with_limit(record, locator, 2)
-        .unwrap_err()
-        .contains("上限"));
+    assert!(
+        super::attachment::read_image_with_limit(record, locator, 2)
+            .unwrap_err()
+            .contains("上限")
+    );
 }
 
 #[test]
@@ -2463,11 +2492,13 @@ fn 新版kimi图片按真实记录定位并回读() {
         assert_eq!(result["data_url"], data_url);
         let mut stale = (*locator).clone();
         stale["record_fingerprint"] = json!("stale");
-        assert!(store
-            .read_attachment(key, &stale)
-            .unwrap_err()
-            .message
-            .contains("变化"));
+        assert!(
+            store
+                .read_attachment(key, &stale)
+                .unwrap_err()
+                .message
+                .contains("变化")
+        );
     }
 }
 
@@ -2504,20 +2535,24 @@ fn 图片附件拒绝_svg_与远程地址() {
         .iter()
         .find(|message| message["attachments"][0]["locator"]["line_number"] == 2)
         .unwrap();
-    assert!(store
-        .read_attachment("codex:unsafe-image", &svg["attachments"][0]["locator"])
-        .unwrap_err()
-        .message
-        .contains("SVG"));
+    assert!(
+        store
+            .read_attachment("codex:unsafe-image", &svg["attachments"][0]["locator"])
+            .unwrap_err()
+            .message
+            .contains("SVG")
+    );
     let remote = messages
         .iter()
         .find(|message| message["attachments"][0]["locator"]["line_number"] == 3)
         .unwrap();
-    assert!(store
-        .read_attachment("codex:unsafe-image", &remote["attachments"][0]["locator"])
-        .unwrap_err()
-        .message
-        .contains("内嵌"));
+    assert!(
+        store
+            .read_attachment("codex:unsafe-image", &remote["attachments"][0]["locator"])
+            .unwrap_err()
+            .message
+            .contains("内嵌")
+    );
 }
 
 #[test]
@@ -2554,9 +2589,11 @@ fn 旧版_claude_详情截断但索引保留完整消息() {
             .unwrap()
             > 0
     );
-    assert!(messages
-        .iter()
-        .any(|message| message["is_truncation_marker"] == true));
+    assert!(
+        messages
+            .iter()
+            .any(|message| message["is_truncation_marker"] == true)
+    );
 
     let (_, search) = super::claude_legacy::parse_legacy_claude_summary(&path, &source).unwrap();
     assert!(search.contains("消息 400"));

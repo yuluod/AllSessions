@@ -8,8 +8,8 @@ use std::{
 use std::{ffi::OsString, os::unix::fs::PermissionsExt};
 
 use chrono::{SecondsFormat, Utc};
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use serde_json::{json, Map, Value};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 const MAX_SESSION_KEY_CHARS: usize = 512;

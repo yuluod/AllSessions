@@ -1,5 +1,5 @@
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
-use serde_json::{json, Value};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
@@ -178,8 +178,9 @@ impl SearchIndex {
             let text = message["text"].as_str().unwrap_or_default();
             let mut payload = message.clone();
             payload.as_object_mut().map(|o| o.remove("_delete_ref"));
-            if message["synthetic_context"] != true && !text.is_empty() {
-                if let Err(error) = insert.execute(params![
+            if message["synthetic_context"] != true
+                && !text.is_empty()
+                && let Err(error) = insert.execute(params![
                     key,
                     ordinal,
                     text.to_lowercase(),
@@ -190,9 +191,9 @@ impl SearchIndex {
                         .as_str()
                         .unwrap_or_default()
                         .to_lowercase()
-                ]) {
-                    failure = Some(error.to_string());
-                }
+                ])
+            {
+                failure = Some(error.to_string());
             }
             ordinal += 1;
         });
@@ -548,11 +549,11 @@ impl SearchIndex {
             let (payload, index) = row.map_err(|e| e.to_string())?;
             let mut value: Value = serde_json::from_str(&payload).map_err(|e| e.to_string())?;
             value["search_ordinal"] = json!(index);
-            if let Some(text) = value["text"].as_str() {
-                if text.chars().count() > 64_000 {
-                    value["text"] = json!(text_window(text, query, 64_000));
-                    value["text_truncated"] = json!(true);
-                }
+            if let Some(text) = value["text"].as_str()
+                && text.chars().count() > 64_000
+            {
+                value["text"] = json!(text_window(text, query, 64_000));
+                value["text_truncated"] = json!(true);
             }
             Ok(value)
         })
@@ -629,12 +630,14 @@ mod tests {
         assert_eq!(expected, index.hits("修复 修 𠮷").unwrap());
         index.refresh("b", "1", |_| panic!("不得重解析")).unwrap();
         assert_eq!(expected, index.hits("修复 修 𠮷").unwrap());
-        assert!(index
-            .refresh("a", "broken", |v| {
-                v(&json!({"text":"不应保存"}));
-                Err("模拟解析失败".into())
-            })
-            .is_err());
+        assert!(
+            index
+                .refresh("a", "broken", |v| {
+                    v(&json!({"text":"不应保存"}));
+                    Err("模拟解析失败".into())
+                })
+                .is_err()
+        );
         assert_eq!(expected, index.hits("修复 修 𠮷").unwrap());
         drop(index);
         let index = SearchIndex::open(Some(&path)).unwrap();
@@ -989,10 +992,12 @@ mod tests {
             index
                 .hydrate_hit(&mut hits.get_mut("session").unwrap()[0])
                 .unwrap();
-            assert!(hits["session"][0]["snippet"]
-                .as_str()
-                .unwrap()
-                .contains("HTTP_404"));
+            assert!(
+                hits["session"][0]["snippet"]
+                    .as_str()
+                    .unwrap()
+                    .contains("HTTP_404")
+            );
         }
         assert_eq!(index.context("session", 650, "更新").unwrap().len(), 5);
         assert!(index.hits("\" OR *").is_ok());
@@ -1010,12 +1015,14 @@ mod tests {
         index
             .refresh("s", "1", |_| panic!("指纹未变不应重读来源"))
             .unwrap();
-        assert!(index
-            .refresh("s", "2", |v| {
-                v(&json!({"text":"broken"}));
-                Err("解析失败".into())
-            })
-            .is_err());
+        assert!(
+            index
+                .refresh("s", "2", |v| {
+                    v(&json!({"text":"broken"}));
+                    Err("解析失败".into())
+                })
+                .is_err()
+        );
         assert!(!index.hits("before").unwrap().is_empty());
         index
             .refresh("s", "2", |v| {

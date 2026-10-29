@@ -1,13 +1,13 @@
 //! 会话查询:列表、搜索计划(锁外全文查询)、搜索上下文与详情读取。
 use std::collections::{BTreeSet, HashMap};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::helpers::{bool_query, paginate, timestamp_of};
 use super::parse::parse_detail;
 use super::{
-    cursor, deepseek, devin, gemini, hermes, opencode, zcode, DetailLocator, SessionStore,
-    SourceFormat,
+    DetailLocator, SessionStore, SourceFormat, cursor, deepseek, devin, gemini, hermes, opencode,
+    zcode,
 };
 
 impl SessionStore {
@@ -265,9 +265,8 @@ impl SearchPlan {
                 hits.retain(|hit|seen.insert((hit["field"].to_string(),hit["ordinal"].to_string())));
                 let message_hit = hits.iter().find(|hit| hit["ordinal"].is_i64()).cloned();
                 hits.truncate(2);
-                if !hits.iter().any(|hit| hit["ordinal"].is_i64()) {
-                    if let Some(hit) = message_hit { hits.truncate(1); hits.push(hit); }
-                }
+                if !hits.iter().any(|hit| hit["ordinal"].is_i64())
+                    && let Some(hit) = message_hit { hits.truncate(1); hits.push(hit); }
                 let mut result = summary;
                 result["search_snippet"] = hits.first().map(|hit|hit["snippet"].clone()).unwrap_or_default();
                 result["search_hits"] = json!(hits);

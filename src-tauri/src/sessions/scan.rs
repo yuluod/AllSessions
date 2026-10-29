@@ -1,5 +1,5 @@
 //! 扫描与刷新:全量/增量元数据刷新、来源解析与搜索索引重建。
-use std::collections::{hash_map::Entry, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, hash_map::Entry};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,8 +14,8 @@ use super::roots::{
     configured_sources, discover_files, opencode_event_matches, path_identity, source_matches_path,
 };
 use super::{
-    copilot, cursor, devin, gemini, grok, hermes, kimi, opencode, vscode_copilot, zcode,
-    DetailLocator, ScanDiagnostics, SessionStore, SourceFormat, StoredSession,
+    DetailLocator, ScanDiagnostics, SessionStore, SourceFormat, StoredSession, copilot, cursor,
+    devin, gemini, grok, hermes, kimi, opencode, vscode_copilot, zcode,
 };
 
 impl SessionStore {

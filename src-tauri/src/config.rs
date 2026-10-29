@@ -248,7 +248,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        load, parse_preferences, parse_sources, save, AppConfig, Preferences, SourceRoots,
+        AppConfig, Preferences, SourceRoots, load, parse_preferences, parse_sources, save,
     };
 
     #[test]

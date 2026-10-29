@@ -1,12 +1,12 @@
 use super::{
-    attach_message_key, content_block_placeholder, extract_text, is_context_role, json_fingerprint,
-    message_value, timestamp_from_millis, truncate_message, HeadTail, ParseState, Source,
-    StoredSession, DETAIL_MESSAGE_LIMIT,
+    DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, Source, StoredSession, attach_message_key,
+    content_block_placeholder, extract_text, is_context_role, json_fingerprint, message_value,
+    timestamp_from_millis, truncate_message,
 };
 use crate::cache::IndexCache;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     fs::{self, File},
@@ -686,11 +686,11 @@ fn parse_source_uncached(source: &Source) -> Result<ParsedSource, String> {
                         continue;
                     }
                 };
-                if let Some(m) = metadata.get_mut(&id).and_then(Value::as_object_mut) {
-                    if let Some(h) = header.as_object() {
-                        for (k, v) in h {
-                            m.insert(k.clone(), v.clone());
-                        }
+                if let Some(m) = metadata.get_mut(&id).and_then(Value::as_object_mut)
+                    && let Some(h) = header.as_object()
+                {
+                    for (k, v) in h {
+                        m.insert(k.clone(), v.clone());
                     }
                 }
             }
@@ -1001,9 +1001,11 @@ mod tests {
         let detail = visit_detail(&record.source, locator, &mut |_| {}).unwrap();
         assert_eq!(detail["conversation_messages"][0]["text"], "问题");
         assert_eq!(detail["conversation_messages"][1]["text"], "回答");
-        assert!(detail["conversation_messages"][0]
-            .get("_delete_ref")
-            .is_none());
+        assert!(
+            detail["conversation_messages"][0]
+                .get("_delete_ref")
+                .is_none()
+        );
         assert_eq!(
             before,
             std::fs::read(directory.path().join("globalStorage/state.vscdb")).unwrap()
@@ -1132,11 +1134,13 @@ mod tests {
         };
         store.refresh().unwrap();
         assert_eq!(store.summaries.len(), 1);
-        assert!(!store
-            .refresh_paths(&std::collections::BTreeSet::from([directory
-                .path()
-                .join("globalStorage/state.vscdb-shm")]))
-            .unwrap());
+        assert!(
+            !store
+                .refresh_paths(&std::collections::BTreeSet::from([directory
+                    .path()
+                    .join("globalStorage/state.vscdb-shm")]))
+                .unwrap()
+        );
         let diagnostics = store.diagnostics();
         let cursor = &diagnostics["sources"]["cursor"];
         assert_eq!(cursor["indexed_sessions"], 1);
@@ -1151,24 +1155,28 @@ mod tests {
         );
         let detail = store.detail("cursor:shared").unwrap();
         assert_eq!(detail["conversation_messages"][0]["text"], "数据库检索命中");
-        assert!(store
-            .delete_message(
-                "cursor:shared",
-                detail["conversation_messages"][0]["_message_key"]
-                    .as_str()
-                    .unwrap()
-            )
-            .is_err());
+        assert!(
+            store
+                .delete_message(
+                    "cursor:shared",
+                    detail["conversation_messages"][0]["_message_key"]
+                        .as_str()
+                        .unwrap()
+                )
+                .is_err()
+        );
         put(
             &db,
             "composerData:shared",
             json!({"conversation":[{"type":1,"text":"更新后的正文"}]}),
         );
-        assert!(store
-            .refresh_paths(&std::collections::BTreeSet::from([directory
-                .path()
-                .join("globalStorage/state.vscdb-wal")]))
-            .unwrap());
+        assert!(
+            store
+                .refresh_paths(&std::collections::BTreeSet::from([directory
+                    .path()
+                    .join("globalStorage/state.vscdb-wal")]))
+                .unwrap()
+        );
         assert_eq!(
             store.search(&query, &Default::default()).unwrap()["total"],
             0
@@ -1179,9 +1187,11 @@ mod tests {
         assert_eq!(store.summaries.len(), 1);
         drop(db);
         std::fs::remove_file(&database_path).unwrap();
-        assert!(store
-            .refresh_paths(&std::collections::BTreeSet::from([database_path]))
-            .unwrap());
+        assert!(
+            store
+                .refresh_paths(&std::collections::BTreeSet::from([database_path]))
+                .unwrap()
+        );
         assert!(store.summaries.is_empty());
     }
 }

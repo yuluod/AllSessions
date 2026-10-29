@@ -1,13 +1,13 @@
 use std::{
     collections::BTreeSet,
     path::PathBuf,
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
 use crate::backend::BackendState;
@@ -52,14 +52,14 @@ impl WatcherState {
             .watcher
             .lock()
             .map_err(|_| "文件监听状态已损坏".to_string())?;
-        if let Some((_, watched)) = guard.as_ref() {
-            if watched.as_slice() == roots {
-                *self
-                    .last_error
-                    .lock()
-                    .map_err(|_| "文件监听错误状态已损坏".to_string())? = None;
-                return Ok(());
-            }
+        if let Some((_, watched)) = guard.as_ref()
+            && watched.as_slice() == roots
+        {
+            *self
+                .last_error
+                .lock()
+                .map_err(|_| "文件监听错误状态已损坏".to_string())? = None;
+            return Ok(());
         }
         match arm_watcher(&self.sender, roots) {
             Ok(next) => {

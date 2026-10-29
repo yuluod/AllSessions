@@ -14,12 +14,12 @@ mod watcher;
 mod workspace;
 
 use tauri::{
+    Emitter, Manager,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager,
 };
 
-use backend::{request_json, BackendState};
+use backend::{BackendState, request_json};
 
 /// 托盘图标资产由 v3 原图生成，来源 `icons/128x128.png`。
 /// 原图已经使用透明画布；近白背景清理仅作为旧资产兼容保护。
@@ -199,15 +199,19 @@ mod tests {
         let rgba = icon.rgba();
 
         assert!(rgba.as_chunks::<4>().0.iter().any(|pixel| pixel[3] > 0));
-        assert!(rgba[..width * 4]
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .all(|pixel| pixel[3] == 0));
-        assert!(rgba[(height - 1) * width * 4..]
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .all(|pixel| pixel[3] == 0));
+        assert!(
+            rgba[..width * 4]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[3] == 0)
+        );
+        assert!(
+            rgba[(height - 1) * width * 4..]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[3] == 0)
+        );
     }
 }

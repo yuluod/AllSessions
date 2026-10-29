@@ -8,13 +8,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use walkdir::WalkDir;
 
 use super::{
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, SEARCH_TEXT_LIMIT, Source,
     append_limited, attach_message_key, compact_title, error_text, extract_text, message_value,
-    summary_search_text, timestamp_from_millis, truncate_message, HeadTail, ParseState, Source,
-    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    summary_search_text, timestamp_from_millis, truncate_message,
 };
 
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
@@ -507,10 +507,9 @@ fn parse(
                 }
                 state.cwd = record["cwd"].as_str().unwrap_or_default().into();
                 if let Some(created) = record["createdAt"].as_i64().and_then(timestamp_from_millis)
+                    && state.timestamp.is_empty()
                 {
-                    if state.timestamp.is_empty() {
-                        state.timestamp = created;
-                    }
+                    state.timestamp = created;
                 }
                 let parent = record["parentSessionId"]
                     .as_str()
@@ -653,10 +652,10 @@ pub(super) fn read_attachment(
         .filter(|value| *value > 0)
         .ok_or_else(|| "图片定位信息无效".to_string())?;
     let record = read_record_at_line(path, line_number)?;
-    if let Some(seq) = request["seq"].as_i64() {
-        if record["seq"].as_i64() != Some(seq) {
-            return Err("会话内容已变化，请刷新后重试".into());
-        }
+    if let Some(seq) = request["seq"].as_i64()
+        && record["seq"].as_i64() != Some(seq)
+    {
+        return Err("会话内容已变化，请刷新后重试".into());
     }
     let block = super::attachment::value_at_path(&record, &request["path"])?;
     let attachment_id = image_block_id(block)
@@ -1106,8 +1105,10 @@ mod tests {
         let path = root.join("w/session-abc/session.v4.jsonl.zstd");
         assert!(matches_path(directory.path(), &path));
         assert!(discover_files(&source(directory.path())).is_empty());
-        assert!(parse_detail(&path, &source(directory.path()))
-            .unwrap_err()
-            .contains("符号链接"));
+        assert!(
+            parse_detail(&path, &source(directory.path()))
+                .unwrap_err()
+                .contains("符号链接")
+        );
     }
 }

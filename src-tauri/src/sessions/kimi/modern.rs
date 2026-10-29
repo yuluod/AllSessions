@@ -62,10 +62,10 @@ impl Transcript {
     }
 
     fn settle(&mut self) {
-        if let Some((index, _)) = self.open.take() {
-            if self.entries[index].records.is_empty() {
-                self.entries.remove(index);
-            }
+        if let Some((index, _)) = self.open.take()
+            && self.entries[index].records.is_empty()
+        {
+            self.entries.remove(index);
         }
         self.pending_tools.clear();
         self.flush_deferred();
@@ -99,14 +99,14 @@ impl Transcript {
                         self.entries.push(Entry::default());
                     }
                     "content.part" | "tool.call" => {
-                        if let Some((index, uuid)) = &self.open {
-                            if event["stepUuid"].as_str() == Some(uuid.as_str()) {
-                                self.entries[*index].records.push(reference);
-                                if event["type"] == "tool.call" {
-                                    if let Some(id) = event["toolCallId"].as_str() {
-                                        self.pending_tools.insert(id.into());
-                                    }
-                                }
+                        if let Some((index, uuid)) = &self.open
+                            && event["stepUuid"].as_str() == Some(uuid.as_str())
+                        {
+                            self.entries[*index].records.push(reference);
+                            if event["type"] == "tool.call"
+                                && let Some(id) = event["toolCallId"].as_str()
+                            {
+                                self.pending_tools.insert(id.into());
                             }
                         }
                     }
@@ -381,10 +381,10 @@ pub(super) fn parse_wire(
         if !time.is_empty() {
             collector.state.last_timestamp = time.clone();
         }
-        if record["type"] == "llm.request" {
-            if let Some(provider) = record["provider"].as_str() {
-                collector.state.provider = provider.into();
-            }
+        if record["type"] == "llm.request"
+            && let Some(provider) = record["provider"].as_str()
+        {
+            collector.state.provider = provider.into();
         }
         transcript.add(&record, reference);
         if let Some(events) = events.as_mut() {

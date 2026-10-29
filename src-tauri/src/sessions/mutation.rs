@@ -4,14 +4,14 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::error::ApiError;
 
 use super::helpers::{error_text, read_only_source_error};
-use super::parse::{json_fingerprint, parse_summary, ParseState};
-use super::{gemini, DetailLocator, SessionStore, SourceFormat, StoredSession};
+use super::parse::{ParseState, json_fingerprint, parse_summary};
+use super::{DetailLocator, SessionStore, SourceFormat, StoredSession, gemini};
 
 impl SessionStore {
     pub fn delete_session(&mut self, key: &str) -> Result<Value, ApiError> {
@@ -321,13 +321,13 @@ pub(crate) fn delete_jsonl_message(path: &Path, delete_ref: &Value) -> Result<()
             .filter_map(|message| message["tool_call_id"].as_str().map(ToOwned::to_owned))
             .collect::<BTreeSet<_>>();
         for (message_index, message) in messages.iter().enumerate() {
-            if message["role"].as_str() == Some("tool") {
-                if let Some(tool_call_id) = message["tool_call_id"].as_str() {
-                    tool_lines
-                        .entry(tool_call_id.to_string())
-                        .or_default()
-                        .insert(line_number);
-                }
+            if message["role"].as_str() == Some("tool")
+                && let Some(tool_call_id) = message["tool_call_id"].as_str()
+            {
+                tool_lines
+                    .entry(tool_call_id.to_string())
+                    .or_default()
+                    .insert(line_number);
             }
             if line_number == target_line && message_index == target_index {
                 let fingerprint = json_fingerprint(&record);
@@ -434,10 +434,10 @@ pub(crate) fn legacy_history_path(path: &Path) -> Option<PathBuf> {
 
 pub(crate) fn session_backup_paths(path: &Path) -> Vec<PathBuf> {
     let mut paths = vec![path.to_path_buf()];
-    if path.extension().and_then(|value| value.to_str()) == Some("json") {
-        if let Some(history) = legacy_history_path(path).filter(|value| value.is_file()) {
-            paths.push(history);
-        }
+    if path.extension().and_then(|value| value.to_str()) == Some("json")
+        && let Some(history) = legacy_history_path(path).filter(|value| value.is_file())
+    {
+        paths.push(history);
     }
     paths
 }

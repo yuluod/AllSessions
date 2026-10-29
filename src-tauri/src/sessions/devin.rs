@@ -33,15 +33,15 @@ use std::{
     time::Duration,
 };
 
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::{
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, SEARCH_TEXT_LIMIT, Source,
     append_limited, attach_message_key, extract_text, message_value, summary_search_text,
-    timestamp_from_millis, truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT,
-    DETAIL_MESSAGE_LIMIT, SEARCH_TEXT_LIMIT,
+    timestamp_from_millis, truncate_message,
 };
 use crate::cache::IndexCache;
 
@@ -124,19 +124,16 @@ fn session_index(root: &Path) -> BTreeMap<String, Value> {
     if let Ok(mut statement) = connection.prepare(&format!(
         "select key, cast(value as text) from ItemTable \
          where key like '{MESSAGESTORE_PREFIX}%'"
-    )) {
-        if let Ok(mut rows) = statement.query([]) {
-            while let Ok(Some(row)) = rows.next() {
-                let key = row.get::<_, String>(0).unwrap_or_default();
-                let value = row.get::<_, String>(1).unwrap_or_default();
-                let uuid = serde_json::from_str::<Value>(&value)
-                    .ok()
-                    .and_then(|value| value["uuid"].as_str().map(str::to_string));
-                if let (Some(session_key), Some(uuid)) =
-                    (key.strip_prefix(MESSAGESTORE_PREFIX), uuid)
-                {
-                    pointers.insert(session_key.to_string(), uuid);
-                }
+    )) && let Ok(mut rows) = statement.query([])
+    {
+        while let Ok(Some(row)) = rows.next() {
+            let key = row.get::<_, String>(0).unwrap_or_default();
+            let value = row.get::<_, String>(1).unwrap_or_default();
+            let uuid = serde_json::from_str::<Value>(&value)
+                .ok()
+                .and_then(|value| value["uuid"].as_str().map(str::to_string));
+            if let (Some(session_key), Some(uuid)) = (key.strip_prefix(MESSAGESTORE_PREFIX), uuid) {
+                pointers.insert(session_key.to_string(), uuid);
             }
         }
     }
@@ -144,25 +141,24 @@ fn session_index(root: &Path) -> BTreeMap<String, Value> {
     if let Ok(mut statement) = connection.prepare(&format!(
         "select key, cast(value as text) from ItemTable \
          where key like '{SESSIONINFO_PREFIX}%'"
-    )) {
-        if let Ok(mut rows) = statement.query([]) {
-            while let Ok(Some(row)) = rows.next() {
-                let key = row.get::<_, String>(0).unwrap_or_default();
-                let value = row.get::<_, String>(1).unwrap_or_default();
-                let Some(session_key) = key.strip_prefix(SESSIONINFO_PREFIX) else {
-                    continue;
-                };
-                // 两种键：`acp/<connector>/<name>` 需要指针反解 uuid，
-                // 裸 uuid 是旧版（cascade 时代）直接可用的键。
-                let uuid = if session_key.starts_with("acp/") {
-                    pointers.get(session_key).cloned()
-                } else {
-                    Some(session_key.to_string())
-                };
-                let Some(uuid) = uuid else { continue };
-                let value = serde_json::from_str::<Value>(&value).unwrap_or(Value::Null);
-                indexed.push((uuid, value));
-            }
+    )) && let Ok(mut rows) = statement.query([])
+    {
+        while let Ok(Some(row)) = rows.next() {
+            let key = row.get::<_, String>(0).unwrap_or_default();
+            let value = row.get::<_, String>(1).unwrap_or_default();
+            let Some(session_key) = key.strip_prefix(SESSIONINFO_PREFIX) else {
+                continue;
+            };
+            // 两种键：`acp/<connector>/<name>` 需要指针反解 uuid，
+            // 裸 uuid 是旧版（cascade 时代）直接可用的键。
+            let uuid = if session_key.starts_with("acp/") {
+                pointers.get(session_key).cloned()
+            } else {
+                Some(session_key.to_string())
+            };
+            let Some(uuid) = uuid else { continue };
+            let value = serde_json::from_str::<Value>(&value).unwrap_or(Value::Null);
+            indexed.push((uuid, value));
         }
     }
     // 同一 uuid 可能同时有新旧两版键；保留第一个（查询序不定，但字段等价）。
@@ -257,10 +253,10 @@ fn chunked_messages(row: &MessageRow, role: &str, subtype: &str, synthetic: bool
     for (index, chunk) in chunks.iter().enumerate() {
         match chunk["content"]["type"].as_str() {
             Some("text") => {
-                if let Some(text) = chunk["content"]["text"].as_str() {
-                    if !text.trim().is_empty() {
-                        texts.push(text);
-                    }
+                if let Some(text) = chunk["content"]["text"].as_str()
+                    && !text.trim().is_empty()
+                {
+                    texts.push(text);
                 }
             }
             Some("image") => images.push(index),
@@ -643,7 +639,7 @@ fn parse_source_uncached(source: &Source) -> Result<ParsedSource, String> {
             return Err(format!(
                 "无法读取 Devin 会话目录（{}）：{error}",
                 directory.display()
-            ))
+            ));
         }
     }
     let state_db = source.root.join("globalStorage").join("state.vscdb");
@@ -1215,13 +1211,12 @@ fn visit_cli_detail(
         "source_subtype": "truncation",
         "is_truncation_marker": true,
     }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let (mut event_values, omitted_events, total_events) = events.finish(json!({
         "line_number": Value::Null,
@@ -1229,13 +1224,12 @@ fn visit_cli_detail(
         "type": "viewer_truncation",
         "payload": { "omitted_events": 0 },
     }));
-    if omitted_events > 0 {
-        if let Some(marker) = event_values
+    if omitted_events > 0
+        && let Some(marker) = event_values
             .iter_mut()
             .find(|value| value["type"] == "viewer_truncation")
-        {
-            marker["payload"]["omitted_events"] = json!(omitted_events);
-        }
+    {
+        marker["payload"]["omitted_events"] = json!(omitted_events);
     }
     let (mut summary, _) = cli_summary(&state, &row, &locator.database_path, source);
     if omitted_messages + omitted_events > 0 {
@@ -1429,13 +1423,12 @@ pub(super) fn visit_detail(
         "source_subtype": "truncation",
         "is_truncation_marker": true,
     }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let (mut event_values, omitted_events, total_events) = events.finish(json!({
         "line_number": Value::Null,
@@ -1443,13 +1436,12 @@ pub(super) fn visit_detail(
         "type": "viewer_truncation",
         "payload": { "omitted_events": 0 },
     }));
-    if omitted_events > 0 {
-        if let Some(marker) = event_values
+    if omitted_events > 0
+        && let Some(marker) = event_values
             .iter_mut()
             .find(|value| value["type"] == "viewer_truncation")
-        {
-            marker["payload"]["omitted_events"] = json!(omitted_events);
-        }
+    {
+        marker["payload"]["omitted_events"] = json!(omitted_events);
     }
     let (mut summary, _) = finish_summary(
         &state,
@@ -1478,8 +1470,8 @@ mod tests {
     use crate::cache::IndexCache;
     use std::path::{Path, PathBuf};
 
-    use rusqlite::{params, Connection};
-    use serde_json::{json, Value};
+    use rusqlite::{Connection, params};
+    use serde_json::{Value, json};
     use tempfile::tempdir;
 
     use super::{matches_path, parse_detail, parse_source};
@@ -1512,14 +1504,16 @@ mod tests {
         session
             .execute(
                 "insert into meta values ('info', ?1)",
-                params![json!({
-                    "title": "元数据标题",
-                    "configOptions": [
-                        {"id": "mode", "currentValue": "accept-edits"},
-                        {"id": "model", "currentValue": "swe-2-high"}
-                    ]
-                })
-                .to_string()],
+                params![
+                    json!({
+                        "title": "元数据标题",
+                        "configOptions": [
+                            {"id": "mode", "currentValue": "accept-edits"},
+                            {"id": "model", "currentValue": "swe-2-high"}
+                        ]
+                    })
+                    .to_string()
+                ],
             )
             .unwrap();
         let rows: [(i64, &str, Value); 5] = [
@@ -1657,12 +1651,14 @@ mod tests {
         assert_eq!(session.summary["originator"], "devin");
         assert_eq!(session.summary["source_read_only"], true);
         assert!(session.search_text.contains("请修复登录页"));
-        assert!(parsed.active_paths.contains(
-            root.join("acp-messages")
-                .join("ses-main.db")
-                .to_string_lossy()
-                .as_ref()
-        ));
+        assert!(
+            parsed.active_paths.contains(
+                root.join("acp-messages")
+                    .join("ses-main.db")
+                    .to_string_lossy()
+                    .as_ref()
+            )
+        );
     }
 
     #[test]
@@ -1725,10 +1721,12 @@ mod tests {
         assert_eq!(tool["tool_call_id"], "toolu_01");
         assert_eq!(tool["is_error"], Value::Null);
         let plan = find("plan");
-        assert!(plan["text"]
-            .as_str()
-            .unwrap()
-            .contains("[done] 后端：刷新索引"));
+        assert!(
+            plan["text"]
+                .as_str()
+                .unwrap()
+                .contains("[done] 后端：刷新索引")
+        );
         // 图片以独立消息出现，不携带 base64。
         let image = find("image");
         assert_eq!(image["text"], "[image]");
@@ -1739,16 +1737,22 @@ mod tests {
         assert_eq!(attachment["locator"]["chunk_index"], 1);
         let payload =
             super::read_attachment(&session.detail_locator, &attachment["locator"]).unwrap();
-        assert!(payload["data_url"]
-            .as_str()
-            .unwrap()
-            .starts_with("data:image/png;base64,iVBOR"));
-        assert!(messages
-            .iter()
-            .all(|message| !message["text"].as_str().unwrap_or("").contains("iVBOR")));
-        assert!(messages
-            .iter()
-            .all(|message| message["_message_key"].is_string()));
+        assert!(
+            payload["data_url"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,iVBOR")
+        );
+        assert!(
+            messages
+                .iter()
+                .all(|message| !message["text"].as_str().unwrap_or("").contains("iVBOR"))
+        );
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["_message_key"].is_string())
+        );
         // 原始事件包含全部行，图片行因超大被截断标记。
         let events = detail["raw_events"].as_array().unwrap();
         assert_eq!(events.len(), 5);
@@ -1925,12 +1929,14 @@ mod tests {
         assert_eq!(session.summary["source_read_only"], true);
         assert!(session.summary["timestamp"].is_string());
         assert!(session.search_text.contains("修复登录页"));
-        assert!(parsed.active_paths.contains(
-            root.join("cli")
-                .join("sessions.db")
-                .to_string_lossy()
-                .as_ref()
-        ));
+        assert!(
+            parsed.active_paths.contains(
+                root.join("cli")
+                    .join("sessions.db")
+                    .to_string_lossy()
+                    .as_ref()
+            )
+        );
     }
 
     #[test]
@@ -2184,10 +2190,12 @@ mod tests {
         assert_eq!(chunk["locator"]["chunk_index"], 1);
         let payload = super::read_attachment(&session.detail_locator, &chunk["locator"]).unwrap();
         assert_eq!(payload["media_type"], "image/png");
-        assert!(payload["data_url"]
-            .as_str()
-            .unwrap()
-            .starts_with("data:image/png;base64,iVBOR"));
+        assert!(
+            payload["data_url"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,iVBOR")
+        );
         // CLI 的 images 数组单独定位，优先用 base64_data 而不是已失效的 source_path。
         let entry = &attachments[1];
         assert_eq!(entry["locator"]["image_index"], 0);

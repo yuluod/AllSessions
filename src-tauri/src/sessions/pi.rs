@@ -5,13 +5,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, SEARCH_TEXT_LIMIT, Source,
     append_limited, attach_attachment_locator, attach_message_key, compact, error_text,
     extract_text, image_attachments, json_fingerprint, message_value, summary_search_text,
-    truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
-    SEARCH_TEXT_LIMIT,
+    truncate_message,
 };
 
 #[derive(Default)]
@@ -396,10 +396,9 @@ fn build_state(
         }
         if record["type"].as_str() == Some("message")
             && record["message"]["role"].as_str() == Some("assistant")
+            && let Some(provider) = record["message"]["provider"].as_str()
         {
-            if let Some(provider) = record["message"]["provider"].as_str() {
-                state.provider = provider.to_string();
-            }
+            state.provider = provider.to_string();
         }
         for message in record_messages(&record) {
             state.accept_message(message);
@@ -494,13 +493,12 @@ pub(super) fn visit_detail(
         "source_subtype": "truncation",
         "is_truncation_marker": true,
     }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let (mut event_values, omitted_events, total_events) = events.finish(json!({
         "line_number": Value::Null,
@@ -508,13 +506,12 @@ pub(super) fn visit_detail(
         "type": "viewer_truncation",
         "payload": { "omitted_events": 0 },
     }));
-    if omitted_events > 0 {
-        if let Some(marker) = event_values
+    if omitted_events > 0
+        && let Some(marker) = event_values
             .iter_mut()
             .find(|value| value["type"] == "viewer_truncation")
-        {
-            marker["payload"]["omitted_events"] = json!(omitted_events);
-        }
+    {
+        marker["payload"]["omitted_events"] = json!(omitted_events);
     }
     let mut summary = state.summary(path, source);
     if let Some(title) = title.filter(|value| !value.trim().is_empty()) {
@@ -583,12 +580,16 @@ mod tests {
         assert!(search.contains("生成图片"));
         let detail = parse_detail(&path, &source).unwrap();
         let messages = detail["conversation_messages"].as_array().unwrap();
-        assert!(messages
-            .iter()
-            .any(|message| message["role"] == "user" && message["text"] == "生成图片"));
-        assert!(messages
-            .iter()
-            .any(|message| message["source_subtype"] == "thinking"));
+        assert!(
+            messages
+                .iter()
+                .any(|message| message["role"] == "user" && message["text"] == "生成图片")
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|message| message["source_subtype"] == "thinking")
+        );
         assert_eq!(
             messages
                 .iter()
@@ -633,12 +634,16 @@ mod tests {
         let detail = parse_detail(&path, &source(directory.path())).unwrap();
         let messages = detail["conversation_messages"].as_array().unwrap();
         assert_eq!(messages.len(), 4);
-        assert!(messages
-            .iter()
-            .all(|message| message["_delete_ref"].is_null()));
-        assert!(messages
-            .iter()
-            .all(|message| message["_message_key"].is_string()));
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["_delete_ref"].is_null())
+        );
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["_message_key"].is_string())
+        );
     }
 
     #[test]
@@ -653,11 +658,13 @@ mod tests {
         let (summary, _) = parse_summary(&path, &source(directory.path())).unwrap();
         assert_eq!(summary["message_count"], 1);
         let detail = parse_detail(&path, &source(directory.path())).unwrap();
-        assert!(detail["raw_events"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|event| event["type"] == "parse_error"));
+        assert!(
+            detail["raw_events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| event["type"] == "parse_error")
+        );
     }
 
     #[test]
@@ -717,9 +724,11 @@ mod tests {
 
         let detail = parse_detail(&path, &omp_source).unwrap();
         let messages = detail["conversation_messages"].as_array().unwrap();
-        assert!(messages
-            .iter()
-            .any(|message| message["role"] == "user" && message["text"] == "omp 问题"));
+        assert!(
+            messages
+                .iter()
+                .any(|message| message["role"] == "user" && message["text"] == "omp 问题")
+        );
         // 损坏行标记为 parse_error 且不阻断其余记录。
         let events = detail["raw_events"].as_array().unwrap();
         assert_eq!(events.len(), 4);

@@ -33,13 +33,13 @@ use std::{
 
 use rusqlite::{Connection, OpenFlags, Row};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::{
+    DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, SEARCH_TEXT_LIMIT, Source,
     append_limited, attach_message_key, message_value, summary_search_text, timestamp_from_millis,
-    truncate_message, HeadTail, ParseState, Source, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT,
-    SEARCH_TEXT_LIMIT,
+    truncate_message,
 };
 use crate::cache::IndexCache;
 
@@ -874,13 +874,12 @@ pub(super) fn visit_detail(
         "source_subtype": "truncation",
         "is_truncation_marker": true,
     }));
-    if omitted_messages > 0 {
-        if let Some(marker) = message_values
+    if omitted_messages > 0
+        && let Some(marker) = message_values
             .iter_mut()
             .find(|value| value["is_truncation_marker"] == true)
-        {
-            marker["omitted_count"] = json!(omitted_messages);
-        }
+    {
+        marker["omitted_count"] = json!(omitted_messages);
     }
     let (mut event_values, omitted_events, total_events) = events.finish(json!({
         "line_number": Value::Null,
@@ -888,13 +887,12 @@ pub(super) fn visit_detail(
         "type": "viewer_truncation",
         "payload": { "omitted_events": 0 },
     }));
-    if omitted_events > 0 {
-        if let Some(marker) = event_values
+    if omitted_events > 0
+        && let Some(marker) = event_values
             .iter_mut()
             .find(|value| value["type"] == "viewer_truncation")
-        {
-            marker["payload"]["omitted_events"] = json!(omitted_events);
-        }
+    {
+        marker["payload"]["omitted_events"] = json!(omitted_events);
     }
     let (mut summary, _) = hermes_summary(&state, &row, &locator.database_path, source);
     if omitted_messages + omitted_events > 0 {
@@ -917,7 +915,7 @@ mod tests {
     use crate::cache::IndexCache;
     use std::path::Path;
 
-    use rusqlite::{params, Connection};
+    use rusqlite::{Connection, params};
     use tempfile::tempdir;
 
     use super::{matches_path, parse_detail, parse_source};
@@ -1093,9 +1091,11 @@ mod tests {
         assert_eq!(tool_result["tool_call_id"], "call-1");
         // raw_events 按消息行计数：4 条活跃行（active=0 的两行被过滤）。
         assert_eq!(detail["raw_events"].as_array().unwrap().len(), 4);
-        assert!(messages
-            .iter()
-            .all(|message| message["_message_key"].is_string()));
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["_message_key"].is_string())
+        );
     }
 
     #[test]
@@ -1170,14 +1170,16 @@ mod tests {
 
         let parsed = parse_source(&source(root), &IndexCache::disabled()).unwrap();
         assert_eq!(parsed.sessions.len(), 2);
-        assert!(parsed.active_paths.contains(
-            &root
-                .join("profiles")
-                .join("coder")
-                .join("state.db")
-                .to_string_lossy()
-                .into_owned()
-        ));
+        assert!(
+            parsed.active_paths.contains(
+                &root
+                    .join("profiles")
+                    .join("coder")
+                    .join("state.db")
+                    .to_string_lossy()
+                    .into_owned()
+            )
+        );
     }
 
     #[test]

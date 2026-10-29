@@ -344,10 +344,8 @@ impl SessionStore {
                 _ => None,
             };
             if let Some(path) = key {
-                active_sources.insert((
-                    source.kind.to_string(),
-                    path.to_string_lossy().into_owned(),
-                ));
+                active_sources
+                    .insert((source.kind.to_string(), path.to_string_lossy().into_owned()));
             }
         }
         self.index_cache.prune_sources(&active_sources);
@@ -585,8 +583,7 @@ impl SessionStore {
                 source.kind == kind
                     && canonical_path.starts_with(path_identity(&source.root))
                     && source_matches_path(source, &path)
-            })
-            else {
+            }) else {
                 continue;
             };
             // 上次运行后已删除的文件不进热列表，避免出现幽灵会话。
@@ -625,8 +622,8 @@ impl SessionStore {
                             .collect()
                     })
                 }
-                SourceFormat::ZCode => zcode::cached_source(source, &self.index_cache).map(
-                    |parsed| {
+                SourceFormat::ZCode => {
+                    zcode::cached_source(source, &self.index_cache).map(|parsed| {
                         parsed
                             .sessions
                             .into_iter()
@@ -639,10 +636,10 @@ impl SessionStore {
                                 )
                             })
                             .collect()
-                    },
-                ),
-                SourceFormat::Cursor => cursor::cached_source(source, &self.index_cache).map(
-                    |parsed| {
+                    })
+                }
+                SourceFormat::Cursor => {
+                    cursor::cached_source(source, &self.index_cache).map(|parsed| {
                         parsed
                             .records
                             .into_iter()
@@ -656,10 +653,10 @@ impl SessionStore {
                                 _ => None,
                             })
                             .collect()
-                    },
-                ),
-                SourceFormat::Devin => devin::cached_source(source, &self.index_cache).map(
-                    |parsed| {
+                    })
+                }
+                SourceFormat::Devin => {
+                    devin::cached_source(source, &self.index_cache).map(|parsed| {
                         parsed
                             .sessions
                             .into_iter()
@@ -672,10 +669,10 @@ impl SessionStore {
                                 )
                             })
                             .collect()
-                    },
-                ),
-                SourceFormat::Hermes => hermes::cached_source(source, &self.index_cache).map(
-                    |parsed| {
+                    })
+                }
+                SourceFormat::Hermes => {
+                    hermes::cached_source(source, &self.index_cache).map(|parsed| {
                         parsed
                             .sessions
                             .into_iter()
@@ -688,8 +685,8 @@ impl SessionStore {
                                 )
                             })
                             .collect()
-                    },
-                ),
+                    })
+                }
                 _ => None,
             };
             let Some(sessions) = sessions else {

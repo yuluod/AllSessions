@@ -56,14 +56,14 @@ pub(crate) use parse::{
 };
 #[cfg(test)]
 pub(crate) use parse::{generic_conversation_message, parse_detail, parse_summary};
-pub(crate) use roots::{
-    describe_inherited_sources, describe_protected_sources, describe_sources, expand_tilde,
-    opencode_event_matches, path_identity, root_lists, watch_roots_for,
-};
 #[cfg(test)]
 pub(crate) use roots::{
     configured_sources, describe_protected_source_roots, existing_watch_root,
     existing_watch_root_within, resolve_kind, sources_from_paths, split_path_list,
+};
+pub(crate) use roots::{
+    describe_inherited_sources, describe_protected_sources, describe_sources, expand_tilde,
+    opencode_event_matches, path_identity, root_lists, watch_roots_for,
 };
 
 const PAGE_LIMIT: usize = 50;

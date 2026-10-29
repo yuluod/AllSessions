@@ -554,7 +554,10 @@ fn source_stamp(source: &Source) -> String {
     }
     let mut stamp = String::new();
     if let Ok(entries) = fs::read_dir(acp_database_dir(&source.root)) {
-        let mut paths = entries.flatten().map(|entry| entry.path()).collect::<Vec<_>>();
+        let mut paths = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
         paths.sort();
         for path in paths {
             push(&mut stamp, &path);
@@ -1996,7 +1999,9 @@ mod tests {
         let root = directory.path();
         let database = cli_fixture(root);
         let fingerprint = |root: &Path| {
-            parse_source(&source(root), &IndexCache::disabled()).unwrap().sessions[0]
+            parse_source(&source(root), &IndexCache::disabled())
+                .unwrap()
+                .sessions[0]
                 .detail_locator
                 .content_fingerprint
                 .clone()

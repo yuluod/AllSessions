@@ -303,9 +303,7 @@ impl IndexCache {
         let Some(connection) = &self.connection else {
             return;
         };
-        let Ok(mut statement) =
-            connection.prepare("select kind, path from source_cache_v1")
-        else {
+        let Ok(mut statement) = connection.prepare("select kind, path from source_cache_v1") else {
             return;
         };
         let Ok(rows) = statement.query_map([], |row| {

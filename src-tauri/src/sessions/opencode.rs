@@ -481,7 +481,12 @@ pub(super) fn cached_source(source: &Source, cache: &IndexCache) -> Option<Parse
     cached_at(source, cache, &path, &stamp)
 }
 
-fn cached_at(source: &Source, cache: &IndexCache, path: &Path, stamp: &str) -> Option<ParsedSource> {
+fn cached_at(
+    source: &Source,
+    cache: &IndexCache,
+    path: &Path,
+    stamp: &str,
+) -> Option<ParsedSource> {
     let payload = cache.get_source(source.kind, path, stamp)?;
     serde_json::from_value::<ParsedSource>(payload).ok()
 }
@@ -1021,8 +1026,7 @@ mod tests {
         assert!(cached_source(&source, &cache).is_none());
         let parsed = parse_source(&source, &cache).unwrap();
         assert!(!parsed.sessions.is_empty());
-        let cached = cached_source(&source, &cache)
-            .expect("指纹未变应命中整源缓存");
+        let cached = cached_source(&source, &cache).expect("指纹未变应命中整源缓存");
         assert_eq!(cached.sessions.len(), parsed.sessions.len());
 
         // 库文件变化(size/mtime 改变)后指纹失效,回到未命中。
@@ -1052,10 +1056,7 @@ mod tests {
     fn wal_边车变化会让整源指纹失效() {
         let (directory, source) = fixture();
         let cache = IndexCache::open_at(&directory.path().join("cache.sqlite"));
-        assert!(!parse_source(&source, &cache)
-            .unwrap()
-            .sessions
-            .is_empty());
+        assert!(!parse_source(&source, &cache).unwrap().sessions.is_empty());
         assert!(cached_source(&source, &cache).is_some());
 
         // WAL 模式下源应用提交只追加 -wal 而不改主库：主库不动、

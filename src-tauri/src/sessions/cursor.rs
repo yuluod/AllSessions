@@ -1,8 +1,9 @@
 use super::{
-    attach_message_key, content_block_placeholder, extract_text, is_context_role,
-    json_fingerprint, message_value, timestamp_from_millis, truncate_message, HeadTail, ParseState,
-    Source, StoredSession, DETAIL_MESSAGE_LIMIT,
+    attach_message_key, content_block_placeholder, extract_text, is_context_role, json_fingerprint,
+    message_value, timestamp_from_millis, truncate_message, HeadTail, ParseState, Source,
+    StoredSession, DETAIL_MESSAGE_LIMIT,
 };
+use crate::cache::IndexCache;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -13,7 +14,6 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use crate::cache::IndexCache;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct DetailLocator {
@@ -528,7 +528,12 @@ fn source_stamp(source: &Source, main_path: &Path) -> String {
                     .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|value| value.as_nanos())
                     .unwrap_or(0);
-                stamp.push_str(&format!("{}:{}:{};", path.display(), metadata.len(), modified));
+                stamp.push_str(&format!(
+                    "{}:{}:{};",
+                    path.display(),
+                    metadata.len(),
+                    modified
+                ));
             }
         };
         entry(path);
@@ -770,8 +775,8 @@ fn parse_source_uncached(source: &Source) -> Result<ParsedSource, String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::cache::IndexCache;
     use super::*;
+    use crate::cache::IndexCache;
     fn source(root: &Path) -> Source {
         Source {
             kind: "cursor",
@@ -933,7 +938,10 @@ mod tests {
                 json!({"conversationState":"encoded"}),
             );
         }
-        for (path, id, reason) in parse_source(&source(directory.path()), &IndexCache::disabled()).unwrap().unsupported {
+        for (path, id, reason) in parse_source(&source(directory.path()), &IndexCache::disabled())
+            .unwrap()
+            .unsupported
+        {
             diagnostics.record_unsupported("cursor", &path, &id, &reason);
         }
         let diagnostic = &diagnostics.sources["cursor"];

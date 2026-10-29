@@ -6,6 +6,7 @@ authors = ["yuluo"]
 license = "Apache-2.0"
 repository = "https://github.com/yuluod/AllSessions"
 edition = "2021"
+rust-version = "1.99"
 
 [lib]
 name = "allsessions_lib"

@@ -531,7 +531,12 @@ pub(super) fn cached_source(source: &Source, cache: &IndexCache) -> Option<Parse
     cached_at(source, cache, &path, &stamp)
 }
 
-fn cached_at(source: &Source, cache: &IndexCache, path: &Path, stamp: &str) -> Option<ParsedSource> {
+fn cached_at(
+    source: &Source,
+    cache: &IndexCache,
+    path: &Path,
+    stamp: &str,
+) -> Option<ParsedSource> {
     let payload = cache.get_source(source.kind, path, stamp)?;
     serde_json::from_value::<ParsedSource>(payload).ok()
 }

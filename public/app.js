@@ -1,7 +1,7 @@
 // 应用入口:装配各模块、绑定全局事件并执行初始化与首屏加载。
 import { t, getLang, setLang, updateStaticI18n } from "./i18n.js";
 import { initTheme, setScheme } from "./theme-manager.js";
-import { initPaneLayout } from "./pane-layout.js";
+import { initPaneLayout, syncRailToggle } from "./pane-layout.js";
 import { initReadingToolbar } from "./reading-toolbar.js";
 import { bindPopoverMenus } from "./ui-components.js";
 import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
@@ -106,6 +106,7 @@ initReadingToolbar();
 
 export function rerenderLocalizedContent() {
   syncSchemeToggle();
+  syncRailToggle();
   syncSessionRoot();
   updateFacetFilters();
   syncFilterControls();

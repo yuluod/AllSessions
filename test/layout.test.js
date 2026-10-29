@@ -29,6 +29,32 @@ test("侧栏滚动条出现时不再挤占内容宽度", async () => {
   assert.match(railScroll, /scrollbar-gutter:\s*stable;/);
 });
 
+test("侧栏可收起为图标条并保留展开入口", async () => {
+  const html = await readProjectFile("public/index.html");
+  const css = await readProjectFile("public/styles/workspace.css");
+  const foundation = await readProjectFile("public/styles/foundation.css");
+
+  assert.match(
+    html,
+    /id="rail-toggle"[\s\S]*?aria-controls="source-rail"[\s\S]*?aria-expanded="true"/
+  );
+  assert.match(foundation, /--rail-collapsed-w:\s*56px;/);
+  assert.match(
+    css,
+    /\.page-shell\.rail-collapsed > \.sidebar-left\s*\{[^}]*width: var\(--rail-collapsed-w\)/
+  );
+  // 收起后侧栏不可拖动，分隔条同步隐藏。
+  assert.match(
+    css,
+    /\.page-shell\.rail-collapsed \.pane-resizer\[data-pane-resizer="rail"\]\s*\{\s*display: none/
+  );
+  // 标签视觉隐藏而非删除，保住按钮的可访问名称。
+  assert.match(
+    css,
+    /\.rail-collapsed \.source-tree__item > span:nth-child\(2\)\s*\{[^}]*clip-path: inset\(50%\)/
+  );
+});
+
 test("局部扫描异常单独展示且保留来源详情入口", async () => {
   const app = await readProjectFile("public/app.js");
   const html = await readProjectFile("public/index.html");
@@ -579,7 +605,10 @@ test("工作台支持拖拽调整三栏宽度且窄栏摘要不换行", async ()
     html,
     /data-pane-resizer="list"[\s\S]*?role="separator"[\s\S]*?tabindex="0"/
   );
-  assert.match(app, /import \{ initPaneLayout \} from "\.\/pane-layout\.js"/);
+  assert.match(
+    app,
+    /import \{[^}]*initPaneLayout[^}]*\} from "\.\/pane-layout\.js"/
+  );
   assert.match(app, /^initPaneLayout\(\);$/m);
   assert.match(pane, /allsessions_pane_widths/);
   assert.match(pane, /"--rail-w"/);
@@ -831,13 +860,12 @@ test("来源栏常驻为应用侧栏，窄会话表自动降噪", async () => {
     html,
     /id="source-rail"[\s\S]*class="rail sidebar-left app-sidebar"/
   );
-  assert.doesNotMatch(html, /id="rail-toggle"/);
-  assert.doesNotMatch(source, /setSourceRailCollapsed/);
+  assert.match(html, /id="rail-toggle"/);
+  // 窄窗口不自动收起：收起只由用户显式触发并持久化。
   assert.doesNotMatch(source, /COMPACT_WORKSPACE_QUERY/);
   assert.match(css, /\.session-search\s*\{[\s\S]*?display: flex/);
   assert.match(css, /\.sidebar-footer\s*\{[^}]*flex: 0 0 auto/);
   assert.match(css, /\.rail-scroll\s*\{[\s\S]*overflow-y: auto/);
-  assert.doesNotMatch(css, /rail-collapsed/);
   assert.doesNotMatch(
     css,
     /\.session-list-shell\.is-selecting \.session-list-header/

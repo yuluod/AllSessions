@@ -25,6 +25,8 @@
 
 :root {
   --rail-w: 260px;
+  /* 收起态图标条宽度：容纳 18px 图标与左右内边距，不随 --rail-w 调整。 */
+  --rail-collapsed-w: 56px;
   --list-w: clamp(400px, 32vw, 500px);
   --sidebar-w: var(--list-w);
   --inspector-w: 280px;

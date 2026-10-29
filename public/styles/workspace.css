@@ -14,6 +14,44 @@
   object-fit: contain;
 }
 
+/* 选择器带上 .sidebar-topbar：components.css 在本文件之后导入，
+   同优先级的 .ghost-button 内边距与最小高度会把图标挤偏。 */
+.sidebar-topbar .sidebar-rail-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sidebar-topbar .sidebar-rail-toggle:hover {
+  color: var(--accent-strong);
+  background: var(--surface-subtle);
+}
+
+.sidebar-topbar .sidebar-rail-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 箭头随收起状态翻转，与侧栏宽度变化同向。 */
+.rail-toggle-chevron {
+  transition: transform 160ms var(--ease-out);
+}
+
+.page-shell.rail-collapsed .rail-toggle-chevron {
+  transform: scaleX(-1);
+}
+
 .sidebar-view-tabs {
   flex: 0 0 auto;
   display: grid;
@@ -179,6 +217,83 @@
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* 收起态：侧栏退化为图标条，保留视图切换、来源图标与底部控件，
+   文字标签改为视觉隐藏以保住可访问名称。 */
+.page-shell.rail-collapsed > .sidebar-left {
+  width: var(--rail-collapsed-w);
+}
+
+.page-shell.rail-collapsed .pane-resizer[data-pane-resizer="rail"] {
+  display: none;
+}
+
+.rail-collapsed .sidebar-topbar {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+/* 收起态品牌退场，按钮回到条带中线。 */
+.rail-collapsed .sidebar-topbar .sidebar-rail-toggle {
+  margin-left: 0;
+}
+
+.rail-collapsed .sidebar-brand-logo,
+.rail-collapsed .sidebar-brand-name,
+.rail-collapsed .rail__group-header,
+.rail-collapsed .source-tree__more,
+.rail-collapsed .project-nav,
+.rail-collapsed .source-tree__item strong {
+  display: none;
+}
+
+.rail-collapsed .sidebar-view-tabs {
+  grid-template-columns: 1fr;
+  margin-inline: 8px;
+}
+
+.rail-collapsed .rail__group {
+  padding-inline: 6px;
+}
+
+/* 图标条里滚动条要占掉三分之一宽度，收起态改为不显示，滚轮仍可滚动。 */
+.rail-collapsed .rail-scroll {
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+}
+
+.rail-collapsed .rail-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-collapsed .source-tree__item {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 0;
+  padding: 6px 0;
+}
+
+.rail-collapsed .source-tree__item > span:nth-child(2) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.rail-collapsed .sidebar-footer {
+  height: auto;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  /* 控件堆叠后高于状态栏，保留边线会与状态栏上边线错位成台阶。 */
+  border-top: 0;
+}
+
+.rail-collapsed .scheme-control {
+  flex-direction: column;
 }
 
 .meta-chip {

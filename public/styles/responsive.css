@@ -142,6 +142,11 @@
     padding: 7px 7px 92px;
   }
 
+  /* 来源栏在此宽度下是整幅顶栏，收起入口随之退场。 */
+  .sidebar-rail-toggle {
+    display: none;
+  }
+
   .workspace-column {
     min-height: 0;
   }

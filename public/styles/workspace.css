@@ -3816,7 +3816,7 @@ body.is-resizing {
   flex: 0 0 auto;
   z-index: var(--z-sticky);
   display: grid;
-  grid-template-columns: auto auto minmax(80px, 1fr) auto auto auto;
+  grid-template-columns: auto auto auto minmax(80px, 1fr) auto auto auto;
   align-items: center;
   gap: 8px 16px;
   /* 固定高度（不随主题字体行高变化），与侧栏底栏共用同一令牌保持上边线齐平。 */
@@ -3899,6 +3899,54 @@ body.is-resizing {
 
 .status-bar__filter > span {
   color: var(--muted);
+}
+
+/* 过滤条件存在时才出现的一键清除，是「回到全部会话」的最短路径。 */
+.status-bar__filter-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.status-bar__filter-clear:hover {
+  color: var(--signal);
+  background: var(--surface-sunken);
+}
+
+.status-bar__watch {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.status-bar__watch[data-state="live"] .status-bar__indicator {
+  background: var(--success);
+}
+
+.status-bar__watch[data-state="warning"] {
+  color: var(--signal);
+}
+
+.status-bar__watch[data-state="warning"] .status-bar__indicator {
+  background: var(--signal);
 }
 
 .status-bar__filter strong {

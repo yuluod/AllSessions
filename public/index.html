@@ -1919,6 +1919,15 @@
             ></span>
           </button>
           <button
+            id="status-watch"
+            class="status-bar__watch"
+            type="button"
+            hidden
+          >
+            <span class="status-bar__indicator" aria-hidden="true"></span>
+            <span id="status-watch-text"></span>
+          </button>
+          <button
             id="refresh-btn"
             class="ghost-button"
             type="button"
@@ -1937,6 +1946,19 @@
             <strong id="status-filter-text" data-i18n="statusFilterNone"
               >全部会话</strong
             >
+            <button
+              id="status-filter-clear"
+              class="status-bar__filter-clear"
+              type="button"
+              hidden
+              data-i18n="statusFilterClear"
+              data-i18n-attr="aria-label"
+              data-i18n-title="statusFilterClear"
+              aria-label="清除全部过滤条件"
+              title="清除全部过滤条件"
+            >
+              ✕
+            </button>
           </div>
           <div
             class="status-bar__keys"

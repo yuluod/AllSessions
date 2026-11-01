@@ -328,6 +328,7 @@ export async function loadFacets() {
 export async function loadWorkspaceDiagnostics() {
   const payload = await fetchJson("/api/settings");
   state.diagnostics = payload?.diagnostics || null;
+  state.watcherStatus = payload?.watcher || null;
   renderWorkspaceStatus();
 }
 

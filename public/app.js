@@ -322,6 +322,20 @@ async function initialize() {
   elements.statusHealthButton?.addEventListener("click", () => {
     void settingsController.open("sources");
   });
+  elements.statusWatch?.addEventListener("click", () => {
+    void settingsController.open("sources");
+  });
+  elements.statusFilterClear?.addEventListener("click", () => {
+    // 一键回到「全部会话」：状态栏是过滤条件的汇总出口，
+    // 比逐项清空搜索框、下拉与开关更短路径。
+    resetFilterState();
+    syncFilterControls();
+    syncUrl();
+    void Promise.all([loadSessions(), loadStats()]).catch((error) => {
+      console.error(error);
+      showError(`${t("loadListFailed")}: ${error.message}`);
+    });
+  });
 
   elements.providerFilter?.addEventListener("change", async (event) => {
     state.filters.provider = event.target.value;

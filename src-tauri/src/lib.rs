@@ -251,6 +251,29 @@ pub(crate) fn refresh_tray_menu(app: &tauri::AppHandle) {
     }
 }
 
+/// 把登录自启动偏好同步到系统注册项；已处于目标状态时不再重写注册。
+/// debug 构建整体跳过：开发二进制与正式版共享同一注册标识，
+/// 任一方向的同步都可能覆盖正式版的自启动注册。
+pub(crate) fn sync_autostart(app: &tauri::AppHandle, enabled: bool) {
+    if cfg!(debug_assertions) {
+        eprintln!("开发构建跳过登录自启动同步（目标状态：{enabled}）");
+        return;
+    }
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    let registered = manager.is_enabled().unwrap_or(false);
+    let result = if enabled && !registered {
+        manager.enable().map(|_| ())
+    } else if !enabled && registered {
+        manager.disable().map(|_| ())
+    } else {
+        Ok(())
+    };
+    if let Err(error) = result {
+        eprintln!("同步登录自启动失败：{error}");
+    }
+}
+
 fn create_tray(app: &tauri::App) -> tauri::Result<()> {
     // 首次扫描尚未发布，菜单先不含会话段；扫描完成后由
     // refresh_tray_menu 重建补齐。
@@ -318,6 +341,10 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             show_main_window(app)
         }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -355,6 +382,8 @@ pub fn run() {
                 if icon != app_icon::ICON_DEFAULT {
                     app_icon::apply(app, &icon);
                 }
+                // 自启动注册可能与偏好漂移（重装、外部清理），按偏好自愈。
+                sync_autostart(app, app.state::<BackendState>().launch_at_login());
             }
             // macOS：应用驻留托盘时点击程序坞图标（或 Finder 里再次打开）
             // 会触发 Reopen；没有可见窗口时重新显示主窗口，否则用户会

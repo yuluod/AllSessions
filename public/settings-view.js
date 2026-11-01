@@ -795,6 +795,7 @@ export function createSettingsController({
     if (!preferences) return;
     savedPreferences = {
       keep_running_in_tray: preferences.keep_running_in_tray !== false,
+      launch_at_login: preferences.launch_at_login === true,
       check_updates_on_startup: preferences.check_updates_on_startup !== false,
       terminal_app: preferences.terminal_app || "auto",
       terminal_custom: preferences.terminal_custom || "",
@@ -803,6 +804,9 @@ export function createSettingsController({
     if (elements.settingsKeepRunning) {
       elements.settingsKeepRunning.checked =
         savedPreferences.keep_running_in_tray;
+    }
+    if (elements.settingsLaunchAtLogin) {
+      elements.settingsLaunchAtLogin.checked = savedPreferences.launch_at_login;
     }
     if (elements.settingsStartupUpdates) {
       elements.settingsStartupUpdates.checked =
@@ -862,6 +866,9 @@ export function createSettingsController({
   function setPreferenceControlsDisabled(disabled) {
     if (elements.settingsKeepRunning) {
       elements.settingsKeepRunning.disabled = disabled;
+    }
+    if (elements.settingsLaunchAtLogin) {
+      elements.settingsLaunchAtLogin.disabled = disabled;
     }
     if (elements.settingsStartupUpdates) {
       elements.settingsStartupUpdates.disabled = disabled;
@@ -981,6 +988,7 @@ export function createSettingsController({
     if (!savedPreferences) return;
     const next = {
       keep_running_in_tray: elements.settingsKeepRunning?.checked !== false,
+      launch_at_login: elements.settingsLaunchAtLogin?.checked === true,
       check_updates_on_startup:
         elements.settingsStartupUpdates?.checked !== false,
       terminal_app:
@@ -1162,6 +1170,7 @@ export function createSettingsController({
     );
     elements.settingsLicenseLink?.addEventListener("click", openExternalLink);
     elements.settingsKeepRunning?.addEventListener("change", savePreferences);
+    elements.settingsLaunchAtLogin?.addEventListener("change", savePreferences);
     elements.settingsStartupUpdates?.addEventListener(
       "change",
       savePreferences

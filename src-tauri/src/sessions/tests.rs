@@ -467,6 +467,73 @@ fn 统计按_agent_归并归档和兼容来源() {
 }
 
 #[test]
+fn 最近会话沿用默认可见口径并限制条数() {
+    let store = SessionStore {
+        summaries: vec![
+            json!({ "_key": "first" }),
+            json!({ "_key": "hidden", "hidden": true }),
+            json!({ "_key": "archived", "archived": true }),
+            json!({ "_key": "second" }),
+            json!({ "_key": "third" }),
+        ],
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+
+    let keys: Vec<String> = store
+        .recent_summaries(2, &crate::workspace::WorkspaceSnapshot::default())
+        .iter()
+        .filter_map(|summary| summary["_key"].as_str().map(String::from))
+        .collect();
+    assert_eq!(keys, ["first", "second"]);
+}
+
+#[test]
+fn 收藏会话只含默认可见口径下的收藏项() {
+    let store = SessionStore {
+        summaries: vec![
+            json!({ "_key": "plain" }),
+            json!({ "_key": "fav" }),
+            json!({ "_key": "fav-archived" }),
+        ],
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    let mut workspace = crate::workspace::WorkspaceSnapshot::default();
+    workspace.sessions.insert(
+        "fav".to_string(),
+        crate::workspace::SessionWorkspace {
+            favorite: true,
+            ..Default::default()
+        },
+    );
+    // 已归档的收藏项仍受默认可见口径约束，不出现在托盘收藏段。
+    workspace.sessions.insert(
+        "fav-archived".to_string(),
+        crate::workspace::SessionWorkspace {
+            favorite: true,
+            archived: true,
+            ..Default::default()
+        },
+    );
+
+    let keys: Vec<String> = store
+        .favorite_summaries(5, &workspace)
+        .iter()
+        .filter_map(|summary| summary["_key"].as_str().map(String::from))
+        .collect();
+    assert_eq!(keys, ["fav"]);
+}
+
+#[test]
 fn refresh_discovers_source_directory_created_after_startup() {
     let base = tempdir().unwrap();
     let root = base.path().join("sessions");

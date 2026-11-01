@@ -86,6 +86,7 @@ import {
 } from "./app/status.js";
 import {
   activateWorkspaceView,
+  bindTauriTrayEvents,
   closeTopDialogFromKeyboard,
   isEditableShortcutTarget,
   moveSessionSelection,
@@ -802,6 +803,9 @@ async function initialize() {
   });
   void bindTauriSettingsEvent().catch((error) => {
     console.error("绑定设置事件失败", error);
+  });
+  void bindTauriTrayEvents().catch((error) => {
+    console.error("绑定托盘会话事件失败", error);
   });
 
   elements.detailSearchInput?.addEventListener("input", (event) => {

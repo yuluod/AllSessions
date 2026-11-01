@@ -81,6 +81,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 - Reveal a session source file or project directory in the system file manager
 - Open a system terminal in the session's working directory
 - Resume the session in the corresponding agent (Cursor and VS Code Copilot Chat are read-only sources and do not support resume)
+- Jump to recent sessions from the system tray menu
 - Pick a terminal app or configure a custom executable
 - Five visual themes
 - Light, dark, and system color schemes

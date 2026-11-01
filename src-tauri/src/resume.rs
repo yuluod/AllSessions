@@ -9,8 +9,8 @@ use std::process::Command;
 use crate::error::ApiError;
 
 /// 与前端 `resumeCommandForKind` 保持一致的恢复命令模板。
-fn resume_command(kind: &str, id: &str) -> Option<String> {
-    let template = match kind {
+fn resume_template(kind: &str) -> Option<&'static str> {
+    Some(match kind {
         "claude_code" => "claude --resume",
         "codex" | "codex_archived" => "codex resume",
         "gemini" => "gemini --resume",
@@ -26,8 +26,16 @@ fn resume_command(kind: &str, id: &str) -> Option<String> {
         "copilot" => "copilot --resume",
         "hermes" => "hermes --resume",
         _ => return None,
-    };
-    Some(format!("{template} {id}"))
+    })
+}
+
+fn resume_command(kind: &str, id: &str) -> Option<String> {
+    Some(format!("{} {id}", resume_template(kind)?))
+}
+
+/// 该来源是否支持在终端恢复会话；托盘菜单用它决定「恢复会话」项可用性。
+pub(crate) fn resume_supported(kind: &str) -> bool {
+    resume_template(kind).is_some()
 }
 
 /// POSIX shell 单引号转义：' → '\''。
@@ -473,6 +481,36 @@ mod tests {
             Some("devin --resume trusted-judo".into())
         );
         assert_eq!(resume_command("unknown", "abc"), None);
+    }
+
+    #[test]
+    fn 恢复支持标记与命令模板同源() {
+        for kind in [
+            "claude_code",
+            "codex",
+            "codex_archived",
+            "gemini",
+            "grok",
+            "pi",
+            "omp",
+            "kimi",
+            "opencode",
+            "zcode",
+            "devin",
+            "copilot",
+            "hermes",
+        ] {
+            assert!(resume_supported(kind), "{kind} 应支持恢复");
+        }
+        for kind in [
+            "cursor",
+            "vscode_copilot",
+            "kilo",
+            "deepseek",
+            "claude_cowork",
+        ] {
+            assert!(!resume_supported(kind), "{kind} 不应支持恢复");
+        }
     }
 
     #[test]

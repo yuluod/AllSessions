@@ -23,6 +23,11 @@ use crate::{
     workspace::{WorkspaceSnapshot, WorkspaceStore},
 };
 
+/// 托盘菜单条目数；取数口径与前端默认列表一致（不含归档/移除/隐藏）。
+/// 收藏段与最近段分开取数，最近段排除已进收藏段的会话避免重复。
+const TRAY_FAVORITE_SESSION_LIMIT: usize = 5;
+const TRAY_RECENT_SESSION_LIMIT: usize = 8;
+
 #[derive(Clone)]
 pub struct BackendState {
     store: Arc<Mutex<SessionStore>>,
@@ -189,8 +194,7 @@ impl BackendState {
                 .map_err(lock_error)?
                 .publish_metadata_from(&working);
             self.sync_watcher_roots(app);
-            app.emit("sessions-changed", json!({"type":"session-updated"}))
-                .map_err(|e| e.to_string())?;
+            emit_sessions_changed(app, json!({"type":"session-updated"}))?;
             let metadata_ms = started.elapsed().as_millis();
             let indexing = Instant::now();
             indexed_any = working.rebuild_search_index_with_progress(|processed, total| {
@@ -224,8 +228,7 @@ impl BackendState {
         // 轮询 index-status 获知，重复事件只会让前端整表重拉一遍。
         // 出错时保留广播，让前端重拉列表与错误状态。
         if indexed_any || result.is_err() {
-            app.emit("sessions-changed", json!({"type":"session-updated"}))
-                .map_err(|e| e.to_string())?;
+            emit_sessions_changed(app, json!({"type":"session-updated"}))?;
         }
         result
     }
@@ -260,6 +263,42 @@ impl BackendState {
 
     pub fn watch_roots(&self) -> Result<Vec<std::path::PathBuf>, String> {
         Ok(self.store.lock().map_err(lock_error)?.watch_roots())
+    }
+
+    /// 托盘菜单数据：(收藏段, 最近段)；锁失败时返回空列表，托盘只显示固定项。
+    pub fn tray_sessions(&self) -> (Vec<Value>, Vec<Value>) {
+        let Ok(workspace) = self
+            .workspace
+            .lock()
+            .map_err(lock_error)
+            .and_then(|store| store.snapshot())
+        else {
+            return (Vec::new(), Vec::new());
+        };
+        let Ok(store) = self.store.lock() else {
+            return (Vec::new(), Vec::new());
+        };
+        let favorites = store.favorite_summaries(TRAY_FAVORITE_SESSION_LIMIT, &workspace);
+        let favorite_keys: BTreeSet<&str> = favorites
+            .iter()
+            .filter_map(|summary| summary["_key"].as_str())
+            .collect();
+        // 多取收藏段上限条，保证去重后仍能凑满最近段配额。
+        let recents = store
+            .recent_summaries(
+                TRAY_RECENT_SESSION_LIMIT + TRAY_FAVORITE_SESSION_LIMIT,
+                &workspace,
+            )
+            .into_iter()
+            .filter(|summary| {
+                // 无 _key 的摘要无法构造菜单项，不应占用配额。
+                summary["_key"]
+                    .as_str()
+                    .is_some_and(|key| !favorite_keys.contains(key))
+            })
+            .take(TRAY_RECENT_SESSION_LIMIT)
+            .collect();
+        (favorites, recents)
     }
 }
 
@@ -440,8 +479,7 @@ fn route_request(
             {
                 eprintln!("清理已删除会话的工作台数据失败：{error}");
             }
-            app.emit("sessions-changed", json!({ "type": "session-deleted" }))
-                .map_err(|error| error.to_string())?;
+            emit_sessions_changed(&app, json!({ "type": "session-deleted" }))?;
             Ok(result)
         }
         ("POST", "/api/sessions/resume") => {
@@ -498,8 +536,7 @@ fn route_request(
             {
                 eprintln!("清理已删除消息的工作台数据失败：{error}");
             }
-            app.emit("sessions-changed", json!({ "type": "session-updated" }))
-                .map_err(|error| error.to_string())?;
+            emit_sessions_changed(&app, json!({ "type": "session-updated" }))?;
             Ok(result)
         }
         ("POST", "/api/sessions/attachment") => {
@@ -525,11 +562,22 @@ fn route_request(
         }
         ("GET", "/api/settings") => Ok(state.settings_payload(&app)?),
         ("GET", "/api/workspace") => Ok(state.workspace_snapshot()?.value()),
-        ("POST", "/api/workspace/session") => Ok(state
-            .workspace
-            .lock()
-            .map_err(lock_error)?
-            .update_session(&request.body)?),
+        ("POST", "/api/workspace/session") => {
+            // 归档/移除/收藏影响托盘会话段可见性；备注、标签更新与
+            // 托盘无关，不重建菜单。
+            let affects_tray = ["archived", "removed", "favorite"]
+                .iter()
+                .any(|field| request.body.get(field).is_some());
+            let result = state
+                .workspace
+                .lock()
+                .map_err(lock_error)?
+                .update_session(&request.body)?;
+            if affects_tray {
+                crate::refresh_tray_menu(&app);
+            }
+            Ok(result)
+        }
         ("POST", "/api/workspace/message") => Ok(state
             .workspace
             .lock()
@@ -676,6 +724,15 @@ fn route_request(
         }
         _ => Err(ApiError::invalid(format!("不支持的请求：{method} {path}"))),
     }
+}
+
+/// 会话列表变化同时发布前端事件并刷新托盘菜单；菜单重建失败不打断发布。
+fn emit_sessions_changed(app: &AppHandle, payload: Value) -> Result<(), String> {
+    let result = app
+        .emit("sessions-changed", payload)
+        .map_err(|error| error.to_string());
+    crate::refresh_tray_menu(app);
+    result
 }
 
 fn lock_error<T>(_: std::sync::PoisonError<T>) -> String {

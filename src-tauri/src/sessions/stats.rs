@@ -208,6 +208,47 @@ impl SessionStore {
             .filter(|summary| matches_filters(summary, query))
             .collect()
     }
+    /// 托盘「最近会话」按默认可见口径取前 N 条；惰性过滤取够即停，
+    /// 不需要像 filtered 那样收集全量结果。
+    pub(crate) fn recent_summaries(
+        &self,
+        limit: usize,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Vec<Value> {
+        self.visible_summaries(limit, &HashMap::new(), workspace)
+    }
+
+    /// 托盘「收藏会话」：默认可见口径加收藏标记，按最近活动取前 N 条。
+    pub(crate) fn favorite_summaries(
+        &self,
+        limit: usize,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Vec<Value> {
+        self.visible_summaries(
+            limit,
+            &HashMap::from([("favorite".to_string(), "true".to_string())]),
+            workspace,
+        )
+    }
+
+    fn visible_summaries(
+        &self,
+        limit: usize,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Vec<Value> {
+        self.summaries
+            .iter()
+            .cloned()
+            .map(|mut summary| {
+                workspace.decorate_summary(&mut summary);
+                summary
+            })
+            .filter(|summary| matches_filters(summary, query))
+            .take(limit)
+            .collect()
+    }
+
     pub(crate) fn session_roots(&self) -> Vec<String> {
         self.sources
             .iter()

@@ -220,6 +220,7 @@ export const elements = {
     document.querySelectorAll('[name="settings-scheme"]')
   ),
   settingsKeepRunning: document.querySelector("#settings-keep-running"),
+  settingsLaunchAtLogin: document.querySelector("#settings-launch-at-login"),
   settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
   settingsAppIconInputs: Array.from(
     document.querySelectorAll('[name="settings-app-icon"]')

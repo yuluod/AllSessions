@@ -300,6 +300,14 @@ impl BackendState {
             .collect();
         (favorites, recents)
     }
+
+    /// 登录自启动偏好；托盘常驻语义独立于该注册项。
+    pub fn launch_at_login(&self) -> bool {
+        self.config
+            .lock()
+            .map(|config| config.preferences.launch_at_login)
+            .unwrap_or(false)
+    }
 }
 
 #[derive(Deserialize)]
@@ -640,11 +648,14 @@ fn route_request(
             let icon_changed = config.preferences.app_icon != preferences.app_icon;
             config.preferences = preferences;
             let app_icon = config.preferences.app_icon.clone();
+            let launch_at_login = config.preferences.launch_at_login;
             config::save(&config_path, &config)?;
             drop(config);
             state.clear_startup_error()?;
             // 图标切换立即生效；失败只在内部记录，不影响设置保存结果。
             crate::app_icon::apply(&app, &app_icon);
+            // 登录自启动注册与偏好保持同步；失败同样只记录。
+            crate::sync_autostart(&app, launch_at_login);
             let mut payload = state.settings_payload(&app)?;
             // Windows 托盘可能受系统刷新时机影响，切换后提供可选重启入口。
             payload["app_icon_restart_available"] =

@@ -510,6 +510,8 @@ const DICT = {
     settingsLanguageHint: "用于界面文案、日期和时间格式",
     settingsKeepRunning: "关闭窗口后继续运行",
     settingsKeepRunningHint: "保留菜单栏或系统托盘入口，便于快速重新打开",
+    settingsLaunchAtLogin: "登录后自动启动",
+    settingsLaunchAtLoginHint: "开机登录时自动运行并驻留托盘",
     settingsStartupUpdates: "启动时检查更新",
     settingsStartupUpdatesHint: "应用启动后自动检查是否有新版本",
     settingsTerminalApp: "终端应用",
@@ -1174,6 +1176,9 @@ const DICT = {
     settingsKeepRunning: "Keep running after closing the window",
     settingsKeepRunningHint:
       "Keep the menu bar or system tray entry available for quick access",
+    settingsLaunchAtLogin: "Launch at login",
+    settingsLaunchAtLoginHint:
+      "Start automatically when you log in and stay in the tray",
     settingsStartupUpdates: "Check for updates at startup",
     settingsStartupUpdatesHint:
       "Automatically check for a new version after the app starts",

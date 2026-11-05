@@ -28,6 +28,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/hermes.rs`：Hermes Agent `state.db` 聚合库（主库与 `profiles/*` 命名库）的只读聚合与按需详情解析；按现存列自适应查询，过滤 active=0 压缩归档行并排除委托子代理会话。
 - `sessions/vscode_copilot.rs`：VS Code Copilot Chat 会话文件（平铺 `.json` 与 1.109 起 `.jsonl` 追加日志）的只读解析；`.jsonl` 逐条回放 set/push/delete，同 id 并存时取代 `.json`；连续正文片段与内联文件引用合并，空占位会话不进列表。
 - `sessions/deepseek.rs`：DeepSeek Harness（`dsh`）会话目录的只读回放；每个 `session-<id>` 目录只取最新一代 `session[.vN].jsonl[.zstd]`，按魔数识别多帧压缩或原始 JSONL；注入上下文按合成消息归约，空占位会话不进列表。
+- `sessions/jetbrains_air.rs`：JetBrains Air（IDE 内 ACP 工作区）线程 `events.jsonl` 的只读回放；按产品目录枚举 `acp` 根，流式正文、工具更新与逐轮用量归约，相邻 `summary.json`/`store.json` 参与复合指纹；空线程不进列表。
 - `cache.rs`：以路径、文件大小和修改时间为指纹的 SQLite 摘要/搜索缓存；负责导入旧版 JSON 索引。
 - `search.rs`：全文搜索索引连接，在会话锁之外执行耗时的全文查询。
 - `workspace.rs`：`workspace.sqlite` 中的收藏、标签、备注、归档与软移除等工作区状态。
@@ -76,7 +77,7 @@ Kimi 官方迁移副本有明确的旧会话 ID，沿用 `kimi:<旧 id>` 工作�
 
 Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合。每个日志文件只缓存有界摘要贡献，完整消息和原始事件在用户打开会话时重新流式读取，并应用与其他来源相同的首尾窗口。Kimi 以 `wire.jsonl` 作为会话事件流，但工作目录和标题分别来自根目录 `kimi.json` 与相邻 `state.json`；这两个元数据文件变化时必须重新解析摘要，不能只依赖 `wire.jsonl` 指纹缓存。OpenCode 的一份 `opencode.db` 包含多条会话，摘要通过批量查询聚合，详情按会话 ID 查询；`opencode.db`、`-wal` 或 `-shm` 变化时均全量刷新该聚合来源。
 
-Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat 与 DeepSeek Harness 同为只读来源。
+Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness 与 JetBrains Air 同为只读来源。
 
 Devin 来源同时覆盖桌面版与 CLI 两种布局：桌面版按会话拆分 `acp-messages/<uuid>.db` 消息库，摘要逐库聚合，标题与时间戳优先取 `globalStorage/state.vscdb` 索引；CLI 的 `sessions.db` 是单库聚合，`sessions` 表提供元数据，`message_nodes` 的消息森林按 `main_chain_id` 所在链重建。桌面版镜像的 CLI 会话（`acp/devin-cli/<slug>`）与 CLI 库记录按 slug 去重，`devin:<slug>` 键冲突时保留 CLI 记录。任一消息库、索引库或 `sessions.db` 变化时全量刷新该聚合来源。详细边界见 [Devin 来源说明](./sources/devin.md)。
 
@@ -92,11 +93,12 @@ OpenCode 当前只兼容最新正式版的 SQLite 格式，不扫描旧版 JSON 
 
 前端在附件进入视口时调用 `POST /api/sessions/attachment`。后端按来源回读：JSONL 只读取定位行并校验指纹；ZCode 只读 part 记录并从 artifacts 目录取副本，副本缺失时才回退到原始路径；Devin 只查对应消息并取出指定图片块。各来源都只允许 PNG/JPEG/WebP/GIF，解码后上限 8 MB，拒绝 SVG；只读取会话自身的附件副本或内嵌数据，不加载远程 URL。原文变化或文件缺失时返回明确错误，不回退到过期内容。
 
-当前覆盖：通用 JSONL（Claude Code、Codex）、Pi/Oh My Pi、Kimi、ZCode、Devin 桌面/CLI、DeepSeek Harness。
+当前覆盖：通用 JSONL（Claude Code、Codex）、Pi/Oh My Pi、Kimi、ZCode、Devin 桌面/CLI、DeepSeek Harness、JetBrains Air。
 
 - ZCode 优先读取 `~/.zcode/cli/artifacts/<session>/` 下的 artifact 副本（data URL 文本或二进制图片），再回退到 part 记录的原始路径。
 - Devin 桌面版按消息 `position`、CLI 按 `node_id` 定位图片块；CLI 正文里的 `[Image N: path]` 对应同一条消息的 `images` 数组，优先读取其中的 `base64_data`，缺失时才回退到 `source_path`。
 - DeepSeek 优先读取 `~/.dsh/attachments/v1/objects/<xx>/<attachmentId>` 原件；原件缺失时用 `llm-deepseek/files-v3.json` 把附件 ID 映射到 `cache/attachments/request-images` 中的处理后副本。
+- JetBrains Air 按 `contextItems`/`explicitContextItems` 内的记录路径定位图片项，只读取复制到线程 `attachments/` 下的 `storagePath` 副本，原始路径与远程 URL 不外读。
 
 Cursor、GitHub Copilot、VS Code Copilot、Claude Cowork 的本机数据已检查，没有图片内容；Gemini、Grok、OpenCode/Kilo、Hermes 尚未接入图片读取，仍只显示占位。后续接入时复用同一 `attachments` 契约与按需接口，不在详情里内联图片。
 
@@ -120,6 +122,7 @@ Cursor、GitHub Copilot、VS Code Copilot、Claude Cowork 的本机数据已检�
 - [Hermes Agent](./sources/hermes.md)
 - [VS Code Copilot Chat](./sources/vscode-copilot.md)
 - [DeepSeek Harness](./sources/deepseek-harness.md)
+- [JetBrains Air](./sources/jetbrains-air.md)
 
 Codex 作为内置参考来源没有单独文档，其维护能力见 README 的 Codex Provider 章节。
 

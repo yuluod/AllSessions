@@ -1,5 +1,17 @@
 const DAY_MS = 86_400_000;
 
+export function heatmapNextIndex(index, key, length) {
+  const next = {
+    ArrowLeft: index - 7,
+    ArrowRight: index + 7,
+    ArrowUp: index - 1,
+    ArrowDown: index + 1,
+    Home: 0,
+    End: length - 1,
+  }[key];
+  return next === undefined ? null : Math.max(0, Math.min(length - 1, next));
+}
+
 export function statsPresetRange(preset, now = new Date()) {
   if (preset === "all") return { start: "", end: "" };
   const end = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;

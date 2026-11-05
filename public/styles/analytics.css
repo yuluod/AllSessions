@@ -481,6 +481,20 @@
   background: var(--surface-sunken);
 }
 
+button.token-heatmap-cell {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+button.token-heatmap-cell[aria-pressed="true"],
+button.token-heatmap-cell:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
 /* 色阶用底色到强调色的显式混色,避免透明度方案在浅色主题下低档位不可辨认。 */
 .token-heatmap-cell[data-level="1"] {
   background: color-mix(in srgb, var(--accent) 45%, var(--surface));

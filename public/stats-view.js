@@ -1,6 +1,10 @@
 import { t, getLang } from "./i18n.js";
 import { formatCount } from "./session-format.js";
-import { calendarHeatmapDays, presetHeatmapRange } from "./stats-calendar.js";
+import {
+  calendarHeatmapDays,
+  presetHeatmapRange,
+  heatmapNextIndex,
+} from "./stats-calendar.js";
 import { createEmptyState } from "./ui-components.js";
 import { renderProjectReview } from "./project-review.js";
 import { renderStatsRange } from "./stats-range.js";
@@ -187,6 +191,8 @@ function renderTrend(stats, container) {
 }
 
 const HEATMAP_LEVELS = 4;
+let heatmapMetric = "tokens";
+let heatmapTooltip = null;
 
 // 用量分布通常右偏（个别重度日远超均值），线性分档会让绝大多数
 // 日期挤在最低档；按平方根缩放后再分档，长尾日期也能落进中高档。
@@ -221,7 +227,9 @@ function localDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function renderHeatmap(stats, container) {
+function renderHeatmap(stats, container, onSelectDay) {
+  heatmapTooltip?.remove();
+  heatmapTooltip = null;
   container.replaceChildren();
   const days = stats.by_date || [];
   if (!days.length) {
@@ -234,10 +242,32 @@ function renderHeatmap(stats, container) {
     end: stats.range?.end || defaults.end,
   };
   const recent = calendarHeatmapDays(days, selectedRange);
-  const max = Math.max(...recent.map((day) => day.tokens || 0), 1);
+  const max = Math.max(...recent.map((day) => day[heatmapMetric] || 0), 1);
 
   const wrap = document.createElement("div");
   wrap.className = "token-heatmap";
+  const modes = document.createElement("div");
+  modes.className = "token-heatmap-presets";
+  modes.setAttribute("role", "group");
+  modes.setAttribute("aria-label", t("statsHeatmapMetric"));
+  for (const [metric, label] of [
+    ["count", "statsSessionsShort"],
+    ["tokens", "statsTokenShort"],
+  ]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost-button";
+    button.textContent = t(label);
+    button.dataset.metric = metric;
+    button.setAttribute("aria-pressed", String(metric === heatmapMetric));
+    button.addEventListener("click", () => {
+      heatmapMetric = metric;
+      renderHeatmap(stats, container, onSelectDay);
+      container.querySelector(`[data-metric="${metric}"]`)?.focus();
+    });
+    modes.append(button);
+  }
+  wrap.append(modes);
   if (recent[0]?.label !== selectedRange.start) {
     const note = document.createElement("p");
     note.className = "props-empty";
@@ -246,11 +276,11 @@ function renderHeatmap(stats, container) {
   }
   const grid = document.createElement("div");
   grid.className = "token-heatmap-grid";
-  grid.setAttribute("role", "img");
+  grid.setAttribute("role", "group");
   grid.setAttribute(
     "aria-label",
-    `${t("statsTokenHeatmap")}: ${formatCount(
-      recent.reduce((sum, day) => sum + (day.tokens || 0), 0)
+    `${t("statsActivityHeatmap")} · ${t(heatmapMetric === "tokens" ? "statsTokenShort" : "statsSessionsShort")}: ${formatCount(
+      recent.reduce((sum, day) => sum + (day[heatmapMetric] || 0), 0)
     )}`
   );
   // 第一天前面按星期补空格，让列对齐真实的周内位置（周一起始）。
@@ -319,14 +349,35 @@ function renderHeatmap(stats, container) {
     grid.append(pad);
   }
   const todayKey = localDateKey(new Date());
-  recent.forEach((day) => {
-    const cell = document.createElement("span");
+  const cells = [];
+  recent.forEach((day, index) => {
+    const cell = document.createElement("button");
+    cell.type = "button";
     cell.className = "token-heatmap-cell";
     if (day.label === todayKey) cell.classList.add("is-today");
-    cell.dataset.level = String(heatmapLevel(day.tokens, max));
+    cell.dataset.level = String(heatmapLevel(day[heatmapMetric], max));
     cell.dataset.date = day.label;
     cell.dataset.tokens = String(day.tokens || 0);
     cell.dataset.count = String(day.count || 0);
+    cell.tabIndex = index === recent.length - 1 ? 0 : -1;
+    cell.setAttribute(
+      "aria-label",
+      `${day.label} · ${t("statsSessionsShort")} ${day.count || 0} · ${t("statsTokenShort")} ${formatCount(day.tokens)}`
+    );
+    cell.setAttribute(
+      "aria-pressed",
+      String(day.label === stats.range?.start && day.label === stats.range?.end)
+    );
+    cell.addEventListener("click", () => onSelectDay?.(day.label));
+    cell.addEventListener("keydown", (event) => {
+      const next = heatmapNextIndex(index, event.key, cells.length);
+      if (next === null) return;
+      event.preventDefault();
+      grid.querySelector('[tabindex="0"]')?.setAttribute("tabindex", "-1");
+      cells[next].tabIndex = 0;
+      cells[next].focus();
+    });
+    cells.push(cell);
     grid.append(cell);
   });
   scroll.append(months, grid);
@@ -358,14 +409,13 @@ function renderHeatmap(stats, container) {
 // 原生 title 提示有约一秒延迟且样式不可控,改用自绘浮层:
 // 悬停日期格立即显示当日的 token 用量与会话数,移开或滚动时消失。
 function attachHeatmapTooltip(grid) {
-  let tooltip = null;
   const hide = () => {
-    tooltip?.remove();
-    tooltip = null;
+    heatmapTooltip?.remove();
+    heatmapTooltip = null;
   };
   const show = (cell) => {
-    tooltip = document.createElement("div");
-    tooltip.className = "token-heatmap-tooltip";
+    heatmapTooltip = document.createElement("div");
+    heatmapTooltip.className = "token-heatmap-tooltip";
     const date = document.createElement("strong");
     date.textContent = cell.dataset.date;
     const tokens = document.createElement("span");
@@ -381,10 +431,10 @@ function attachHeatmapTooltip(grid) {
     }
     const count = document.createElement("span");
     count.textContent = `${t("statsSessionsShort")} ${cell.dataset.count}`;
-    tooltip.append(date, tokens, count);
-    document.body.append(tooltip);
+    heatmapTooltip.append(date, tokens, count);
+    document.body.append(heatmapTooltip);
     const cellRect = cell.getBoundingClientRect();
-    const size = tooltip.getBoundingClientRect();
+    const size = heatmapTooltip.getBoundingClientRect();
     // 优先显示在格子上方,顶部放不下时翻到下方;左右夹在窗口内。
     let left = cellRect.left + cellRect.width / 2 - size.width / 2;
     left = Math.min(Math.max(8, left), window.innerWidth - size.width - 8);
@@ -392,8 +442,8 @@ function attachHeatmapTooltip(grid) {
       cellRect.top - size.height - 6 >= 8
         ? cellRect.top - size.height - 6
         : cellRect.bottom + 6;
-    tooltip.style.left = `${left}px`;
-    tooltip.style.top = `${top}px`;
+    heatmapTooltip.style.left = `${left}px`;
+    heatmapTooltip.style.top = `${top}px`;
   };
   grid.addEventListener("mouseover", (event) => {
     const cell = event.target.closest(".token-heatmap-cell[data-date]");
@@ -401,6 +451,12 @@ function attachHeatmapTooltip(grid) {
     if (cell) show(cell);
   });
   grid.addEventListener("mouseleave", hide);
+  grid.addEventListener("focusin", (event) => {
+    hide();
+    const cell = event.target.closest(".token-heatmap-cell[data-date]");
+    if (cell) show(cell);
+  });
+  grid.addEventListener("focusout", hide);
   grid.addEventListener("scroll", hide, { passive: true });
 }
 
@@ -613,7 +669,7 @@ function renderRankings(stats, container, onSelectRanking) {
 export function renderStats(
   stats,
   elements,
-  { onSelectRanking, onSelectSession, onChangeRange } = {}
+  { onSelectRanking, onSelectSession, onChangeRange, onSelectDay } = {}
 ) {
   if (!elements.statsDashboard) return;
   renderStatsRange(stats.range, elements.statsRange, onChangeRange);
@@ -626,7 +682,7 @@ export function renderStats(
   if (elements.trendChartBody) renderTrend(stats, elements.trendChartBody);
   if (elements.agentChartBody) renderAgents(stats, elements.agentChartBody);
   if (elements.tokenHeatmapBody) {
-    renderHeatmap(stats, elements.tokenHeatmapBody);
+    renderHeatmap(stats, elements.tokenHeatmapBody, onSelectDay);
   }
   if (elements.statsGrid)
     renderRankings(stats, elements.statsGrid, onSelectRanking);

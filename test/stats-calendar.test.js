@@ -4,7 +4,18 @@ import {
   calendarHeatmapDays,
   presetHeatmapRange,
   statsPresetRange,
+  heatmapNextIndex,
 } from "../public/stats-calendar.js";
+
+test("热力图方向键按日与周移动并限制日期边界", () => {
+  assert.equal(heatmapNextIndex(10, "ArrowLeft", 30), 3);
+  assert.equal(heatmapNextIndex(10, "ArrowRight", 30), 17);
+  assert.equal(heatmapNextIndex(10, "ArrowUp", 30), 9);
+  assert.equal(heatmapNextIndex(29, "ArrowDown", 30), 29);
+  assert.equal(heatmapNextIndex(10, "Home", 30), 0);
+  assert.equal(heatmapNextIndex(10, "End", 30), 29);
+  assert.equal(heatmapNextIndex(10, "Enter", 30), null);
+});
 
 test("统一统计预设包含今天并正确跨月", () => {
   const now = new Date(2026, 2, 2, 12);

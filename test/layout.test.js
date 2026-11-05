@@ -480,11 +480,14 @@ test("统计页提供 Token 热力图与每日用量视图", async () => {
   assert.match(source, /stats\.total_input_tokens/);
   assert.match(source, /stats\.total_output_tokens/);
   assert.match(source, /stats\.total_cached_input_tokens/);
-  assert.match(source, /function renderHeatmap\(stats, container\)/);
+  assert.match(
+    source,
+    /function renderHeatmap\(stats, container, onSelectDay\)/
+  );
   assert.match(source, /function formatTokensCompact\(/);
   assert.match(
     source,
-    /elements\.tokenHeatmapBody[\s\S]*renderHeatmap\(stats, elements\.tokenHeatmapBody\)/
+    /elements\.tokenHeatmapBody[\s\S]*renderHeatmap\(stats, elements\.tokenHeatmapBody, onSelectDay\)/
   );
   // 热力图颜色档位基于当日 token 相对峰值，0 档为空格。
   assert.match(source, /function heatmapLevel\(tokens, max\)/);
@@ -495,7 +498,7 @@ test("统计页提供 Token 热力图与每日用量视图", async () => {
   assert.match(source, /token-heatmap-tooltip/);
   assert.doesNotMatch(source, /cell\.title = /);
   assert.match(html, /id="token-heatmap-body"/);
-  assert.match(html, /data-i18n="statsTokenHeatmap"/);
+  assert.match(html, /data-i18n="statsActivityHeatmap"/);
   assert.match(i18n, /statsTokenTotal: "Token 总量"/);
   assert.match(i18n, /statsTokenHeatmap: "Token 热力图"/);
   assert.match(i18n, /statsSessionsShort: "会话"/);

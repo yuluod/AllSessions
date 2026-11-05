@@ -469,6 +469,8 @@ const DICT = {
     statsCommonCwd: "常用工作目录",
     statsCachedHit: "缓存命中率",
     statsRange: "活动时间范围",
+    statsActivityHeatmap: "活动热力图",
+    statsHeatmapMetric: "热力图统计指标",
     statsCalendarLimited: "图表仅展示所选范围最后 4096 天，汇总包含完整范围。",
     statsRangeToday: "今天",
     statsRangeWeek: "近 7 天",
@@ -1190,6 +1192,8 @@ const DICT = {
     statsCommonCwd: "Common Working Directory",
     statsCachedHit: "Cache Hit Rate",
     statsRange: "Activity date range",
+    statsActivityHeatmap: "Activity heatmap",
+    statsHeatmapMetric: "Heatmap metric",
     statsCalendarLimited:
       "The chart shows the last 4096 days of the selected range. Totals cover the full range.",
     statsRangeToday: "Today",

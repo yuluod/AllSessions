@@ -306,6 +306,14 @@ export async function loadMoreSessions() {
 export function renderCurrentStats() {
   if (!state.stats) return;
   renderStats(state.stats, elements, {
+    onSelectDay: (date) =>
+      setActivityRange({ start: date, end: date })
+        .then(() => {
+          elements.tokenHeatmapBody
+            ?.querySelector(`[data-date="${date}"]`)
+            ?.focus();
+        })
+        .catch((error) => showError(error.message)),
     onChangeRange: (range) =>
       setActivityRange(range).catch((error) => showError(error.message)),
     onSelectSession: (key) => {

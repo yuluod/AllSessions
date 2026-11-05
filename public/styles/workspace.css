@@ -2428,6 +2428,61 @@ body.is-resizing {
 .message-card[data-role="tool"].collapsed header {
   margin-bottom: 0;
 }
+
+/* 工具结果并入调用卡后以虚线分隔；错误状态只在来源明确标记 is_error 时出现。 */
+.tool-result {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.tool-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.tool-result-label,
+.tool-result-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.tool-result-label {
+  color: var(--text-secondary);
+  background: var(--surface-muted);
+}
+
+.tool-result-status[data-state="error"] {
+  color: var(--signal);
+  background: var(--signal-soft);
+}
+
+.tool-result-time {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tool-result.removed {
+  opacity: 0.68;
+}
+
+.tool-result.removed .message-restore-btn {
+  opacity: 1;
+}
+
+.message-card.collapsed .tool-result-head {
+  margin-bottom: 0;
+}
 .message-card[data-role="user"] header {
   justify-content: flex-end;
 }

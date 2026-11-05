@@ -1,5 +1,41 @@
 import { displayMessageText } from "./session-export.js";
 
+// 把工具调用与其结果合并为一个渲染单元；缺少 id、顺序颠倒或已被占用时保持独立。
+export function groupToolMessages(messages) {
+  const resultsById = new Map();
+  messages.forEach((message, index) => {
+    const id = message?.tool_call_id;
+    if (
+      message?.role !== "tool" ||
+      !["tool_result", "function_call_output"].includes(message.tool_kind) ||
+      !id
+    )
+      return;
+    if (!resultsById.has(id)) resultsById.set(id, []);
+    resultsById.get(id).push(index);
+  });
+
+  const consumed = new Set();
+  const groups = [];
+  messages.forEach((message, index) => {
+    if (consumed.has(index)) return;
+    const id = message?.tool_call_id;
+    const resultIndex =
+      message?.role === "tool" &&
+      ["tool_call", "tool_use", "function_call"].includes(message.tool_kind) &&
+      id
+        ? resultsById.get(id)?.find((i) => i > index && !consumed.has(i))
+        : undefined;
+    if (resultIndex === undefined) {
+      groups.push({ message, result: null });
+      return;
+    }
+    consumed.add(resultIndex);
+    groups.push({ message, result: messages[resultIndex] });
+  });
+  return groups;
+}
+
 export function roleCounts(messages) {
   const counts = new Map();
   for (const message of messages) {

@@ -693,8 +693,9 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   );
   assert.match(
     view,
-    /state\.conversationDesc \? \[\.\.\.visible\]\.reverse\(\) : visible/
+    /state\.conversationDesc \? \[\.\.\.groups\]\.reverse\(\) : groups/
   );
+  assert.match(view, /groupToolMessages/);
   assert.doesNotMatch(view, /createMessageNavSection/);
   assert.doesNotMatch(view, /message-nav-section/);
   assert.match(filter, /showTools\s*\|\|\s*message\.role !== "tool"/);

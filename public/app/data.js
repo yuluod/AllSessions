@@ -115,8 +115,10 @@ export async function loadSessionDetail(
       const target = elements.conversationList.querySelector(
         `#message-${targetIndex + 1}`
       );
-      if (target?.classList.contains("collapsed"))
-        target.querySelector(".message-toggle")?.click();
+      // 工具结果可能是合并卡内的锚点，折叠状态要落到所属卡片上。
+      const card = target?.closest(".message-card");
+      if (card?.classList.contains("collapsed"))
+        card.querySelector(".message-toggle")?.click();
       target?.scrollIntoView({ block: "center" });
     }
     renderRawEvents(detail.raw_events);

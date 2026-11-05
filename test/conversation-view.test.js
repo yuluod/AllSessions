@@ -6,7 +6,7 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { filterConversationMessages, roleCounts } =
+const { filterConversationMessages, groupToolMessages, roleCounts } =
   await import("../public/conversation-filter.js");
 
 const messages = [
@@ -65,6 +65,101 @@ test("显示工具和系统上下文时保留原始消息索引", () => {
     result.map((message) => message._origIdx),
     [0, 1, 2, 3]
   );
+});
+
+test("工具调用与结果按 tool_call_id 合并为一个渲染单元", () => {
+  const groups = groupToolMessages([
+    { role: "user", text: "跑测试" },
+    {
+      role: "tool",
+      text: "cargo test",
+      tool_kind: "tool_call",
+      tool_call_id: "call-1",
+    },
+    {
+      role: "tool",
+      text: "全部通过",
+      tool_kind: "tool_result",
+      tool_call_id: "call-1",
+    },
+    { role: "assistant", text: "完成" },
+  ]);
+
+  assert.deepEqual(
+    groups.map((group) => group.message.text),
+    ["跑测试", "cargo test", "完成"]
+  );
+  assert.equal(groups[1].result.text, "全部通过");
+  assert.equal(groups[0].result, null);
+});
+
+test("Codex 归一化工具调用与结果按标识合并", () => {
+  const call = {
+    role: "tool",
+    tool_kind: "function_call",
+    tool_call_id: "codex-call-1",
+    tool_name: "shell",
+    text: '{"command":"pwd"}',
+  };
+  const result = {
+    role: "tool",
+    tool_kind: "function_call_output",
+    tool_call_id: "codex-call-1",
+    tool_name: "shell",
+    text: "/work",
+  };
+  assert.deepEqual(groupToolMessages([call, result]), [
+    { message: call, result },
+  ]);
+});
+
+test("配对失败时工具消息保持独立", () => {
+  const groups = groupToolMessages([
+    {
+      role: "tool",
+      text: "先到的结果",
+      tool_kind: "tool_result",
+      tool_call_id: "call-1",
+    },
+    {
+      role: "tool",
+      text: "后到的调用",
+      tool_kind: "tool_call",
+      tool_call_id: "call-1",
+    },
+    { role: "tool", text: "缺少标识", tool_kind: "tool_call" },
+    { role: "tool", text: "普通工具消息", tool_name: "shell" },
+  ]);
+
+  assert.equal(groups.length, 4);
+  assert.ok(groups.every((group) => group.result === null));
+});
+
+test("同一结果不会被两个调用重复消费", () => {
+  const groups = groupToolMessages([
+    {
+      role: "tool",
+      text: "调用 A",
+      tool_kind: "tool_call",
+      tool_call_id: "call-1",
+    },
+    {
+      role: "tool",
+      text: "调用 B",
+      tool_kind: "tool_call",
+      tool_call_id: "call-1",
+    },
+    {
+      role: "tool",
+      text: "唯一结果",
+      tool_kind: "tool_result",
+      tool_call_id: "call-1",
+    },
+  ]);
+
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].result.text, "唯一结果");
+  assert.equal(groups[1].result, null);
 });
 
 test("已移除消息默认隐藏并可通过开关恢复显示", () => {

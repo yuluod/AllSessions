@@ -11,6 +11,59 @@ use super::{
 };
 
 impl SessionStore {
+    pub fn related_sessions(
+        &self,
+        key: &str,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Value {
+        let Some(key) = self.resolve_record_key(key) else {
+            return json!({ "items": [], "total": 0 });
+        };
+        let current = &self.records[&key].summary;
+        let id = current["id"].as_str().unwrap_or_default();
+        let parent = current["parent_session_id"].as_str().unwrap_or_default();
+        let family_source = |kind: &str| {
+            if kind == "codex_archived" {
+                "codex".to_string()
+            } else {
+                kind.to_string()
+            }
+        };
+        let source = family_source(current["source_kind"].as_str().unwrap_or_default());
+        let mut items = Vec::new();
+        let mut total = 0;
+        for summary in &self.summaries {
+            if summary["_key"].as_str() == Some(&key)
+                || family_source(summary["source_kind"].as_str().unwrap_or_default()) != source
+                || workspace
+                    .sessions
+                    .get(summary["_key"].as_str().unwrap_or_default())
+                    .is_some_and(|state| state.removed)
+            {
+                continue;
+            }
+            let relation = if !parent.is_empty() && summary["id"] == parent {
+                "parent"
+            } else if !id.is_empty() && summary["parent_session_id"] == id {
+                "child"
+            } else {
+                continue;
+            };
+            total += 1;
+            if relation == "parent" {
+                if items.len() == 32 {
+                    items.pop();
+                }
+                items.insert(0, json!({ "key": summary["_key"], "title": summary["title"], "relation": relation, "source": summary["display_source"] }));
+                continue;
+            }
+            if items.len() < 32 {
+                items.push(json!({ "key": summary["_key"], "title": summary["title"], "relation": relation, "source": summary["display_source"] }));
+            }
+        }
+        json!({ "items": items, "total": total })
+    }
+
     pub fn list(
         &self,
         query: &HashMap<String, String>,
@@ -57,7 +110,10 @@ impl SessionStore {
         query: &str,
     ) -> Result<Value, String> {
         let record = self.records.get(key).ok_or("会话不存在")?;
-        let messages = self.index_cache.search.context(key, ordinal, query)?;
+        let mut messages = self.index_cache.search.context(key, ordinal, query)?;
+        for message in &mut messages {
+            super::annotate_activity(message);
+        }
         if !messages
             .iter()
             .any(|m| m["search_ordinal"].as_i64() == Some(ordinal))

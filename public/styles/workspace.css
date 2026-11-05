@@ -2488,6 +2488,46 @@ body.is-resizing {
   font-size: var(--control-font-compact);
 }
 
+.session-usage-scroll {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.session-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--control-font-compact);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-usage-table th,
+.session-usage-table td {
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: end;
+  white-space: nowrap;
+}
+
+.session-usage-table th:first-child,
+.session-usage-table td:first-child {
+  text-align: start;
+}
+
+.session-usage-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 72px;
+  margin: 12px 0;
+}
+
+.session-usage-trend span {
+  flex: 1;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
 .tool-result {
   margin-top: 10px;
   padding-top: 8px;

@@ -428,6 +428,7 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
             if status == "error" {
                 value["is_error"] = Value::Bool(true);
             }
+            super::parse::annotate_combined_tool(&mut value, &state["input"]);
             vec![value]
         }
         _ => Vec::new(),
@@ -1059,6 +1060,11 @@ mod tests {
         assert_eq!(main.summary["title"], "修复构建流程");
         assert_eq!(main.summary["cwd"], "/work/project");
         assert_eq!(main.summary["model_provider"], "zhipu");
+        assert_eq!(main.summary["tool_counts"]["bash"], 2);
+        assert_eq!(
+            main.summary["command_counts"],
+            json!({ "pwd": 1, "false": 1 })
+        );
         assert_eq!(main.summary["source_read_only"], true);
         assert!(main.search_text.contains("请检查发布构建"));
     }

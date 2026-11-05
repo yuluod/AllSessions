@@ -34,6 +34,7 @@ export function createToolOperations({ container, onSelectMessage }) {
       for (const [value, label] of [
         ["all", "toolOperationsAll"],
         ["commands", "toolOperationsCommands"],
+        ["files", "sessionFiles"],
         ["errors", "toolOperationsErrors"],
       ]) {
         const option = document.createElement("option");

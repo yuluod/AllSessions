@@ -301,12 +301,10 @@ impl ParseState {
         }
         self.message_count += 1;
         *self.roles.entry(role.into()).or_default() += 1;
-        if matches!(
-            message["tool_kind"].as_str(),
-            Some("tool_call" | "tool_use" | "function_call")
-        ) && let Some(name) = message["tool_name"]
-            .as_str()
-            .filter(|value| !value.is_empty())
+        if is_tool_call(&message)
+            && let Some(name) = message["tool_name"]
+                .as_str()
+                .filter(|value| !value.is_empty())
         {
             *self.tool_counts.entry(name.to_lowercase()).or_default() += 1;
             let timestamp = message["timestamp"].as_str().unwrap_or_default();
@@ -314,7 +312,7 @@ impl ParseState {
             if timestamp > latest.as_str() {
                 *latest = timestamp.to_string();
             }
-            if let Some(command) = command_from_tool_call(name, text) {
+            if let Some(command) = tool_call_command(&message) {
                 *self.command_counts.entry(command.clone()).or_default() += 1;
                 let latest = self.command_last_used.entry(command).or_default();
                 if timestamp > latest.as_str() {
@@ -557,7 +555,7 @@ pub(crate) fn visit_detail(
         summary["detail_truncated"] = Value::Bool(true);
     }
     Ok(
-        json!({ "summary": summary, "conversation_messages": message_values, "raw_events": event_values, "truncation": { "truncated": omitted_messages + omitted_events > 0, "messages": { "total": total_messages, "omitted": omitted_messages }, "raw_events": { "total": total_events, "omitted": omitted_events } } }),
+        json!({ "summary": summary, "usage_events": state.usage.events, "usage_event_count": state.usage.event_count, "conversation_messages": message_values, "raw_events": event_values, "truncation": { "truncated": omitted_messages + omitted_events > 0, "messages": { "total": total_messages, "omitted": omitted_messages }, "raw_events": { "total": total_events, "omitted": omitted_events } } }),
     )
 }
 
@@ -809,10 +807,15 @@ fn command_from_tool_call(name: &str, text: &str) -> Option<String> {
                 .as_str()
                 .or_else(|| args[*key].as_array()?.first()?.as_str())
         })?;
-    let first = command
-        .split_whitespace()
-        .next()?
-        .trim_matches(|c| c == '"' || c == '\'');
+    let command = command.trim_start();
+    let first = if let Some(quote) = command.chars().next().filter(|ch| matches!(ch, '"' | '\'')) {
+        command.get(1..)?.split(quote).next()?
+    } else {
+        command.split_whitespace().next()?
+    };
+    if first.contains('=') {
+        return None;
+    }
     let program = first.rsplit(['/', '\\']).next()?;
     (!program.is_empty()).then(|| program.to_lowercase())
 }
@@ -821,21 +824,78 @@ pub(crate) fn tool_call_command(message: &Value) -> Option<String> {
     if !is_tool_call(message) {
         return None;
     }
+    if let Some(command) = message["command_name"].as_str() {
+        return Some(command.to_string());
+    }
     command_from_tool_call(message["tool_name"].as_str()?, message["text"].as_str()?)
+}
+
+pub(super) fn annotate_combined_tool(message: &mut Value, input: &Value) {
+    // 数据库来源以单条 part 保存输入与最终结果，派生字段只保留有界定位信息。
+    let mut call = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": message["tool_name"], "text": input.to_string() });
+    annotate_activity(&mut call);
+    message["includes_tool_call"] = json!(true);
+    for field in ["command_name", "file_activity"] {
+        if let Some(value) = call.get(field) {
+            message[field] = value.clone();
+        }
+    }
 }
 
 pub(crate) fn annotate_activity(message: &mut Value) {
     if let Some(command) = tool_call_command(message) {
         message["command_name"] = json!(command);
     }
+    if !is_tool_call(message) {
+        return;
+    }
+    let name = message["tool_name"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+    let action = match name.as_str() {
+        "read" | "read_file" | "readfile" => "read",
+        "write" | "write_file" | "writefile" => "write",
+        "edit" | "edit_file" | "editfile" => "edit",
+        "grep" | "glob" | "search_files" => "search",
+        _ => return,
+    };
+    let text = message["text"].as_str().unwrap_or_default();
+    let Some(args) = text
+        .find('{')
+        .and_then(|start| serde_json::from_str::<Value>(&text[start..]).ok())
+    else {
+        return;
+    };
+    let mut paths = ["file_path", "filePath", "path"]
+        .iter()
+        .filter_map(|field| args[*field].as_str())
+        .collect::<Vec<_>>();
+    if let Some(values) = args["paths"].as_array() {
+        paths.extend(values.iter().take(32).filter_map(Value::as_str));
+    }
+    let paths = paths
+        .into_iter()
+        .filter(|path| !path.is_empty() && path.len() <= 2048)
+        .take(32)
+        .collect::<BTreeSet<_>>();
+    if !paths.is_empty() {
+        message["file_activity"] = json!(
+            paths
+                .into_iter()
+                .map(|path| json!({ "path": path, "action": action }))
+                .collect::<Vec<_>>()
+        );
+    }
 }
 
 pub(crate) fn is_tool_call(message: &Value) -> bool {
     message["role"] == "tool"
-        && matches!(
-            message["tool_kind"].as_str(),
-            Some("tool_call" | "tool_use" | "function_call")
-        )
+        && (message["includes_tool_call"] == true
+            || matches!(
+                message["tool_kind"].as_str(),
+                Some("tool_call" | "tool_use" | "function_call")
+            ))
 }
 
 /// 系统/开发者角色属于指令上下文，统一按 synthetic_context 处理。

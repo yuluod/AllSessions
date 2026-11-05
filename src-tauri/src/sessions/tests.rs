@@ -217,6 +217,76 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 命令程序名支持带空格的引号路径且跳过变量赋值() {
+    let command = |text: &str| {
+        super::tool_call_command(&json!({
+            "role": "tool", "tool_kind": "tool_call", "tool_name": "bash",
+            "text": serde_json::to_string(&json!({"command": text})).unwrap()
+        }))
+    };
+    assert_eq!(
+        command("\"/Applications/My Tools/python3\" run.py"),
+        Some("python3".into())
+    );
+    assert_eq!(command("TOKEN=value cargo test"), None);
+}
+
+#[test]
+fn 文件操作只归一化明确工具参数且工具结果不重复计数() {
+    for (name, action) in [
+        ("Read", "read"),
+        ("write_file", "write"),
+        ("Edit", "edit"),
+        ("grep", "search"),
+    ] {
+        let mut message = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": name, "text": "[tool] {\"file_path\":\"/project/a.rs\"}" });
+        super::annotate_activity(&mut message);
+        assert_eq!(
+            message["file_activity"],
+            json!([{ "path": "/project/a.rs", "action": action }])
+        );
+        message.as_object_mut().unwrap().remove("file_activity");
+        message["tool_kind"] = json!("tool_result");
+        super::annotate_activity(&mut message);
+        assert!(message["file_activity"].is_null());
+    }
+    let mut message = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": "unknown", "text": "{\"path\":\"/project/a.rs\"}" });
+    super::annotate_activity(&mut message);
+    assert!(message["file_activity"].is_null());
+}
+
+#[test]
+fn 父子会话遵守来源边界并排除本地移除记录() {
+    let (_directory, mut store) = structured_search_store();
+    let base = store.summaries[0].clone();
+    for index in 0..40 {
+        let mut child = base.clone();
+        child["id"] = json!(format!("child-{index}"));
+        child["_key"] = json!(format!("codex:child-{index}"));
+        child["parent_session_id"] = json!("structured");
+        child["hidden"] = json!(true);
+        store.summaries.push(child);
+    }
+    let mut unrelated = base;
+    unrelated["source_kind"] = json!("claude_code");
+    unrelated["_key"] = json!("claude_code:child");
+    unrelated["parent_session_id"] = json!("structured");
+    store.summaries.push(unrelated);
+    let mut workspace = crate::workspace::WorkspaceSnapshot::default();
+    workspace.sessions.insert(
+        "codex:child-0".into(),
+        crate::workspace::SessionWorkspace {
+            removed: true,
+            ..Default::default()
+        },
+    );
+    let family = store.related_sessions("codex:structured", &workspace);
+    assert_eq!(family["total"], 39);
+    assert_eq!(family["items"].as_array().unwrap().len(), 32);
+    assert_eq!(family["items"][0]["key"], "codex:child-1");
+}
+
+#[test]
 fn 项目回顾保留用户整理并限制条数且遵守可见性() {
     let (_directory, mut store) = structured_search_store();
     let base = store.summaries[0].clone();

@@ -12,6 +12,38 @@ const {
   groupToolMessages,
   roleCounts,
 } = await import("../public/conversation-filter.js");
+const { fileActivity } = await import("../public/session-insights.js");
+
+test("文件活动汇总保留动作差异和原始消息定位", () => {
+  const groups = [
+    {
+      message: {
+        role: "tool",
+        _origIdx: 2,
+        file_activity: [{ path: "a.rs", action: "read" }],
+      },
+    },
+    {
+      message: {
+        role: "tool",
+        _origIdx: 4,
+        file_activity: [
+          { path: "a.rs", action: "read" },
+          { path: "a.rs", action: "edit" },
+        ],
+      },
+    },
+  ];
+  assert.deepEqual(fileActivity(groups), [
+    { path: "a.rs", action: "read", count: 2, index: 2 },
+    { path: "a.rs", action: "edit", count: 1, index: 4 },
+  ]);
+  assert.equal(
+    filterToolOperations(groups, { kind: "files", query: "a.rs" }).length,
+    2
+  );
+  assert.equal(filterToolOperations(groups, { kind: "commands" }).length, 0);
+});
 
 const messages = [
   { role: "user", text: "修复登录问题" },

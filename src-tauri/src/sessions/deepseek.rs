@@ -625,6 +625,8 @@ fn parse(
     }
     Ok(json!({
         "summary": summary,
+        "usage_events": state.usage.events,
+        "usage_event_count": state.usage.event_count,
         "conversation_messages": messages,
         "raw_events": events,
         "truncation": {

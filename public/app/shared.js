@@ -188,6 +188,7 @@ export const elements = {
   messageOutlineToggle: document.querySelector("#message-outline-toggle"),
   conversationList: document.querySelector("#conversation-list"),
   toolOperations: document.querySelector("#tool-operations"),
+  sessionInsights: document.querySelector("#session-insights"),
   rawEvents: document.querySelector("#raw-events"),
   conversationTab: document.querySelector("#conversation-tab"),
   rawTab: document.querySelector("#raw-tab"),

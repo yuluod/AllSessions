@@ -53,6 +53,7 @@ export function filterToolOperations(
   return groups.filter(({ message, result }) => {
     if (message.role !== "tool") return false;
     if (kind === "commands" && !message.command_name) return false;
+    if (kind === "files" && !message.file_activity?.length) return false;
     if (
       kind === "errors" &&
       message.is_error !== true &&
@@ -64,6 +65,7 @@ export function filterToolOperations(
       [
         message.tool_name,
         message.command_name,
+        ...(message.file_activity || []).map((activity) => activity.path),
         displayMessageText(message),
         result && displayMessageText(result),
       ]

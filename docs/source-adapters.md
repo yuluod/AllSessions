@@ -49,6 +49,14 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 
 工具／命令排行仅计调用，附带涉及会话数及已记录的最近执行时间。排行通过 `exact_tool`／`command` 结构化搜索定位调用消息，命令字段从已识别的 shell 工具参数提取程序首词，不执行命令。消息索引独立保存程序名与调用标记，升级时仅重建派生索引。
 
+会话详情可包含 `usage_events` 和 `usage_event_count`。Codex、Claude、DeepSeek、Pi／Oh My Pi 与 Gemini chats 在读取详情时重建最多最近 300 条有日期的非零用量事件，界面展示最近 30 条；累计快照使用差值，事件不序列化进摘要缓存。来源未记录用量时不推测请求次数。
+
+文件操作的 `file_activity` 仅从已识别 Read/read_file、Write/write_file、Edit/edit_file、grep/glob/search_files 等调用的路径参数生成，单次最多 32 个路径，每条路径最多 2048 字节；不解析 shell 命令推断文件修改。详情按当前显示消息汇总，最多展示 64 项并保留消息定位。
+
+OpenCode／Kilo 与 ZCode 的工具 part 同时包含调用输入和最终结果。归一化消息保留原有展示，并以 `includes_tool_call` 标记其包含一次调用；排行和消息索引据此计数，命令及文件定位字段从该 part 的结构化 input 提取。
+
+详情的 `related_sessions` 依据来源内明确的 `parent_session_id` 关联父子会话，最多返回 32 条并保留完整计数，父会话优先显示。本地已移除会话不返回；子代理可通过显式关系访问，列表的隐藏偏好保持独立。
+
 每个来源实现必须：
 
 - 只在声明目录内发现和监听文件，且不跟随符号链接越界。

@@ -715,6 +715,7 @@ fn route_request(
             let key = percent_decode_str(path.trim_start_matches("/api/sessions/"))
                 .decode_utf8()
                 .map_err(|_| ApiError::invalid("会话 ID 编码无效"))?;
+            let workspace = state.workspace_snapshot()?;
             let mut store = state.store.lock().map_err(lock_error)?;
             let mut detail = if let Some(around) = query.get("around") {
                 let ordinal = around
@@ -729,8 +730,9 @@ fn route_request(
             } else {
                 store.detail(&key)?
             };
+            detail["related_sessions"] = store.related_sessions(&key, &workspace);
             drop(store);
-            state.workspace_snapshot()?.decorate_detail(&mut detail);
+            workspace.decorate_detail(&mut detail);
             Ok(detail)
         }
         _ => Err(ApiError::invalid(format!("不支持的请求：{method} {path}"))),

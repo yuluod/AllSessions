@@ -18,11 +18,14 @@ import {
   loadWorkspaceDiagnostics,
 } from "./data.js";
 import { rerenderLocalizedContent } from "../app.js";
+import { openReviewSession } from "./navigation.js";
 
 export const conversationView = createConversationView({
   state,
   elements,
   isMessageRemoved,
+  onSelectSession: (key) =>
+    openReviewSession(key).catch((error) => showError(error.message)),
   onRequestDelete: (message) => openDeleteDialog({ kind: "message", message }),
   onRestoreMessage: (message) => restoreRemovedMessage(message),
   onHighlightError: showError,

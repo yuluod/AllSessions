@@ -538,6 +538,8 @@ pub(super) fn visit_detail(
     }
     Ok(json!({
         "summary": summary,
+        "usage_events": state.usage.events,
+        "usage_event_count": state.usage.event_count,
         "conversation_messages": message_values,
         "raw_events": event_values,
         "truncation": {

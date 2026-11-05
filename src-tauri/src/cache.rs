@@ -21,7 +21,8 @@ use serde_json::Value;
 /// 版本 8：摘要新增 tool_counts/command_counts 字段（按工具名与命令首词的调用分布）。
 /// 版本 9：缓存读写分离及逐日用量账本。
 /// 版本 10：工具／命令调用定位及最近执行时间。
-const CACHE_VERSION: i32 = 10;
+/// 版本 11：文件操作的归一化字段。
+const CACHE_VERSION: i32 = 11;
 
 pub struct IndexCache {
     /// Arc 共享的全文索引：搜索在会话锁之外克隆句柄执行查询。

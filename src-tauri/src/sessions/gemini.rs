@@ -1496,6 +1496,8 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
     }
     Ok(json!({
         "summary": summary,
+        "usage_events": state.usage.events,
+        "usage_event_count": state.usage.event_count,
         "conversation_messages": message_values,
         "raw_events": event_values,
         "truncation": {
@@ -1512,6 +1514,7 @@ fn parse_chat_detail(source: &Source, locator: &DetailLocator) -> Result<Value, 
     let chat = replay_chat_conversation(locator)?;
     let mut state = ParseState::new(&locator.primary_path);
     state.id = locator.session_id.clone();
+    accumulate_chat_tokens(&mut state, &chat.messages);
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
     let mut events = HeadTail::new(DETAIL_EVENT_LIMIT);
     for (index, record) in chat.messages.iter().enumerate() {
@@ -1655,6 +1658,8 @@ fn parse_chat_detail(source: &Source, locator: &DetailLocator) -> Result<Value, 
     }
     Ok(json!({
         "summary": summary,
+        "usage_events": state.usage.events,
+        "usage_event_count": state.usage.event_count,
         "conversation_messages": message_values,
         "raw_events": event_values,
         "truncation": {

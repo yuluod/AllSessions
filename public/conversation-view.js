@@ -11,6 +11,7 @@ import {
 } from "./session-format.js";
 import { displayMessageText } from "./session-export.js";
 import { createToolOperations } from "./tool-operations.js";
+import { renderSessionInsights } from "./session-insights.js";
 import {
   filterConversationMessages,
   groupToolMessages,
@@ -77,6 +78,7 @@ export function createConversationView({
   onRestoreMessage,
   onHighlightError,
   onLoadAttachment,
+  onSelectSession,
 }) {
   let highlightController = null;
   const operationsView = createToolOperations({
@@ -400,6 +402,12 @@ export function createConversationView({
     const { signal } = highlightController;
     elements.conversationList.replaceChildren();
     const visibleGroups = displayed(messages);
+    renderSessionInsights(
+      state.currentDetail,
+      visibleGroups,
+      elements.sessionInsights,
+      { onSelectMessage: scrollToMessage, onSelectSession }
+    );
     operationsView.render(visibleGroups, {
       sessionKey: state.currentDetail?.summary?._key,
       truncated:

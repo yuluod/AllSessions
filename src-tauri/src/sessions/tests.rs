@@ -217,6 +217,54 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 工具排行无需关键词即可追溯调用且不匹配结果() {
+    let (_directory, store) = structured_search_store();
+    let result = store
+        .search(
+            &HashMap::from([("exact_tool".into(), "read_file".into())]),
+            &crate::workspace::WorkspaceSnapshot::default(),
+        )
+        .unwrap();
+    assert_eq!(result["total"], 1);
+    assert_eq!(result["sessions"][0]["search_hits"][0]["ordinal"], 1);
+    assert_eq!(
+        result["sessions"][0]["search_hits"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let result = store
+        .search(
+            &HashMap::from([("exact_tool".into(), "read".into())]),
+            &crate::workspace::WorkspaceSnapshot::default(),
+        )
+        .unwrap();
+    assert_eq!(result["total"], 0);
+}
+
+#[test]
+fn 命令索引只匹配实际执行的程序并保留消息位置() {
+    let index = crate::search::SearchIndex::open(None).unwrap();
+    index.refresh("s1", "fp1", |visit| {
+        visit(&json!({ "role": "assistant", "text": "cargo test" }));
+        visit(&json!({ "role": "tool", "tool_kind": "function_call", "tool_name": "exec_command", "text": "{\"cmd\":\"/usr/bin/cargo test\"}" }));
+        visit(&json!({ "role": "tool", "tool_kind": "tool_result", "tool_name": "exec_command", "text": "cargo succeeded" }));
+        visit(&json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": "shell", "text": "{\"command\":[\"cat\",\"cargo.log\"]}" }));
+        Ok(())
+    }).unwrap();
+    let filters = crate::search::SearchFilters::from_query(&HashMap::from([(
+        "command".into(),
+        "cargo".into(),
+    )]));
+    let hits = index
+        .read_snapshot(|snapshot| snapshot.query_hits_filtered("", &filters, |_, _| true))
+        .unwrap();
+    assert_eq!(hits["s1"].len(), 1);
+    assert_eq!(hits["s1"][0]["ordinal"], 1);
+}
+
+#[test]
 fn 结构化搜索按角色过滤消息() {
     let (_directory, store) = structured_search_store();
     let workspace = crate::workspace::WorkspaceSnapshot::default();
@@ -468,11 +516,14 @@ fn 统计按_agent_归并归档和兼容来源() {
     assert_eq!(
         stats["by_tool"],
         json!([
-            { "label": "bash", "count": 2 },
-            { "label": "read", "count": 1 }
+            { "label": "bash", "count": 2, "session_count": 1, "last_timestamp": "" },
+            { "label": "read", "count": 1, "session_count": 1, "last_timestamp": "" }
         ])
     );
-    assert_eq!(stats["by_command"], json!([{ "label": "adb", "count": 2 }]));
+    assert_eq!(
+        stats["by_command"],
+        json!([{ "label": "adb", "count": 2, "session_count": 1, "last_timestamp": "" }])
+    );
 }
 
 #[test]

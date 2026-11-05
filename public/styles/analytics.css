@@ -61,6 +61,19 @@
   padding: 10px;
 }
 
+.stats-activity-link {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
 .metric-card {
   min-width: 0;
   padding: 13px 17px 12px;

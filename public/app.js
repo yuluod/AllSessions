@@ -8,7 +8,6 @@ import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import { DESKTOP_RUNTIME_REQUIRED } from "./api-client.js";
-import { renderStats } from "./stats-view.js";
 import {
   INSPECTOR_DRAWER_QUERY,
   MOBILE_LAYOUT_QUERY,
@@ -77,6 +76,7 @@ import {
   loadSessionDetail,
   loadSessions,
   loadStats,
+  renderCurrentStats,
   loadWorkspaceDiagnostics,
 } from "./app/data.js";
 import {
@@ -139,7 +139,7 @@ export function rerenderLocalizedContent() {
   }
   updateBulkToolbar();
   if (state.stats) {
-    renderStats(state.stats, elements);
+    renderCurrentStats();
   }
   renderWorkspaceStatus();
   syncShortcutHints();

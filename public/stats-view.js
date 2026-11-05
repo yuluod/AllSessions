@@ -591,7 +591,7 @@ function renderAgents(stats, container) {
   container.append(wrap);
 }
 
-function renderRankings(stats, container) {
+function renderRankings(stats, container, onSelectRanking) {
   container.replaceChildren();
   // Provider 行附带 token 用量;无 token 统计的条目显示占位符。
   const tokenByProvider = new Map(
@@ -630,18 +630,36 @@ function renderRankings(stats, container) {
     const body = document.createElement("div");
     body.className = "stats-section__body";
     const max = Math.max(...items.map((item) => item.count), 1);
-    items.forEach(({ label, count }) => {
+    items.forEach(({ label, count, session_count, last_timestamp }) => {
       const displayLabel = isPath ? label.split(/[\\/]/).pop() || label : label;
-      body.append(
-        renderBar(label, count, max, displayLabel, tokensOf?.(label) ?? null)
+      const row = renderBar(
+        label,
+        count,
+        max,
+        displayLabel,
+        tokensOf?.(label) ?? null
       );
+      if ((kind === "tool" || kind === "command") && onSelectRanking) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "stats-bar-label stats-activity-link";
+        button.textContent = displayLabel;
+        button.title = t("statsActivityOpen", {
+          name: label,
+          n: session_count || 0,
+          time: last_timestamp || t("unknownTime"),
+        });
+        button.addEventListener("click", () => onSelectRanking(kind, label));
+        row.querySelector(".stats-bar-label").replaceWith(button);
+      }
+      body.append(row);
     });
     section.append(heading, body);
     container.append(section);
   });
 }
 
-export function renderStats(stats, elements) {
+export function renderStats(stats, elements, { onSelectRanking } = {}) {
   if (!elements.statsDashboard) return;
   if (elements.statsMetrics) renderMetrics(stats, elements.statsMetrics);
   if (elements.trendChartBody) renderTrend(stats, elements.trendChartBody);
@@ -649,5 +667,6 @@ export function renderStats(stats, elements) {
   if (elements.tokenHeatmapBody) {
     renderHeatmap(stats, elements.tokenHeatmapBody);
   }
-  if (elements.statsGrid) renderRankings(stats, elements.statsGrid);
+  if (elements.statsGrid)
+    renderRankings(stats, elements.statsGrid, onSelectRanking);
 }

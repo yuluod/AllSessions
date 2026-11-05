@@ -450,7 +450,7 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   assert.match(css, /\.stats-empty\s*\{/);
   assert.match(
     css,
-    /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/
+    /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(8, minmax\(0, 1fr\)\)/
   );
   // 近期每日排行与趋势图同源重复,已移除;排行区保留 Provider/工作目录两列。
   assert.doesNotMatch(source, /statsRecentDaily/);
@@ -1069,7 +1069,7 @@ test("搜索结果支持使用服务端 cursor 继续加载", async () => {
   assert.match(source, /state\.hasMore = data\.has_more/);
   assert.match(
     source,
-    /state\.searchQuery\s*\? buildSearchUrl\(\{ cursor: state\.nextCursor \}\)/
+    /isSearchActive\(\)\s*\? buildSearchUrl\(\{ cursor: state\.nextCursor \}\)/
   );
 });
 
@@ -1605,7 +1605,7 @@ test("个人工作台数据独立持久化并提供整理与可选脱敏导出",
   assert.doesNotMatch(html, /id="list-sort-label"/);
   assert.match(
     app,
-    /querySelector\("#search-results-toolbar"\)[\s\S]*?classList\.toggle\("hidden", !state.searchQuery\)/
+    /querySelector\("#search-results-toolbar"\)[\s\S]*?classList\.toggle\("hidden", !isSearchActive\(\)\)/
   );
   assert.match(
     html,

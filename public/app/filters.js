@@ -17,6 +17,8 @@ export function currentFilterValue() {
   return {
     ...state.filters,
     q: state.searchQuery,
+    exact_tool: state.searchExactTool,
+    command: state.searchCommand,
     show_archived: state.showArchived,
     show_codex_archived: state.showCodexArchived,
     show_hidden: state.showHidden,
@@ -34,6 +36,8 @@ export function applyFilterValue(filter = {}) {
     tag: filter.tag || "",
   };
   state.searchQuery = filter.q || "";
+  state.searchExactTool = filter.exact_tool || "";
+  state.searchCommand = filter.command || "";
   state.showArchived = filter.show_archived === true;
   state.showCodexArchived = filter.show_codex_archived === true;
   state.showHidden = filter.show_hidden === true;
@@ -52,6 +56,8 @@ export function syncUrl() {
   if (state.searchQuery) params.set("q", state.searchQuery);
   if (state.searchRole) params.set("role", state.searchRole);
   if (state.searchTool) params.set("tool", state.searchTool);
+  if (state.searchExactTool) params.set("exact_tool", state.searchExactTool);
+  if (state.searchCommand) params.set("command", state.searchCommand);
   if (state.searchRegex) params.set("regex", "1");
   if (state.searchFrom) params.set("from", state.searchFrom);
   if (state.searchTo) params.set("to", state.searchTo);
@@ -75,6 +81,8 @@ export function restoreFromUrl() {
   state.searchQuery = params.get("q") || "";
   state.searchRole = params.get("role") || "";
   state.searchTool = params.get("tool") || "";
+  state.searchExactTool = params.get("exact_tool") || "";
+  state.searchCommand = params.get("command") || "";
   state.searchRegex = params.get("regex") === "1";
   state.searchFrom = params.get("from") || "";
   state.searchTo = params.get("to") || "";
@@ -352,6 +360,8 @@ export function buildSearchUrl({ cursor } = {}) {
   params.set("sort", state.searchSort);
   if (state.searchRole) params.set("role", state.searchRole);
   if (state.searchTool) params.set("tool", state.searchTool);
+  if (state.searchExactTool) params.set("exact_tool", state.searchExactTool);
+  if (state.searchCommand) params.set("command", state.searchCommand);
   if (state.searchRegex) params.set("regex", "1");
   if (state.searchFrom) params.set("from", state.searchFrom);
   if (state.searchTo) params.set("to", state.searchTo);
@@ -364,6 +374,8 @@ export async function clearFilterChip(type) {
     state.filters[type] = "";
   } else if (type === "search") {
     state.searchQuery = "";
+  } else if (type === "searchExactTool" || type === "searchCommand") {
+    state[type] = "";
   } else if (type === "showArchived") {
     state.showArchived = false;
   } else if (type === "showCodexArchived") {
@@ -388,6 +400,13 @@ export async function clearFilterChip(type) {
 
 export function activeFilterEntries() {
   const entries = [];
+  for (const [type, label] of [
+    ["searchExactTool", "statsToolRanking"],
+    ["searchCommand", "statsCommandRanking"],
+  ]) {
+    if (state[type])
+      entries.push({ type, label: t(label), value: state[type] });
+  }
   if (state.searchQuery) {
     entries.push({
       type: "search",
@@ -489,7 +508,8 @@ export function renderActiveFilters() {
   const entries = activeFilterEntries().filter(
     (entry) =>
       entry.type !== "source_kind" &&
-      (state.activeView !== "stats" || entry.type !== "search")
+      (state.activeView !== "stats" ||
+        !["search", "searchExactTool", "searchCommand"].includes(entry.type))
   );
   elements.resetFilters?.classList.toggle(
     "hidden",
@@ -549,6 +569,8 @@ export function resetFilterState() {
   state.searchQuery = "";
   state.searchRole = "";
   state.searchTool = "";
+  state.searchExactTool = "";
+  state.searchCommand = "";
   state.searchRegex = false;
   state.searchFrom = "";
   state.searchTo = "";

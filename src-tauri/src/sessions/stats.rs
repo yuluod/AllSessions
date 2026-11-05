@@ -130,8 +130,8 @@ impl SessionStore {
         let mut by_provider = HashMap::new();
         let mut by_provider_tokens: HashMap<String, u64> = HashMap::new();
         let mut by_cwd = HashMap::new();
-        let mut by_tool: HashMap<String, u64> = HashMap::new();
-        let mut by_command: HashMap<String, u64> = HashMap::new();
+        let mut by_tool: HashMap<String, ActivityCount> = HashMap::new();
+        let mut by_command: HashMap<String, ActivityCount> = HashMap::new();
         let mut total_events = 0_u64;
         let mut total_messages = 0_u64;
         let mut total_tools = 0_u64;
@@ -200,14 +200,23 @@ impl SessionStore {
             increment(&mut by_cwd, &summary["cwd"]);
             // 按名统计来自摘要的 tool_counts/command_counts；
             // 旧缓存或无该字段的来源自然跳过。
-            for (target, field) in [
-                (&mut by_tool, "tool_counts"),
-                (&mut by_command, "command_counts"),
+            for (target, field, last_field) in [
+                (&mut by_tool, "tool_counts", "tool_last_used"),
+                (&mut by_command, "command_counts", "command_last_used"),
             ] {
                 if let Some(counts) = summary[field].as_object() {
                     for (name, count) in counts {
-                        *target.entry(name.clone()).or_default() +=
-                            count.as_u64().unwrap_or_default();
+                        let count = count.as_u64().unwrap_or_default();
+                        if count == 0 {
+                            continue;
+                        }
+                        let activity = target.entry(name.clone()).or_default();
+                        activity.count += count;
+                        activity.session_count += 1;
+                        let timestamp = summary[last_field][name].as_str().unwrap_or_default();
+                        if timestamp > activity.last_timestamp.as_str() {
+                            activity.last_timestamp = timestamp.to_string();
+                        }
                     }
                 }
             }
@@ -237,8 +246,8 @@ impl SessionStore {
             "by_provider": count_values(by_provider, usize::MAX),
             "by_provider_tokens": count_values(by_provider_tokens, usize::MAX),
             "by_cwd": count_values(by_cwd, 16),
-            "by_tool": count_values(by_tool, usize::MAX),
-            "by_command": count_values(by_command, 16)
+            "by_tool": activity_values(by_tool, 32),
+            "by_command": activity_values(by_command, 16)
         })
     }
 
@@ -312,6 +321,28 @@ fn usage_total(value: &Value) -> u64 {
         .iter()
         .map(|field| value[*field].as_u64().unwrap_or_default())
         .sum()
+}
+
+#[derive(Default)]
+struct ActivityCount {
+    count: u64,
+    session_count: u64,
+    last_timestamp: String,
+}
+
+fn activity_values(counts: HashMap<String, ActivityCount>, limit: usize) -> Vec<Value> {
+    let mut values = counts.into_iter().collect::<Vec<_>>();
+    values.sort_by(|a, b| b.1.count.cmp(&a.1.count).then_with(|| a.0.cmp(&b.0)));
+    values.truncate(limit);
+    values
+        .into_iter()
+        .map(|(label, item)| {
+            json!({
+                "label": label, "count": item.count,
+                "session_count": item.session_count, "last_timestamp": item.last_timestamp
+            })
+        })
+        .collect()
 }
 
 #[derive(Default)]

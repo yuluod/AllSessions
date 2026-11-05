@@ -897,6 +897,31 @@ impl MergedSession {
                     count.as_u64().unwrap_or_default();
             }
         }
+        for (target, field) in [
+            (&mut self.state.tool_counts, "tool_counts"),
+            (&mut self.state.command_counts, "command_counts"),
+        ] {
+            if let Some(counts) = summary[field].as_object() {
+                for (name, count) in counts {
+                    *target.entry(name.clone()).or_default() += count.as_u64().unwrap_or_default();
+                }
+            }
+        }
+        for (target, field) in [
+            (&mut self.state.tool_last_used, "tool_last_used"),
+            (&mut self.state.command_last_used, "command_last_used"),
+        ] {
+            if let Some(times) = summary[field].as_object() {
+                for (name, value) in times {
+                    if let Some(timestamp) = value.as_str() {
+                        let latest = target.entry(name.clone()).or_default();
+                        if timestamp > latest.as_str() {
+                            *latest = timestamp.to_string();
+                        }
+                    }
+                }
+            }
+        }
         if self.state.first_user.is_empty() {
             self.state.first_user = contribution["first_user"]
                 .as_str()

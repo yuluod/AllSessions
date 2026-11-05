@@ -16,6 +16,7 @@ import {
   displaySourceLabel,
   elements,
   hiddenReasonLabel,
+  isSearchActive,
   sessionWorkspace,
   sourceKindValue,
   state,
@@ -73,7 +74,7 @@ let renderedSessionCount = 0;
 let lastRenderedGroupKey = "";
 
 export function shouldGroupSessions() {
-  return !state.searchQuery || state.searchSort === "recent";
+  return !isSearchActive() || state.searchSort === "recent";
 }
 
 export function sessionGroupCounts(sessions) {

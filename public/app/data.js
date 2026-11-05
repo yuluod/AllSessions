@@ -8,6 +8,7 @@ import {
   detailRequestGate,
   elements,
   fetchJson,
+  isSearchActive,
   scrollToWorkspaceSection,
   sessionRequestGate,
   showError,
@@ -45,6 +46,7 @@ import {
   updateTabs,
 } from "./detail-view.js";
 import { renderWorkspaceStatus } from "./status.js";
+import { openActivitySearch } from "./navigation.js";
 
 export async function loadSessionDetail(
   id,
@@ -53,7 +55,7 @@ export async function loadSessionDetail(
   const request = detailRequestGate.begin();
   try {
     const around =
-      state.searchQuery && state.selectedSearchHit?.sessionKey === id
+      isSearchActive() && state.selectedSearchHit?.sessionKey === id
         ? state.selectedSearchHit.ordinal
         : null;
     const suffix = Number.isInteger(around)
@@ -157,7 +159,7 @@ export async function loadSessions({
   state.lastSessionError = null;
   try {
     let data;
-    if (state.searchQuery) {
+    if (isSearchActive()) {
       data = await fetchJson(buildSearchUrl(), { signal: request.signal });
       if (!request.isCurrent()) return false;
       state.sessions = data.sessions;
@@ -176,13 +178,13 @@ export async function loadSessions({
     state.scanning = data.scanning === true;
     document
       .querySelector("#search-sort")
-      ?.classList.toggle("hidden", !state.searchQuery);
+      ?.classList.toggle("hidden", !isSearchActive());
     document
       .querySelector("#search-results-toolbar")
-      ?.classList.toggle("hidden", !state.searchQuery);
+      ?.classList.toggle("hidden", !isSearchActive());
     const searchCount = document.querySelector("#search-result-count");
     if (searchCount)
-      searchCount.textContent = state.searchQuery
+      searchCount.textContent = isSearchActive()
         ? state.scanning
           ? t("searchIndexing")
           : t("searchSessionCount", { n: data.total || 0 })
@@ -279,7 +281,7 @@ export async function loadSessions({
 export async function loadMoreSessions() {
   const request = sessionRequestGate.begin();
   try {
-    const url = state.searchQuery
+    const url = isSearchActive()
       ? buildSearchUrl({ cursor: state.nextCursor })
       : buildSessionsUrl({ cursor: state.nextCursor });
     const data = await fetchJson(url, {
@@ -300,6 +302,17 @@ export async function loadMoreSessions() {
   }
 }
 
+export function renderCurrentStats() {
+  if (!state.stats) return;
+  renderStats(state.stats, elements, {
+    onSelectRanking: (kind, value) => {
+      openActivitySearch(kind, value).catch((error) =>
+        showError(error.message)
+      );
+    },
+  });
+}
+
 export async function loadStats() {
   const request = statsRequestGate.begin();
   try {
@@ -308,7 +321,7 @@ export async function loadStats() {
     const stats = await fetchJson(url, { signal: request.signal });
     if (!request.isCurrent()) return false;
     state.stats = stats;
-    renderStats(stats, elements);
+    renderCurrentStats();
     updateSessionCount();
     return true;
   } catch (error) {

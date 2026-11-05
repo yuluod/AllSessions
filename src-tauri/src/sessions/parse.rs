@@ -45,6 +45,8 @@ pub(crate) struct ParseState {
     pub(crate) tool_counts: BTreeMap<String, u64>,
     /// shell 类调用提取的命令首词计数（如 adb/python），非全部工具。
     pub(crate) command_counts: BTreeMap<String, u64>,
+    pub(crate) tool_last_used: BTreeMap<String, String>,
+    pub(crate) command_last_used: BTreeMap<String, String>,
     pub(crate) first_user: String,
     pub(crate) first_assistant: String,
     pub(crate) first_message: String,
@@ -91,6 +93,8 @@ impl ParseState {
             roles: BTreeMap::new(),
             tool_counts: BTreeMap::new(),
             command_counts: BTreeMap::new(),
+            tool_last_used: BTreeMap::new(),
+            command_last_used: BTreeMap::new(),
             first_user: String::new(),
             first_assistant: String::new(),
             first_message: String::new(),
@@ -304,8 +308,17 @@ impl ParseState {
             .filter(|value| !value.is_empty())
         {
             *self.tool_counts.entry(name.to_lowercase()).or_default() += 1;
+            let timestamp = message["timestamp"].as_str().unwrap_or_default();
+            let latest = self.tool_last_used.entry(name.to_lowercase()).or_default();
+            if timestamp > latest.as_str() {
+                *latest = timestamp.to_string();
+            }
             if let Some(command) = command_from_tool_call(name, text) {
-                *self.command_counts.entry(command).or_default() += 1;
+                *self.command_counts.entry(command.clone()).or_default() += 1;
+                let latest = self.command_last_used.entry(command).or_default();
+                if timestamp > latest.as_str() {
+                    *latest = timestamp.to_string();
+                }
             }
         }
         if self.first_message.is_empty() {
@@ -395,7 +408,7 @@ impl ParseState {
         } else {
             &self.originator
         };
-        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "usage": self.usage, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "tool_counts": self.tool_counts, "command_counts": self.command_counts, "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
+        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "usage": self.usage, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "tool_counts": self.tool_counts, "command_counts": self.command_counts, "tool_last_used": self.tool_last_used, "command_last_used": self.command_last_used, "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
     }
 }
 pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
@@ -765,7 +778,7 @@ pub(crate) fn conversation_messages(
 }
 
 /// 命令排行只统计 shell 类工具的调用；名称为小写。
-const COMMAND_TOOL_NAMES: [&str; 10] = [
+const COMMAND_TOOL_NAMES: [&str; 12] = [
     "bash",
     "shell",
     "sh",
@@ -776,6 +789,8 @@ const COMMAND_TOOL_NAMES: [&str; 10] = [
     "terminal",
     "run_command",
     "execute_command",
+    "exec_command",
+    "functions.exec_command",
 ];
 
 /// 从 shell 类工具调用的展示文本提取命令首词（如 `adb`、`python`）。
@@ -788,13 +803,32 @@ fn command_from_tool_call(name: &str, text: &str) -> Option<String> {
     let args: Value = serde_json::from_str(text.get(text.find('{')?..)?).ok()?;
     let command = ["command", "cmd", "input", "script", "code"]
         .iter()
-        .find_map(|key| args[*key].as_str())?;
+        .find_map(|key| {
+            args[*key]
+                .as_str()
+                .or_else(|| args[*key].as_array()?.first()?.as_str())
+        })?;
     let first = command
         .split_whitespace()
         .next()?
         .trim_matches(|c| c == '"' || c == '\'');
     let program = first.rsplit(['/', '\\']).next()?;
     (!program.is_empty()).then(|| program.to_lowercase())
+}
+
+pub(crate) fn tool_call_command(message: &Value) -> Option<String> {
+    if !is_tool_call(message) {
+        return None;
+    }
+    command_from_tool_call(message["tool_name"].as_str()?, message["text"].as_str()?)
+}
+
+pub(crate) fn is_tool_call(message: &Value) -> bool {
+    message["role"] == "tool"
+        && matches!(
+            message["tool_kind"].as_str(),
+            Some("tool_call" | "tool_use" | "function_call")
+        )
 }
 
 /// 系统/开发者角色属于指令上下文，统一按 synthetic_context 处理。

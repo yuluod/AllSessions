@@ -233,7 +233,7 @@ impl SearchPlan {
                 hits.retain(|hit| bool_query(query,"show_removed") || !workspace.message_removed(key,hit["message_key"].as_str().unwrap_or_default()));
                 // 指定了角色或工具筛选时，只在消息正文里匹配；标题等摘要字段
                 // 的命中不参与，避免“只搜用户提问”被标题匹配绕过。
-                let augment_fields = filters.roles.is_empty() && filters.tool.is_none();
+                let augment_fields = filters.roles.is_empty() && filters.tool.is_none() && !filters.activity_only();
                 if augment_fields {
                 for (field, text, score) in [
                     ("title",summary["title"].as_str().unwrap_or_default().to_string(),5.0),
@@ -253,7 +253,7 @@ impl SearchPlan {
                     }
                 }
                 }
-                let matched = if regex_mode {
+                let matched = if regex_mode || (terms.is_empty() && filters.activity_only()) {
                     !hits.is_empty()
                 } else {
                     !terms.is_empty() && terms.iter().all(|term|hits.iter().any(|hit|hit["term"].as_str()==Some(term)))

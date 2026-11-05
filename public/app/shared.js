@@ -32,6 +32,8 @@ export const state = {
   searchSort: "relevance",
   searchRole: "",
   searchTool: "",
+  searchExactTool: "",
+  searchCommand: "",
   searchRegex: false,
   searchFrom: "",
   searchTo: "",
@@ -69,6 +71,12 @@ export const state = {
   selectedSessionKeys: new Set(),
   bulkSelectionMode: false,
 };
+
+export function isSearchActive() {
+  return Boolean(
+    state.searchQuery || state.searchExactTool || state.searchCommand
+  );
+}
 
 export function isMessageRemoved(message) {
   return message?._removed === true;

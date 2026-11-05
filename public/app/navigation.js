@@ -48,6 +48,22 @@ export async function returnHome() {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
+export async function openActivitySearch(kind, value) {
+  state.searchQuery = "";
+  state.searchRole = "";
+  state.searchTool = "";
+  state.searchExactTool = kind === "tool" ? value : "";
+  state.searchCommand = kind === "command" ? value : "";
+  state.searchRegex = false;
+  state.searchFrom = "";
+  state.searchTo = "";
+  state.selectedSearchHit = null;
+  syncFilterControls();
+  syncUrl();
+  await activateWorkspaceView("list");
+  await loadSessions();
+}
+
 export async function activateWorkspaceView(panel) {
   state.activeView = panel;
   // 复用同一组筛选控件，统计页也明确展示当前条件，避免隐藏筛选影响结果。

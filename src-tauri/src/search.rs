@@ -19,6 +19,8 @@ pub struct SearchSnapshot<'a>(&'a Connection);
 pub struct SearchFilters {
     pub roles: Vec<String>,
     pub tool: Option<String>,
+    pub exact_tool: Option<String>,
+    pub command: Option<String>,
 }
 
 impl SearchFilters {
@@ -40,7 +42,24 @@ impl SearchFilters {
             .get("tool")
             .map(|value| value.trim().to_lowercase())
             .filter(|value| !value.is_empty());
-        Self { roles, tool }
+        let exact_tool = query
+            .get("exact_tool")
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty());
+        let command = query
+            .get("command")
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty());
+        Self {
+            roles,
+            tool,
+            exact_tool,
+            command,
+        }
+    }
+
+    pub fn activity_only(&self) -> bool {
+        self.exact_tool.is_some() || self.command.is_some()
     }
 
     /// 返回 `where` 之后的追加条件与绑定参数；`alias` 为消息表别名或空串。
@@ -62,6 +81,18 @@ impl SearchFilters {
         if let Some(tool) = &self.tool {
             conditions.push(format!("instr({}, ?) > 0", column("tool_name")));
             values.push(tool.clone());
+        }
+        for (field, expected) in [
+            ("tool_name", &self.exact_tool),
+            ("command_name", &self.command),
+        ] {
+            if let Some(value) = expected {
+                conditions.push(format!("{} = ?", column(field)));
+                values.push(value.clone());
+            }
+        }
+        if self.activity_only() {
+            conditions.push(format!("{} = 1", column("is_tool_call")));
         }
         if conditions.is_empty() {
             (String::new(), values)
@@ -124,6 +155,10 @@ impl SearchIndex {
             // 工具名列同样属于派生数据，缺列时清空索引等待重建。
             db.execute_batch("begin; alter table search_messages_v1 add column tool_name text not null default ''; delete from search_messages_v1; delete from search_sessions_v1; commit;").map_err(|e|e.to_string())?;
         }
+        let has_command: bool = db.query_row("select exists(select 1 from pragma_table_info('search_messages_v1') where name='command_name')", [], |r| r.get(0)).map_err(|e|e.to_string())?;
+        if !has_command {
+            db.execute_batch("begin; alter table search_messages_v1 add column command_name text not null default ''; alter table search_messages_v1 add column is_tool_call integer not null default 0; delete from search_messages_v1; delete from search_sessions_v1; commit;").map_err(|e|e.to_string())?;
+        }
         db.execute_batch("create table if not exists search_short_v1(token text not null, message_id integer not null, primary key(token,message_id)) without rowid;
             create index if not exists search_short_message_v1 on search_short_v1(message_id);
             create table if not exists search_short_ready_v1(session_key text primary key);
@@ -170,7 +205,7 @@ impl SearchIndex {
             .map_err(|e| RefreshError::Database(e.to_string()))?;
         let mut ordinal = 0;
         let mut failure = None;
-        let mut insert = tx.prepare("insert into search_messages_v1(session_key,ordinal,text,payload,role,message_key,tool_name) values(?1,?2,?3,?4,?5,?6,?7)").map_err(|e|RefreshError::Database(e.to_string()))?;
+        let mut insert = tx.prepare("insert into search_messages_v1(session_key,ordinal,text,payload,role,message_key,tool_name,command_name,is_tool_call) values(?1,?2,?3,?4,?5,?6,?7,?8,?9)").map_err(|e|RefreshError::Database(e.to_string()))?;
         let parsed = parse(&mut |message| {
             if failure.is_some() {
                 return;
@@ -190,7 +225,9 @@ impl SearchIndex {
                     message["tool_name"]
                         .as_str()
                         .unwrap_or_default()
-                        .to_lowercase()
+                        .to_lowercase(),
+                    crate::sessions::tool_call_command(message).unwrap_or_default(),
+                    crate::sessions::is_tool_call(message)
                 ])
             {
                 failure = Some(error.to_string());
@@ -342,10 +379,14 @@ impl SearchSnapshot<'_> {
     ) -> Result<BTreeMap<String, Vec<Value>>, String> {
         let db = self.0;
         let mut hits: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-        for term in terms(query) {
+        let mut query_terms = terms(query);
+        if query_terms.is_empty() && filters.activity_only() {
+            query_terms.insert(String::new());
+        }
+        for term in query_terms {
             let mut candidates: BTreeMap<String, Vec<Candidate>> = BTreeMap::new();
             let indexed = term.chars().count() >= 3;
-            let short_indexed = !indexed && term.chars().all(is_han);
+            let short_indexed = !term.is_empty() && !indexed && term.chars().all(is_han);
             let (sql, alias) = if indexed {
                 (
                     "select m.session_key,m.ordinal,m.role,m.message_key,-bm25(search_fts_v1),m.id from search_fts_v1 join search_messages_v1 m on m.id=search_fts_v1.rowid where search_fts_v1 match ?1{CLAUSE}".to_string(),

@@ -21,6 +21,8 @@ pub struct SearchFilters {
     pub tool: Option<String>,
     pub exact_tool: Option<String>,
     pub command: Option<String>,
+    activity_from: Option<String>,
+    activity_to: Option<String>,
 }
 
 impl SearchFilters {
@@ -55,6 +57,14 @@ impl SearchFilters {
             tool,
             exact_tool,
             command,
+            activity_from: query
+                .get("activity_from")
+                .filter(|value| !value.is_empty())
+                .cloned(),
+            activity_to: query
+                .get("activity_to")
+                .filter(|value| !value.is_empty())
+                .cloned(),
         }
     }
 
@@ -93,6 +103,12 @@ impl SearchFilters {
         }
         if self.activity_only() {
             conditions.push(format!("{} = 1", column("is_tool_call")));
+        }
+        for (operator, expected) in [(">=", &self.activity_from), ("<=", &self.activity_to)] {
+            if let Some(date) = expected {
+                conditions.push(format!("{} {operator} ?", column("activity_date")));
+                values.push(date.clone());
+            }
         }
         if conditions.is_empty() {
             (String::new(), values)
@@ -159,6 +175,10 @@ impl SearchIndex {
         if !has_command {
             db.execute_batch("begin; alter table search_messages_v1 add column command_name text not null default ''; alter table search_messages_v1 add column is_tool_call integer not null default 0; delete from search_messages_v1; delete from search_sessions_v1; commit;").map_err(|e|e.to_string())?;
         }
+        let has_activity_date: bool = db.query_row("select exists(select 1 from pragma_table_info('search_messages_v1') where name='activity_date')", [], |r| r.get(0)).map_err(|e|e.to_string())?;
+        if !has_activity_date {
+            db.execute_batch("begin; alter table search_messages_v1 add column activity_date text not null default ''; delete from search_messages_v1; delete from search_sessions_v1; commit;").map_err(|e|e.to_string())?;
+        }
         db.execute_batch("create table if not exists search_short_v1(token text not null, message_id integer not null, primary key(token,message_id)) without rowid;
             create index if not exists search_short_message_v1 on search_short_v1(message_id);
             create table if not exists search_short_ready_v1(session_key text primary key);
@@ -205,7 +225,7 @@ impl SearchIndex {
             .map_err(|e| RefreshError::Database(e.to_string()))?;
         let mut ordinal = 0;
         let mut failure = None;
-        let mut insert = tx.prepare("insert into search_messages_v1(session_key,ordinal,text,payload,role,message_key,tool_name,command_name,is_tool_call) values(?1,?2,?3,?4,?5,?6,?7,?8,?9)").map_err(|e|RefreshError::Database(e.to_string()))?;
+        let mut insert = tx.prepare("insert into search_messages_v1(session_key,ordinal,text,payload,role,message_key,tool_name,command_name,is_tool_call,activity_date) values(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)").map_err(|e|RefreshError::Database(e.to_string()))?;
         let parsed = parse(&mut |message| {
             if failure.is_some() {
                 return;
@@ -228,7 +248,11 @@ impl SearchIndex {
                         .unwrap_or_default()
                         .to_lowercase(),
                     crate::sessions::tool_call_command(message).unwrap_or_default(),
-                    crate::sessions::is_tool_call(message)
+                    crate::sessions::is_tool_call(message),
+                    crate::sessions::local_date_key(
+                        message["timestamp"].as_str().unwrap_or_default()
+                    )
+                    .unwrap_or_default()
                 ])
             {
                 failure = Some(error.to_string());

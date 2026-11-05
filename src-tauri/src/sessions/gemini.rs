@@ -891,6 +891,11 @@ impl MergedSession {
                 .usage
                 .merge(serde_json::from_value(usage.clone()).map_err(|error| error.to_string())?);
         }
+        if let Some(activity) = summary.get("activity") {
+            self.state.activity.merge(
+                serde_json::from_value(activity.clone()).map_err(|error| error.to_string())?,
+            );
+        }
         if let Some(roles) = summary["role_counts"].as_object() {
             for (role, count) in roles {
                 *self.state.roles.entry(role.clone()).or_default() +=

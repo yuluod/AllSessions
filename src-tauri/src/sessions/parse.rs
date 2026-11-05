@@ -7,6 +7,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use super::activity::ActivityLedger;
 use super::usage::{TokenUsage, UsageLedger};
 
 use super::claude_legacy::{parse_legacy_claude_detail, parse_legacy_claude_summary};
@@ -40,6 +41,7 @@ pub(crate) struct ParseState {
     pub(crate) output_tokens: u64,
     pub(crate) cached_input_tokens: u64,
     pub(super) usage: UsageLedger,
+    pub(super) activity: ActivityLedger,
     pub(crate) roles: BTreeMap<String, u64>,
     /// 按工具名（小写归并）统计调用次数；仅计调用，不计结果。
     pub(crate) tool_counts: BTreeMap<String, u64>,
@@ -90,6 +92,7 @@ impl ParseState {
             output_tokens: 0,
             cached_input_tokens: 0,
             usage: UsageLedger::default(),
+            activity: ActivityLedger::default(),
             roles: BTreeMap::new(),
             tool_counts: BTreeMap::new(),
             command_counts: BTreeMap::new(),
@@ -300,6 +303,7 @@ impl ParseState {
             return Some(message);
         }
         self.message_count += 1;
+        self.activity.record(&message);
         *self.roles.entry(role.into()).or_default() += 1;
         if is_tool_call(&message)
             && let Some(name) = message["tool_name"]
@@ -407,7 +411,7 @@ impl ParseState {
         } else {
             &self.originator
         };
-        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "usage": self.usage, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "tool_counts": self.tool_counts, "command_counts": self.command_counts, "tool_last_used": self.tool_last_used, "command_last_used": self.command_last_used, "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
+        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "usage": self.usage, "activity": self.activity, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "tool_counts": self.tool_counts, "command_counts": self.command_counts, "tool_last_used": self.tool_last_used, "command_last_used": self.command_last_used, "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
     }
 }
 pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {

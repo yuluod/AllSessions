@@ -3,6 +3,7 @@ import { formatCount } from "./session-format.js";
 import { calendarHeatmapDays, presetHeatmapRange } from "./stats-calendar.js";
 import { createEmptyState } from "./ui-components.js";
 import { renderProjectReview } from "./project-review.js";
+import { renderStatsRange } from "./stats-range.js";
 
 const AGENT_PRESENTATION = {
   codex: { label: "Codex", color: "#0f766e" },
@@ -99,7 +100,10 @@ function renderMetrics(stats, container) {
   const cards = [
     { label: t("statsTotalSessions"), value: String(total) },
     { label: t("statsMessages"), value: formatCount(stats.total_messages) },
-    { label: t("statsTools"), value: formatCount(stats.total_tools) },
+    {
+      label: t("statsTools"),
+      value: formatCount(stats.total_tool_calls ?? stats.total_tools),
+    },
     {
       label: t("statsCachedHit"),
       value: cacheHit,
@@ -110,7 +114,10 @@ function renderMetrics(stats, container) {
       value: formatTokensCompact(totalTokens),
       title: `${formatCount(totalTokens)} (${t("statsTokenInput")} ${formatCount(stats.total_input_tokens)} · ${t("statsTokenOutput")} ${formatCount(stats.total_output_tokens)} · ${t("statsTokenCached")} ${formatCount(stats.total_cached_input_tokens)})`,
     },
-    { label: t("statsEvents"), value: formatCount(stats.total_events) },
+    {
+      label: t("statsEvents"),
+      value: stats.total_events == null ? "—" : formatCount(stats.total_events),
+    },
     { label: t("statsActiveDays"), value: String(activeDays) },
     { label: t("statsAvgDaily"), value: String(average) },
   ];
@@ -137,7 +144,7 @@ function renderMetrics(stats, container) {
 
 function renderTrend(stats, container) {
   container.replaceChildren();
-  const dates = (stats.by_date || []).slice(-14);
+  const dates = stats.by_date || [];
   if (!dates.length) {
     renderEmpty(container);
     return;
@@ -179,9 +186,6 @@ function renderTrend(stats, container) {
   container.append(plot);
 }
 
-// 按本机日历选择常用范围，也可指定起止日期，仅调整热力图。
-let heatmapPreset = "month";
-let heatmapRange = null;
 const HEATMAP_LEVELS = 4;
 
 // 用量分布通常右偏（个别重度日远超均值），线性分档会让绝大多数
@@ -224,41 +228,22 @@ function renderHeatmap(stats, container) {
     renderEmpty(container);
     return;
   }
-  const selectedRange = heatmapRange || presetHeatmapRange(days, heatmapPreset);
+  const defaults = presetHeatmapRange(days, "all");
+  const selectedRange = {
+    start: stats.range?.start || defaults.start,
+    end: stats.range?.end || defaults.end,
+  };
   const recent = calendarHeatmapDays(days, selectedRange);
   const max = Math.max(...recent.map((day) => day.tokens || 0), 1);
 
   const wrap = document.createElement("div");
   wrap.className = "token-heatmap";
-  const presets = document.createElement("div");
-  presets.className = "token-heatmap-presets";
-  presets.setAttribute("role", "group");
-  presets.setAttribute("aria-label", t("statsHeatmapRange"));
-  for (const [value, key] of [
-    ["week", "statsHeatmapWeek"],
-    ["month", "statsHeatmapMonth"],
-    ["30days", "statsHeatmap30Days"],
-    ["all", "statsHeatmapAll"],
-  ]) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "ghost-button";
-    button.dataset.range = value;
-    button.textContent = t(key);
-    button.setAttribute(
-      "aria-pressed",
-      String(!heatmapRange && heatmapPreset === value)
-    );
-    button.addEventListener("click", () => {
-      heatmapPreset = value;
-      heatmapRange = null;
-      renderHeatmap(stats, container);
-      container.querySelector(`[data-range="${value}"]`)?.focus();
-    });
-    presets.append(button);
+  if (recent[0]?.label !== selectedRange.start) {
+    const note = document.createElement("p");
+    note.className = "props-empty";
+    note.textContent = t("statsCalendarLimited");
+    wrap.append(note);
   }
-  wrap.append(presets);
-
   const grid = document.createElement("div");
   grid.className = "token-heatmap-grid";
   grid.setAttribute("role", "img");
@@ -350,41 +335,6 @@ function renderHeatmap(stats, container) {
 
   const footer = document.createElement("div");
   footer.className = "token-heatmap-footer";
-  const range = document.createElement("form");
-  range.className = "token-heatmap-range";
-  range.setAttribute("aria-label", t("statsHeatmapRange"));
-  const inputs = {};
-  for (const [key, labelText] of [
-    ["start", t("statsHeatmapStart")],
-    ["end", t("statsHeatmapEnd")],
-  ]) {
-    const label = document.createElement("label");
-    label.textContent = labelText;
-    const input = document.createElement("input");
-    input.type = "date";
-    input.required = true;
-    input.value = selectedRange[key];
-    input.name = key;
-    input.addEventListener("input", () => inputs.end.setCustomValidity(""));
-    inputs[key] = input;
-    label.append(input);
-    range.append(label);
-  }
-  const apply = document.createElement("button");
-  apply.type = "submit";
-  apply.className = "ghost-button";
-  apply.textContent = t("statsHeatmapApply");
-  range.append(apply);
-  range.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (inputs.start.value > inputs.end.value) {
-      inputs.end.setCustomValidity(t("statsHeatmapInvalidRange"));
-      inputs.end.reportValidity();
-      return;
-    }
-    heatmapRange = { start: inputs.start.value, end: inputs.end.value };
-    renderHeatmap(stats, container);
-  });
   const legend = document.createElement("span");
   legend.className = "token-heatmap-legend";
   const less = document.createElement("span");
@@ -399,7 +349,7 @@ function renderHeatmap(stats, container) {
   const more = document.createElement("span");
   more.textContent = t("statsHeatmapMore");
   legend.append(more);
-  footer.append(range, legend);
+  footer.append(legend);
   wrap.append(footer);
   attachHeatmapTooltip(grid);
   container.append(wrap);
@@ -663,9 +613,10 @@ function renderRankings(stats, container, onSelectRanking) {
 export function renderStats(
   stats,
   elements,
-  { onSelectRanking, onSelectSession } = {}
+  { onSelectRanking, onSelectSession, onChangeRange } = {}
 ) {
   if (!elements.statsDashboard) return;
+  renderStatsRange(stats.range, elements.statsRange, onChangeRange);
   renderProjectReview(
     stats.project_review,
     elements.projectReview,

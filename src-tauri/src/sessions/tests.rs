@@ -217,6 +217,58 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 时间范围统一筛选跨天会话用量排行及调用定位() {
+    let (_directory, mut store) = structured_search_store();
+    let path = store.records["codex:structured"].path.clone();
+    let records = [
+        json!({"type":"session_meta","timestamp":"2026-03-01T12:00:00Z","payload":{"id":"structured","cwd":"/project"}}),
+        json!({"type":"event_msg","timestamp":"2026-03-01T12:00:01Z","payload":{"type":"user_message","message":"第一天"}}),
+        json!({"type":"response_item","timestamp":"2026-03-01T12:00:02Z","payload":{"type":"function_call","call_id":"c1","name":"bash","arguments":"{\"command\":\"cargo test\"}"}}),
+        json!({"type":"event_msg","timestamp":"2026-03-01T12:00:03Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10}}}}),
+        json!({"type":"response_item","timestamp":"2026-03-02T12:00:01Z","payload":{"type":"function_call","call_id":"c2","name":"bash","arguments":"{\"command\":\"git status\"}"}}),
+        json!({"type":"event_msg","timestamp":"2026-03-02T12:00:02Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":300,"cached_input_tokens":100,"output_tokens":40}}}}),
+    ];
+    std::fs::write(
+        &path,
+        records
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
+    store.refresh().unwrap();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let mut query = HashMap::from([
+        ("activity_from".into(), "2026-03-01".into()),
+        ("activity_to".into(), "2026-03-01".into()),
+    ]);
+    let stats = store.stats(&query, &workspace);
+    assert_eq!(stats["total"], 1);
+    assert_eq!(stats["total_tokens"], 110);
+    assert_eq!(stats["total_messages"], 2);
+    assert_eq!(stats["total_tool_calls"], 1);
+    assert_eq!(stats["by_command"][0]["label"], "cargo");
+    assert_eq!(stats["by_date"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        store.list(&query, &workspace)["sessions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    query.insert("command".into(), "git".into());
+    assert_eq!(store.search(&query, &workspace).unwrap()["total"], 0);
+    query.insert("command".into(), "cargo".into());
+    assert_eq!(store.search(&query, &workspace).unwrap()["total"], 1);
+    query.insert("activity_from".into(), "2026-03-02".into());
+    query.insert("activity_to".into(), "2026-03-02".into());
+    let stats = store.stats(&query, &workspace);
+    assert_eq!(stats["total_tokens"], 230);
+    assert_eq!(stats["by_command"][0]["label"], "git");
+}
+
+#[test]
 fn 命令程序名支持带空格的引号路径且跳过变量赋值() {
     let command = |text: &str| {
         super::tool_call_command(&json!({
@@ -1027,7 +1079,7 @@ fn 统计日图使用用量日期并明确无日期用量() {
     assert_eq!(stats["undated_tokens"], 47);
     assert_eq!(
         stats["by_date"][0],
-        json!({ "label": "2026-09-01", "count": 0, "tokens": 47 })
+        json!({ "label": "2026-09-01", "count": 1, "tokens": 47 })
     );
     assert_eq!(stats["by_date"][1]["tokens"], 0);
 }

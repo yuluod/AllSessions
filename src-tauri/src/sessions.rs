@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::cache::IndexCache;
 
+mod activity;
 mod attachment;
 mod claude_cowork;
 mod claude_legacy;
@@ -36,15 +37,18 @@ mod tests;
 
 // 子模块条目经此再导出,保持适配器、后端与测试中 `super::条目` / `crate::sessions::条目`
 // 的既有引用路径不变;兄弟子模块之间直接从定义模块导入,不经此枢纽。
+pub(crate) use activity::{
+    has_range as has_activity_range, in_range as in_activity_range,
+    validate_range as validate_activity_range,
+};
 pub(crate) use claude_legacy::{legacy_timestamp, timestamp_from_millis};
 pub(crate) use helpers::{
-    compact, compact_title, diagnostic_entries, diagnostic_source_kind, error_text, mixed_stamp,
-    nullable_string, scan_timestamp,
+    compact, compact_title, diagnostic_entries, diagnostic_source_kind, error_text, local_date_key,
+    mixed_stamp, nullable_string, scan_timestamp,
 };
 #[cfg(test)]
 pub(crate) use helpers::{
-    is_synthetic_context, local_date_key, matches_filters, search_fingerprint,
-    search_query_matches, timestamp_of,
+    is_synthetic_context, matches_filters, search_fingerprint, search_query_matches, timestamp_of,
 };
 pub(crate) use mutation::replace_file_contents;
 #[cfg(test)]

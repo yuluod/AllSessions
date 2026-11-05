@@ -25,6 +25,7 @@ import {
   resetFilterState,
   restoreFromUrl,
   setSourceKindFilter,
+  setActivityRange,
   syncFilterControls,
   syncSessionRoot,
   syncUrl,
@@ -344,9 +345,8 @@ async function initialize() {
   });
 
   elements.dateFilter?.addEventListener("change", async (event) => {
-    state.filters.date = event.target.value;
-    syncUrl();
-    await Promise.all([loadSessions(), loadStats()]);
+    const date = event.target.value;
+    await setActivityRange({ start: date, end: date });
   });
 
   elements.workspaceTagFilter?.addEventListener("change", async (event) => {

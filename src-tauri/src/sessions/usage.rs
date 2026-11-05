@@ -17,7 +17,7 @@ pub(super) struct TokenUsage {
 }
 
 impl TokenUsage {
-    fn add(&mut self, other: Self) {
+    pub(super) fn add(&mut self, other: Self) {
         self.input += other.input;
         self.output += other.output;
         self.cache_read += other.cache_read;

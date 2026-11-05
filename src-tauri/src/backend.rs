@@ -345,6 +345,7 @@ fn route_request(
         .map_err(|_| ApiError::invalid("请求地址无效"))?;
     let path = parsed.path();
     let query = parsed.query_pairs().into_owned().collect::<HashMap<_, _>>();
+    crate::sessions::validate_activity_range(&query).map_err(ApiError::invalid)?;
     let method = request.method.to_uppercase();
 
     // 修改来源或索引的操作与扫描串行；普通读取不等待全文索引。
@@ -800,5 +801,22 @@ mod tests {
             let error = validate_search_query(&search_query(query)).unwrap_err();
             assert_eq!(error.code, ApiError::INVALID_REQUEST, "{query}");
         }
+    }
+
+    #[test]
+    fn 活动范围拒绝非法日期与倒置边界() {
+        for query in [
+            "activity_from=2026-02-30",
+            "activity_from=2026-03-02&activity_to=2026-03-01",
+            "activity_to=invalid",
+        ] {
+            assert!(crate::sessions::validate_activity_range(&search_query(query)).is_err());
+        }
+        assert!(
+            crate::sessions::validate_activity_range(&search_query(
+                "activity_from=2026-03-01&activity_to=2026-03-01"
+            ))
+            .is_ok()
+        );
     }
 }

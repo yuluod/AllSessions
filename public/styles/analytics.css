@@ -41,6 +41,29 @@
   font-variant-numeric: tabular-nums;
 }
 
+.stats-range-presets,
+.stats-range-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.stats-range-form label {
+  display: grid;
+  gap: 3px;
+}
+
+.stats-range-form button {
+  align-self: end;
+}
+
+.stats-range-presets button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--text-inverse);
+  border-color: var(--accent);
+}
+
 .stats-surface {
   min-width: 0;
   overflow: hidden;
@@ -184,6 +207,7 @@
 
 .trend-plot {
   position: relative;
+  overflow-x: auto;
 }
 
 .trend-guides {
@@ -210,7 +234,7 @@
 
 .trend-col {
   display: flex;
-  min-width: 0;
+  min-width: 28px;
   height: 100%;
   flex: 1;
   flex-direction: column;

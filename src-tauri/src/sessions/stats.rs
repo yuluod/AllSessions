@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 
 use super::SessionStore;
 use super::helpers::{
-    agent_kind, count_values, diagnostic_source_kind, increment, insert_string, local_date_key,
-    matches_filters, timestamp_of,
+    agent_kind, count_values, diagnostic_source_kind, increment, insert_string, matches_filters,
+    timestamp_of,
 };
 
 /// 只影响列表可见性、不改变导航维度的查询开关。
@@ -36,9 +36,7 @@ impl SessionStore {
             if summary["hidden"].as_bool() == Some(true) {
                 insert_string(&mut hidden_reasons, &summary["hidden_reason"]);
             }
-            if let Some(date) = local_date_key(timestamp_of(summary)) {
-                dates.insert(date);
-            }
+            dates.extend(super::activity::dates(summary));
         }
         // 项目计数应用显示开关：隐藏、归档与本地移除的会话默认不计入，
         // 与列表可见口径一致；来源/项目筛选本身不收窄项目计数。
@@ -122,7 +120,10 @@ impl SessionStore {
         query: &HashMap<String, String>,
         workspace: &crate::workspace::WorkspaceSnapshot,
     ) -> Value {
-        let filtered = self.filtered(query, workspace);
+        let mut filtered = self.filtered(query, workspace);
+        for summary in &mut filtered {
+            super::activity::scope_summary(summary, query);
+        }
         let mut by_date: BTreeMap<String, DayUsage> = BTreeMap::new();
         let mut by_agent = HashMap::new();
         let mut by_agent_tokens: HashMap<String, u64> = HashMap::new();
@@ -135,6 +136,7 @@ impl SessionStore {
         let mut total_events = 0_u64;
         let mut total_messages = 0_u64;
         let mut total_tools = 0_u64;
+        let mut total_tool_calls = 0_u64;
         let mut total_input_tokens = 0_u64;
         let mut total_output_tokens = 0_u64;
         let mut total_cached_input_tokens = 0_u64;
@@ -148,6 +150,9 @@ impl SessionStore {
             total_events += summary["event_count"].as_u64().unwrap_or_default();
             total_messages += summary["message_count"].as_u64().unwrap_or_default();
             total_tools += summary["tool_count"].as_u64().unwrap_or_default();
+            if let Some(counts) = summary["tool_counts"].as_object() {
+                total_tool_calls += counts.values().filter_map(Value::as_u64).sum::<u64>();
+            }
             let input = summary["input_tokens"].as_u64().unwrap_or_default();
             let output = summary["output_tokens"].as_u64().unwrap_or_default();
             let cached = summary["cached_input_tokens"].as_u64().unwrap_or_default();
@@ -171,14 +176,19 @@ impl SessionStore {
                     }
                 }
             } else {
-                undated_tokens += tokens;
+                undated_tokens += if super::has_activity_range(query) {
+                    summary["_undated_tokens"].as_u64().unwrap_or_default()
+                } else {
+                    tokens
+                };
             }
             if summary["tool_counts"].is_object() {
                 tool_sessions += 1;
             }
-            if let Some(date) = local_date_key(timestamp_of(summary)) {
-                let day = by_date.entry(date).or_default();
-                day.count += 1;
+            for date in super::activity::dates(summary) {
+                if super::in_activity_range(&date, query) {
+                    by_date.entry(date).or_default().count += 1;
+                }
             }
             if let Some(agent) = agent_kind(&summary["source_kind"]) {
                 *by_agent.entry(agent.into()).or_default() += 1;
@@ -224,9 +234,11 @@ impl SessionStore {
         let active_days = by_date.values().filter(|day| day.count > 0).count();
         json!({
             "total": filtered.len(),
-            "total_events": total_events,
+            "total_events": if super::has_activity_range(query) { Value::Null } else { json!(total_events) },
             "total_messages": total_messages,
             "total_tools": total_tools,
+            "total_tool_calls": total_tool_calls,
+            "range": { "start": query.get("activity_from"), "end": query.get("activity_to") },
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "total_cached_input_tokens": total_cached_input_tokens,

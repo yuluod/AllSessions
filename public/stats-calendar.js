@@ -1,5 +1,16 @@
 const DAY_MS = 86_400_000;
 
+export function statsPresetRange(preset, now = new Date()) {
+  if (preset === "all") return { start: "", end: "" };
+  const end = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const offset = { today: 0, week: 6, month: 29 }[preset];
+  if (offset === undefined) throw new Error("统计日期预设无效");
+  return {
+    start: new Date(dayTime(end) - offset * DAY_MS).toISOString().slice(0, 10),
+    end,
+  };
+}
+
 function dayTime(date) {
   return Date.parse(`${date}T00:00:00Z`);
 }
@@ -19,11 +30,17 @@ export function presetHeatmapRange(days, preset = "month", now = new Date()) {
 
 // 按日历补零，不能把无活动日期压掉，否则星期位置和日期范围都会失真。
 export function calendarHeatmapDays(days, { start, end }) {
-  const first = dayTime(start);
+  const requestedFirst = dayTime(start);
   const last = dayTime(end);
-  if (!Number.isFinite(first) || !Number.isFinite(last) || first > last) {
+  if (
+    !Number.isFinite(requestedFirst) ||
+    !Number.isFinite(last) ||
+    requestedFirst > last
+  ) {
     throw new Error("热力图日期范围无效");
   }
+  // 图表保持有界，超长范围仅绘制最后 4096 天，汇总数据仍使用完整范围。
+  const first = Math.max(requestedFirst, last - 4095 * DAY_MS);
   const indexed = new Map(days.map((day) => [day.label, day]));
   const result = [];
   for (let time = first; time <= last; time += DAY_MS) {

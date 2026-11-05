@@ -420,10 +420,13 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   const html = await readProjectFile("public/index.html");
   const i18n = await readProjectFile("public/i18n.js");
 
-  assert.match(source, /value: formatCount\(stats\.total_events\)/);
+  assert.match(source, /formatCount\(stats\.total_events\)/);
   assert.match(source, /value: formatCount\(stats\.total_messages\)/);
-  assert.match(source, /value: formatCount\(stats\.total_tools\)/);
-  assert.match(source, /\(stats\.by_date \|\| \[\]\)\.slice\(-14\)/);
+  assert.match(
+    source,
+    /formatCount\(stats\.total_tool_calls \?\? stats\.total_tools\)/
+  );
+  assert.match(source, /const dates = stats\.by_date \|\| \[\]/);
   assert.match(source, /stats\.by_agent/);
   assert.match(source, /stats\.by_agent_tokens/);
   assert.match(source, /function renderAgents\(stats, container\)/);

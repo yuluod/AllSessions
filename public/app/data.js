@@ -24,6 +24,7 @@ import {
   syncFilterControls,
   syncSessionRoot,
   syncUrl,
+  setActivityRange,
   updateFacetFilters,
 } from "./filters.js";
 import {
@@ -305,6 +306,8 @@ export async function loadMoreSessions() {
 export function renderCurrentStats() {
   if (!state.stats) return;
   renderStats(state.stats, elements, {
+    onChangeRange: (range) =>
+      setActivityRange(range).catch((error) => showError(error.message)),
     onSelectSession: (key) => {
       openReviewSession(key).catch((error) => showError(error.message));
     },

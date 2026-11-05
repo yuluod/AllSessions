@@ -32,6 +32,8 @@ export function applyFilterValue(filter = {}) {
     provider: filter.provider || "",
     source_kind: filter.source_kind || "",
     date: filter.date || "",
+    activity_from: filter.activity_from || "",
+    activity_to: filter.activity_to || "",
     cwd: filter.cwd || "",
     tag: filter.tag || "",
   };
@@ -51,6 +53,10 @@ export function syncUrl() {
   if (state.filters.source_kind)
     params.set("source_kind", state.filters.source_kind);
   if (state.filters.date) params.set("date", state.filters.date);
+  if (state.filters.activity_from)
+    params.set("activity_from", state.filters.activity_from);
+  if (state.filters.activity_to)
+    params.set("activity_to", state.filters.activity_to);
   if (state.filters.cwd) params.set("cwd", state.filters.cwd);
   if (state.filters.tag) params.set("tag", state.filters.tag);
   if (state.searchQuery) params.set("q", state.searchQuery);
@@ -76,6 +82,8 @@ export function restoreFromUrl() {
   state.filters.provider = params.get("provider") || "";
   state.filters.source_kind = params.get("source_kind") || "";
   state.filters.date = params.get("date") || "";
+  state.filters.activity_from = params.get("activity_from") || "";
+  state.filters.activity_to = params.get("activity_to") || "";
   state.filters.cwd = params.get("cwd") || "";
   state.filters.tag = params.get("tag") || "";
   state.searchQuery = params.get("q") || "";
@@ -110,6 +118,15 @@ export async function setSourceKindFilter(sourceKind) {
 
 export async function setCwdFilter(cwd) {
   state.filters.cwd = cwd;
+  syncFilterControls();
+  syncUrl();
+  await Promise.all([loadSessions(), loadStats()]);
+}
+
+export async function setActivityRange({ start = "", end = "" }) {
+  state.filters.date = "";
+  state.filters.activity_from = start;
+  state.filters.activity_to = end;
   syncFilterControls();
   syncUrl();
   await Promise.all([loadSessions(), loadStats()]);
@@ -278,7 +295,12 @@ export function syncFilterControls() {
     ?.classList.toggle("hidden", !state.filters.cwd);
   if (elements.providerFilter)
     elements.providerFilter.value = state.filters.provider;
-  if (elements.dateFilter) elements.dateFilter.value = state.filters.date;
+  if (elements.dateFilter)
+    elements.dateFilter.value =
+      state.filters.date ||
+      (state.filters.activity_from === state.filters.activity_to
+        ? state.filters.activity_from
+        : "");
   if (elements.workspaceTagFilter)
     elements.workspaceTagFilter.value = state.filters.tag;
   if (elements.searchInput) elements.searchInput.value = state.searchQuery;
@@ -373,7 +395,10 @@ export function buildSearchUrl({ cursor } = {}) {
   return `/api/search?${params.toString()}`;
 }
 export async function clearFilterChip(type) {
-  if (type in state.filters) {
+  if (type === "activityRange") {
+    state.filters.activity_from = "";
+    state.filters.activity_to = "";
+  } else if (type in state.filters) {
     state.filters[type] = "";
   } else if (type === "search") {
     state.searchQuery = "";
@@ -403,6 +428,13 @@ export async function clearFilterChip(type) {
 
 export function activeFilterEntries() {
   const entries = [];
+  if (state.filters.activity_from || state.filters.activity_to) {
+    entries.push({
+      type: "activityRange",
+      label: t("statsRange"),
+      value: `${state.filters.activity_from || t("statsRangeAnyStart")} — ${state.filters.activity_to || t("statsRangeAnyEnd")}`,
+    });
+  }
   for (const [type, label] of [
     ["searchExactTool", "statsToolRanking"],
     ["searchCommand", "statsCommandRanking"],
@@ -566,6 +598,8 @@ export function resetFilterState() {
     provider: "",
     source_kind: "",
     date: "",
+    activity_from: "",
+    activity_to: "",
     cwd: "",
     tag: "",
   };

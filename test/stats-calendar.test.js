@@ -3,7 +3,34 @@ import test from "node:test";
 import {
   calendarHeatmapDays,
   presetHeatmapRange,
+  statsPresetRange,
 } from "../public/stats-calendar.js";
+
+test("统一统计预设包含今天并正确跨月", () => {
+  const now = new Date(2026, 2, 2, 12);
+  assert.deepEqual(statsPresetRange("today", now), {
+    start: "2026-03-02",
+    end: "2026-03-02",
+  });
+  assert.deepEqual(statsPresetRange("week", now), {
+    start: "2026-02-24",
+    end: "2026-03-02",
+  });
+  assert.deepEqual(statsPresetRange("month", now), {
+    start: "2026-02-01",
+    end: "2026-03-02",
+  });
+  assert.deepEqual(statsPresetRange("all", now), { start: "", end: "" });
+});
+
+test("超长日历范围保持有界且保留最后一天", () => {
+  const days = calendarHeatmapDays([], {
+    start: "2000-01-01",
+    end: "2026-11-05",
+  });
+  assert.equal(days.length, 4096);
+  assert.equal(days.at(-1).label, "2026-11-05");
+});
 
 test("热力图按所选日历日期补齐空白日并保留用量", () => {
   const days = [

@@ -809,6 +809,62 @@ fn codex会话摘要取最后一次token_count的累计值并扣除缓存() {
 }
 
 #[test]
+fn 用量账本区分缓存读写并按事件日期归属() {
+    let mut state = super::ParseState::new(std::path::Path::new("test.jsonl"));
+    for (id, date) in [
+        ("a", "2026-09-01"),
+        ("b", "2026-09-02"),
+        ("b", "2026-09-02"),
+    ] {
+        state.accept(&json!({ "type": "assistant", "timestamp": date,
+            "message": { "id": id, "role": "assistant", "content": "ok", "usage": {
+                "input_tokens": 10, "output_tokens": 2,
+                "cache_read_input_tokens": 30, "cache_creation_input_tokens": 5
+            } }
+        }));
+    }
+    let usage = serde_json::to_value(&state.usage).unwrap();
+    assert_eq!(usage["totals"]["cache_read"], 60);
+    assert_eq!(usage["totals"]["cache_write"], 10);
+    assert_eq!(usage["by_date"]["2026-09-01"]["input"], 10);
+    assert_eq!(usage["by_date"]["2026-09-02"]["input"], 10);
+    assert_eq!(state.cached_input_tokens, 70);
+}
+
+#[test]
+fn 统计日图使用用量日期并明确无日期用量() {
+    let store = SessionStore {
+        summaries: vec![json!({
+            "timestamp": "2026-09-02", "source_kind": "claude_code",
+            "input_tokens": 20, "cached_input_tokens": 70, "output_tokens": 4,
+            "usage": { "known": true,
+                "totals": { "input": 20, "cache_read": 60, "cache_write": 10, "output": 4 },
+                "by_date": { "2026-09-01": { "input": 10, "cache_read": 30, "cache_write": 5, "output": 2 } },
+                "undated": { "input": 10, "cache_read": 30, "cache_write": 5, "output": 2 }
+            }
+        })],
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    let stats = store.stats(
+        &HashMap::new(),
+        &crate::workspace::WorkspaceSnapshot::default(),
+    );
+    assert_eq!(stats["total_cache_read_tokens"], 60);
+    assert_eq!(stats["cache_eligible_input_tokens"], 90);
+    assert_eq!(stats["undated_tokens"], 47);
+    assert_eq!(
+        stats["by_date"][0],
+        json!({ "label": "2026-09-01", "count": 0, "tokens": 47 })
+    );
+    assert_eq!(stats["by_date"][1]["tokens"], 0);
+}
+
+#[test]
 fn claude会话usage按响应id去重累加() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("c.jsonl");

@@ -7,6 +7,8 @@ use std::path::Path;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use super::usage::{TokenUsage, UsageLedger};
+
 use super::claude_legacy::{parse_legacy_claude_detail, parse_legacy_claude_summary};
 use super::helpers::{
     compact, compact_title, error_text, is_synthetic_context, nullable_string, string_at,
@@ -37,6 +39,7 @@ pub(crate) struct ParseState {
     pub(crate) input_tokens: u64,
     pub(crate) output_tokens: u64,
     pub(crate) cached_input_tokens: u64,
+    pub(super) usage: UsageLedger,
     pub(crate) roles: BTreeMap<String, u64>,
     /// 按工具名（小写归并）统计调用次数；仅计调用，不计结果。
     pub(crate) tool_counts: BTreeMap<String, u64>,
@@ -84,6 +87,7 @@ impl ParseState {
             input_tokens: 0,
             output_tokens: 0,
             cached_input_tokens: 0,
+            usage: UsageLedger::default(),
             roles: BTreeMap::new(),
             tool_counts: BTreeMap::new(),
             command_counts: BTreeMap::new(),
@@ -216,9 +220,34 @@ impl ParseState {
             }
             let input = total["input_tokens"].as_u64().unwrap_or(0);
             let cached = total["cached_input_tokens"].as_u64().unwrap_or(0);
-            self.input_tokens = input.saturating_sub(cached);
+            let uncached = input.saturating_sub(cached);
+            let output = total["output_tokens"].as_u64().unwrap_or(0);
+            let reset = uncached < self.input_tokens
+                || cached < self.cached_input_tokens
+                || output < self.output_tokens;
+            if reset {
+                // 累计值回退后无法可靠还原历史日期，按最新总量重新建立未分配账本。
+                self.usage = UsageLedger::default();
+                self.input_tokens = 0;
+                self.cached_input_tokens = 0;
+                self.output_tokens = 0;
+            }
+            self.record_usage(
+                if reset {
+                    ""
+                } else {
+                    record["timestamp"].as_str().unwrap_or_default()
+                },
+                TokenUsage {
+                    input: uncached.saturating_sub(self.input_tokens),
+                    output: output.saturating_sub(self.output_tokens),
+                    cache_read: cached.saturating_sub(self.cached_input_tokens),
+                    cache_write: 0,
+                },
+            );
+            self.input_tokens = uncached;
             self.cached_input_tokens = cached;
-            self.output_tokens = total["output_tokens"].as_u64().unwrap_or(0);
+            self.output_tokens = output;
             return;
         }
         if record_type == Some("assistant") {
@@ -231,11 +260,22 @@ impl ParseState {
             if !response_id.is_empty() && !self.counted_response_ids.insert(response_id) {
                 return;
             }
-            self.input_tokens += usage["input_tokens"].as_u64().unwrap_or(0);
-            self.cached_input_tokens += usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
-                + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
-            self.output_tokens += usage["output_tokens"].as_u64().unwrap_or(0);
+            self.record_usage(
+                record["timestamp"].as_str().unwrap_or_default(),
+                TokenUsage {
+                    input: usage["input_tokens"].as_u64().unwrap_or(0),
+                    output: usage["output_tokens"].as_u64().unwrap_or(0),
+                    cache_read: usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
+                    cache_write: usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
+                },
+            );
         }
+    }
+    pub(super) fn record_usage(&mut self, timestamp: &str, usage: TokenUsage) {
+        self.input_tokens += usage.input;
+        self.output_tokens += usage.output;
+        self.cached_input_tokens += usage.cache_read + usage.cache_write;
+        self.usage.record(timestamp, usage);
     }
     pub(crate) fn accept_message(&mut self, message: Value) -> Option<Value> {
         let role = message["role"].as_str().unwrap_or("unknown");
@@ -355,7 +395,7 @@ impl ParseState {
         } else {
             &self.originator
         };
-        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "tool_counts": self.tool_counts, "command_counts": self.command_counts, "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
+        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "usage": self.usage, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "tool_counts": self.tool_counts, "command_counts": self.command_counts, "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
     }
 }
 pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {

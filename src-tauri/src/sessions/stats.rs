@@ -138,6 +138,12 @@ impl SessionStore {
         let mut total_input_tokens = 0_u64;
         let mut total_output_tokens = 0_u64;
         let mut total_cached_input_tokens = 0_u64;
+        let mut total_cache_read_tokens = 0_u64;
+        let mut total_cache_write_tokens = 0_u64;
+        let mut cache_eligible_input_tokens = 0_u64;
+        let mut usage_sessions = 0_u64;
+        let mut tool_sessions = 0_u64;
+        let mut undated_tokens = 0_u64;
         for summary in &filtered {
             total_events += summary["event_count"].as_u64().unwrap_or_default();
             total_messages += summary["message_count"].as_u64().unwrap_or_default();
@@ -149,10 +155,30 @@ impl SessionStore {
             total_output_tokens += output;
             total_cached_input_tokens += cached;
             let tokens = input + output + cached;
+            let usage = &summary["usage"];
+            if usage["known"] == true {
+                usage_sessions += 1;
+                let totals = &usage["totals"];
+                total_cache_read_tokens += totals["cache_read"].as_u64().unwrap_or_default();
+                total_cache_write_tokens += totals["cache_write"].as_u64().unwrap_or_default();
+                cache_eligible_input_tokens += totals["input"].as_u64().unwrap_or_default()
+                    + totals["cache_read"].as_u64().unwrap_or_default()
+                    + totals["cache_write"].as_u64().unwrap_or_default();
+                undated_tokens += usage_total(&usage["undated"]);
+                if let Some(days) = usage["by_date"].as_object() {
+                    for (date, value) in days {
+                        by_date.entry(date.clone()).or_default().tokens += usage_total(value);
+                    }
+                }
+            } else {
+                undated_tokens += tokens;
+            }
+            if summary["tool_counts"].is_object() {
+                tool_sessions += 1;
+            }
             if let Some(date) = local_date_key(timestamp_of(summary)) {
                 let day = by_date.entry(date).or_default();
                 day.count += 1;
-                day.tokens += tokens;
             }
             if let Some(agent) = agent_kind(&summary["source_kind"]) {
                 *by_agent.entry(agent.into()).or_default() += 1;
@@ -186,7 +212,7 @@ impl SessionStore {
                 }
             }
         }
-        let active_days = by_date.len();
+        let active_days = by_date.values().filter(|day| day.count > 0).count();
         json!({
             "total": filtered.len(),
             "total_events": total_events,
@@ -195,6 +221,12 @@ impl SessionStore {
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "total_cached_input_tokens": total_cached_input_tokens,
+            "total_cache_read_tokens": total_cache_read_tokens,
+            "total_cache_write_tokens": total_cache_write_tokens,
+            "cache_eligible_input_tokens": cache_eligible_input_tokens,
+            "usage_sessions": usage_sessions,
+            "tool_sessions": tool_sessions,
+            "undated_tokens": undated_tokens,
             "total_tokens": total_input_tokens + total_output_tokens + total_cached_input_tokens,
             "active_days": active_days,
             "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) },
@@ -273,6 +305,13 @@ impl SessionStore {
             .map(|source| source.root.to_string_lossy().into_owned())
             .collect()
     }
+}
+
+fn usage_total(value: &Value) -> u64 {
+    ["input", "output", "cache_read", "cache_write"]
+        .iter()
+        .map(|field| value[*field].as_u64().unwrap_or_default())
+        .sum()
 }
 
 #[derive(Default)]

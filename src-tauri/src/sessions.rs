@@ -27,6 +27,7 @@ mod query;
 mod roots;
 mod scan;
 mod stats;
+mod usage;
 mod vscode_copilot;
 mod zcode;
 

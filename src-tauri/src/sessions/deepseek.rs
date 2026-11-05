@@ -544,10 +544,17 @@ fn parse(
                     state.provider = provider.into();
                 }
                 let usage = &record["data"]["usage"];
-                state.input_tokens += usage["inputTokens"].as_u64().unwrap_or(0);
-                state.cached_input_tokens += usage["cacheReadTokens"].as_u64().unwrap_or(0)
-                    + usage["cacheWriteTokens"].as_u64().unwrap_or(0);
-                state.output_tokens += usage["outputTokens"].as_u64().unwrap_or(0);
+                if usage.is_object() {
+                    state.record_usage(
+                        &time,
+                        super::usage::TokenUsage {
+                            input: usage["inputTokens"].as_u64().unwrap_or(0),
+                            output: usage["outputTokens"].as_u64().unwrap_or(0),
+                            cache_read: usage["cacheReadTokens"].as_u64().unwrap_or(0),
+                            cache_write: usage["cacheWriteTokens"].as_u64().unwrap_or(0),
+                        },
+                    );
+                }
             }
             _ => {}
         }

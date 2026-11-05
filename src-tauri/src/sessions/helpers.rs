@@ -186,6 +186,12 @@ pub(crate) fn paginate(
         .clamp(1, 200);
     let has_more = sessions.len() > limit;
     sessions.truncate(limit);
+    // 用量账本只供聚合使用，列表和搜索结果沿用轻量摘要。
+    for summary in &mut sessions {
+        if let Some(object) = summary.as_object_mut() {
+            object.remove("usage");
+        }
+    }
     let next = has_more
         .then(|| {
             sessions

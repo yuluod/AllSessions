@@ -51,8 +51,14 @@
 
 .stats-metrics {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   background: var(--surface-subtle);
+}
+
+.stats-coverage {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px;
 }
 
 .metric-card {
@@ -64,7 +70,7 @@
   border-left: 1px solid var(--line);
 }
 
-.metric-card:nth-child(7n + 1) {
+.metric-card:nth-child(8n + 1) {
   border-left: 0;
 }
 

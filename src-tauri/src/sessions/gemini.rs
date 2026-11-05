@@ -734,9 +734,15 @@ fn accumulate_chat_tokens(state: &mut ParseState, messages: &[Value]) {
         let tool = tokens["tool"].as_u64().unwrap_or(0);
         let output = tokens["output"].as_u64().unwrap_or(0);
         let thoughts = tokens["thoughts"].as_u64().unwrap_or(0);
-        state.cached_input_tokens += cached;
-        state.input_tokens += input.saturating_sub(cached).saturating_add(tool);
-        state.output_tokens += output.saturating_add(thoughts);
+        state.record_usage(
+            record["timestamp"].as_str().unwrap_or_default(),
+            super::usage::TokenUsage {
+                input: input.saturating_sub(cached).saturating_add(tool),
+                output: output.saturating_add(thoughts),
+                cache_read: cached,
+                cache_write: 0,
+            },
+        );
     }
 }
 
@@ -825,7 +831,7 @@ impl MergedSession {
         }
     }
 
-    fn merge(&mut self, contribution: &Value) {
+    fn merge(&mut self, contribution: &Value) -> Result<(), String> {
         let summary = &contribution["summary"];
         let path = summary["file_path"]
             .as_str()
@@ -880,6 +886,11 @@ impl MergedSession {
         self.state.output_tokens += summary["output_tokens"].as_u64().unwrap_or_default();
         self.state.cached_input_tokens +=
             summary["cached_input_tokens"].as_u64().unwrap_or_default();
+        if let Some(usage) = summary.get("usage") {
+            self.state
+                .usage
+                .merge(serde_json::from_value(usage.clone()).map_err(|error| error.to_string())?);
+        }
         if let Some(roles) = summary["role_counts"].as_object() {
             for (role, count) in roles {
                 *self.state.roles.entry(role.clone()).or_default() +=
@@ -910,6 +921,7 @@ impl MergedSession {
             &[contribution["search_text"].as_str().unwrap_or_default()],
             SEARCH_TEXT_LIMIT,
         );
+        Ok(())
     }
 
     fn add_brain_message(&mut self, role: &str, text: &str, timestamp: &str, subtype: &str) {
@@ -1068,7 +1080,7 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
                 merged.merge_paths_only(contribution);
                 continue;
             }
-            merged.merge(contribution);
+            merged.merge(contribution)?;
             let keys = duplicate_keys_from_json(&contribution["duplicate_user_keys"])
                 .ok_or_else(|| "Gemini 缓存缺少 artifact 去重字段".to_string())?;
             duplicate_user_keys.extend(keys);
@@ -2250,14 +2262,16 @@ mod tests {
     #[test]
     fn 空文件路径不会覆盖主路径() {
         let mut merged = super::MergedSession::new("g1", PathBuf::from("/primary/logs.json"));
-        merged.merge(&json!({
-            "summary": {
-                "timestamp": "2026-01-01T00:00:00Z",
-                "last_timestamp": "2026-01-01T00:00:00Z",
-                "file_path": ""
-            },
-            "search_text": ""
-        }));
+        merged
+            .merge(&json!({
+                "summary": {
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "last_timestamp": "2026-01-01T00:00:00Z",
+                    "file_path": ""
+                },
+                "search_text": ""
+            }))
+            .unwrap();
 
         assert_eq!(merged.path, PathBuf::from("/primary/logs.json"));
     }

@@ -19,7 +19,8 @@ use serde_json::Value;
 /// 版本 6：deepseek 会话改用模型名作为 model_provider（账号域 providerID 无辨识度）。
 /// 版本 7：媒体块改占位、system/developer 统一按上下文、Cursor/Devin/ZCode 消息结构修正。
 /// 版本 8：摘要新增 tool_counts/command_counts 字段（按工具名与命令首词的调用分布）。
-const CACHE_VERSION: i32 = 8;
+/// 版本 9：缓存读写分离及逐日用量账本。
+const CACHE_VERSION: i32 = 9;
 
 pub struct IndexCache {
     /// Arc 共享的全文索引：搜索在会话锁之外克隆句柄执行查询。

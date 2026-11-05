@@ -89,11 +89,11 @@ function renderMetrics(stats, container) {
   const average =
     stats.avg_daily ?? (activeDays > 0 ? (total / activeDays).toFixed(1) : "0");
   const totalTokens = Number(stats.total_tokens || 0);
-  const cachedInput = Number(stats.total_cached_input_tokens || 0);
-  const uncachedInput = Number(stats.total_input_tokens || 0);
+  const cachedInput = Number(stats.total_cache_read_tokens || 0);
+  const eligibleInput = Number(stats.cache_eligible_input_tokens || 0);
   const cacheHit =
-    cachedInput + uncachedInput > 0
-      ? `${((cachedInput / (cachedInput + uncachedInput)) * 100).toFixed(2)}%`
+    eligibleInput > 0
+      ? `${((cachedInput / eligibleInput) * 100).toFixed(2)}%`
       : "—";
   const cards = [
     { label: t("statsTotalSessions"), value: String(total) },
@@ -102,7 +102,7 @@ function renderMetrics(stats, container) {
     {
       label: t("statsCachedHit"),
       value: cacheHit,
-      title: `${t("statsTokenCached")} ${formatCount(cachedInput)} / ${t("statsTokenInput")} ${formatCount(cachedInput + uncachedInput)}`,
+      title: `${t("statsCacheRead")} ${formatCount(cachedInput)} · ${t("statsCacheWrite")} ${formatCount(stats.total_cache_write_tokens)} · ${t("statsCoverage", { n: stats.usage_sessions || 0, total })}`,
     },
     {
       label: t("statsTokenTotal"),
@@ -127,6 +127,11 @@ function renderMetrics(stats, container) {
     card.append(valueElement, labelElement);
     container.append(card);
   });
+  const coverage = document.createElement("p");
+  coverage.className = "props-empty stats-coverage";
+  coverage.title = t("statsDailyUsageHint");
+  coverage.textContent = `${t("statsCoverage", { n: stats.usage_sessions || 0, total })} · ${t("statsToolCoverage", { n: stats.tool_sessions || 0, total })} · ${t("statsUndatedTokens", { n: formatCount(stats.undated_tokens) })}`;
+  container.append(coverage);
 }
 
 function renderTrend(stats, container) {

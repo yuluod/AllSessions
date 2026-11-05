@@ -46,7 +46,7 @@ import {
   updateTabs,
 } from "./detail-view.js";
 import { renderWorkspaceStatus } from "./status.js";
-import { openActivitySearch } from "./navigation.js";
+import { openActivitySearch, openReviewSession } from "./navigation.js";
 
 export async function loadSessionDetail(
   id,
@@ -305,6 +305,9 @@ export async function loadMoreSessions() {
 export function renderCurrentStats() {
   if (!state.stats) return;
   renderStats(state.stats, elements, {
+    onSelectSession: (key) => {
+      openReviewSession(key).catch((error) => showError(error.message));
+    },
     onSelectRanking: (kind, value) => {
       openActivitySearch(kind, value).catch((error) =>
         showError(error.message)

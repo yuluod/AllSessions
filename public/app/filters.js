@@ -273,6 +273,9 @@ export function syncSessionRoot() {
   elements.sessionRoot.title = roots.join("\n");
 }
 export function syncFilterControls() {
+  document
+    .querySelector("#project-review-open")
+    ?.classList.toggle("hidden", !state.filters.cwd);
   if (elements.providerFilter)
     elements.providerFilter.value = state.filters.provider;
   if (elements.dateFilter) elements.dateFilter.value = state.filters.date;

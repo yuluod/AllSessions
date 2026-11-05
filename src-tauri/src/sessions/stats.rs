@@ -236,6 +236,7 @@ impl SessionStore {
             "usage_sessions": usage_sessions,
             "tool_sessions": tool_sessions,
             "undated_tokens": undated_tokens,
+            "project_review": query.get("cwd").filter(|cwd| !cwd.is_empty()).map(|cwd| project_review(&filtered, cwd)),
             "total_tokens": total_input_tokens + total_output_tokens + total_cached_input_tokens,
             "active_days": active_days,
             "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) },
@@ -328,6 +329,40 @@ struct ActivityCount {
     count: u64,
     session_count: u64,
     last_timestamp: String,
+}
+
+fn project_review(summaries: &[Value], cwd: &str) -> Value {
+    let mut recent = summaries.iter().collect::<Vec<_>>();
+    recent.sort_by(|a, b| {
+        timestamp_of(b)
+            .cmp(timestamp_of(a))
+            .then_with(|| a["_key"].as_str().cmp(&b["_key"].as_str()))
+    });
+    let entry = |summary: &&Value| {
+        json!({
+            "key": summary["_key"], "title": summary["title"],
+            "source": summary["display_source"], "timestamp": timestamp_of(summary),
+            "favorite": summary["workspace"]["favorite"],
+            "tags": summary["workspace"]["tags"],
+            "note": super::helpers::compact(summary["workspace"]["note"].as_str().unwrap_or_default(), 240)
+        })
+    };
+    let saved = recent
+        .iter()
+        .copied()
+        .filter(|summary| {
+            summary["workspace"]["favorite"] == true
+                || summary["workspace"]["note"]
+                    .as_str()
+                    .is_some_and(|note| !note.is_empty())
+                || summary["workspace"]["tags"]
+                    .as_array()
+                    .is_some_and(|tags| !tags.is_empty())
+        })
+        .take(8)
+        .map(|summary| entry(&summary))
+        .collect::<Vec<_>>();
+    json!({ "cwd": cwd, "recent": recent.iter().take(8).map(entry).collect::<Vec<_>>(), "saved": saved })
 }
 
 fn activity_values(counts: HashMap<String, ActivityCount>, limit: usize) -> Vec<Value> {

@@ -486,6 +486,14 @@
             <div class="session-list-shell">
               <div class="session-pane-heading">
                 <h2 data-i18n="sessionList">会话</h2>
+                <button
+                  id="project-review-open"
+                  class="ghost-button hidden"
+                  type="button"
+                  data-i18n="projectReview"
+                >
+                  项目回顾
+                </button>
                 <div class="meta-chip meta-chip--list session-total">
                   <strong id="session-count" class="meta-strong">-</strong>
                   <span class="meta-label" data-i18n="metaSessionCount"
@@ -1326,6 +1334,10 @@
               </header>
               <div id="stats-filter-slot"></div>
               <div class="stats-surface">
+                <section
+                  id="project-review"
+                  class="project-review hidden"
+                ></section>
                 <div class="stats-metrics" id="stats-metrics"></div>
                 <div class="stats-charts" id="stats-charts">
                   <div class="chart-card">

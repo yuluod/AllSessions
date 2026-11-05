@@ -64,6 +64,18 @@ export async function openActivitySearch(kind, value) {
   await loadSessions();
 }
 
+export async function openReviewSession(key) {
+  state.searchQuery = "";
+  state.searchExactTool = "";
+  state.searchCommand = "";
+  state.selectedSearchHit = null;
+  state.selectedSessionKey = null;
+  syncFilterControls();
+  await activateWorkspaceView("list");
+  if (!(await loadSessions())) return;
+  selectSession(key);
+}
+
 export async function activateWorkspaceView(panel) {
   state.activeView = panel;
   // 复用同一组筛选控件，统计页也明确展示当前条件，避免隐藏筛选影响结果。

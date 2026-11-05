@@ -617,6 +617,13 @@ async function initialize() {
 
   let searchDebounce = null;
   document
+    .querySelector("#project-review-open")
+    ?.addEventListener("click", () => {
+      activateWorkspaceView("stats")
+        .then(() => loadStats())
+        .catch((error) => showError(error.message));
+    });
+  document
     .querySelector("#search-sort")
     ?.addEventListener("change", (event) => {
       state.searchSort = event.target.value;

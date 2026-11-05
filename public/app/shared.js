@@ -209,6 +209,7 @@ export const elements = {
   statsDashboard: document.querySelector("#stats-dashboard"),
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
+  projectReview: document.querySelector("#project-review"),
   trendChartBody: document.querySelector("#trend-chart-body"),
   tokenHeatmapBody: document.querySelector("#token-heatmap-body"),
   agentChartBody: document.querySelector("#agent-chart-body"),

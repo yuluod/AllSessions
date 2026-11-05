@@ -2,6 +2,7 @@ import { t, getLang } from "./i18n.js";
 import { formatCount } from "./session-format.js";
 import { calendarHeatmapDays, presetHeatmapRange } from "./stats-calendar.js";
 import { createEmptyState } from "./ui-components.js";
+import { renderProjectReview } from "./project-review.js";
 
 const AGENT_PRESENTATION = {
   codex: { label: "Codex", color: "#0f766e" },
@@ -659,8 +660,17 @@ function renderRankings(stats, container, onSelectRanking) {
   });
 }
 
-export function renderStats(stats, elements, { onSelectRanking } = {}) {
+export function renderStats(
+  stats,
+  elements,
+  { onSelectRanking, onSelectSession } = {}
+) {
   if (!elements.statsDashboard) return;
+  renderProjectReview(
+    stats.project_review,
+    elements.projectReview,
+    onSelectSession
+  );
   if (elements.statsMetrics) renderMetrics(stats, elements.statsMetrics);
   if (elements.trendChartBody) renderTrend(stats, elements.trendChartBody);
   if (elements.agentChartBody) renderAgents(stats, elements.agentChartBody);

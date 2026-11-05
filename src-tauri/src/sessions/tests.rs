@@ -217,6 +217,53 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 项目回顾保留用户整理并限制条数且遵守可见性() {
+    let (_directory, mut store) = structured_search_store();
+    let base = store.summaries[0].clone();
+    store.summaries = (0..12)
+        .map(|index| {
+            let mut summary = base.clone();
+            summary["_key"] = json!(format!("codex:review-{index}"));
+            summary["last_timestamp"] = json!(format!("2026-02-{:02}T00:00:00Z", index + 1));
+            summary["hidden"] = json!(index == 9);
+            if index == 11 {
+                summary["cwd"] = json!("/other");
+            }
+            summary
+        })
+        .collect();
+    let mut workspace = crate::workspace::WorkspaceSnapshot::default();
+    workspace.sessions.insert(
+        "codex:review-0".into(),
+        crate::workspace::SessionWorkspace {
+            favorite: true,
+            note: "用户确认的解决方法".into(),
+            tags: BTreeSet::from(["已验证".into()]),
+            ..Default::default()
+        },
+    );
+    workspace.sessions.insert(
+        "codex:review-10".into(),
+        crate::workspace::SessionWorkspace {
+            removed: true,
+            ..Default::default()
+        },
+    );
+    let stats = store.stats(
+        &HashMap::from([("cwd".into(), "/project".into())]),
+        &workspace,
+    );
+    assert_eq!(stats["total"], 9);
+    let review = &stats["project_review"];
+    assert_eq!(review["recent"].as_array().unwrap().len(), 8);
+    assert_eq!(review["recent"][0]["key"], "codex:review-8");
+    assert_eq!(review["saved"][0]["key"], "codex:review-0");
+    assert_eq!(review["saved"][0]["note"], "用户确认的解决方法");
+    assert_eq!(review["saved"][0]["tags"], json!(["已验证"]));
+    assert!(store.stats(&HashMap::new(), &workspace)["project_review"].is_null());
+}
+
+#[test]
 fn 工具排行无需关键词即可追溯调用且不匹配结果() {
     let (_directory, store) = structured_search_store();
     let result = store

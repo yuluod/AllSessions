@@ -69,6 +69,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 ### 整理与统计
 
 - 收藏会话并添加标签、备注
+- 选择项目后打开“项目回顾”，查看近期会话及收藏、标签、备注，并直接返回会话；回顾遵循当前筛选条件，每组最多展示 8 条。
 - 保存常用筛选
 - 管理本地归档 / 移除状态
 - 按 Agent 对比会话、消息、工具、活跃度、Provider 和工作目录统计
@@ -99,26 +100,26 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 
 ## 支持来源
 
-| 来源 | 默认本地路径 | 支持范围 |
-| --- | --- | --- |
-| **Codex** | `~/.codex/sessions` | 元数据、消息、工具调用、原始事件、搜索、实时刷新 |
-| **Codex 归档** | `~/.codex/archived_sessions` | 浏览、搜索、永久删除归档会话；不移动文件或恢复归档状态 |
-| **Claude Code** | `~/.claude/{projects,sessions}` | `projects/**/*.jsonl` 与旧版 `sessions/*.json`；对话、Thinking、工具调用/结果、搜索、实时刷新，并在可用时从 `history.jsonl` 补充旧版详情 |
-| **Claude Cowork** | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions`（macOS） | 本地任务转录、Thinking、工具、任务标题与主机目录、搜索及刷新；来源只读；[边界说明](./docs/sources/claude-cowork.md) |
-| **Gemini CLI** | `~/.gemini/tmp/*` | `logs.json` 与 v0.61+ `chats/session-*.json[l]` 完整会话（JSONL 回放、`$set`/`$rewindTo`/消息更新，chats 优先去重）；消息、Thinking、工具、Token 用量（chats）、原始事件、搜索、实时刷新；[边界说明](./docs/sources/gemini-cli.md) |
-| **Grok Build** | `~/.grok/sessions` | `updates.jsonl` 与 `summary.json`；流式正文、Thinking、工具、回退过滤、原始事件、搜索、刷新、恢复；来源只读；[边界说明](./docs/sources/grok-build.md) |
-| **Pi** | `~/.pi/agent/sessions` | 从 v1-v3 JSONL 树重建当前分支；消息、Thinking、工具、摘要、原始事件、搜索、实时刷新 |
-| **Oh My Pi** | `~/.omp/agent/sessions` | Oh My Pi（Pi fork）的 JSONL 会话，复用 Pi 解析；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读；[边界说明](./docs/sources/oh-my-pi.md) |
-| **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`、工作目录、自定义标题、流式内容、子 Agent、工具、原始事件、搜索、实时刷新 |
-| **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读 |
-| **Kilo** | `~/.local/share/kilo/kilo.db` | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读 |
-| **ZCode** | `~/.zcode/cli/db/db.sqlite` | SQLite；消息、Thinking、工具、压缩标记、原始事件、搜索、WAL 实时刷新；排除子 Agent 会话；来源只读 |
-| **Cursor** | 系统配置目录下的 `Cursor/User` | IDE conversation 与 agent-transcripts；浏览、搜索、统计、导出、本地移除；来源只读 |
-| **Devin** | 系统配置目录下的 `Devin/User` 与 `~/.local/share/devin/cli` | 桌面版 `acp-messages`/`state.vscdb` 与 CLI `sessions.db`；浏览、搜索、统计、导出、本地移除、恢复；来源只读；[边界说明](./docs/sources/devin.md) |
-| **GitHub Copilot** | `~/.copilot/session-state` | 每会话 `events.jsonl` 与相邻 `workspace.yaml` 元数据；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读 |
-| **Hermes Agent** | macOS/Linux `~/.hermes`、Windows `%LOCALAPPDATA%\hermes` | SQLite `state.db`（含 `profiles/<name>` 命名库）；消息、Thinking、工具、压缩归档过滤、子代理排除、原始事件、搜索、WAL 实时刷新、恢复；来源只读 |
-| **VS Code Copilot Chat** | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User` | 面板会话（`workspaceStorage`/`globalStorage` 下平铺 `.json` 与 1.109 起 `.jsonl` 追加日志）；消息、Thinking、工具、文件编辑、自定义标题、搜索、实时刷新；排除空占位会话；来源只读 |
-| **DeepSeek Harness** | `~/.dsh/sessions` | 每会话 `session[.vN].jsonl[.zstd]` 多帧事件日志，每个目录只读最新一代；消息、Thinking、工具、标题、Token 用量、原始事件、搜索、实时刷新；排除空占位会话；来源只读；[边界说明](./docs/sources/deepseek-harness.md) |
+| 来源                     | 默认本地路径                                                                    | 支持范围                                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Codex**                | `~/.codex/sessions`                                                             | 元数据、消息、工具调用、原始事件、搜索、实时刷新                                                                                                                                                                                   |
+| **Codex 归档**           | `~/.codex/archived_sessions`                                                    | 浏览、搜索、永久删除归档会话；不移动文件或恢复归档状态                                                                                                                                                                             |
+| **Claude Code**          | `~/.claude/{projects,sessions}`                                                 | `projects/**/*.jsonl` 与旧版 `sessions/*.json`；对话、Thinking、工具调用/结果、搜索、实时刷新，并在可用时从 `history.jsonl` 补充旧版详情                                                                                           |
+| **Claude Cowork**        | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions`（macOS） | 本地任务转录、Thinking、工具、任务标题与主机目录、搜索及刷新；来源只读；[边界说明](./docs/sources/claude-cowork.md)                                                                                                                |
+| **Gemini CLI**           | `~/.gemini/tmp/*`                                                               | `logs.json` 与 v0.61+ `chats/session-*.json[l]` 完整会话（JSONL 回放、`$set`/`$rewindTo`/消息更新，chats 优先去重）；消息、Thinking、工具、Token 用量（chats）、原始事件、搜索、实时刷新；[边界说明](./docs/sources/gemini-cli.md) |
+| **Grok Build**           | `~/.grok/sessions`                                                              | `updates.jsonl` 与 `summary.json`；流式正文、Thinking、工具、回退过滤、原始事件、搜索、刷新、恢复；来源只读；[边界说明](./docs/sources/grok-build.md)                                                                              |
+| **Pi**                   | `~/.pi/agent/sessions`                                                          | 从 v1-v3 JSONL 树重建当前分支；消息、Thinking、工具、摘要、原始事件、搜索、实时刷新                                                                                                                                                |
+| **Oh My Pi**             | `~/.omp/agent/sessions`                                                         | Oh My Pi（Pi fork）的 JSONL 会话，复用 Pi 解析；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读；[边界说明](./docs/sources/oh-my-pi.md)                                                                             |
+| **Kimi Code CLI**        | `~/.kimi/sessions`                                                              | `wire.jsonl`、工作目录、自定义标题、流式内容、子 Agent、工具、原始事件、搜索、实时刷新                                                                                                                                             |
+| **OpenCode**             | `~/.local/share/opencode/opencode.db`                                           | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读                                                                                                                                                     |
+| **Kilo**                 | `~/.local/share/kilo/kilo.db`                                                   | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读                                                                                                                                                     |
+| **ZCode**                | `~/.zcode/cli/db/db.sqlite`                                                     | SQLite；消息、Thinking、工具、压缩标记、原始事件、搜索、WAL 实时刷新；排除子 Agent 会话；来源只读                                                                                                                                  |
+| **Cursor**               | 系统配置目录下的 `Cursor/User`                                                  | IDE conversation 与 agent-transcripts；浏览、搜索、统计、导出、本地移除；来源只读                                                                                                                                                  |
+| **Devin**                | 系统配置目录下的 `Devin/User` 与 `~/.local/share/devin/cli`                     | 桌面版 `acp-messages`/`state.vscdb` 与 CLI `sessions.db`；浏览、搜索、统计、导出、本地移除、恢复；来源只读；[边界说明](./docs/sources/devin.md)                                                                                    |
+| **GitHub Copilot**       | `~/.copilot/session-state`                                                      | 每会话 `events.jsonl` 与相邻 `workspace.yaml` 元数据；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读                                                                                                               |
+| **Hermes Agent**         | macOS/Linux `~/.hermes`、Windows `%LOCALAPPDATA%\hermes`                        | SQLite `state.db`（含 `profiles/<name>` 命名库）；消息、Thinking、工具、压缩归档过滤、子代理排除、原始事件、搜索、WAL 实时刷新、恢复；来源只读                                                                                     |
+| **VS Code Copilot Chat** | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User`                          | 面板会话（`workspaceStorage`/`globalStorage` 下平铺 `.json` 与 1.109 起 `.jsonl` 追加日志）；消息、Thinking、工具、文件编辑、自定义标题、搜索、实时刷新；排除空占位会话；来源只读                                                  |
+| **DeepSeek Harness**     | `~/.dsh/sessions`                                                               | 每会话 `session[.vN].jsonl[.zstd]` 多帧事件日志，每个目录只读最新一代；消息、Thinking、工具、标题、Token 用量、原始事件、搜索、实时刷新；排除空占位会话；来源只读；[边界说明](./docs/sources/deepseek-harness.md)                  |
 
 对于只读来源，AllSessions 不会修改 Agent 的原始数据。你仍然可以在 AllSessions 中执行本地移除；如需删除原始记录，需要在对应 Agent 中操作。
 
@@ -128,11 +129,11 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 
 普通用户**无需安装 Node.js、pnpm 或 Rust**。
 
-| 平台 | 发布文件 |
-| --- | --- |
-| Windows x64 | `*-windows-x64-setup.exe` |
-| macOS ARM64 / x64 | `*-mac-<arch>.dmg` |
-| Debian / Ubuntu Linux x64 | `*-linux-x64.deb` |
+| 平台                      | 发布文件                  |
+| ------------------------- | ------------------------- |
+| Windows x64               | `*-windows-x64-setup.exe` |
+| macOS ARM64 / x64         | `*-mac-<arch>.dmg`        |
+| Debian / Ubuntu Linux x64 | `*-linux-x64.deb`         |
 
 Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新流程。
 
@@ -170,36 +171,36 @@ AllSessions/config.json
 
 环境变量需要在启动桌面应用之前设置，应用在启动时读取一次。
 
-| 变量 | 说明 | 默认值 |
-| --- | --- | --- |
-| `CODEX_HOME` | Codex 数据根目录（单路径） | `~/.codex` |
-| `CODEX_SESSIONS_DIR` | Codex 会话根目录（路径列表） | `$CODEX_HOME/sessions` |
-| `CODEX_ARCHIVED_SESSIONS_DIR` | Codex 归档根目录（路径列表） | `$CODEX_HOME/archived_sessions` |
-| `CLAUDE_SESSIONS_DIR` | Claude Code 根目录（路径列表） | `~/.claude` |
-| `GEMINI_SESSIONS_DIR` | Gemini CLI 根目录（路径列表） | `~/.gemini` |
-| `CLAUDE_COWORK_SESSIONS_DIR` | Claude Cowork 本地任务根目录（路径列表） | Claude Desktop 数据目录下的 `local-agent-mode-sessions` |
-| `GROK_SESSIONS_DIR` | Grok Build 会话根目录（路径列表） | `$GROK_HOME/sessions` |
-| `GROK_HOME` | Grok 官方数据根目录（单路径） | `~/.grok` |
-| `PI_SESSIONS_DIR` | Pi 会话根目录（路径列表） | `~/.pi/agent/sessions` |
-| `PI_CODING_AGENT_SESSION_DIR` | Pi 官方会话目录 | — |
-| `PI_CODING_AGENT_DIR` | Pi 官方数据目录 | `~/.pi/agent` |
-| `OMP_SESSIONS_DIR` | Oh My Pi 会话根目录（路径列表） | `~/.omp/agent/sessions` |
-| `OMP_AGENT_DIR` | Oh My Pi 数据目录（单路径） | `~/.omp/agent` |
-| `KIMI_SESSIONS_DIR` | Kimi Code CLI 数据根目录（路径列表） | `~/.kimi` |
-| `KIMI_SHARE_DIR` | Kimi Code CLI 官方数据目录 | `~/.kimi` |
-| `OPENCODE_DB` | OpenCode 官方 SQLite 数据库路径 | `~/.local/share/opencode/opencode.db` |
-| `KILO_DB` | Kilo SQLite 数据库路径 | `~/.local/share/kilo/kilo.db` |
-| `ZCODE_DB` | ZCode 官方 SQLite 数据库路径 | `~/.zcode/cli/db/db.sqlite` |
-| `DEVIN_SESSIONS_DIR` | Devin 数据根目录（路径列表） | `Devin/User` 与 `~/.local/share/devin/cli` |
-| `COPILOT_SESSIONS_DIR` | GitHub Copilot 会话根目录（路径列表） | `~/.copilot/session-state` |
-| `HERMES_SESSIONS_DIR` | Hermes Agent 数据根目录（路径列表） | `%LOCALAPPDATA%\hermes`（Windows）或 `~/.hermes` |
-| `HERMES_HOME` | Hermes 官方数据根目录（单路径） | 同上 |
-| `VSCODE_COPILOT_SESSIONS_DIR` | VS Code Copilot Chat 数据根目录（路径列表） | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User` |
-| `DSH_SESSIONS_DIR` | DeepSeek Harness 数据根目录（路径列表） | `$DSH_HOME` 或 `~/.dsh` |
-| `DSH_HOME` | DeepSeek Harness 官方数据根目录（单路径） | `~/.dsh` |
-| `SESSION_VIEWER_CACHE_DIR` | Rust SQLite 索引缓存目录 | 系统用户缓存目录下的 `AllSessions` |
-| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存 | 未设置 |
-| `ALLSESSIONS_WORKSPACE_DB` | AllSessions 用户数据 SQLite 路径 | 系统应用数据目录 |
+| 变量                           | 说明                                        | 默认值                                                  |
+| ------------------------------ | ------------------------------------------- | ------------------------------------------------------- |
+| `CODEX_HOME`                   | Codex 数据根目录（单路径）                  | `~/.codex`                                              |
+| `CODEX_SESSIONS_DIR`           | Codex 会话根目录（路径列表）                | `$CODEX_HOME/sessions`                                  |
+| `CODEX_ARCHIVED_SESSIONS_DIR`  | Codex 归档根目录（路径列表）                | `$CODEX_HOME/archived_sessions`                         |
+| `CLAUDE_SESSIONS_DIR`          | Claude Code 根目录（路径列表）              | `~/.claude`                                             |
+| `GEMINI_SESSIONS_DIR`          | Gemini CLI 根目录（路径列表）               | `~/.gemini`                                             |
+| `CLAUDE_COWORK_SESSIONS_DIR`   | Claude Cowork 本地任务根目录（路径列表）    | Claude Desktop 数据目录下的 `local-agent-mode-sessions` |
+| `GROK_SESSIONS_DIR`            | Grok Build 会话根目录（路径列表）           | `$GROK_HOME/sessions`                                   |
+| `GROK_HOME`                    | Grok 官方数据根目录（单路径）               | `~/.grok`                                               |
+| `PI_SESSIONS_DIR`              | Pi 会话根目录（路径列表）                   | `~/.pi/agent/sessions`                                  |
+| `PI_CODING_AGENT_SESSION_DIR`  | Pi 官方会话目录                             | —                                                       |
+| `PI_CODING_AGENT_DIR`          | Pi 官方数据目录                             | `~/.pi/agent`                                           |
+| `OMP_SESSIONS_DIR`             | Oh My Pi 会话根目录（路径列表）             | `~/.omp/agent/sessions`                                 |
+| `OMP_AGENT_DIR`                | Oh My Pi 数据目录（单路径）                 | `~/.omp/agent`                                          |
+| `KIMI_SESSIONS_DIR`            | Kimi Code CLI 数据根目录（路径列表）        | `~/.kimi`                                               |
+| `KIMI_SHARE_DIR`               | Kimi Code CLI 官方数据目录                  | `~/.kimi`                                               |
+| `OPENCODE_DB`                  | OpenCode 官方 SQLite 数据库路径             | `~/.local/share/opencode/opencode.db`                   |
+| `KILO_DB`                      | Kilo SQLite 数据库路径                      | `~/.local/share/kilo/kilo.db`                           |
+| `ZCODE_DB`                     | ZCode 官方 SQLite 数据库路径                | `~/.zcode/cli/db/db.sqlite`                             |
+| `DEVIN_SESSIONS_DIR`           | Devin 数据根目录（路径列表）                | `Devin/User` 与 `~/.local/share/devin/cli`              |
+| `COPILOT_SESSIONS_DIR`         | GitHub Copilot 会话根目录（路径列表）       | `~/.copilot/session-state`                              |
+| `HERMES_SESSIONS_DIR`          | Hermes Agent 数据根目录（路径列表）         | `%LOCALAPPDATA%\hermes`（Windows）或 `~/.hermes`        |
+| `HERMES_HOME`                  | Hermes 官方数据根目录（单路径）             | 同上                                                    |
+| `VSCODE_COPILOT_SESSIONS_DIR`  | VS Code Copilot Chat 数据根目录（路径列表） | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User`  |
+| `DSH_SESSIONS_DIR`             | DeepSeek Harness 数据根目录（路径列表）     | `$DSH_HOME` 或 `~/.dsh`                                 |
+| `DSH_HOME`                     | DeepSeek Harness 官方数据根目录（单路径）   | `~/.dsh`                                                |
+| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录                    | 系统用户缓存目录下的 `AllSessions`                      |
+| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存                     | 未设置                                                  |
+| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径            | 系统应用数据目录                                        |
 
 七个 `*_SESSIONS_DIR` 变量支持配置多个路径，使用系统路径分隔符分隔：
 
@@ -253,6 +254,7 @@ Claude Cowork、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、Z
 启用后，AllSessions 会移除已知的会话标识和常见本地路径模式，但自动脱敏不能保证覆盖所有敏感信息。
 
 > [!WARNING]
+>
 > - 分享导出文件、日志、截图或 issue 前，请人工检查并脱敏。
 > - `workspace.sqlite`、索引缓存、删除备份和维护备份都应视为敏感本地数据。
 > - 备份包含原始记录，并且未加密。

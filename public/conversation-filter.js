@@ -45,6 +45,34 @@ export function roleCounts(messages) {
   return counts;
 }
 
+export function filterToolOperations(
+  groups,
+  { kind = "all", query = "" } = {}
+) {
+  const needle = query.trim().toLowerCase();
+  return groups.filter(({ message, result }) => {
+    if (message.role !== "tool") return false;
+    if (kind === "commands" && !message.command_name) return false;
+    if (
+      kind === "errors" &&
+      message.is_error !== true &&
+      result?.is_error !== true
+    )
+      return false;
+    return (
+      !needle ||
+      [
+        message.tool_name,
+        message.command_name,
+        displayMessageText(message),
+        result && displayMessageText(result),
+      ]
+        .filter(Boolean)
+        .some((text) => text.toLowerCase().includes(needle))
+    );
+  });
+}
+
 export function filterConversationMessages(messages, options = {}) {
   const query = String(options.query || "")
     .trim()

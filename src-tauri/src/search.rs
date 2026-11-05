@@ -212,6 +212,7 @@ impl SearchIndex {
             }
             let text = message["text"].as_str().unwrap_or_default();
             let mut payload = message.clone();
+            crate::sessions::annotate_activity(&mut payload);
             payload.as_object_mut().map(|o| o.remove("_delete_ref"));
             if message["synthetic_context"] != true
                 && !text.is_empty()

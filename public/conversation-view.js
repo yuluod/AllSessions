@@ -10,6 +10,7 @@ import {
   formatTimestamp,
 } from "./session-format.js";
 import { displayMessageText } from "./session-export.js";
+import { createToolOperations } from "./tool-operations.js";
 import {
   filterConversationMessages,
   groupToolMessages,
@@ -78,6 +79,10 @@ export function createConversationView({
   onLoadAttachment,
 }) {
   let highlightController = null;
+  const operationsView = createToolOperations({
+    container: elements.toolOperations,
+    onSelectMessage: scrollToMessage,
+  });
   function filtered(messages) {
     const decorated = messages.map((message) => ({
       ...message,
@@ -395,6 +400,12 @@ export function createConversationView({
     const { signal } = highlightController;
     elements.conversationList.replaceChildren();
     const visibleGroups = displayed(messages);
+    operationsView.render(visibleGroups, {
+      sessionKey: state.currentDetail?.summary?._key,
+      truncated:
+        state.currentDetail?.truncation?.truncated === true ||
+        state.currentDetail?.search_context === true,
+    });
     renderMessageNavigation(messages);
 
     if (!visibleGroups.length) {

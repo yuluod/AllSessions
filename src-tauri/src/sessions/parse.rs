@@ -281,7 +281,8 @@ impl ParseState {
         self.cached_input_tokens += usage.cache_read + usage.cache_write;
         self.usage.record(timestamp, usage);
     }
-    pub(crate) fn accept_message(&mut self, message: Value) -> Option<Value> {
+    pub(crate) fn accept_message(&mut self, mut message: Value) -> Option<Value> {
+        annotate_activity(&mut message);
         let role = message["role"].as_str().unwrap_or("unknown");
         let text = message["text"].as_str().unwrap_or_default();
         let source_type = message["source_type"].as_str().unwrap_or_default();
@@ -821,6 +822,12 @@ pub(crate) fn tool_call_command(message: &Value) -> Option<String> {
         return None;
     }
     command_from_tool_call(message["tool_name"].as_str()?, message["text"].as_str()?)
+}
+
+pub(crate) fn annotate_activity(message: &mut Value) {
+    if let Some(command) = tool_call_command(message) {
+        message["command_name"] = json!(command);
+    }
 }
 
 pub(crate) fn is_tool_call(message: &Value) -> bool {

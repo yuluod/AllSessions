@@ -88,7 +88,7 @@ impl SessionStore {
             return Ok(detail);
         }
         let record = self.records.get(&resolved).ok_or_else(missing)?;
-        let detail = if let Some(locator) = &record.detail_locator {
+        let mut detail = if let Some(locator) = &record.detail_locator {
             match locator {
                 DetailLocator::Gemini(locator) => gemini::parse_detail(&record.source, locator),
                 DetailLocator::OpenCode(locator) => opencode::parse_detail(&record.source, locator),
@@ -103,6 +103,11 @@ impl SessionStore {
             parse_detail(&record.path, &record.source)
         }
         .map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))?;
+        if let Some(messages) = detail["conversation_messages"].as_array_mut() {
+            for message in messages {
+                super::annotate_activity(message);
+            }
+        }
         let size = serde_json::to_vec(&detail)
             .map(|value| value.len())
             .unwrap_or_default();

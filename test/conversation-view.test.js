@@ -6,8 +6,12 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { filterConversationMessages, groupToolMessages, roleCounts } =
-  await import("../public/conversation-filter.js");
+const {
+  filterConversationMessages,
+  filterToolOperations,
+  groupToolMessages,
+  roleCounts,
+} = await import("../public/conversation-filter.js");
 
 const messages = [
   { role: "user", text: "修复登录问题" },
@@ -15,6 +19,47 @@ const messages = [
   { role: "tool", text: "cargo test", tool_name: "shell" },
   { role: "user", text: "<environment_context>", synthetic_context: true },
 ];
+
+test("操作回顾按归一化命令和明确失败筛选并保留原消息索引", () => {
+  const groups = groupToolMessages([
+    {
+      role: "tool",
+      tool_kind: "tool_call",
+      tool_call_id: "c1",
+      tool_name: "shell",
+      command_name: "cargo",
+      text: "cargo test",
+      _origIdx: 4,
+    },
+    {
+      role: "tool",
+      tool_kind: "tool_result",
+      tool_call_id: "c1",
+      text: "测试失败",
+      is_error: true,
+      _origIdx: 5,
+    },
+    {
+      role: "tool",
+      tool_kind: "tool_result",
+      tool_name: "read_file",
+      text: "error 是文档中的单词",
+      _origIdx: 6,
+    },
+    { role: "assistant", text: "完成", _origIdx: 7 },
+  ]);
+  assert.equal(filterToolOperations(groups).length, 2);
+  assert.equal(
+    filterToolOperations(groups, { kind: "commands" })[0].message._origIdx,
+    4
+  );
+  assert.equal(filterToolOperations(groups, { kind: "errors" }).length, 1);
+  assert.equal(
+    filterToolOperations(groups, { query: "测试失败" })[0].result._origIdx,
+    5
+  );
+  assert.equal(filterToolOperations(groups, { query: "不存在" }).length, 0);
+});
 
 test("角色计数用于只显示当前会话存在的角色", () => {
   const counts = roleCounts(messages);

@@ -2430,6 +2430,64 @@ body.is-resizing {
 }
 
 /* 工具结果并入调用卡后以虚线分隔；错误状态只在来源明确标记 is_error 时出现。 */
+.tool-operations {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+}
+
+.tool-operations summary {
+  cursor: pointer;
+  font-weight: var(--control-weight);
+}
+
+.tool-operations-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tool-operations-controls input {
+  flex: 1;
+  min-width: min(200px, 100%);
+}
+
+.tool-operations-scope {
+  color: var(--muted);
+  font-size: var(--control-font-compact);
+}
+
+.tool-operations-list {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tool-operations-list li + li {
+  margin-top: 10px;
+}
+
+.tool-operation-link {
+  max-width: 100%;
+  white-space: normal;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.tool-operation-link[data-state="error"] {
+  color: var(--danger);
+}
+
+.tool-operations-list p {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--control-font-compact);
+}
+
 .tool-result {
   margin-top: 10px;
   padding-top: 8px;

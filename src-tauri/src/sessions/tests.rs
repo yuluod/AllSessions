@@ -83,6 +83,7 @@ fn codex_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
         hermes: Some(Vec::new()),
         vscode_copilot: Some(Vec::new()),
         deepseek: Some(Vec::new()),
+        jetbrains_air: Some(Vec::new()),
     }
 }
 
@@ -958,6 +959,7 @@ fn refresh_records_source_errors_without_blocking_valid_sessions() {
             hermes: Some(Vec::new()),
             vscode_copilot: Some(Vec::new()),
             deepseek: Some(Vec::new()),
+            jetbrains_air: Some(Vec::new()),
         },
         index_cache: crate::cache::IndexCache::disabled(),
         detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -1224,6 +1226,7 @@ fn 增量刷新单文件失败不丢弃同批其他变更() {
             hermes: Some(Vec::new()),
             vscode_copilot: Some(Vec::new()),
             deepseek: Some(Vec::new()),
+            jetbrains_air: Some(Vec::new()),
         },
         index_cache: crate::cache::IndexCache::disabled(),
         detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -1287,6 +1290,7 @@ fn 缺失的_opencode_数据库属于不可用而不是扫描错误() {
             hermes: Some(Vec::new()),
             vscode_copilot: Some(Vec::new()),
             deepseek: Some(Vec::new()),
+            jetbrains_air: Some(Vec::new()),
         },
         index_cache: crate::cache::IndexCache::disabled(),
         detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -1353,6 +1357,7 @@ fn refresh_paths_rebuilds_claude_priority_after_layout_change() {
             hermes: Some(Vec::new()),
             vscode_copilot: Some(Vec::new()),
             deepseek: Some(Vec::new()),
+            jetbrains_air: Some(Vec::new()),
         },
         index_cache: crate::cache::IndexCache::disabled(),
         detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
@@ -2164,6 +2169,7 @@ fn claude_modern_and_legacy_sessions_are_scanned_together() {
             hermes: Some(Vec::new()),
             vscode_copilot: Some(Vec::new()),
             deepseek: Some(Vec::new()),
+            jetbrains_air: Some(Vec::new()),
         },
         index_cache: crate::cache::IndexCache::disabled(),
         detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),

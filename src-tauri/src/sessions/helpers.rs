@@ -255,11 +255,12 @@ pub(crate) fn agent_kind(source_kind: &Value) -> Option<&str> {
 }
 
 /// VS Code 打开 Copilot Chat 面板就会生成空会话文件；dsh 新建未开始的
-/// 会话也只有注入的上下文。没有消息的占位会话不进入列表。
+/// 会话也只有注入的上下文；Air 里打开即弃或鉴权未过的线程同样没有
+/// 正文。没有消息的占位会话不进入列表。
 pub(crate) fn is_placeholder_session(source: &Source, summary: &Value) -> bool {
     matches!(
         source.format,
-        SourceFormat::VsCodeCopilot | SourceFormat::DeepSeek
+        SourceFormat::VsCodeCopilot | SourceFormat::DeepSeek | SourceFormat::JetBrainsAir
     ) && summary["message_count"].as_u64() == Some(0)
 }
 pub(crate) fn diagnostic_source_kind(kind: &str) -> &str {

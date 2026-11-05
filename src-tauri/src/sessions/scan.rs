@@ -15,7 +15,7 @@ use super::roots::{
 };
 use super::{
     DetailLocator, ScanDiagnostics, SessionStore, SourceFormat, StoredSession, copilot, cursor,
-    devin, gemini, grok, hermes, kimi, opencode, vscode_copilot, zcode,
+    devin, gemini, grok, hermes, jetbrains_air, kimi, opencode, vscode_copilot, zcode,
 };
 
 impl SessionStore {
@@ -260,15 +260,19 @@ impl SessionStore {
                 };
                 let parsed = if matches!(
                     source.format,
-                    SourceFormat::Kimi | SourceFormat::Copilot | SourceFormat::Grok
+                    SourceFormat::Kimi
+                        | SourceFormat::Copilot
+                        | SourceFormat::Grok
+                        | SourceFormat::JetBrainsAir
                 ) {
-                    // Kimi/Copilot/Grok 的标题、目录或可见性存放在相邻文件里，
+                    // Kimi/Copilot/Grok/Air 的标题、目录或可见性存放在相邻文件里，
                     // 用「事件文件 + 相邻元数据」的复合指纹做逐文件缓存，
                     // 元数据变化后不会命中旧摘要。Cowork 的任务元数据命名
                     // 不定且分散，复合指纹不可靠，保持每次直读（会话量小）。
                     let stamp = match source.format {
                         SourceFormat::Kimi => kimi::cache_stamp(source, &path),
                         SourceFormat::Copilot => copilot::cache_stamp(&path),
+                        SourceFormat::JetBrainsAir => jetbrains_air::cache_stamp(&path),
                         _ => grok::cache_stamp(&path),
                     };
                     match self.index_cache.get_stamped(&path, source.kind, &stamp) {
@@ -406,6 +410,12 @@ impl SessionStore {
                     && (path.file_name().and_then(|value| value.to_str()) == Some("summary.json")
                         || path.is_dir()
                         || !path.exists() && path.extension().is_none())
+                    || matches!(source.format, SourceFormat::JetBrainsAir)
+                        && (matches!(
+                            path.file_name().and_then(|value| value.to_str()),
+                            Some("summary.json") | Some("store.json")
+                        ) || path.is_dir()
+                            || !path.exists() && path.extension().is_none())
                     || matches!(source.format, SourceFormat::Kimi)
                         && path.file_name().and_then(|value| value.to_str()) != Some("wire.jsonl")
                     || matches!(source.format, SourceFormat::Copilot)

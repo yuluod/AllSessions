@@ -9,8 +9,8 @@ use serde_json::{Value, json};
 use walkdir::WalkDir;
 
 use super::{
-    Source, SourceFormat, claude_cowork, copilot, cursor, deepseek, devin, grok, hermes, kimi,
-    vscode_copilot,
+    Source, SourceFormat, claude_cowork, copilot, cursor, deepseek, devin, grok, hermes,
+    jetbrains_air, kimi, vscode_copilot,
 };
 
 pub(crate) struct RootLists {
@@ -32,6 +32,7 @@ pub(crate) struct RootLists {
     pub hermes: Vec<PathBuf>,
     pub vscode_copilot: Vec<PathBuf>,
     pub deepseek: Vec<PathBuf>,
+    pub jetbrains_air: Vec<PathBuf>,
 }
 
 pub(crate) fn resolve_kind(
@@ -296,6 +297,14 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
     if deepseek_origin == "default" && dsh_home.is_some() {
         deepseek_origin = "env";
     }
+    // JetBrains Air 的会话按产品目录分存（<JetBrains>/<产品>/acp），
+    // 默认枚举已存在的 acp 目录；未安装/未运行过 Air 的产品不会产生数据，
+    // 新增产品的 acp 目录在下一次扫描的根重解析中被发现。
+    let (jetbrains_air, jetbrains_air_origin) = resolve_kind(
+        config.get("jetbrains_air"),
+        &["JETBRAINS_AIR_SESSIONS_DIR"],
+        default_air_roots(),
+    );
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -315,6 +324,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         "hermes": { "roots": hermes.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": hermes_origin },
         "vscode_copilot": { "roots": vscode_copilot.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": vscode_copilot_origin },
         "deepseek": { "roots": deepseek.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": deepseek_origin },
+        "jetbrains_air": { "roots": jetbrains_air.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": jetbrains_air_origin },
     });
     (
         RootLists {
@@ -336,6 +346,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
             hermes,
             vscode_copilot,
             deepseek,
+            jetbrains_air,
         },
         description,
     )
@@ -352,6 +363,23 @@ pub(crate) fn default_hermes_root() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".hermes")
+}
+
+/// JetBrains Air 数据根：各平台均为 `<JetBrains 本地数据目录>/<产品>/acp`
+/// （Windows `%LOCALAPPDATA%\JetBrains\IntelliJIdea2026.3\acp`、macOS
+/// `~/Library/Application Support/JetBrains/<产品>/acp`、Linux
+/// `~/.local/share/JetBrains/<产品>/acp`）。默认枚举已存在的 acp 目录。
+fn default_air_roots() -> Vec<PathBuf> {
+    let mut roots = dirs::data_local_dir()
+        .map(|dir| dir.join("JetBrains"))
+        .and_then(|base| std::fs::read_dir(base).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|entry| entry.path().join("acp")))
+        .filter(|path| path.is_dir())
+        .collect::<Vec<_>>();
+    roots.sort();
+    roots
 }
 
 /// Devin CLI 数据根：Unix 为 `$XDG_DATA_HOME/devin/cli`（默认
@@ -447,6 +475,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "hermes": describe_protected_source_roots(config.hermes.as_deref().unwrap_or_default(), &inherited.hermes),
         "vscode_copilot": describe_protected_source_roots(config.vscode_copilot.as_deref().unwrap_or_default(), &inherited.vscode_copilot),
         "deepseek": describe_protected_source_roots(config.deepseek.as_deref().unwrap_or_default(), &inherited.deepseek),
+        "jetbrains_air": describe_protected_source_roots(config.jetbrains_air.as_deref().unwrap_or_default(), &inherited.jetbrains_air),
     })
 }
 
@@ -554,6 +583,13 @@ pub(crate) fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Sou
         display_name: "DeepSeek Harness",
         root: deepseek::sessions_root(root),
         format: SourceFormat::DeepSeek,
+        archived: false,
+    }));
+    sources.extend(lists.jetbrains_air.iter().map(|root| Source {
+        kind: "jetbrains_air",
+        display_name: "JetBrains Air",
+        root: root.clone(),
+        format: SourceFormat::JetBrainsAir,
         archived: false,
     }));
     sources
@@ -703,6 +739,9 @@ pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
     if matches!(source.format, SourceFormat::DeepSeek) {
         return deepseek::discover_files(source);
     }
+    if matches!(source.format, SourceFormat::JetBrainsAir) {
+        return jetbrains_air::discover_files(source);
+    }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
             "json"
@@ -755,6 +794,9 @@ pub(crate) fn source_matches_path(source: &Source, path: &Path) -> bool {
     }
     if matches!(source.format, SourceFormat::DeepSeek) {
         return deepseek::matches_path(&source.root, path);
+    }
+    if matches!(source.format, SourceFormat::JetBrainsAir) {
+        return jetbrains_air::matches_path(&source.root, path);
     }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {

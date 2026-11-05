@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 use super::helpers::{bool_query, paginate, timestamp_of};
 use super::parse::parse_detail;
 use super::{
-    DetailLocator, SessionStore, SourceFormat, cursor, deepseek, devin, gemini, hermes, opencode,
-    zcode,
+    DetailLocator, SessionStore, SourceFormat, cursor, deepseek, devin, gemini, hermes,
+    jetbrains_air, opencode, zcode,
 };
 
 impl SessionStore {
@@ -187,6 +187,9 @@ impl SessionStore {
             Some(_) => Err("当前来源暂不支持图片预览".into()),
             None if record.source.format == SourceFormat::DeepSeek => {
                 deepseek::read_attachment(&record.path, &record.source, request)
+            }
+            None if record.source.format == SourceFormat::JetBrainsAir => {
+                jetbrains_air::read_attachment(&record.path, &record.source, request)
             }
             None => super::attachment::read_image(record, request),
         };

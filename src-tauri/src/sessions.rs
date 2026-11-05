@@ -19,6 +19,7 @@ mod gemini;
 mod grok;
 mod helpers;
 mod hermes;
+mod jetbrains_air;
 mod kimi;
 mod mutation;
 mod opencode;
@@ -108,6 +109,8 @@ pub(crate) enum SourceFormat {
     Hermes,
     VsCodeCopilot,
     DeepSeek,
+    /// JetBrains Air（IDE 内 ACP 线程）；事件日志回放，只读。
+    JetBrainsAir,
 }
 
 #[derive(Clone)]

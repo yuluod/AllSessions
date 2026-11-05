@@ -1479,6 +1479,14 @@ body.is-resizing {
   background: color-mix(in srgb, var(--text) 13%, var(--surface));
 }
 
+/* JetBrains 公司标志为黑色方块，与 cursor/grok/deepseek 一致随文字色。 */
+.session-source-kind[data-source-kind="jetbrains_air"],
+.detail-tag.tag-source[data-source-kind="jetbrains_air"] {
+  border-color: color-mix(in srgb, var(--text) 42%, var(--surface));
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text) 13%, var(--surface));
+}
+
 .session-source-kind[data-source-kind="codex_archived"],
 .detail-tag.tag-source[data-source-kind="codex_archived"] {
   border-color: var(--line-strong);
@@ -3666,14 +3674,21 @@ body.is-resizing {
   mask-image: url("../assets/agents/deepseek.svg");
 }
 
-/* 较新接入的来源：与老来源一致的品牌语义色。cursor/grok/deepseek 为黑白
-   品牌（官方站点即黑白标志），图标随文字色。 */
+.source-tree__item[data-source-agent="jetbrains_air"] .source-tree__dot,
+.settings-source-card[data-source-agent="jetbrains_air"] .source-tree__dot {
+  mask-image: url("../assets/agents/jetbrains.svg");
+}
+
+/* 较新接入的来源：与老来源一致的品牌语义色。cursor/grok/deepseek/jetbrains
+   为黑白品牌（官方标志即黑白方块/单色标志），图标随文字色。 */
 .source-tree__item[data-source-agent="cursor"] .source-tree__dot,
 .settings-source-card[data-source-agent="cursor"] .source-tree__dot,
 .source-tree__item[data-source-agent="grok"] .source-tree__dot,
 .settings-source-card[data-source-agent="grok"] .source-tree__dot,
 .source-tree__item[data-source-agent="deepseek"] .source-tree__dot,
-.settings-source-card[data-source-agent="deepseek"] .source-tree__dot {
+.settings-source-card[data-source-agent="deepseek"] .source-tree__dot,
+.source-tree__item[data-source-agent="jetbrains_air"] .source-tree__dot,
+.settings-source-card[data-source-agent="jetbrains_air"] .source-tree__dot {
   color: var(--text);
 }
 

@@ -16,6 +16,7 @@ export const SOURCE_RAIL_AGENTS = [
   { agent: "copilot", kinds: ["copilot", "vscode_copilot"] },
   { agent: "hermes", kinds: ["hermes"] },
   { agent: "deepseek", kinds: ["deepseek"] },
+  { agent: "jetbrains_air", kinds: ["jetbrains_air"] },
 ];
 
 export function sourceAgentForKind(sourceKind) {

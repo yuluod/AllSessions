@@ -5,6 +5,7 @@
 - Pi：来自官方 https://pi.dev/logo-auto.svg ，裁去外围留白；用于识别 Pi coding agent。
 - Oh My Pi：来自官方 https://omp.sh/favicon.svg ，去除深色底板仅保留字形，供 CSS mask 渲染；用于识别 Oh My Pi（Pi fork）。
 - ZCode：来自官方 https://zcode.z.ai/favicon-48x48.png ，用于识别来源。
+- JetBrains：来自 simple-icons 的 JetBrains 单色标志（CC0 授权），用于识别 JetBrains Air 来源。
 - 全部 Agent：本项目绘制的集合图标。
 - chevron-down.svg：「其他来源」折叠箭头，本项目绘制，供 CSS mask 渲染。
 

@@ -25,6 +25,7 @@ const AGENT_PRESENTATION = {
   copilot: { label: "GitHub Copilot", color: "#6f42c1" },
   hermes: { label: "Hermes Agent", color: "#be185d" },
   deepseek: { label: "DeepSeek", color: "#52525b" },
+  jetbrains_air: { label: "JetBrains Air", color: "#fe2857" },
 };
 
 function renderBar(label, count, max, displayLabel = label, tokens = null) {

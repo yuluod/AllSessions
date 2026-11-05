@@ -18,6 +18,7 @@ import {
   state,
   visibilityLabel,
 } from "./shared.js";
+import { createIcon } from "./icons.js";
 
 export function parseWorkspaceTags(value) {
   return Array.from(
@@ -87,43 +88,10 @@ export async function revealCurrentPath(kind) {
     showError(`${t("revealFailed")}: ${error.message || error}`);
   }
 }
+const TAG_ICONS = { calendar: "calendar-blank", hash: "hash" };
+
 export function createTagIcon(icon) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("width", "12");
-  svg.setAttribute("height", "12");
-
-  const add = (name, attributes) => {
-    const node = document.createElementNS("http://www.w3.org/2000/svg", name);
-    Object.entries(attributes).forEach(([key, value]) =>
-      node.setAttribute(key, value)
-    );
-    svg.append(node);
-  };
-
-  if (icon === "calendar") {
-    add("rect", {
-      x: "3",
-      y: "4",
-      width: "18",
-      height: "18",
-      rx: "2",
-      ry: "2",
-    });
-    add("line", { x1: "16", y1: "2", x2: "16", y2: "6" });
-    add("line", { x1: "8", y1: "2", x2: "8", y2: "6" });
-    add("line", { x1: "3", y1: "10", x2: "21", y2: "10" });
-  } else if (icon === "hash") {
-    add("line", { x1: "4", y1: "9", x2: "20", y2: "9" });
-    add("line", { x1: "4", y1: "15", x2: "20", y2: "15" });
-    add("line", { x1: "10", y1: "3", x2: "8", y2: "21" });
-    add("line", { x1: "16", y1: "3", x2: "14", y2: "21" });
-  }
-
-  return svg;
+  return createIcon(TAG_ICONS[icon] || icon, { size: 12 });
 }
 
 export function renderDetailTags(summary) {
@@ -332,7 +300,6 @@ export function syncRoleFilterButtons() {
 
 export function setRawEventCardCollapsed(card, toggleButton, collapsed) {
   card.classList.toggle("collapsed", collapsed);
-  toggleButton.textContent = collapsed ? "▶" : "▼";
   toggleButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
   const label = collapsed ? t("expandRawEvent") : t("collapseRawEvent");
   toggleButton.title = label;

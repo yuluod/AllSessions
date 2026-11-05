@@ -362,7 +362,7 @@ const DICT = {
     tabsAriaLabel: "详情视图切换",
     sessionInspector: "信息",
     closeSessionInspector: "关闭",
-    backToSessions: "← 返回会话",
+    backToSessions: "返回会话",
     selectSession: "选择一个会话",
     selectSessionDesc:
       "左侧会显示所有已解析会话。选中后，右侧会保持在当前工作台里展示摘要、对话视图和原始事件流。",
@@ -1083,7 +1083,7 @@ const DICT = {
     tabsAriaLabel: "Detail view tabs",
     sessionInspector: "Info",
     closeSessionInspector: "Close",
-    backToSessions: "← Back to sessions",
+    backToSessions: "Back to sessions",
     selectSession: "Select a Session",
     selectSessionDesc:
       "All parsed sessions are shown on the left. Once selected, the right panel will display the summary, conversation view, and raw event stream.",

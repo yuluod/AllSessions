@@ -21,6 +21,7 @@ import {
   highlightRegexMatches,
   bindMatchNavigation,
 } from "./search-view.js";
+import { createIcon } from "./app/icons.js";
 
 const ROLE_LABEL_KEYS = {
   user: "roleUser",
@@ -47,22 +48,7 @@ function setCopyFeedback(button, outcome) {
 }
 
 function createCopyResultIcon(success) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", "12");
-  svg.setAttribute("height", "12");
-  svg.setAttribute("fill", "none");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute(
-    "d",
-    success ? "M5 12.5l4.5 4.5L19 7.5" : "M6 6l12 12M18 6L6 18"
-  );
-  path.setAttribute("stroke", "currentColor");
-  path.setAttribute("stroke-width", "2.4");
-  path.setAttribute("stroke-linecap", "round");
-  path.setAttribute("stroke-linejoin", "round");
-  svg.append(path);
-  return svg;
+  return createIcon(success ? "check" : "x", { size: 12 });
 }
 
 function displayRoleLabel(role) {
@@ -109,7 +95,6 @@ export function createConversationView({
 
   function setMessageCardCollapsed(card, toggleButton, collapsed) {
     card.classList.toggle("collapsed", collapsed);
-    toggleButton.textContent = collapsed ? "▶" : "▼";
     toggleButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
     const label = collapsed ? t("expandMessage") : t("collapseMessage");
     toggleButton.title = label;

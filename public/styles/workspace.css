@@ -110,7 +110,7 @@
   height: 14px;
   transform: translateY(-50%);
   background: var(--muted);
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E")
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 256 256' fill='black'%3E%3Cpath d='M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z'/%3E%3C/svg%3E")
     no-repeat center;
   pointer-events: none;
 }
@@ -212,11 +212,7 @@
 .scheme-control svg {
   width: 15px;
   height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: currentColor;
 }
 
 /* 收起态：侧栏退化为图标条，保留视图切换、来源图标与底部控件，
@@ -474,7 +470,7 @@
   font-size: 0.72rem;
   font-weight: 600;
   text-overflow: ellipsis;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23748090' stroke-width='1.4'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='%23748090'%3E%3Cpath d='M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z'/%3E%3C/svg%3E");
   background-position: right 8px center;
   background-size: 12px;
   background-repeat: no-repeat;
@@ -1064,7 +1060,7 @@ body.is-resizing {
   padding-right: 24px;
   font-weight: 600;
   text-overflow: ellipsis;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23748090' stroke-width='1.4'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='%23748090'%3E%3Cpath d='M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z'/%3E%3C/svg%3E");
   background-position: right 8px center;
   background-size: 12px;
   background-repeat: no-repeat;
@@ -1766,11 +1762,6 @@ body.is-resizing {
   border-color: color-mix(in srgb, var(--warning) 42%, var(--surface));
   color: var(--warning);
   background: var(--warning-soft);
-}
-
-.session-favorite-button[aria-pressed="true"] svg path,
-.session-list-header__favorite[aria-pressed="true"] svg path {
-  fill: currentColor;
 }
 
 .export-menu,
@@ -2619,7 +2610,16 @@ body.is-resizing {
   color: var(--muted);
   background: var(--surface-raised);
   cursor: pointer;
-  font-size: 0.66rem;
+}
+
+.message-toggle svg,
+.raw-event-toggle svg {
+  transition: transform 150ms var(--ease-out);
+}
+
+.message-toggle[aria-expanded="true"] svg,
+.raw-event-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
 }
 
 .message-toggle:hover,

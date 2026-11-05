@@ -1,4 +1,17 @@
 /* 组件规格集中定义；页面样式只负责布局和有明确语义的变体。 */
+
+/* Phosphor 双权重图标：默认描边观感（regular），处于激活或按下态的
+   控件显示实心形（fill）。静态图标只放单条 regular path。 */
+.icon-fill {
+  display: none;
+}
+:is(.active, [aria-pressed="true"]) .icon-fill {
+  display: block;
+}
+:is(.active, [aria-pressed="true"]) .icon-regular {
+  display: none;
+}
+
 .detail-topbar-right,
 .session-query-controls,
 .bulk-toolbar,
@@ -264,7 +277,7 @@
 .bulk-actions select {
   appearance: none;
   padding-right: 28px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23748090' stroke-width='1.4'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='%23748090'%3E%3Cpath d='M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z'/%3E%3C/svg%3E");
   background-position: right 9px center;
   background-size: 12px;
   background-repeat: no-repeat;

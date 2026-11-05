@@ -9,6 +9,7 @@ import {
   open as openPathDialog,
 } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { createIcon } from "./app/icons.js";
 
 const SOURCE_KINDS = [
   { key: "codex", agent: "codex", label: "Codex" },
@@ -494,24 +495,7 @@ export function createSettingsController({
     closeButton.type = "button";
     closeButton.className = "ghost-button delete-dialog-close-button";
     closeButton.setAttribute("aria-label", t("closeSettings"));
-    const closeSvg = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "svg"
-    );
-    closeSvg.setAttribute("viewBox", "0 0 24 24");
-    closeSvg.setAttribute("width", "18");
-    closeSvg.setAttribute("height", "18");
-    closeSvg.setAttribute("fill", "none");
-    const closePath = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "path"
-    );
-    closePath.setAttribute("d", "M6 6l12 12M18 6L6 18");
-    closePath.setAttribute("stroke", "currentColor");
-    closePath.setAttribute("stroke-width", "1.8");
-    closePath.setAttribute("stroke-linecap", "round");
-    closeSvg.append(closePath);
-    closeButton.append(closeSvg);
+    closeButton.append(createIcon("x", { size: 18 }));
     closeButton.addEventListener("click", () => sourceConfigDialogEl.close());
     header.append(title, origin, closeButton);
 

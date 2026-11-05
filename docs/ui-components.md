@@ -45,7 +45,7 @@
 
 ## 图标与反馈
 
-- 图标一律使用 SVG（静态资源走 CSS mask，动态节点用 `createElementNS` 构建），不用文本字符充当图标：字符基线随回退字体漂移，无法跨主题稳定对齐。几何沿用现有基线——关闭/清除 `M6 6l12 12M18 6L6 18`（描边 1.8–2.4），折叠 caret `M6 9l6 6 6-6`。
+- 图标一律使用 SVG（静态资源走 CSS mask，动态节点用 `createElementNS` 构建），不用文本字符充当图标：字符基线随回退字体漂移，无法跨主题稳定对齐。几何取自 Phosphor Icons（`viewBox="0 0 256 256"`、`fill="currentColor"`，来源与许可证见 `public/assets/icons/`）：静态节点内联 `ICON_PATHS` 同一份 path，动态节点用 `createIcon` 构建；有激活态的控件内嵌 `.icon-regular` / `.icon-fill` 两条 path，由共享规则按 `.active` / `aria-pressed` 切换。侧栏开合按钮保留手绘复合图形（含动效 caret），agent 品牌图标在 `assets/agents/`。
 - 折叠披露行（来源树「其他来源」、项目「显示其余」）共用同一套规则（`.source-tree__more` / `.project-more`）：flex 行内「caret + 标签 + 计数」，标签占弹性位，`aria-expanded` 驱动旋转；计数表示未展示的数量，展开后清空。项目行只保留外边距定位差异。结构用 flex 不用 grid：grid 定宽首列会把未配套标记的裸文本匿名项压成竖排，flex 则自然退化为整行文本。列表底部的分页按钮（`.load-more-btn`）是主内容区的 ghost 按钮家族，不并入披露行。
 - 复制类反馈：按钮短暂时用 `data-state="success|failed"` 着色并短暂替换为 check/cross 图标，超时还原；内联文本处可直接显示「已复制」等文字。成功用 `--success`，失败用 `--danger`，不用裸 `✓`/`×` 字符。
 

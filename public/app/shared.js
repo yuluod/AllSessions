@@ -16,12 +16,17 @@ export const REMOVED_MESSAGES_KEY = "allsessions_removed_messages";
 export const sessionRequestGate = createLatestRequestGate();
 export const detailRequestGate = createLatestRequestGate();
 export const statsRequestGate = createLatestRequestGate();
+export const statsSessionsRequestGate = createLatestRequestGate();
 
 export const state = {
   capabilities: null,
   diagnostics: null,
   facets: null,
   stats: null,
+  statsSessions: null,
+  statsSessionsSort: "recent",
+  statsSessionsLoading: false,
+  statsSessionsError: null,
   sessions: [],
   scanning: false,
   selectedSessionKey: null,
@@ -212,6 +217,7 @@ export const elements = {
   resumeSessionBtn: document.querySelector("#resume-session-btn"),
   statsDashboard: document.querySelector("#stats-dashboard"),
   statsRange: document.querySelector("#stats-range"),
+  statsSessions: document.querySelector("#stats-sessions"),
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
   projectReview: document.querySelector("#project-review"),

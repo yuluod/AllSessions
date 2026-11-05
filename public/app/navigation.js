@@ -26,6 +26,7 @@ import {
   loadFacets,
   loadSessions,
   loadStats,
+  loadStatsSessions,
   loadWorkspaceDiagnostics,
 } from "./data.js";
 import { selectSession } from "./session-list.js";
@@ -113,6 +114,8 @@ export async function activateWorkspaceView(panel) {
   codexRollbackDashboard?.classList.add("hidden");
   renderActiveFilters();
   renderWorkspaceStatus();
+  if (panel === "stats" && !state.statsSessions && !state.statsSessionsLoading)
+    void loadStatsSessions();
 }
 export function isEditableShortcutTarget(target) {
   if (!(target instanceof Element)) return false;

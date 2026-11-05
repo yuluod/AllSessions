@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 
 use super::SessionStore;
 use super::helpers::{
-    agent_kind, count_values, diagnostic_source_kind, increment, insert_string, matches_filters,
-    timestamp_of,
+    agent_kind, compact, count_values, diagnostic_source_kind, increment, insert_string,
+    matches_filters, paginate, timestamp_of,
 };
 
 /// 只影响列表可见性、不改变导航维度的查询开关。
@@ -19,6 +19,63 @@ const DISPLAY_FLAGS: [&str; 4] = [
 ];
 
 impl SessionStore {
+    pub fn stats_sessions(
+        &self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Value {
+        let mut sessions = self
+            .filtered(query, workspace)
+            .into_iter()
+            .map(|mut summary| {
+                super::activity::scope_summary(&mut summary, query);
+                let known_usage = summary["usage"]["known"] == true;
+                let tokens = ["input_tokens", "output_tokens", "cached_input_tokens"]
+                    .iter()
+                    .map(|field| summary[*field].as_u64().unwrap_or_default())
+                    .sum::<u64>();
+                let calls = summary["tool_counts"].as_object().map(|counts| {
+                    counts.values().filter_map(Value::as_u64).sum::<u64>()
+                });
+                let known_messages = !super::has_activity_range(query)
+                    || summary["activity"].is_object();
+                json!({
+                    "_key": summary["_key"],
+                    "title": summary["title"],
+                    "cwd": summary["cwd"],
+                    "source_kind": summary["source_kind"],
+                    "display_source": summary["display_source"],
+                    "last_timestamp": timestamp_of(&summary),
+                    "tokens": if known_usage || (!super::has_activity_range(query) && tokens > 0) {
+                        json!(tokens)
+                    } else { Value::Null },
+                    "message_count": if known_messages {
+                        summary["message_count"].clone()
+                    } else { Value::Null },
+                    "tool_calls": calls,
+                    "workspace": {
+                        "favorite": summary["workspace"]["favorite"],
+                        "tags": summary["workspace"]["tags"],
+                        "note": compact(summary["workspace"]["note"].as_str().unwrap_or_default(), 240)
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        let sort = query.get("sort").map(String::as_str).unwrap_or("recent");
+        sessions.sort_by(|a, b| {
+            let usage_order = if sort == "tokens" {
+                b["tokens"].as_u64().cmp(&a["tokens"].as_u64())
+            } else {
+                std::cmp::Ordering::Equal
+            };
+            usage_order
+                .then_with(|| timestamp_of(b).cmp(timestamp_of(a)))
+                .then_with(|| a["_key"].as_str().cmp(&b["_key"].as_str()))
+        });
+        let total = sessions.len();
+        paginate(sessions, query, json!({ "total": total, "sort": sort }))
+    }
+
     pub fn facets(
         &self,
         query: &HashMap<String, String>,

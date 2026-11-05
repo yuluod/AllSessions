@@ -70,6 +70,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 
 - Favorite sessions and attach tags and notes
 - Select a project and open Project review to revisit recent sessions, favorites, tags and notes. Each group shows up to 8 sessions within the current filters.
+- Statistics share an activity date range. Switch the heatmap between sessions and tokens, select a day to filter, and browse related sessions by recent activity or in-range usage with pagination and detail links.
 - Save reusable filters
 - Manage local archive/removal state
 - Compare session, message, tool, activity, provider, and working-directory statistics by agent

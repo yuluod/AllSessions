@@ -72,6 +72,70 @@
   background: var(--surface);
 }
 
+.stats-sessions {
+  padding: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.stats-sessions-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stats-sessions-heading h3 {
+  margin: 0;
+  font-family: var(--font-display);
+}
+
+.stats-sessions-hint,
+.stats-session-meta {
+  color: var(--muted);
+  font-size: var(--control-font-compact);
+  overflow-wrap: anywhere;
+}
+
+.stats-session-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stats-session-list li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.stats-session-list button,
+.stats-session-note {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.stats-session-meta,
+.stats-session-note {
+  margin: 7px 0;
+}
+
+.stats-session-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 7px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--control-font-compact);
+}
+
+.stats-session-metrics dt {
+  color: var(--muted);
+}
+
+.stats-session-metrics dd {
+  margin: 0;
+}
+
 .stats-metrics {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));

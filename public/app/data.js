@@ -3,6 +3,7 @@ import { t } from "../i18n.js";
 import { isAbortError, nextPaint } from "../async-coordinator.js";
 import { createIndexProgressPoller } from "../index-progress.js";
 import { renderStats } from "../stats-view.js";
+import { renderStatsSessionList } from "../stats-session-list.js";
 import {
   MOBILE_LAYOUT_QUERY,
   detailRequestGate,
@@ -14,6 +15,7 @@ import {
   showError,
   state,
   statsRequestGate,
+  statsSessionsRequestGate,
   visibleSessions,
 } from "./shared.js";
 import {
@@ -325,10 +327,79 @@ export function renderCurrentStats() {
       );
     },
   });
+  renderRelatedSessions();
+}
+
+function renderRelatedSessions() {
+  renderStatsSessionList(
+    elements.statsSessions,
+    {
+      data: state.statsSessions,
+      sort: state.statsSessionsSort,
+      loading: state.statsSessionsLoading,
+      error: state.statsSessionsError,
+    },
+    {
+      onSelectSession: (key) =>
+        openReviewSession(key).catch((error) => showError(error.message)),
+      onSort: (sort) => {
+        state.statsSessionsSort = sort;
+        loadStatsSessions().then((loaded) => {
+          if (loaded) elements.statsSessions?.querySelector("select")?.focus();
+        });
+      },
+      onMore: () => {
+        void loadStatsSessions({ append: true });
+      },
+      onRetry: () => {
+        void loadStatsSessions({
+          append: state.statsSessionsError?.append === true,
+        });
+      },
+    }
+  );
+}
+
+export async function loadStatsSessions({ append = false } = {}) {
+  const request = statsSessionsRequestGate.begin();
+  const previous = append ? state.statsSessions : null;
+  if (!append) state.statsSessions = null;
+  state.statsSessionsLoading = true;
+  state.statsSessionsError = null;
+  renderRelatedSessions();
+  try {
+    const params = new URLSearchParams(buildSessionQuery());
+    params.set("sort", state.statsSessionsSort);
+    params.set("limit", "20");
+    if (previous?.next_cursor) params.set("cursor", previous.next_cursor);
+    const data = await fetchJson(`/api/stats/sessions?${params}`, {
+      signal: request.signal,
+    });
+    if (!request.isCurrent()) return false;
+    state.statsSessions = {
+      ...data,
+      sessions: [...(previous?.sessions || []), ...data.sessions],
+    };
+    return true;
+  } catch (error) {
+    if (isAbortError(error) || !request.isCurrent()) return false;
+    state.statsSessionsError = { message: error.message, append };
+    return false;
+  } finally {
+    if (request.isCurrent()) {
+      state.statsSessionsLoading = false;
+      renderRelatedSessions();
+    }
+  }
 }
 
 export async function loadStats() {
   const request = statsRequestGate.begin();
+  statsSessionsRequestGate.cancel();
+  state.statsSessions = null;
+  state.statsSessionsLoading = false;
+  state.statsSessionsError = null;
+  renderRelatedSessions();
   try {
     const params = buildSessionQuery();
     const url = `/api/stats${params ? "?" + params : ""}`;
@@ -336,6 +407,7 @@ export async function loadStats() {
     if (!request.isCurrent()) return false;
     state.stats = stats;
     renderCurrentStats();
+    if (state.activeView === "stats") void loadStatsSessions();
     updateSessionCount();
     return true;
   } catch (error) {

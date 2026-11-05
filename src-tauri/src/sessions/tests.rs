@@ -217,6 +217,53 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 相关会话按范围用量排序稳定分页且保留未知状态() {
+    let (_directory, mut store) = structured_search_store();
+    let base = store.summaries[0].clone();
+    store.summaries = (0..3).map(|index| {
+        let mut summary = base.clone();
+        summary["_key"] = json!(format!("codex:related-{index}"));
+        summary["activity"] = Value::Null;
+        summary["last_timestamp"] = json!(format!("2026-03-01T12:00:0{index}Z"));
+        summary["input_tokens"] = json!([1010, 30, 0][index]);
+        summary["usage"] = if index == 2 { Value::Null } else { json!({
+            "known": true, "totals": {"input": ([1010, 30][index])},
+            "by_date": {"2026-03-01": {"input": ([10, 30][index])}, "2026-03-02": {"input": ([1000, 0][index])}}
+        }) };
+        summary
+    }).collect();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let mut query = HashMap::from([
+        ("sort".into(), "tokens".into()),
+        ("limit".into(), "1".into()),
+    ]);
+    assert_eq!(
+        store.stats_sessions(&query, &workspace)["sessions"][0]["_key"],
+        "codex:related-0"
+    );
+    query.insert("activity_from".into(), "2026-03-01".into());
+    query.insert("activity_to".into(), "2026-03-01".into());
+    let first = store.stats_sessions(&query, &workspace);
+    assert_eq!(first["total"], 3);
+    assert_eq!(first["sessions"][0]["_key"], "codex:related-1");
+    assert_eq!(first["sessions"][0]["tokens"], 30);
+    query.insert(
+        "cursor".into(),
+        first["next_cursor"].as_str().unwrap().into(),
+    );
+    let second = store.stats_sessions(&query, &workspace);
+    assert_eq!(second["sessions"][0]["_key"], "codex:related-0");
+    assert_eq!(second["sessions"][0]["tokens"], 10);
+    query.insert(
+        "cursor".into(),
+        second["next_cursor"].as_str().unwrap().into(),
+    );
+    let third = store.stats_sessions(&query, &workspace);
+    assert!(third["sessions"][0]["tokens"].is_null());
+    assert_eq!(third["has_more"], false);
+}
+
+#[test]
 fn 时间范围统一筛选跨天会话用量排行及调用定位() {
     let (_directory, mut store) = structured_search_store();
     let path = store.records["codex:structured"].path.clone();

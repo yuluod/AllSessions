@@ -2,6 +2,14 @@
 
 本文件记录 AllSessions 各版本面向用户的主要变化。
 
+## [0.3.1] - 2026-11-05
+
+### 新增
+
+- 新增 JetBrains Air 只读来源：自动发现 JetBrains IDE 本地数据目录下各产品的 `acp` 线程历史（IntelliJ IDEA 等，`projects/<项目>/threads/<线程>/events.jsonl`），回放 ACP 事件流展示消息、Thinking、工具调用与结果、逐轮 Token 用量、图片附件与原始事件。
+- 新来源支持搜索、文件变更实时刷新与工作区整理（收藏、标签、备注、本地移除）；无正文线程不进列表，多产品/项目/线程之间会话键不冲突。
+- 默认枚举 `JetBrains/<产品版本>/acp` 目录，可用 `JETBRAINS_AIR_SESSIONS_DIR` 环境变量或来源设置自定义路径。
+
 ## [0.3.0] - 2026-11-05
 
 ### 新增

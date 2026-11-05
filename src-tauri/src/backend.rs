@@ -446,9 +446,7 @@ fn route_request(
             {
                 return Err(ApiError::from(format!("全文索引构建失败：{error}")));
             }
-            if query.get("q").is_none_or(|value| value.trim().is_empty()) {
-                return Err(ApiError::invalid("缺少搜索内容"));
-            }
+            validate_search_query(&query)?;
             let workspace = state.workspace_snapshot()?;
             // 摘要快照在会话锁内快速取样；耗时的全文查询在锁外执行，
             // 搜索期间列表和详情读取不被阻塞。
@@ -748,6 +746,59 @@ fn emit_sessions_changed(app: &AppHandle, payload: Value) -> Result<(), String> 
     result
 }
 
+fn validate_search_query(query: &HashMap<String, String>) -> Result<(), ApiError> {
+    if query.get("q").is_none_or(|value| value.trim().is_empty())
+        && !crate::search::SearchFilters::from_query(query).activity_only()
+    {
+        return Err(ApiError::invalid("缺少搜索内容"));
+    }
+    Ok(())
+}
+
 fn lock_error<T>(_: std::sync::PoisonError<T>) -> String {
     "应用内部状态已损坏".into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn search_query(search: &str) -> HashMap<String, String> {
+        Url::parse(&format!("http://allsessions.local/api/search?{search}"))
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect()
+    }
+
+    #[test]
+    fn 排行请求允许无关键词的明确工具或命令条件() {
+        for query in [
+            "q=&exact_tool=read_file",
+            "q=&command=cargo",
+            "exact_tool=bash",
+            "command=git",
+        ] {
+            assert!(
+                validate_search_query(&search_query(query)).is_ok(),
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn 普通搜索仍要求内容且空白排行条件无效() {
+        assert!(validate_search_query(&search_query("q=cargo")).is_ok());
+        for query in [
+            "",
+            "q=",
+            "q=%20&command=%20",
+            "exact_tool=%20",
+            "tool=bash",
+            "role=tool",
+        ] {
+            let error = validate_search_query(&search_query(query)).unwrap_err();
+            assert_eq!(error.code, ApiError::INVALID_REQUEST, "{query}");
+        }
+    }
 }

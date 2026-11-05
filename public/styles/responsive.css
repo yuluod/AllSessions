@@ -99,8 +99,9 @@
     display: none;
   }
 
-  /* 窄窗口优先保住过滤条件与常用快捷键；数据根目录与视图切换提示让位。 */
-  .status-bar__root {
+  /* 窄窗口优先保住过滤条件与常用快捷键；数据根目录、监听标记与视图切换提示让位。 */
+  .status-bar__root,
+  .status-bar__watch {
     display: none;
   }
 

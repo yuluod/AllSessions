@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::cache::IndexCache;
 
+mod activity;
 mod attachment;
 mod claude_cowork;
 mod claude_legacy;
@@ -27,6 +28,7 @@ mod query;
 mod roots;
 mod scan;
 mod stats;
+mod usage;
 mod vscode_copilot;
 mod zcode;
 
@@ -35,24 +37,28 @@ mod tests;
 
 // 子模块条目经此再导出,保持适配器、后端与测试中 `super::条目` / `crate::sessions::条目`
 // 的既有引用路径不变;兄弟子模块之间直接从定义模块导入,不经此枢纽。
+pub(crate) use activity::{
+    has_range as has_activity_range, in_range as in_activity_range,
+    validate_range as validate_activity_range,
+};
 pub(crate) use claude_legacy::{legacy_timestamp, timestamp_from_millis};
 pub(crate) use helpers::{
-    compact, compact_title, diagnostic_entries, diagnostic_source_kind, error_text, mixed_stamp,
-    nullable_string, scan_timestamp,
+    compact, compact_title, diagnostic_entries, diagnostic_source_kind, error_text, local_date_key,
+    mixed_stamp, nullable_string, scan_timestamp,
 };
 #[cfg(test)]
 pub(crate) use helpers::{
-    is_synthetic_context, local_date_key, matches_filters, search_fingerprint,
-    search_query_matches, timestamp_of,
+    is_synthetic_context, matches_filters, search_fingerprint, search_query_matches, timestamp_of,
 };
 pub(crate) use mutation::replace_file_contents;
 #[cfg(test)]
 pub(crate) use mutation::{delete_jsonl_message, delete_legacy_session};
 pub(crate) use parse::{
-    DetailCache, HeadTail, ParseState, append_limited, attach_attachment_locator,
-    attach_message_delete_ref, attach_message_key, content_block_placeholder, extract_text,
-    image_attachments, is_context_role, json_fingerprint, message_value, search_text_from_detail,
-    summary_search_text, truncate_message,
+    DetailCache, HeadTail, ParseState, annotate_activity, append_limited,
+    attach_attachment_locator, attach_message_delete_ref, attach_message_key,
+    content_block_placeholder, extract_text, image_attachments, is_context_role, is_tool_call,
+    json_fingerprint, message_value, search_text_from_detail, summary_search_text,
+    tool_call_command, truncate_message,
 };
 #[cfg(test)]
 pub(crate) use parse::{generic_conversation_message, parse_detail, parse_summary};

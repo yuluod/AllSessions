@@ -3,16 +3,19 @@ import { t } from "../i18n.js";
 import { isAbortError, nextPaint } from "../async-coordinator.js";
 import { createIndexProgressPoller } from "../index-progress.js";
 import { renderStats } from "../stats-view.js";
+import { renderStatsSessionList } from "../stats-session-list.js";
 import {
   MOBILE_LAYOUT_QUERY,
   detailRequestGate,
   elements,
   fetchJson,
+  isSearchActive,
   scrollToWorkspaceSection,
   sessionRequestGate,
   showError,
   state,
   statsRequestGate,
+  statsSessionsRequestGate,
   visibleSessions,
 } from "./shared.js";
 import {
@@ -23,6 +26,7 @@ import {
   syncFilterControls,
   syncSessionRoot,
   syncUrl,
+  setActivityRange,
   updateFacetFilters,
 } from "./filters.js";
 import {
@@ -45,6 +49,7 @@ import {
   updateTabs,
 } from "./detail-view.js";
 import { renderWorkspaceStatus } from "./status.js";
+import { openActivitySearch, openReviewSession } from "./navigation.js";
 
 export async function loadSessionDetail(
   id,
@@ -53,7 +58,7 @@ export async function loadSessionDetail(
   const request = detailRequestGate.begin();
   try {
     const around =
-      state.searchQuery && state.selectedSearchHit?.sessionKey === id
+      isSearchActive() && state.selectedSearchHit?.sessionKey === id
         ? state.selectedSearchHit.ordinal
         : null;
     const suffix = Number.isInteger(around)
@@ -115,8 +120,10 @@ export async function loadSessionDetail(
       const target = elements.conversationList.querySelector(
         `#message-${targetIndex + 1}`
       );
-      if (target?.classList.contains("collapsed"))
-        target.querySelector(".message-toggle")?.click();
+      // 工具结果可能是合并卡内的锚点，折叠状态要落到所属卡片上。
+      const card = target?.closest(".message-card");
+      if (card?.classList.contains("collapsed"))
+        card.querySelector(".message-toggle")?.click();
       target?.scrollIntoView({ block: "center" });
     }
     renderRawEvents(detail.raw_events);
@@ -155,7 +162,7 @@ export async function loadSessions({
   state.lastSessionError = null;
   try {
     let data;
-    if (state.searchQuery) {
+    if (isSearchActive()) {
       data = await fetchJson(buildSearchUrl(), { signal: request.signal });
       if (!request.isCurrent()) return false;
       state.sessions = data.sessions;
@@ -174,13 +181,13 @@ export async function loadSessions({
     state.scanning = data.scanning === true;
     document
       .querySelector("#search-sort")
-      ?.classList.toggle("hidden", !state.searchQuery);
+      ?.classList.toggle("hidden", !isSearchActive());
     document
       .querySelector("#search-results-toolbar")
-      ?.classList.toggle("hidden", !state.searchQuery);
+      ?.classList.toggle("hidden", !isSearchActive());
     const searchCount = document.querySelector("#search-result-count");
     if (searchCount)
-      searchCount.textContent = state.searchQuery
+      searchCount.textContent = isSearchActive()
         ? state.scanning
           ? t("searchIndexing")
           : t("searchSessionCount", { n: data.total || 0 })
@@ -277,7 +284,7 @@ export async function loadSessions({
 export async function loadMoreSessions() {
   const request = sessionRequestGate.begin();
   try {
-    const url = state.searchQuery
+    const url = isSearchActive()
       ? buildSearchUrl({ cursor: state.nextCursor })
       : buildSessionsUrl({ cursor: state.nextCursor });
     const data = await fetchJson(url, {
@@ -298,15 +305,109 @@ export async function loadMoreSessions() {
   }
 }
 
+export function renderCurrentStats() {
+  if (!state.stats) return;
+  renderStats(state.stats, elements, {
+    onSelectDay: (date) =>
+      setActivityRange({ start: date, end: date })
+        .then(() => {
+          elements.tokenHeatmapBody
+            ?.querySelector(`[data-date="${date}"]`)
+            ?.focus();
+        })
+        .catch((error) => showError(error.message)),
+    onChangeRange: (range) =>
+      setActivityRange(range).catch((error) => showError(error.message)),
+    onSelectSession: (key) => {
+      openReviewSession(key).catch((error) => showError(error.message));
+    },
+    onSelectRanking: (kind, value) => {
+      openActivitySearch(kind, value).catch((error) =>
+        showError(error.message)
+      );
+    },
+  });
+  renderRelatedSessions();
+}
+
+function renderRelatedSessions() {
+  renderStatsSessionList(
+    elements.statsSessions,
+    {
+      data: state.statsSessions,
+      sort: state.statsSessionsSort,
+      loading: state.statsSessionsLoading,
+      error: state.statsSessionsError,
+    },
+    {
+      onSelectSession: (key) =>
+        openReviewSession(key).catch((error) => showError(error.message)),
+      onSort: (sort) => {
+        state.statsSessionsSort = sort;
+        loadStatsSessions().then((loaded) => {
+          if (loaded) elements.statsSessions?.querySelector("select")?.focus();
+        });
+      },
+      onMore: () => {
+        void loadStatsSessions({ append: true });
+      },
+      onRetry: () => {
+        void loadStatsSessions({
+          append: state.statsSessionsError?.append === true,
+        });
+      },
+    }
+  );
+}
+
+export async function loadStatsSessions({ append = false } = {}) {
+  const request = statsSessionsRequestGate.begin();
+  const previous = append ? state.statsSessions : null;
+  if (!append) state.statsSessions = null;
+  state.statsSessionsLoading = true;
+  state.statsSessionsError = null;
+  renderRelatedSessions();
+  try {
+    const params = new URLSearchParams(buildSessionQuery());
+    params.set("sort", state.statsSessionsSort);
+    params.set("limit", "20");
+    if (previous?.next_cursor) params.set("cursor", previous.next_cursor);
+    const data = await fetchJson(`/api/stats/sessions?${params}`, {
+      signal: request.signal,
+    });
+    if (!request.isCurrent()) return false;
+    state.statsSessions = {
+      ...data,
+      sessions: [...(previous?.sessions || []), ...data.sessions],
+    };
+    return true;
+  } catch (error) {
+    if (isAbortError(error) || !request.isCurrent()) return false;
+    state.statsSessionsError = { message: error.message, append };
+    return false;
+  } finally {
+    if (request.isCurrent()) {
+      state.statsSessionsLoading = false;
+      renderRelatedSessions();
+    }
+  }
+}
+
 export async function loadStats() {
   const request = statsRequestGate.begin();
+  statsSessionsRequestGate.cancel();
+  state.statsSessions = null;
+  state.statsSessionsLoading = false;
+  state.statsSessionsError = null;
+  renderRelatedSessions();
   try {
     const params = buildSessionQuery();
     const url = `/api/stats${params ? "?" + params : ""}`;
     const stats = await fetchJson(url, { signal: request.signal });
     if (!request.isCurrent()) return false;
     state.stats = stats;
-    renderStats(stats, elements);
+    renderCurrentStats();
+    if (state.activeView === "stats") void loadStatsSessions();
     updateSessionCount();
     return true;
   } catch (error) {
@@ -328,6 +429,7 @@ export async function loadFacets() {
 export async function loadWorkspaceDiagnostics() {
   const payload = await fetchJson("/api/settings");
   state.diagnostics = payload?.diagnostics || null;
+  state.watcherStatus = payload?.watcher || null;
   renderWorkspaceStatus();
 }
 

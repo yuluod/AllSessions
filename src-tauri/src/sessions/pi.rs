@@ -400,6 +400,21 @@ fn build_state(
         {
             state.provider = provider.to_string();
         }
+        let usage = &record["message"]["usage"];
+        if record["type"].as_str() == Some("message")
+            && record["message"]["role"].as_str() == Some("assistant")
+            && usage.is_object()
+        {
+            state.record_usage(
+                record["timestamp"].as_str().unwrap_or_default(),
+                super::usage::TokenUsage {
+                    input: usage["input"].as_u64().unwrap_or_default(),
+                    output: usage["output"].as_u64().unwrap_or_default(),
+                    cache_read: usage["cacheRead"].as_u64().unwrap_or_default(),
+                    cache_write: usage["cacheWrite"].as_u64().unwrap_or_default(),
+                },
+            );
+        }
         for message in record_messages(&record) {
             state.accept_message(message);
         }
@@ -523,6 +538,8 @@ pub(super) fn visit_detail(
     }
     Ok(json!({
         "summary": summary,
+        "usage_events": state.usage.events,
+        "usage_event_count": state.usage.event_count,
         "conversation_messages": message_values,
         "raw_events": event_values,
         "truncation": {

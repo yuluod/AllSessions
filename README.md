@@ -69,6 +69,8 @@ Exports contain the loaded session overview, not a complete backup of the origin
 ### Organize and statistics
 
 - Favorite sessions and attach tags and notes
+- Select a project and open Project review to revisit recent sessions, favorites, tags and notes. Each group shows up to 8 sessions within the current filters.
+- Statistics share an activity date range. Switch the heatmap between sessions and tokens, select a day to filter, and browse related sessions by recent activity or in-range usage with pagination and detail links.
 - Save reusable filters
 - Manage local archive/removal state
 - Compare session, message, tool, activity, provider, and working-directory statistics by agent
@@ -81,6 +83,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 - Reveal a session source file or project directory in the system file manager
 - Open a system terminal in the session's working directory
 - Resume the session in the corresponding agent (Cursor and VS Code Copilot Chat are read-only sources and do not support resume)
+- Jump to recent sessions from the system tray menu
 - Pick a terminal app or configure a custom executable
 - Five visual themes
 - Light, dark, and system color schemes
@@ -98,26 +101,26 @@ Exports contain the loaded session overview, not a complete backup of the origin
 
 ## Supported sources
 
-| Source | Default path | Coverage |
-| --- | --- | --- |
-| **Codex** | `~/.codex/sessions` | Metadata, messages, tools, raw events, search, live refresh |
-| **Codex Archived** | `~/.codex/archived_sessions` | Browse, search, permanently delete archived sessions; files are not moved and archive state is not restored |
-| **Claude Code** | `~/.claude/{projects,sessions}` | `projects/**/*.jsonl` and legacy `sessions/*.json`; conversations, thinking, tools/results, search, live refresh, with `history.jsonl` enrichment for legacy details when available |
-| **Claude Cowork** | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions` (macOS) | Local task transcripts, thinking, tools, titles, host folders, search, refresh; read-only; [support boundaries](./docs/sources/claude-cowork.md) |
-| **Gemini CLI** | `~/.gemini/tmp/*` | `logs.json` plus v0.61+ `chats/session-*.json[l]` full sessions (JSONL replay with `$set`/`$rewindTo`/message updates, chats-wins dedup); messages, thinking, tools, token usage (chats), raw events, search, live refresh; [boundary notes](./docs/sources/gemini-cli.md) |
-| **Grok Build** | `~/.grok/sessions` | `updates.jsonl` and `summary.json`; streamed text, thinking, tools, rewind filtering, raw events, search, refresh, resume; read-only source; [support boundaries](./docs/sources/grok-build.md) |
-| **Pi** | `~/.pi/agent/sessions` | Rebuilds the current branch from v1-v3 JSONL trees; messages, thinking, tools, summaries, raw events, search, live refresh |
-| **Oh My Pi** | `~/.omp/agent/sessions` | Oh My Pi (Pi fork) JSONL sessions, parsed via the Pi adapter; messages, thinking, tools, raw events, search, live refresh, resume; read-only source; [support boundaries](./docs/sources/oh-my-pi.md) |
-| **Kimi Code CLI** | `~/.kimi/sessions` | `wire.jsonl`, working directories, custom titles, streamed content, subagents, tools, raw events, search, live refresh |
-| **OpenCode** | `~/.local/share/opencode/opencode.db` | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source |
-| **Kilo** | `~/.local/share/kilo/kilo.db` | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source |
-| **ZCode** | `~/.zcode/cli/db/db.sqlite` | SQLite; messages, thinking, tools, compaction markers, raw events, search, WAL live refresh; subagent sessions excluded; read-only source |
-| **Cursor** | `Cursor/User` under the OS config dir | IDE `conversation` records and agent transcripts; browsing, search, statistics, export, local removal; read-only source |
-| **Devin** | `Devin/User` under the OS config dir and `~/.local/share/devin/cli` | Desktop `acp-messages`/`state.vscdb` and CLI `sessions.db`; browsing, search, statistics, export, local removal, resume; read-only source; [support boundaries](./docs/sources/devin.md) |
-| **GitHub Copilot** | `~/.copilot/session-state` | Per-session `events.jsonl` plus `workspace.yaml` metadata; messages, thinking, tools, raw events, search, live refresh, resume; read-only source |
-| **Hermes Agent** | `~/.hermes` (macOS/Linux) or `%LOCALAPPDATA%\hermes` (Windows) | SQLite `state.db` including `profiles/<name>` databases; messages, thinking, tools, compaction-archive filtering, subagent exclusion, raw events, search, WAL live refresh, resume; read-only source |
-| **VS Code Copilot Chat** | `Code/User` and `Code - Insiders/User` under the OS config dir | Panel chat sessions (`workspaceStorage`/`globalStorage`, flat `.json` and 1.109+ `.jsonl` append logs); messages, thinking, tools, file edits, custom titles, search, live refresh; empty placeholder sessions excluded; read-only source |
-| **DeepSeek Harness** | `~/.dsh/sessions` | Per-session `session[.vN].jsonl[.zstd]` multi-frame event logs, newest generation per directory; messages, thinking, tools, titles, token usage, raw events, search, live refresh; empty placeholder sessions excluded; read-only source; [support boundaries](./docs/sources/deepseek-harness.md) |
+| Source                   | Default path                                                                   | Coverage                                                                                                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Codex**                | `~/.codex/sessions`                                                            | Metadata, messages, tools, raw events, search, live refresh                                                                                                                                                                                                                                        |
+| **Codex Archived**       | `~/.codex/archived_sessions`                                                   | Browse, search, permanently delete archived sessions; files are not moved and archive state is not restored                                                                                                                                                                                        |
+| **Claude Code**          | `~/.claude/{projects,sessions}`                                                | `projects/**/*.jsonl` and legacy `sessions/*.json`; conversations, thinking, tools/results, search, live refresh, with `history.jsonl` enrichment for legacy details when available                                                                                                                |
+| **Claude Cowork**        | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions` (macOS) | Local task transcripts, thinking, tools, titles, host folders, search, refresh; read-only; [support boundaries](./docs/sources/claude-cowork.md)                                                                                                                                                   |
+| **Gemini CLI**           | `~/.gemini/tmp/*`                                                              | `logs.json` plus v0.61+ `chats/session-*.json[l]` full sessions (JSONL replay with `$set`/`$rewindTo`/message updates, chats-wins dedup); messages, thinking, tools, token usage (chats), raw events, search, live refresh; [boundary notes](./docs/sources/gemini-cli.md)                         |
+| **Grok Build**           | `~/.grok/sessions`                                                             | `updates.jsonl` and `summary.json`; streamed text, thinking, tools, rewind filtering, raw events, search, refresh, resume; read-only source; [support boundaries](./docs/sources/grok-build.md)                                                                                                    |
+| **Pi**                   | `~/.pi/agent/sessions`                                                         | Rebuilds the current branch from v1-v3 JSONL trees; messages, thinking, tools, summaries, raw events, search, live refresh                                                                                                                                                                         |
+| **Oh My Pi**             | `~/.omp/agent/sessions`                                                        | Oh My Pi (Pi fork) JSONL sessions, parsed via the Pi adapter; messages, thinking, tools, raw events, search, live refresh, resume; read-only source; [support boundaries](./docs/sources/oh-my-pi.md)                                                                                              |
+| **Kimi Code CLI**        | `~/.kimi/sessions`                                                             | `wire.jsonl`, working directories, custom titles, streamed content, subagents, tools, raw events, search, live refresh                                                                                                                                                                             |
+| **OpenCode**             | `~/.local/share/opencode/opencode.db`                                          | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source                                                                                                                                                                                               |
+| **Kilo**                 | `~/.local/share/kilo/kilo.db`                                                  | SQLite; messages, thinking, tools, subagents, raw events, search, WAL live refresh; read-only source                                                                                                                                                                                               |
+| **ZCode**                | `~/.zcode/cli/db/db.sqlite`                                                    | SQLite; messages, thinking, tools, compaction markers, raw events, search, WAL live refresh; subagent sessions excluded; read-only source                                                                                                                                                          |
+| **Cursor**               | `Cursor/User` under the OS config dir                                          | IDE `conversation` records and agent transcripts; browsing, search, statistics, export, local removal; read-only source                                                                                                                                                                            |
+| **Devin**                | `Devin/User` under the OS config dir and `~/.local/share/devin/cli`            | Desktop `acp-messages`/`state.vscdb` and CLI `sessions.db`; browsing, search, statistics, export, local removal, resume; read-only source; [support boundaries](./docs/sources/devin.md)                                                                                                           |
+| **GitHub Copilot**       | `~/.copilot/session-state`                                                     | Per-session `events.jsonl` plus `workspace.yaml` metadata; messages, thinking, tools, raw events, search, live refresh, resume; read-only source                                                                                                                                                   |
+| **Hermes Agent**         | `~/.hermes` (macOS/Linux) or `%LOCALAPPDATA%\hermes` (Windows)                 | SQLite `state.db` including `profiles/<name>` databases; messages, thinking, tools, compaction-archive filtering, subagent exclusion, raw events, search, WAL live refresh, resume; read-only source                                                                                               |
+| **VS Code Copilot Chat** | `Code/User` and `Code - Insiders/User` under the OS config dir                 | Panel chat sessions (`workspaceStorage`/`globalStorage`, flat `.json` and 1.109+ `.jsonl` append logs); messages, thinking, tools, file edits, custom titles, search, live refresh; empty placeholder sessions excluded; read-only source                                                          |
+| **DeepSeek Harness**     | `~/.dsh/sessions`                                                              | Per-session `session[.vN].jsonl[.zstd]` multi-frame event logs, newest generation per directory; messages, thinking, tools, titles, token usage, raw events, search, live refresh; empty placeholder sessions excluded; read-only source; [support boundaries](./docs/sources/deepseek-harness.md) |
 
 For read-only sources, AllSessions never modifies the agent's original data. You can still remove records locally inside AllSessions; deleting the original records must be done in the corresponding agent.
 
@@ -127,11 +130,11 @@ Download the installer for your platform from GitHub Releases.
 
 End users **do not need Node.js, pnpm, or Rust**.
 
-| Platform | Release file |
-| --- | --- |
-| Windows x64 | `*-windows-x64-setup.exe` |
-| macOS ARM64 / x64 | `*-mac-<arch>.dmg` |
-| Debian / Ubuntu Linux x64 | `*-linux-x64.deb` |
+| Platform                  | Release file              |
+| ------------------------- | ------------------------- |
+| Windows x64               | `*-windows-x64-setup.exe` |
+| macOS ARM64 / x64         | `*-mac-<arch>.dmg`        |
+| Debian / Ubuntu Linux x64 | `*-linux-x64.deb`         |
 
 Windows, macOS, and Linux share the same Tauri 2 app shell, system tray, and signed update flow.
 
@@ -169,36 +172,36 @@ If the configuration file is damaged, AllSessions starts with safe defaults and 
 
 Set environment variables before starting the desktop app; they are read once at startup.
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `CODEX_HOME` | Codex data root (single path) | `~/.codex` |
-| `CODEX_SESSIONS_DIR` | Codex session roots (path list) | `$CODEX_HOME/sessions` |
-| `CODEX_ARCHIVED_SESSIONS_DIR` | Archived Codex session roots (path list) | `$CODEX_HOME/archived_sessions` |
-| `CLAUDE_SESSIONS_DIR` | Claude Code roots (path list) | `~/.claude` |
-| `GEMINI_SESSIONS_DIR` | Gemini CLI roots (path list) | `~/.gemini` |
-| `CLAUDE_COWORK_SESSIONS_DIR` | Claude Cowork local task roots (path list) | `local-agent-mode-sessions` under Claude Desktop data directories |
-| `GROK_SESSIONS_DIR` | Grok Build session roots (path list) | `$GROK_HOME/sessions` |
-| `GROK_HOME` | Grok official data root (single path) | `~/.grok` |
-| `PI_SESSIONS_DIR` | Pi session roots (path list) | `~/.pi/agent/sessions` |
-| `PI_CODING_AGENT_SESSION_DIR` | Pi's official session directory | — |
-| `PI_CODING_AGENT_DIR` | Pi's official data directory | `~/.pi/agent` |
-| `OMP_SESSIONS_DIR` | Oh My Pi session roots (path list) | `~/.omp/agent/sessions` |
-| `OMP_AGENT_DIR` | Oh My Pi data directory (single path) | `~/.omp/agent` |
-| `KIMI_SESSIONS_DIR` | Kimi Code CLI data roots (path list) | `~/.kimi` |
-| `KIMI_SHARE_DIR` | Kimi Code CLI's official data directory | `~/.kimi` |
-| `OPENCODE_DB` | OpenCode's official SQLite database path | `~/.local/share/opencode/opencode.db` |
-| `KILO_DB` | Kilo's SQLite database path | `~/.local/share/kilo/kilo.db` |
-| `ZCODE_DB` | ZCode's official SQLite database path | `~/.zcode/cli/db/db.sqlite` |
-| `DEVIN_SESSIONS_DIR` | Devin data roots (path list) | `Devin/User` and `~/.local/share/devin/cli` |
-| `COPILOT_SESSIONS_DIR` | GitHub Copilot session roots (path list) | `~/.copilot/session-state` |
-| `HERMES_SESSIONS_DIR` | Hermes Agent data roots (path list) | `%LOCALAPPDATA%\hermes` (Windows) or `~/.hermes` |
-| `HERMES_HOME` | Hermes' official data root (single path) | same as above |
-| `VSCODE_COPILOT_SESSIONS_DIR` | VS Code Copilot Chat data roots (path list) | `Code/User` and `Code - Insiders/User` under the OS config dir |
-| `DSH_SESSIONS_DIR` | DeepSeek Harness data roots (path list) | `$DSH_HOME` or `~/.dsh` |
-| `DSH_HOME` | DeepSeek Harness' official data root (single path) | `~/.dsh` |
-| `SESSION_VIEWER_CACHE_DIR` | Rust SQLite index directory | Platform cache directory under `AllSessions` |
-| `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching | unset |
-| `ALLSESSIONS_WORKSPACE_DB` | AllSessions user-data SQLite path | Platform app-data directory |
+| Variable                       | Purpose                                            | Default                                                           |
+| ------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------- |
+| `CODEX_HOME`                   | Codex data root (single path)                      | `~/.codex`                                                        |
+| `CODEX_SESSIONS_DIR`           | Codex session roots (path list)                    | `$CODEX_HOME/sessions`                                            |
+| `CODEX_ARCHIVED_SESSIONS_DIR`  | Archived Codex session roots (path list)           | `$CODEX_HOME/archived_sessions`                                   |
+| `CLAUDE_SESSIONS_DIR`          | Claude Code roots (path list)                      | `~/.claude`                                                       |
+| `GEMINI_SESSIONS_DIR`          | Gemini CLI roots (path list)                       | `~/.gemini`                                                       |
+| `CLAUDE_COWORK_SESSIONS_DIR`   | Claude Cowork local task roots (path list)         | `local-agent-mode-sessions` under Claude Desktop data directories |
+| `GROK_SESSIONS_DIR`            | Grok Build session roots (path list)               | `$GROK_HOME/sessions`                                             |
+| `GROK_HOME`                    | Grok official data root (single path)              | `~/.grok`                                                         |
+| `PI_SESSIONS_DIR`              | Pi session roots (path list)                       | `~/.pi/agent/sessions`                                            |
+| `PI_CODING_AGENT_SESSION_DIR`  | Pi's official session directory                    | —                                                                 |
+| `PI_CODING_AGENT_DIR`          | Pi's official data directory                       | `~/.pi/agent`                                                     |
+| `OMP_SESSIONS_DIR`             | Oh My Pi session roots (path list)                 | `~/.omp/agent/sessions`                                           |
+| `OMP_AGENT_DIR`                | Oh My Pi data directory (single path)              | `~/.omp/agent`                                                    |
+| `KIMI_SESSIONS_DIR`            | Kimi Code CLI data roots (path list)               | `~/.kimi`                                                         |
+| `KIMI_SHARE_DIR`               | Kimi Code CLI's official data directory            | `~/.kimi`                                                         |
+| `OPENCODE_DB`                  | OpenCode's official SQLite database path           | `~/.local/share/opencode/opencode.db`                             |
+| `KILO_DB`                      | Kilo's SQLite database path                        | `~/.local/share/kilo/kilo.db`                                     |
+| `ZCODE_DB`                     | ZCode's official SQLite database path              | `~/.zcode/cli/db/db.sqlite`                                       |
+| `DEVIN_SESSIONS_DIR`           | Devin data roots (path list)                       | `Devin/User` and `~/.local/share/devin/cli`                       |
+| `COPILOT_SESSIONS_DIR`         | GitHub Copilot session roots (path list)           | `~/.copilot/session-state`                                        |
+| `HERMES_SESSIONS_DIR`          | Hermes Agent data roots (path list)                | `%LOCALAPPDATA%\hermes` (Windows) or `~/.hermes`                  |
+| `HERMES_HOME`                  | Hermes' official data root (single path)           | same as above                                                     |
+| `VSCODE_COPILOT_SESSIONS_DIR`  | VS Code Copilot Chat data roots (path list)        | `Code/User` and `Code - Insiders/User` under the OS config dir    |
+| `DSH_SESSIONS_DIR`             | DeepSeek Harness data roots (path list)            | `$DSH_HOME` or `~/.dsh`                                           |
+| `DSH_HOME`                     | DeepSeek Harness' official data root (single path) | `~/.dsh`                                                          |
+| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite index directory                        | Platform cache directory under `AllSessions`                      |
+| `SESSION_VIEWER_DISABLE_CACHE` | Set to `1` to disable persistent caching           | unset                                                             |
+| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions user-data SQLite path                  | Platform app-data directory                                       |
 
 The `*_SESSIONS_DIR` variables accept multiple paths separated by the OS path separator:
 
@@ -252,6 +255,7 @@ Export redaction is off by default.
 When enabled, AllSessions removes known session identifiers and common local-path patterns — but automatic redaction cannot cover every kind of sensitive information.
 
 > [!WARNING]
+>
 > - Review and sanitize export files, logs, screenshots, and issues before sharing.
 > - Treat `workspace.sqlite`, index caches, deletion backups, and maintenance backups as sensitive local data.
 > - Backups contain original records and are not encrypted.

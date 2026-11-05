@@ -8,7 +8,6 @@ import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import { DESKTOP_RUNTIME_REQUIRED } from "./api-client.js";
-import { renderStats } from "./stats-view.js";
 import {
   INSPECTOR_DRAWER_QUERY,
   MOBILE_LAYOUT_QUERY,
@@ -26,6 +25,7 @@ import {
   resetFilterState,
   restoreFromUrl,
   setSourceKindFilter,
+  setActivityRange,
   syncFilterControls,
   syncSessionRoot,
   syncUrl,
@@ -77,6 +77,7 @@ import {
   loadSessionDetail,
   loadSessions,
   loadStats,
+  renderCurrentStats,
   loadWorkspaceDiagnostics,
 } from "./app/data.js";
 import {
@@ -86,6 +87,7 @@ import {
 } from "./app/status.js";
 import {
   activateWorkspaceView,
+  bindTauriTrayEvents,
   closeTopDialogFromKeyboard,
   isEditableShortcutTarget,
   moveSessionSelection,
@@ -138,7 +140,7 @@ export function rerenderLocalizedContent() {
   }
   updateBulkToolbar();
   if (state.stats) {
-    renderStats(state.stats, elements);
+    renderCurrentStats();
   }
   renderWorkspaceStatus();
   syncShortcutHints();
@@ -321,6 +323,20 @@ async function initialize() {
   elements.statusHealthButton?.addEventListener("click", () => {
     void settingsController.open("sources");
   });
+  elements.statusWatch?.addEventListener("click", () => {
+    void settingsController.open("sources");
+  });
+  elements.statusFilterClear?.addEventListener("click", () => {
+    // 一键回到「全部会话」：状态栏是过滤条件的汇总出口，
+    // 比逐项清空搜索框、下拉与开关更短路径。
+    resetFilterState();
+    syncFilterControls();
+    syncUrl();
+    void Promise.all([loadSessions(), loadStats()]).catch((error) => {
+      console.error(error);
+      showError(`${t("loadListFailed")}: ${error.message}`);
+    });
+  });
 
   elements.providerFilter?.addEventListener("change", async (event) => {
     state.filters.provider = event.target.value;
@@ -329,9 +345,8 @@ async function initialize() {
   });
 
   elements.dateFilter?.addEventListener("change", async (event) => {
-    state.filters.date = event.target.value;
-    syncUrl();
-    await Promise.all([loadSessions(), loadStats()]);
+    const date = event.target.value;
+    await setActivityRange({ start: date, end: date });
   });
 
   elements.workspaceTagFilter?.addEventListener("change", async (event) => {
@@ -602,6 +617,13 @@ async function initialize() {
 
   let searchDebounce = null;
   document
+    .querySelector("#project-review-open")
+    ?.addEventListener("click", () => {
+      activateWorkspaceView("stats")
+        .then(() => loadStats())
+        .catch((error) => showError(error.message));
+    });
+  document
     .querySelector("#search-sort")
     ?.addEventListener("change", (event) => {
       state.searchSort = event.target.value;
@@ -802,6 +824,9 @@ async function initialize() {
   });
   void bindTauriSettingsEvent().catch((error) => {
     console.error("绑定设置事件失败", error);
+  });
+  void bindTauriTrayEvents().catch((error) => {
+    console.error("绑定托盘会话事件失败", error);
   });
 
   elements.detailSearchInput?.addEventListener("input", (event) => {

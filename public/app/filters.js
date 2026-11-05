@@ -12,11 +12,14 @@ import {
 } from "./shared.js";
 import { loadSessions, loadStats } from "./data.js";
 import { renderWorkspaceStatus } from "./status.js";
+import { createIcon } from "./icons.js";
 
 export function currentFilterValue() {
   return {
     ...state.filters,
     q: state.searchQuery,
+    exact_tool: state.searchExactTool,
+    command: state.searchCommand,
     show_archived: state.showArchived,
     show_codex_archived: state.showCodexArchived,
     show_hidden: state.showHidden,
@@ -30,10 +33,14 @@ export function applyFilterValue(filter = {}) {
     provider: filter.provider || "",
     source_kind: filter.source_kind || "",
     date: filter.date || "",
+    activity_from: filter.activity_from || "",
+    activity_to: filter.activity_to || "",
     cwd: filter.cwd || "",
     tag: filter.tag || "",
   };
   state.searchQuery = filter.q || "";
+  state.searchExactTool = filter.exact_tool || "";
+  state.searchCommand = filter.command || "";
   state.showArchived = filter.show_archived === true;
   state.showCodexArchived = filter.show_codex_archived === true;
   state.showHidden = filter.show_hidden === true;
@@ -47,11 +54,17 @@ export function syncUrl() {
   if (state.filters.source_kind)
     params.set("source_kind", state.filters.source_kind);
   if (state.filters.date) params.set("date", state.filters.date);
+  if (state.filters.activity_from)
+    params.set("activity_from", state.filters.activity_from);
+  if (state.filters.activity_to)
+    params.set("activity_to", state.filters.activity_to);
   if (state.filters.cwd) params.set("cwd", state.filters.cwd);
   if (state.filters.tag) params.set("tag", state.filters.tag);
   if (state.searchQuery) params.set("q", state.searchQuery);
   if (state.searchRole) params.set("role", state.searchRole);
   if (state.searchTool) params.set("tool", state.searchTool);
+  if (state.searchExactTool) params.set("exact_tool", state.searchExactTool);
+  if (state.searchCommand) params.set("command", state.searchCommand);
   if (state.searchRegex) params.set("regex", "1");
   if (state.searchFrom) params.set("from", state.searchFrom);
   if (state.searchTo) params.set("to", state.searchTo);
@@ -70,11 +83,15 @@ export function restoreFromUrl() {
   state.filters.provider = params.get("provider") || "";
   state.filters.source_kind = params.get("source_kind") || "";
   state.filters.date = params.get("date") || "";
+  state.filters.activity_from = params.get("activity_from") || "";
+  state.filters.activity_to = params.get("activity_to") || "";
   state.filters.cwd = params.get("cwd") || "";
   state.filters.tag = params.get("tag") || "";
   state.searchQuery = params.get("q") || "";
   state.searchRole = params.get("role") || "";
   state.searchTool = params.get("tool") || "";
+  state.searchExactTool = params.get("exact_tool") || "";
+  state.searchCommand = params.get("command") || "";
   state.searchRegex = params.get("regex") === "1";
   state.searchFrom = params.get("from") || "";
   state.searchTo = params.get("to") || "";
@@ -102,6 +119,15 @@ export async function setSourceKindFilter(sourceKind) {
 
 export async function setCwdFilter(cwd) {
   state.filters.cwd = cwd;
+  syncFilterControls();
+  syncUrl();
+  await Promise.all([loadSessions(), loadStats()]);
+}
+
+export async function setActivityRange({ start = "", end = "" }) {
+  state.filters.date = "";
+  state.filters.activity_from = start;
+  state.filters.activity_to = end;
   syncFilterControls();
   syncUrl();
   await Promise.all([loadSessions(), loadStats()]);
@@ -265,9 +291,17 @@ export function syncSessionRoot() {
   elements.sessionRoot.title = roots.join("\n");
 }
 export function syncFilterControls() {
+  document
+    .querySelector("#project-review-open")
+    ?.classList.toggle("hidden", !state.filters.cwd);
   if (elements.providerFilter)
     elements.providerFilter.value = state.filters.provider;
-  if (elements.dateFilter) elements.dateFilter.value = state.filters.date;
+  if (elements.dateFilter)
+    elements.dateFilter.value =
+      state.filters.date ||
+      (state.filters.activity_from === state.filters.activity_to
+        ? state.filters.activity_from
+        : "");
   if (elements.workspaceTagFilter)
     elements.workspaceTagFilter.value = state.filters.tag;
   if (elements.searchInput) elements.searchInput.value = state.searchQuery;
@@ -352,6 +386,8 @@ export function buildSearchUrl({ cursor } = {}) {
   params.set("sort", state.searchSort);
   if (state.searchRole) params.set("role", state.searchRole);
   if (state.searchTool) params.set("tool", state.searchTool);
+  if (state.searchExactTool) params.set("exact_tool", state.searchExactTool);
+  if (state.searchCommand) params.set("command", state.searchCommand);
   if (state.searchRegex) params.set("regex", "1");
   if (state.searchFrom) params.set("from", state.searchFrom);
   if (state.searchTo) params.set("to", state.searchTo);
@@ -360,10 +396,15 @@ export function buildSearchUrl({ cursor } = {}) {
   return `/api/search?${params.toString()}`;
 }
 export async function clearFilterChip(type) {
-  if (type in state.filters) {
+  if (type === "activityRange") {
+    state.filters.activity_from = "";
+    state.filters.activity_to = "";
+  } else if (type in state.filters) {
     state.filters[type] = "";
   } else if (type === "search") {
     state.searchQuery = "";
+  } else if (type === "searchExactTool" || type === "searchCommand") {
+    state[type] = "";
   } else if (type === "showArchived") {
     state.showArchived = false;
   } else if (type === "showCodexArchived") {
@@ -388,6 +429,20 @@ export async function clearFilterChip(type) {
 
 export function activeFilterEntries() {
   const entries = [];
+  if (state.filters.activity_from || state.filters.activity_to) {
+    entries.push({
+      type: "activityRange",
+      label: t("statsRange"),
+      value: `${state.filters.activity_from || t("statsRangeAnyStart")} — ${state.filters.activity_to || t("statsRangeAnyEnd")}`,
+    });
+  }
+  for (const [type, label] of [
+    ["searchExactTool", "statsToolRanking"],
+    ["searchCommand", "statsCommandRanking"],
+  ]) {
+    if (state[type])
+      entries.push({ type, label: t(label), value: state[type] });
+  }
   if (state.searchQuery) {
     entries.push({
       type: "search",
@@ -466,20 +521,9 @@ export function activeFilterEntries() {
   return entries;
 }
 
-// 筛选 chip 的关闭图标：与删除对话框的 SVG X 同一几何，避免文本字符随字体漂移。
+// 筛选 chip 的关闭图标：与删除对话框同一 Phosphor X，避免文本字符随字体漂移。
 function createCloseIcon() {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", "10");
-  svg.setAttribute("height", "10");
-  svg.setAttribute("fill", "none");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", "M6 6l12 12M18 6L6 18");
-  path.setAttribute("stroke", "currentColor");
-  path.setAttribute("stroke-width", "2.4");
-  path.setAttribute("stroke-linecap", "round");
-  svg.append(path);
-  return svg;
+  return createIcon("x", { size: 10 });
 }
 
 export function renderActiveFilters() {
@@ -489,7 +533,8 @@ export function renderActiveFilters() {
   const entries = activeFilterEntries().filter(
     (entry) =>
       entry.type !== "source_kind" &&
-      (state.activeView !== "stats" || entry.type !== "search")
+      (state.activeView !== "stats" ||
+        !["search", "searchExactTool", "searchCommand"].includes(entry.type))
   );
   elements.resetFilters?.classList.toggle(
     "hidden",
@@ -543,12 +588,16 @@ export function resetFilterState() {
     provider: "",
     source_kind: "",
     date: "",
+    activity_from: "",
+    activity_to: "",
     cwd: "",
     tag: "",
   };
   state.searchQuery = "";
   state.searchRole = "";
   state.searchTool = "";
+  state.searchExactTool = "";
+  state.searchCommand = "";
   state.searchRegex = false;
   state.searchFrom = "";
   state.searchTo = "";

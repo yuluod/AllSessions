@@ -11,6 +11,59 @@ use super::{
 };
 
 impl SessionStore {
+    pub fn related_sessions(
+        &self,
+        key: &str,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Value {
+        let Some(key) = self.resolve_record_key(key) else {
+            return json!({ "items": [], "total": 0 });
+        };
+        let current = &self.records[&key].summary;
+        let id = current["id"].as_str().unwrap_or_default();
+        let parent = current["parent_session_id"].as_str().unwrap_or_default();
+        let family_source = |kind: &str| {
+            if kind == "codex_archived" {
+                "codex".to_string()
+            } else {
+                kind.to_string()
+            }
+        };
+        let source = family_source(current["source_kind"].as_str().unwrap_or_default());
+        let mut items = Vec::new();
+        let mut total = 0;
+        for summary in &self.summaries {
+            if summary["_key"].as_str() == Some(&key)
+                || family_source(summary["source_kind"].as_str().unwrap_or_default()) != source
+                || workspace
+                    .sessions
+                    .get(summary["_key"].as_str().unwrap_or_default())
+                    .is_some_and(|state| state.removed)
+            {
+                continue;
+            }
+            let relation = if !parent.is_empty() && summary["id"] == parent {
+                "parent"
+            } else if !id.is_empty() && summary["parent_session_id"] == id {
+                "child"
+            } else {
+                continue;
+            };
+            total += 1;
+            if relation == "parent" {
+                if items.len() == 32 {
+                    items.pop();
+                }
+                items.insert(0, json!({ "key": summary["_key"], "title": summary["title"], "relation": relation, "source": summary["display_source"] }));
+                continue;
+            }
+            if items.len() < 32 {
+                items.push(json!({ "key": summary["_key"], "title": summary["title"], "relation": relation, "source": summary["display_source"] }));
+            }
+        }
+        json!({ "items": items, "total": total })
+    }
+
     pub fn list(
         &self,
         query: &HashMap<String, String>,
@@ -57,7 +110,10 @@ impl SessionStore {
         query: &str,
     ) -> Result<Value, String> {
         let record = self.records.get(key).ok_or("会话不存在")?;
-        let messages = self.index_cache.search.context(key, ordinal, query)?;
+        let mut messages = self.index_cache.search.context(key, ordinal, query)?;
+        for message in &mut messages {
+            super::annotate_activity(message);
+        }
         if !messages
             .iter()
             .any(|m| m["search_ordinal"].as_i64() == Some(ordinal))
@@ -88,7 +144,7 @@ impl SessionStore {
             return Ok(detail);
         }
         let record = self.records.get(&resolved).ok_or_else(missing)?;
-        let detail = if let Some(locator) = &record.detail_locator {
+        let mut detail = if let Some(locator) = &record.detail_locator {
             match locator {
                 DetailLocator::Gemini(locator) => gemini::parse_detail(&record.source, locator),
                 DetailLocator::OpenCode(locator) => opencode::parse_detail(&record.source, locator),
@@ -103,6 +159,11 @@ impl SessionStore {
             parse_detail(&record.path, &record.source)
         }
         .map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))?;
+        if let Some(messages) = detail["conversation_messages"].as_array_mut() {
+            for message in messages {
+                super::annotate_activity(message);
+            }
+        }
         let size = serde_json::to_vec(&detail)
             .map(|value| value.len())
             .unwrap_or_default();
@@ -233,7 +294,7 @@ impl SearchPlan {
                 hits.retain(|hit| bool_query(query,"show_removed") || !workspace.message_removed(key,hit["message_key"].as_str().unwrap_or_default()));
                 // 指定了角色或工具筛选时，只在消息正文里匹配；标题等摘要字段
                 // 的命中不参与，避免“只搜用户提问”被标题匹配绕过。
-                let augment_fields = filters.roles.is_empty() && filters.tool.is_none();
+                let augment_fields = filters.roles.is_empty() && filters.tool.is_none() && !filters.activity_only();
                 if augment_fields {
                 for (field, text, score) in [
                     ("title",summary["title"].as_str().unwrap_or_default().to_string(),5.0),
@@ -253,7 +314,7 @@ impl SearchPlan {
                     }
                 }
                 }
-                let matched = if regex_mode {
+                let matched = if regex_mode || (terms.is_empty() && filters.activity_only()) {
                     !hits.is_empty()
                 } else {
                     !terms.is_empty() && terms.iter().all(|term|hits.iter().any(|hit|hit["term"].as_str()==Some(term)))

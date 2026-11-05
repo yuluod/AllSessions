@@ -56,6 +56,10 @@
   --surface-muted: var(--surface-sunken);
   --danger: var(--signal);
   --danger-soft: var(--signal-soft);
+  /* 数据可视化默认沿用强调色；主题可覆写为独立数据色，与「可交互=accent」解耦。 */
+  --chart: var(--accent);
+  --chart-strong: var(--accent-strong);
+  --chart-soft: var(--accent-soft);
   --shadow-header: var(--shadow-raised);
 }
 

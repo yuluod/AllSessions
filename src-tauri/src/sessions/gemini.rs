@@ -734,9 +734,15 @@ fn accumulate_chat_tokens(state: &mut ParseState, messages: &[Value]) {
         let tool = tokens["tool"].as_u64().unwrap_or(0);
         let output = tokens["output"].as_u64().unwrap_or(0);
         let thoughts = tokens["thoughts"].as_u64().unwrap_or(0);
-        state.cached_input_tokens += cached;
-        state.input_tokens += input.saturating_sub(cached).saturating_add(tool);
-        state.output_tokens += output.saturating_add(thoughts);
+        state.record_usage(
+            record["timestamp"].as_str().unwrap_or_default(),
+            super::usage::TokenUsage {
+                input: input.saturating_sub(cached).saturating_add(tool),
+                output: output.saturating_add(thoughts),
+                cache_read: cached,
+                cache_write: 0,
+            },
+        );
     }
 }
 
@@ -825,7 +831,7 @@ impl MergedSession {
         }
     }
 
-    fn merge(&mut self, contribution: &Value) {
+    fn merge(&mut self, contribution: &Value) -> Result<(), String> {
         let summary = &contribution["summary"];
         let path = summary["file_path"]
             .as_str()
@@ -880,10 +886,45 @@ impl MergedSession {
         self.state.output_tokens += summary["output_tokens"].as_u64().unwrap_or_default();
         self.state.cached_input_tokens +=
             summary["cached_input_tokens"].as_u64().unwrap_or_default();
+        if let Some(usage) = summary.get("usage") {
+            self.state
+                .usage
+                .merge(serde_json::from_value(usage.clone()).map_err(|error| error.to_string())?);
+        }
+        if let Some(activity) = summary.get("activity") {
+            self.state.activity.merge(
+                serde_json::from_value(activity.clone()).map_err(|error| error.to_string())?,
+            );
+        }
         if let Some(roles) = summary["role_counts"].as_object() {
             for (role, count) in roles {
                 *self.state.roles.entry(role.clone()).or_default() +=
                     count.as_u64().unwrap_or_default();
+            }
+        }
+        for (target, field) in [
+            (&mut self.state.tool_counts, "tool_counts"),
+            (&mut self.state.command_counts, "command_counts"),
+        ] {
+            if let Some(counts) = summary[field].as_object() {
+                for (name, count) in counts {
+                    *target.entry(name.clone()).or_default() += count.as_u64().unwrap_or_default();
+                }
+            }
+        }
+        for (target, field) in [
+            (&mut self.state.tool_last_used, "tool_last_used"),
+            (&mut self.state.command_last_used, "command_last_used"),
+        ] {
+            if let Some(times) = summary[field].as_object() {
+                for (name, value) in times {
+                    if let Some(timestamp) = value.as_str() {
+                        let latest = target.entry(name.clone()).or_default();
+                        if timestamp > latest.as_str() {
+                            *latest = timestamp.to_string();
+                        }
+                    }
+                }
             }
         }
         if self.state.first_user.is_empty() {
@@ -910,6 +951,7 @@ impl MergedSession {
             &[contribution["search_text"].as_str().unwrap_or_default()],
             SEARCH_TEXT_LIMIT,
         );
+        Ok(())
     }
 
     fn add_brain_message(&mut self, role: &str, text: &str, timestamp: &str, subtype: &str) {
@@ -1068,7 +1110,7 @@ pub(super) fn parse_source(source: &Source, cache: &IndexCache) -> Result<Parsed
                 merged.merge_paths_only(contribution);
                 continue;
             }
-            merged.merge(contribution);
+            merged.merge(contribution)?;
             let keys = duplicate_keys_from_json(&contribution["duplicate_user_keys"])
                 .ok_or_else(|| "Gemini 缓存缺少 artifact 去重字段".to_string())?;
             duplicate_user_keys.extend(keys);
@@ -1459,6 +1501,8 @@ pub(super) fn parse_detail(source: &Source, locator: &DetailLocator) -> Result<V
     }
     Ok(json!({
         "summary": summary,
+        "usage_events": state.usage.events,
+        "usage_event_count": state.usage.event_count,
         "conversation_messages": message_values,
         "raw_events": event_values,
         "truncation": {
@@ -1475,6 +1519,7 @@ fn parse_chat_detail(source: &Source, locator: &DetailLocator) -> Result<Value, 
     let chat = replay_chat_conversation(locator)?;
     let mut state = ParseState::new(&locator.primary_path);
     state.id = locator.session_id.clone();
+    accumulate_chat_tokens(&mut state, &chat.messages);
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
     let mut events = HeadTail::new(DETAIL_EVENT_LIMIT);
     for (index, record) in chat.messages.iter().enumerate() {
@@ -1618,6 +1663,8 @@ fn parse_chat_detail(source: &Source, locator: &DetailLocator) -> Result<Value, 
     }
     Ok(json!({
         "summary": summary,
+        "usage_events": state.usage.events,
+        "usage_event_count": state.usage.event_count,
         "conversation_messages": message_values,
         "raw_events": event_values,
         "truncation": {
@@ -2250,14 +2297,16 @@ mod tests {
     #[test]
     fn 空文件路径不会覆盖主路径() {
         let mut merged = super::MergedSession::new("g1", PathBuf::from("/primary/logs.json"));
-        merged.merge(&json!({
-            "summary": {
-                "timestamp": "2026-01-01T00:00:00Z",
-                "last_timestamp": "2026-01-01T00:00:00Z",
-                "file_path": ""
-            },
-            "search_text": ""
-        }));
+        merged
+            .merge(&json!({
+                "summary": {
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "last_timestamp": "2026-01-01T00:00:00Z",
+                    "file_path": ""
+                },
+                "search_text": ""
+            }))
+            .unwrap();
 
         assert_eq!(merged.path, PathBuf::from("/primary/logs.json"));
     }

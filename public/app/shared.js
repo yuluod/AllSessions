@@ -16,12 +16,17 @@ export const REMOVED_MESSAGES_KEY = "allsessions_removed_messages";
 export const sessionRequestGate = createLatestRequestGate();
 export const detailRequestGate = createLatestRequestGate();
 export const statsRequestGate = createLatestRequestGate();
+export const statsSessionsRequestGate = createLatestRequestGate();
 
 export const state = {
   capabilities: null,
   diagnostics: null,
   facets: null,
   stats: null,
+  statsSessions: null,
+  statsSessionsSort: "recent",
+  statsSessionsLoading: false,
+  statsSessionsError: null,
   sessions: [],
   scanning: false,
   selectedSessionKey: null,
@@ -32,6 +37,8 @@ export const state = {
   searchSort: "relevance",
   searchRole: "",
   searchTool: "",
+  searchExactTool: "",
+  searchCommand: "",
   searchRegex: false,
   searchFrom: "",
   searchTo: "",
@@ -56,6 +63,8 @@ export const state = {
     provider: "",
     source_kind: "",
     date: "",
+    activity_from: "",
+    activity_to: "",
     cwd: "",
     tag: "",
   },
@@ -69,6 +78,12 @@ export const state = {
   selectedSessionKeys: new Set(),
   bulkSelectionMode: false,
 };
+
+export function isSearchActive() {
+  return Boolean(
+    state.searchQuery || state.searchExactTool || state.searchCommand
+  );
+}
 
 export function isMessageRemoved(message) {
   return message?._removed === true;
@@ -156,6 +171,9 @@ export const elements = {
   statusHealthButton: document.querySelector("#status-health-button"),
   statusHealthText: document.querySelector("#status-health-text"),
   statusHealthIssues: document.querySelector("#status-health-issues"),
+  statusWatch: document.querySelector("#status-watch"),
+  statusWatchText: document.querySelector("#status-watch-text"),
+  statusFilterClear: document.querySelector("#status-filter-clear"),
   indexProgressBar: document.querySelector("#index-progress"),
   statusFilterText: document.querySelector("#status-filter-text"),
   statusLanguage: document.querySelector("#status-language"),
@@ -176,6 +194,8 @@ export const elements = {
   messageOutlineList: document.querySelector("#message-outline-list"),
   messageOutlineToggle: document.querySelector("#message-outline-toggle"),
   conversationList: document.querySelector("#conversation-list"),
+  toolOperations: document.querySelector("#tool-operations"),
+  sessionInsights: document.querySelector("#session-insights"),
   rawEvents: document.querySelector("#raw-events"),
   conversationTab: document.querySelector("#conversation-tab"),
   rawTab: document.querySelector("#raw-tab"),
@@ -196,8 +216,11 @@ export const elements = {
   revealProjectBtn: document.querySelector("#reveal-project-btn"),
   resumeSessionBtn: document.querySelector("#resume-session-btn"),
   statsDashboard: document.querySelector("#stats-dashboard"),
+  statsRange: document.querySelector("#stats-range"),
+  statsSessions: document.querySelector("#stats-sessions"),
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),
+  projectReview: document.querySelector("#project-review"),
   trendChartBody: document.querySelector("#trend-chart-body"),
   tokenHeatmapBody: document.querySelector("#token-heatmap-body"),
   agentChartBody: document.querySelector("#agent-chart-body"),
@@ -220,6 +243,7 @@ export const elements = {
     document.querySelectorAll('[name="settings-scheme"]')
   ),
   settingsKeepRunning: document.querySelector("#settings-keep-running"),
+  settingsLaunchAtLogin: document.querySelector("#settings-launch-at-login"),
   settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
   settingsAppIconInputs: Array.from(
     document.querySelectorAll('[name="settings-app-icon"]')

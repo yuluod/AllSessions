@@ -10,12 +10,18 @@ import {
   formatTimestamp,
 } from "./session-format.js";
 import { displayMessageText } from "./session-export.js";
-import { filterConversationMessages } from "./conversation-filter.js";
+import { createToolOperations } from "./tool-operations.js";
+import { renderSessionInsights } from "./session-insights.js";
+import {
+  filterConversationMessages,
+  groupToolMessages,
+} from "./conversation-filter.js";
 import {
   highlightMatches,
   highlightRegexMatches,
   bindMatchNavigation,
 } from "./search-view.js";
+import { createIcon } from "./app/icons.js";
 
 const ROLE_LABEL_KEYS = {
   user: "roleUser",
@@ -42,22 +48,7 @@ function setCopyFeedback(button, outcome) {
 }
 
 function createCopyResultIcon(success) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", "12");
-  svg.setAttribute("height", "12");
-  svg.setAttribute("fill", "none");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute(
-    "d",
-    success ? "M5 12.5l4.5 4.5L19 7.5" : "M6 6l12 12M18 6L6 18"
-  );
-  path.setAttribute("stroke", "currentColor");
-  path.setAttribute("stroke-width", "2.4");
-  path.setAttribute("stroke-linecap", "round");
-  path.setAttribute("stroke-linejoin", "round");
-  svg.append(path);
-  return svg;
+  return createIcon(success ? "check" : "x", { size: 12 });
 }
 
 function displayRoleLabel(role) {
@@ -73,8 +64,13 @@ export function createConversationView({
   onRestoreMessage,
   onHighlightError,
   onLoadAttachment,
+  onSelectSession,
 }) {
   let highlightController = null;
+  const operationsView = createToolOperations({
+    container: elements.toolOperations,
+    onSelectMessage: scrollToMessage,
+  });
   function filtered(messages) {
     const decorated = messages.map((message) => ({
       ...message,
@@ -93,13 +89,12 @@ export function createConversationView({
   }
 
   function displayed(messages) {
-    const visible = filtered(messages);
-    return state.conversationDesc ? [...visible].reverse() : visible;
+    const groups = groupToolMessages(filtered(messages));
+    return state.conversationDesc ? [...groups].reverse() : groups;
   }
 
   function setMessageCardCollapsed(card, toggleButton, collapsed) {
     card.classList.toggle("collapsed", collapsed);
-    toggleButton.textContent = collapsed ? "▶" : "▼";
     toggleButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
     const label = collapsed ? t("expandMessage") : t("collapseMessage");
     toggleButton.title = label;
@@ -107,20 +102,22 @@ export function createConversationView({
   }
 
   function scrollToMessage(index) {
-    const target = document.querySelector(`#message-${index + 1}`);
-    if (!target) return;
-    const toggle = target.querySelector(".message-toggle");
-    if (toggle) setMessageCardCollapsed(target, toggle, false);
+    const anchor = document.querySelector(`#message-${index + 1}`);
+    if (!anchor) return;
+    // 工具结果在合并卡内以锚点形式存在：折叠落到所属卡片，滚动仍对准结果本身。
+    const card = anchor.closest(".message-card") || anchor;
+    const toggle = card.querySelector(".message-toggle");
+    if (toggle) setMessageCardCollapsed(card, toggle, false);
     const scroller = elements.conversationList?.closest(".detail-shell");
     if (!scroller) {
-      target.scrollIntoView({ block: "start", behavior: "auto" });
+      anchor.scrollIntoView({ block: "start", behavior: "auto" });
       return;
     }
-    const margin = parseFloat(getComputedStyle(target).scrollMarginTop) || 0;
+    const margin = parseFloat(getComputedStyle(card).scrollMarginTop) || 0;
     const targetTop = () =>
       Math.max(
         0,
-        target.getBoundingClientRect().top -
+        anchor.getBoundingClientRect().top -
           scroller.getBoundingClientRect().top +
           scroller.scrollTop -
           margin
@@ -141,9 +138,9 @@ export function createConversationView({
     }, 350);
   }
 
-  function appendMessageNavItems(container, messages) {
+  function appendMessageNavItems(container, groups) {
     container.replaceChildren();
-    if (!messages.length) {
+    if (!groups.length) {
       const empty = document.createElement("p");
       empty.className = "props-empty";
       empty.textContent = t("noMessageNav");
@@ -151,7 +148,7 @@ export function createConversationView({
       return;
     }
 
-    messages.forEach((message) => {
+    groups.forEach(({ message }) => {
       const button = document.createElement("button");
       button.className = "message-nav-item";
       button.type = "button";
@@ -179,40 +176,40 @@ export function createConversationView({
 
   function renderMessageNavigation(messages) {
     // 两个形态共享同一份列表与位置高亮：宽屏浮动目录（收起为右缘进度轨），窄屏工具栏下拉。
-    const visibleMessages = displayed(messages);
+    const visibleGroups = displayed(messages);
     if (elements.messageNavInlineList) {
-      appendMessageNavItems(elements.messageNavInlineList, visibleMessages);
+      appendMessageNavItems(elements.messageNavInlineList, visibleGroups);
     }
     if (elements.messageOutlineList) {
-      appendMessageNavItems(elements.messageOutlineList, visibleMessages);
+      appendMessageNavItems(elements.messageOutlineList, visibleGroups);
     }
-    renderMessageOutlineRail(visibleMessages);
+    renderMessageOutlineRail(visibleGroups);
     bindMessageNavSpy();
   }
 
   // 收起态的右缘进度轨：圆点过多时按桶聚合（轨道高度约可容纳 60 个圆点）。
   const OUTLINE_RAIL_MAX_DOTS = 60;
   let lastNavMessages = [];
-  function renderMessageOutlineRail(visibleMessages) {
-    lastNavMessages = visibleMessages;
+  function renderMessageOutlineRail(visibleGroups) {
+    lastNavMessages = visibleGroups;
     const rail = elements.messageOutline?.querySelector(
       ".message-outline-rail"
     );
     if (!rail) return;
     rail.replaceChildren();
-    if (!visibleMessages.length) return;
-    const step = Math.ceil(visibleMessages.length / OUTLINE_RAIL_MAX_DOTS);
-    const buckets = Math.ceil(visibleMessages.length / step);
+    if (!visibleGroups.length) return;
+    const step = Math.ceil(visibleGroups.length / OUTLINE_RAIL_MAX_DOTS);
+    const buckets = Math.ceil(visibleGroups.length / step);
     for (let b = 0; b < buckets; b++) {
       const start = b * step;
-      const first = visibleMessages[start];
+      const first = visibleGroups[start].message;
       const dot = document.createElement("button");
       dot.type = "button";
       dot.className = "message-outline-dot";
       // 初始按索引均分占位；卡片渲染完成后由 layoutMessageOutlineRail
       // 改为按真实内容位置分布（真正的滚动 minimap）。
       dot.style.top = buckets > 1 ? (b / (buckets - 1)) * 100 + "%" : "50%";
-      dot.dataset.startIdx = start;
+      dot.dataset.startIdx = first._origIdx;
       dot.dataset.tip =
         "#" +
         (first._origIdx + 1) +
@@ -229,11 +226,11 @@ export function createConversationView({
   }
 
   // 依据各桶首条消息在滚动范围内的真实位置摆放圆点；会话过短无法滚动时退回索引均分。
-  function layoutMessageOutlineRail(visibleMessages) {
+  function layoutMessageOutlineRail(visibleGroups) {
     const rail = elements.messageOutline?.querySelector(
       ".message-outline-rail"
     );
-    if (!rail || !visibleMessages.length) return;
+    if (!rail || !visibleGroups.length) return;
     const scroller = elements.conversationList?.closest(".detail-shell");
     if (!scroller) return;
     const dots = rail.querySelectorAll(".message-outline-dot");
@@ -320,16 +317,91 @@ export function createConversationView({
     }
   }
 
+  // 工具结果并入调用卡：结果保留自己的锚点，搜索定位与附件加载仍按原消息索引工作。
+  function appendToolResult(after, result, messageContents) {
+    const block = document.createElement("div");
+    block.className = "tool-result";
+    block.id = `message-${result._origIdx + 1}`;
+    block.classList.toggle("removed", result._removed === true);
+
+    const head = document.createElement("div");
+    head.className = "tool-result-head";
+    const label = document.createElement("span");
+    label.className = "tool-result-label";
+    label.textContent = `#${result._origIdx + 1} · ${t("toolResult")}`;
+    head.append(label);
+    if (result.is_error === true) {
+      const status = document.createElement("span");
+      status.className = "tool-result-status";
+      status.dataset.state = "error";
+      status.textContent = t("toolResultError");
+      head.append(status);
+    }
+    const time = document.createElement("time");
+    time.className = "tool-result-time";
+    time.textContent = formatListTimestamp(result.timestamp);
+    time.title = formatTimestamp(result.timestamp);
+    head.append(time);
+    if (result._message_key && result._removed) {
+      const restoreButton = document.createElement("button");
+      restoreButton.type = "button";
+      restoreButton.className = "message-restore-btn";
+      restoreButton.textContent = t("restore");
+      restoreButton.addEventListener("click", () => onRestoreMessage?.(result));
+      head.append(restoreButton);
+    }
+    if (result._message_key) {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "message-delete-btn";
+      deleteButton.textContent = t("deleteMessage");
+      deleteButton.addEventListener("click", () => onRequestDelete?.(result));
+      head.append(deleteButton);
+    }
+
+    const content = document.createElement("div");
+    content.className = "message-text markdown-body tool-result-text";
+    content.id = `message-content-${result._origIdx + 1}`;
+    renderMarkdown(content, displayMessageText(result));
+    messageContents.push(content);
+    if (!state.searchRegex) highlightMatches(content, state.detailQuery);
+
+    block.append(head, content);
+    if (result.attachments?.length) {
+      const attachmentsHost = document.createElement("div");
+      attachmentsHost.className = "message-attachments";
+      renderAttachments(attachmentsHost, result.attachments, {
+        sessionKey: state.currentDetail?.summary?._key,
+        loadAttachment: onLoadAttachment,
+      });
+      block.append(attachmentsHost);
+    }
+    after.after(block);
+    return content.id;
+  }
+
   function renderConversation(messages) {
     highlightController?.abort();
     resetAttachmentObservers();
     highlightController = new AbortController();
     const { signal } = highlightController;
     elements.conversationList.replaceChildren();
-    const visibleMessages = displayed(messages);
+    const visibleGroups = displayed(messages);
+    renderSessionInsights(
+      state.currentDetail,
+      visibleGroups,
+      elements.sessionInsights,
+      { onSelectMessage: scrollToMessage, onSelectSession }
+    );
+    operationsView.render(visibleGroups, {
+      sessionKey: state.currentDetail?.summary?._key,
+      truncated:
+        state.currentDetail?.truncation?.truncated === true ||
+        state.currentDetail?.search_context === true,
+    });
     renderMessageNavigation(messages);
 
-    if (!visibleMessages.length) {
+    if (!visibleGroups.length) {
       bindMatchNavigation(elements.conversationList);
       const empty = document.createElement("p");
       empty.className = "hero-copy";
@@ -342,7 +414,7 @@ export function createConversationView({
 
     const batch = document.createDocumentFragment();
     const messageContents = [];
-    visibleMessages.forEach((message) => {
+    visibleGroups.forEach(({ message, result }) => {
       const fragment =
         elements.conversationItemTemplate.content.cloneNode(true);
       const card = fragment.querySelector(".message-card");
@@ -391,13 +463,19 @@ export function createConversationView({
       if (!state.searchRegex)
         highlightMatches(messageContent, state.detailQuery);
 
+      const resultContentId = result
+        ? appendToolResult(messageContent, result, messageContents)
+        : "";
       const shouldCollapse =
         message.role === "tool" ||
         message.synthetic_context === true ||
         markdownToPlainText(messageText).length > 1800;
 
       const toggleButton = fragment.querySelector(".message-toggle");
-      toggleButton.setAttribute("aria-controls", messageContent.id);
+      toggleButton.setAttribute(
+        "aria-controls",
+        [messageContent.id, resultContentId].filter(Boolean).join(" ")
+      );
       setMessageCardCollapsed(card, toggleButton, shouldCollapse);
       toggleButton.addEventListener("click", () => {
         setMessageCardCollapsed(
@@ -412,9 +490,12 @@ export function createConversationView({
       copyButton.className = "message-copy-btn";
       copyButton.title = t("copyMessage");
       copyButton.textContent = t("copy");
+      const copyText = result
+        ? `${messageText}\n\n${displayMessageText(result)}`
+        : messageText;
       copyButton.addEventListener("click", () => {
         navigator.clipboard
-          .writeText(messageText)
+          .writeText(copyText)
           .then(() => setCopyFeedback(copyButton, "success"))
           .catch(() => setCopyFeedback(copyButton, "failed"));
       });
@@ -455,7 +536,7 @@ export function createConversationView({
     }
     // 卡片就位后：校准导航高亮，并把进度轨圆点对齐到真实内容位置。
     messageNavSpyUpdate?.();
-    layoutMessageOutlineRail(visibleMessages);
+    layoutMessageOutlineRail(visibleGroups);
   }
 
   return { renderConversation };

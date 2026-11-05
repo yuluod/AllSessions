@@ -9,6 +9,7 @@ import {
   open as openPathDialog,
 } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { createIcon } from "./app/icons.js";
 
 const SOURCE_KINDS = [
   { key: "codex", agent: "codex", label: "Codex" },
@@ -494,24 +495,7 @@ export function createSettingsController({
     closeButton.type = "button";
     closeButton.className = "ghost-button delete-dialog-close-button";
     closeButton.setAttribute("aria-label", t("closeSettings"));
-    const closeSvg = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "svg"
-    );
-    closeSvg.setAttribute("viewBox", "0 0 24 24");
-    closeSvg.setAttribute("width", "18");
-    closeSvg.setAttribute("height", "18");
-    closeSvg.setAttribute("fill", "none");
-    const closePath = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "path"
-    );
-    closePath.setAttribute("d", "M6 6l12 12M18 6L6 18");
-    closePath.setAttribute("stroke", "currentColor");
-    closePath.setAttribute("stroke-width", "1.8");
-    closePath.setAttribute("stroke-linecap", "round");
-    closeSvg.append(closePath);
-    closeButton.append(closeSvg);
+    closeButton.append(createIcon("x", { size: 18 }));
     closeButton.addEventListener("click", () => sourceConfigDialogEl.close());
     header.append(title, origin, closeButton);
 
@@ -795,6 +779,7 @@ export function createSettingsController({
     if (!preferences) return;
     savedPreferences = {
       keep_running_in_tray: preferences.keep_running_in_tray !== false,
+      launch_at_login: preferences.launch_at_login === true,
       check_updates_on_startup: preferences.check_updates_on_startup !== false,
       terminal_app: preferences.terminal_app || "auto",
       terminal_custom: preferences.terminal_custom || "",
@@ -803,6 +788,9 @@ export function createSettingsController({
     if (elements.settingsKeepRunning) {
       elements.settingsKeepRunning.checked =
         savedPreferences.keep_running_in_tray;
+    }
+    if (elements.settingsLaunchAtLogin) {
+      elements.settingsLaunchAtLogin.checked = savedPreferences.launch_at_login;
     }
     if (elements.settingsStartupUpdates) {
       elements.settingsStartupUpdates.checked =
@@ -862,6 +850,9 @@ export function createSettingsController({
   function setPreferenceControlsDisabled(disabled) {
     if (elements.settingsKeepRunning) {
       elements.settingsKeepRunning.disabled = disabled;
+    }
+    if (elements.settingsLaunchAtLogin) {
+      elements.settingsLaunchAtLogin.disabled = disabled;
     }
     if (elements.settingsStartupUpdates) {
       elements.settingsStartupUpdates.disabled = disabled;
@@ -981,6 +972,7 @@ export function createSettingsController({
     if (!savedPreferences) return;
     const next = {
       keep_running_in_tray: elements.settingsKeepRunning?.checked !== false,
+      launch_at_login: elements.settingsLaunchAtLogin?.checked === true,
       check_updates_on_startup:
         elements.settingsStartupUpdates?.checked !== false,
       terminal_app:
@@ -1162,6 +1154,7 @@ export function createSettingsController({
     );
     elements.settingsLicenseLink?.addEventListener("click", openExternalLink);
     elements.settingsKeepRunning?.addEventListener("change", savePreferences);
+    elements.settingsLaunchAtLogin?.addEventListener("change", savePreferences);
     elements.settingsStartupUpdates?.addEventListener(
       "change",
       savePreferences

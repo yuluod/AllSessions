@@ -43,6 +43,8 @@ pub struct AppConfig {
 pub struct Preferences {
     pub keep_running_in_tray: bool,
     pub check_updates_on_startup: bool,
+    /// 登录系统后自动启动并驻留托盘；默认关闭，由设置页开关控制。
+    pub launch_at_login: bool,
     /// 恢复会话使用的终端应用；"auto" 按平台内置顺序自动探测，
     /// "custom" 使用 terminal_custom 指定的应用。
     pub terminal_app: String,
@@ -57,6 +59,7 @@ impl Default for Preferences {
         Self {
             keep_running_in_tray: true,
             check_updates_on_startup: true,
+            launch_at_login: false,
             terminal_app: "auto".to_string(),
             terminal_custom: String::new(),
             app_icon: "default".to_string(),
@@ -334,11 +337,14 @@ mod tests {
     fn 常规设置要求布尔值且拒绝未知字段() {
         let preferences = parse_preferences(&json!({
             "keep_running_in_tray": false,
-            "check_updates_on_startup": true
+            "check_updates_on_startup": true,
+            "launch_at_login": true
         }))
         .unwrap();
         assert!(!preferences.keep_running_in_tray);
         assert!(preferences.check_updates_on_startup);
+        assert!(preferences.launch_at_login);
+        assert!(!parse_preferences(&json!({})).unwrap().launch_at_login);
         assert!(parse_preferences(&json!({ "keep_running_in_tray": "yes" })).is_err());
         assert!(parse_preferences(&json!({ "unknown": true })).is_err());
     }

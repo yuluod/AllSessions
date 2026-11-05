@@ -1,6 +1,6 @@
 [package]
 name = "allsessions"
-version = "0.2.6"
+version = "0.3.0"
 description = "本地 AI 会话工作台"
 authors = ["yuluo"]
 license = "Apache-2.0"
@@ -27,6 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2.7.0"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2.5"
 tauri-plugin-single-instance = "2"

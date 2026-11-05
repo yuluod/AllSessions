@@ -6,12 +6,14 @@ import {
 } from "../keyboard-nav.js";
 import {
   MOBILE_LAYOUT_QUERY,
+  announce,
   detailRequestGate,
   elements,
   fetchJson,
   scrollToWorkspaceSection,
   showError,
   state,
+  visibleSessions,
 } from "./shared.js";
 import {
   renderActiveFilters,
@@ -24,6 +26,7 @@ import {
   loadFacets,
   loadSessions,
   loadStats,
+  loadStatsSessions,
   loadWorkspaceDiagnostics,
 } from "./data.js";
 import { selectSession } from "./session-list.js";
@@ -44,6 +47,34 @@ export async function returnHome() {
   await activateWorkspaceView("list");
   await Promise.all([loadSessions(), loadStats()]);
   window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+export async function openActivitySearch(kind, value) {
+  state.searchQuery = "";
+  state.searchRole = "";
+  state.searchTool = "";
+  state.searchExactTool = kind === "tool" ? value : "";
+  state.searchCommand = kind === "command" ? value : "";
+  state.searchRegex = false;
+  state.searchFrom = "";
+  state.searchTo = "";
+  state.selectedSearchHit = null;
+  syncFilterControls();
+  syncUrl();
+  await activateWorkspaceView("list");
+  await loadSessions();
+}
+
+export async function openReviewSession(key) {
+  state.searchQuery = "";
+  state.searchExactTool = "";
+  state.searchCommand = "";
+  state.selectedSearchHit = null;
+  state.selectedSessionKey = null;
+  syncFilterControls();
+  await activateWorkspaceView("list");
+  if (!(await loadSessions())) return;
+  selectSession(key);
 }
 
 export async function activateWorkspaceView(panel) {
@@ -83,6 +114,8 @@ export async function activateWorkspaceView(panel) {
   codexRollbackDashboard?.classList.add("hidden");
   renderActiveFilters();
   renderWorkspaceStatus();
+  if (panel === "stats" && !state.statsSessions && !state.statsSessionsLoading)
+    void loadStatsSessions();
 }
 export function isEditableShortcutTarget(target) {
   if (!(target instanceof Element)) return false;
@@ -148,4 +181,59 @@ export function openFocusedSession() {
     scrollToWorkspaceSection(document.querySelector("#detail-panel"));
   }
   return true;
+}
+
+// 托盘「最近会话」入口：目标会话按默认可见口径取数，当前筛选可能把它挡在
+// 列表外，此时先回到默认列表再选中，避免“打开了却不在列表中”。
+export async function openSessionFromTray(key) {
+  if (!key) return;
+  if (state.activeView !== "list") {
+    await activateWorkspaceView("list");
+  }
+  if (!visibleSessions().some((session) => session._key === key)) {
+    resetFilterState();
+    syncFilterControls();
+    await loadSessions();
+  }
+  const button = elements.sessionList.querySelector(
+    `.session-item[data-session-key="${CSS.escape(key)}"]`
+  );
+  selectSession(key, button || undefined);
+  button?.scrollIntoView({ block: "nearest" });
+}
+
+// 托盘「恢复会话」：恢复直接走 sessionKey 后端路由，不等详情加载完；
+// 同时照常选中并展示会话，终端启动行为与错误提示同界面内按钮一致。
+export async function resumeSessionFromTray(key) {
+  if (!key) return;
+  void openSessionFromTray(key).catch((error) => {
+    console.error(error);
+    showError(error.message);
+  });
+  try {
+    const result = await fetchJson("/api/sessions/resume", {
+      method: "POST",
+      body: { sessionKey: key },
+    });
+    announce(t("resumeLaunched", { command: result.command || "" }));
+  } catch (error) {
+    showError(`${t("resumeFailed")}: ${error.message || error}`);
+  }
+}
+
+export async function bindTauriTrayEvents() {
+  const listen = window.__TAURI__?.event?.listen;
+  if (typeof listen !== "function") return;
+  await listen("open-session", (event) => {
+    void openSessionFromTray(event.payload?.key).catch((error) => {
+      console.error(error);
+      showError(error.message);
+    });
+  });
+  await listen("resume-session", (event) => {
+    void resumeSessionFromTray(event.payload?.key).catch((error) => {
+      console.error(error);
+      showError(error.message);
+    });
+  });
 }

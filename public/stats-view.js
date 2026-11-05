@@ -1,7 +1,13 @@
 import { t, getLang } from "./i18n.js";
 import { formatCount } from "./session-format.js";
-import { calendarHeatmapDays, presetHeatmapRange } from "./stats-calendar.js";
+import {
+  calendarHeatmapDays,
+  presetHeatmapRange,
+  heatmapNextIndex,
+} from "./stats-calendar.js";
 import { createEmptyState } from "./ui-components.js";
+import { renderProjectReview } from "./project-review.js";
+import { renderStatsRange } from "./stats-range.js";
 
 const AGENT_PRESENTATION = {
   codex: { label: "Codex", color: "#0f766e" },
@@ -89,16 +95,33 @@ function renderMetrics(stats, container) {
   const average =
     stats.avg_daily ?? (activeDays > 0 ? (total / activeDays).toFixed(1) : "0");
   const totalTokens = Number(stats.total_tokens || 0);
+  const cachedInput = Number(stats.total_cache_read_tokens || 0);
+  const eligibleInput = Number(stats.cache_eligible_input_tokens || 0);
+  const cacheHit =
+    eligibleInput > 0
+      ? `${((cachedInput / eligibleInput) * 100).toFixed(2)}%`
+      : "—";
   const cards = [
     { label: t("statsTotalSessions"), value: String(total) },
     { label: t("statsMessages"), value: formatCount(stats.total_messages) },
-    { label: t("statsTools"), value: formatCount(stats.total_tools) },
+    {
+      label: t("statsTools"),
+      value: formatCount(stats.total_tool_calls ?? stats.total_tools),
+    },
+    {
+      label: t("statsCachedHit"),
+      value: cacheHit,
+      title: `${t("statsCacheRead")} ${formatCount(cachedInput)} · ${t("statsCacheWrite")} ${formatCount(stats.total_cache_write_tokens)} · ${t("statsCoverage", { n: stats.usage_sessions || 0, total })}`,
+    },
     {
       label: t("statsTokenTotal"),
       value: formatTokensCompact(totalTokens),
       title: `${formatCount(totalTokens)} (${t("statsTokenInput")} ${formatCount(stats.total_input_tokens)} · ${t("statsTokenOutput")} ${formatCount(stats.total_output_tokens)} · ${t("statsTokenCached")} ${formatCount(stats.total_cached_input_tokens)})`,
     },
-    { label: t("statsEvents"), value: formatCount(stats.total_events) },
+    {
+      label: t("statsEvents"),
+      value: stats.total_events == null ? "—" : formatCount(stats.total_events),
+    },
     { label: t("statsActiveDays"), value: String(activeDays) },
     { label: t("statsAvgDaily"), value: String(average) },
   ];
@@ -116,11 +139,16 @@ function renderMetrics(stats, container) {
     card.append(valueElement, labelElement);
     container.append(card);
   });
+  const coverage = document.createElement("p");
+  coverage.className = "props-empty stats-coverage";
+  coverage.title = t("statsDailyUsageHint");
+  coverage.textContent = `${t("statsCoverage", { n: stats.usage_sessions || 0, total })} · ${t("statsToolCoverage", { n: stats.tool_sessions || 0, total })} · ${t("statsUndatedTokens", { n: formatCount(stats.undated_tokens) })}`;
+  container.append(coverage);
 }
 
 function renderTrend(stats, container) {
   container.replaceChildren();
-  const dates = (stats.by_date || []).slice(-14);
+  const dates = stats.by_date || [];
   if (!dates.length) {
     renderEmpty(container);
     return;
@@ -162,10 +190,9 @@ function renderTrend(stats, container) {
   container.append(plot);
 }
 
-// 按本机日历选择常用范围，也可指定起止日期，仅调整热力图。
-let heatmapPreset = "month";
-let heatmapRange = null;
 const HEATMAP_LEVELS = 4;
+let heatmapMetric = "tokens";
+let heatmapTooltip = null;
 
 // 用量分布通常右偏（个别重度日远超均值），线性分档会让绝大多数
 // 日期挤在最低档；按平方根缩放后再分档，长尾日期也能落进中高档。
@@ -200,55 +227,60 @@ function localDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function renderHeatmap(stats, container) {
+function renderHeatmap(stats, container, onSelectDay) {
+  heatmapTooltip?.remove();
+  heatmapTooltip = null;
   container.replaceChildren();
   const days = stats.by_date || [];
   if (!days.length) {
     renderEmpty(container);
     return;
   }
-  const selectedRange = heatmapRange || presetHeatmapRange(days, heatmapPreset);
+  const defaults = presetHeatmapRange(days, "all");
+  const selectedRange = {
+    start: stats.range?.start || defaults.start,
+    end: stats.range?.end || defaults.end,
+  };
   const recent = calendarHeatmapDays(days, selectedRange);
-  const max = Math.max(...recent.map((day) => day.tokens || 0), 1);
+  const max = Math.max(...recent.map((day) => day[heatmapMetric] || 0), 1);
 
   const wrap = document.createElement("div");
   wrap.className = "token-heatmap";
-  const presets = document.createElement("div");
-  presets.className = "token-heatmap-presets";
-  presets.setAttribute("role", "group");
-  presets.setAttribute("aria-label", t("statsHeatmapRange"));
-  for (const [value, key] of [
-    ["week", "statsHeatmapWeek"],
-    ["month", "statsHeatmapMonth"],
-    ["30days", "statsHeatmap30Days"],
-    ["all", "statsHeatmapAll"],
+  const modes = document.createElement("div");
+  modes.className = "token-heatmap-presets";
+  modes.setAttribute("role", "group");
+  modes.setAttribute("aria-label", t("statsHeatmapMetric"));
+  for (const [metric, label] of [
+    ["count", "statsSessionsShort"],
+    ["tokens", "statsTokenShort"],
   ]) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ghost-button";
-    button.dataset.range = value;
-    button.textContent = t(key);
-    button.setAttribute(
-      "aria-pressed",
-      String(!heatmapRange && heatmapPreset === value)
-    );
+    button.textContent = t(label);
+    button.dataset.metric = metric;
+    button.setAttribute("aria-pressed", String(metric === heatmapMetric));
     button.addEventListener("click", () => {
-      heatmapPreset = value;
-      heatmapRange = null;
-      renderHeatmap(stats, container);
-      container.querySelector(`[data-range="${value}"]`)?.focus();
+      heatmapMetric = metric;
+      renderHeatmap(stats, container, onSelectDay);
+      container.querySelector(`[data-metric="${metric}"]`)?.focus();
     });
-    presets.append(button);
+    modes.append(button);
   }
-  wrap.append(presets);
-
+  wrap.append(modes);
+  if (recent[0]?.label !== selectedRange.start) {
+    const note = document.createElement("p");
+    note.className = "props-empty";
+    note.textContent = t("statsCalendarLimited");
+    wrap.append(note);
+  }
   const grid = document.createElement("div");
   grid.className = "token-heatmap-grid";
-  grid.setAttribute("role", "img");
+  grid.setAttribute("role", "group");
   grid.setAttribute(
     "aria-label",
-    `${t("statsTokenHeatmap")}: ${formatCount(
-      recent.reduce((sum, day) => sum + (day.tokens || 0), 0)
+    `${t("statsActivityHeatmap")} · ${t(heatmapMetric === "tokens" ? "statsTokenShort" : "statsSessionsShort")}: ${formatCount(
+      recent.reduce((sum, day) => sum + (day[heatmapMetric] || 0), 0)
     )}`
   );
   // 第一天前面按星期补空格，让列对齐真实的周内位置（周一起始）。
@@ -317,14 +349,35 @@ function renderHeatmap(stats, container) {
     grid.append(pad);
   }
   const todayKey = localDateKey(new Date());
-  recent.forEach((day) => {
-    const cell = document.createElement("span");
+  const cells = [];
+  recent.forEach((day, index) => {
+    const cell = document.createElement("button");
+    cell.type = "button";
     cell.className = "token-heatmap-cell";
     if (day.label === todayKey) cell.classList.add("is-today");
-    cell.dataset.level = String(heatmapLevel(day.tokens, max));
+    cell.dataset.level = String(heatmapLevel(day[heatmapMetric], max));
     cell.dataset.date = day.label;
     cell.dataset.tokens = String(day.tokens || 0);
     cell.dataset.count = String(day.count || 0);
+    cell.tabIndex = index === recent.length - 1 ? 0 : -1;
+    cell.setAttribute(
+      "aria-label",
+      `${day.label} · ${t("statsSessionsShort")} ${day.count || 0} · ${t("statsTokenShort")} ${formatCount(day.tokens)}`
+    );
+    cell.setAttribute(
+      "aria-pressed",
+      String(day.label === stats.range?.start && day.label === stats.range?.end)
+    );
+    cell.addEventListener("click", () => onSelectDay?.(day.label));
+    cell.addEventListener("keydown", (event) => {
+      const next = heatmapNextIndex(index, event.key, cells.length);
+      if (next === null) return;
+      event.preventDefault();
+      grid.querySelector('[tabindex="0"]')?.setAttribute("tabindex", "-1");
+      cells[next].tabIndex = 0;
+      cells[next].focus();
+    });
+    cells.push(cell);
     grid.append(cell);
   });
   scroll.append(months, grid);
@@ -333,41 +386,6 @@ function renderHeatmap(stats, container) {
 
   const footer = document.createElement("div");
   footer.className = "token-heatmap-footer";
-  const range = document.createElement("form");
-  range.className = "token-heatmap-range";
-  range.setAttribute("aria-label", t("statsHeatmapRange"));
-  const inputs = {};
-  for (const [key, labelText] of [
-    ["start", t("statsHeatmapStart")],
-    ["end", t("statsHeatmapEnd")],
-  ]) {
-    const label = document.createElement("label");
-    label.textContent = labelText;
-    const input = document.createElement("input");
-    input.type = "date";
-    input.required = true;
-    input.value = selectedRange[key];
-    input.name = key;
-    input.addEventListener("input", () => inputs.end.setCustomValidity(""));
-    inputs[key] = input;
-    label.append(input);
-    range.append(label);
-  }
-  const apply = document.createElement("button");
-  apply.type = "submit";
-  apply.className = "ghost-button";
-  apply.textContent = t("statsHeatmapApply");
-  range.append(apply);
-  range.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (inputs.start.value > inputs.end.value) {
-      inputs.end.setCustomValidity(t("statsHeatmapInvalidRange"));
-      inputs.end.reportValidity();
-      return;
-    }
-    heatmapRange = { start: inputs.start.value, end: inputs.end.value };
-    renderHeatmap(stats, container);
-  });
   const legend = document.createElement("span");
   legend.className = "token-heatmap-legend";
   const less = document.createElement("span");
@@ -382,7 +400,7 @@ function renderHeatmap(stats, container) {
   const more = document.createElement("span");
   more.textContent = t("statsHeatmapMore");
   legend.append(more);
-  footer.append(range, legend);
+  footer.append(legend);
   wrap.append(footer);
   attachHeatmapTooltip(grid);
   container.append(wrap);
@@ -391,14 +409,13 @@ function renderHeatmap(stats, container) {
 // 原生 title 提示有约一秒延迟且样式不可控,改用自绘浮层:
 // 悬停日期格立即显示当日的 token 用量与会话数,移开或滚动时消失。
 function attachHeatmapTooltip(grid) {
-  let tooltip = null;
   const hide = () => {
-    tooltip?.remove();
-    tooltip = null;
+    heatmapTooltip?.remove();
+    heatmapTooltip = null;
   };
   const show = (cell) => {
-    tooltip = document.createElement("div");
-    tooltip.className = "token-heatmap-tooltip";
+    heatmapTooltip = document.createElement("div");
+    heatmapTooltip.className = "token-heatmap-tooltip";
     const date = document.createElement("strong");
     date.textContent = cell.dataset.date;
     const tokens = document.createElement("span");
@@ -414,10 +431,10 @@ function attachHeatmapTooltip(grid) {
     }
     const count = document.createElement("span");
     count.textContent = `${t("statsSessionsShort")} ${cell.dataset.count}`;
-    tooltip.append(date, tokens, count);
-    document.body.append(tooltip);
+    heatmapTooltip.append(date, tokens, count);
+    document.body.append(heatmapTooltip);
     const cellRect = cell.getBoundingClientRect();
-    const size = tooltip.getBoundingClientRect();
+    const size = heatmapTooltip.getBoundingClientRect();
     // 优先显示在格子上方,顶部放不下时翻到下方;左右夹在窗口内。
     let left = cellRect.left + cellRect.width / 2 - size.width / 2;
     left = Math.min(Math.max(8, left), window.innerWidth - size.width - 8);
@@ -425,8 +442,8 @@ function attachHeatmapTooltip(grid) {
       cellRect.top - size.height - 6 >= 8
         ? cellRect.top - size.height - 6
         : cellRect.bottom + 6;
-    tooltip.style.left = `${left}px`;
-    tooltip.style.top = `${top}px`;
+    heatmapTooltip.style.left = `${left}px`;
+    heatmapTooltip.style.top = `${top}px`;
   };
   grid.addEventListener("mouseover", (event) => {
     const cell = event.target.closest(".token-heatmap-cell[data-date]");
@@ -434,6 +451,12 @@ function attachHeatmapTooltip(grid) {
     if (cell) show(cell);
   });
   grid.addEventListener("mouseleave", hide);
+  grid.addEventListener("focusin", (event) => {
+    hide();
+    const cell = event.target.closest(".token-heatmap-cell[data-date]");
+    if (cell) show(cell);
+  });
+  grid.addEventListener("focusout", hide);
   grid.addEventListener("scroll", hide, { passive: true });
 }
 
@@ -575,7 +598,7 @@ function renderAgents(stats, container) {
   container.append(wrap);
 }
 
-function renderRankings(stats, container) {
+function renderRankings(stats, container, onSelectRanking) {
   container.replaceChildren();
   // Provider 行附带 token 用量;无 token 统计的条目显示占位符。
   const tokenByProvider = new Map(
@@ -594,6 +617,16 @@ function renderRankings(stats, container) {
       isPath: true,
       kind: "cwd",
     },
+    {
+      title: t("statsToolRanking"),
+      items: (stats.by_tool || []).slice(0, 10),
+      kind: "tool",
+    },
+    {
+      title: t("statsCommandRanking"),
+      items: (stats.by_command || []).slice(0, 10),
+      kind: "command",
+    },
   ];
   sections.forEach(({ title, items, isPath, kind, tokensOf }) => {
     if (!items.length) return;
@@ -604,24 +637,53 @@ function renderRankings(stats, container) {
     const body = document.createElement("div");
     body.className = "stats-section__body";
     const max = Math.max(...items.map((item) => item.count), 1);
-    items.forEach(({ label, count }) => {
+    items.forEach(({ label, count, session_count, last_timestamp }) => {
       const displayLabel = isPath ? label.split(/[\\/]/).pop() || label : label;
-      body.append(
-        renderBar(label, count, max, displayLabel, tokensOf?.(label) ?? null)
+      const row = renderBar(
+        label,
+        count,
+        max,
+        displayLabel,
+        tokensOf?.(label) ?? null
       );
+      if ((kind === "tool" || kind === "command") && onSelectRanking) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "stats-bar-label stats-activity-link";
+        button.textContent = displayLabel;
+        button.title = t("statsActivityOpen", {
+          name: label,
+          n: session_count || 0,
+          time: last_timestamp || t("unknownTime"),
+        });
+        button.addEventListener("click", () => onSelectRanking(kind, label));
+        row.querySelector(".stats-bar-label").replaceWith(button);
+      }
+      body.append(row);
     });
     section.append(heading, body);
     container.append(section);
   });
 }
 
-export function renderStats(stats, elements) {
+export function renderStats(
+  stats,
+  elements,
+  { onSelectRanking, onSelectSession, onChangeRange, onSelectDay } = {}
+) {
   if (!elements.statsDashboard) return;
+  renderStatsRange(stats.range, elements.statsRange, onChangeRange);
+  renderProjectReview(
+    stats.project_review,
+    elements.projectReview,
+    onSelectSession
+  );
   if (elements.statsMetrics) renderMetrics(stats, elements.statsMetrics);
   if (elements.trendChartBody) renderTrend(stats, elements.trendChartBody);
   if (elements.agentChartBody) renderAgents(stats, elements.agentChartBody);
   if (elements.tokenHeatmapBody) {
-    renderHeatmap(stats, elements.tokenHeatmapBody);
+    renderHeatmap(stats, elements.tokenHeatmapBody, onSelectDay);
   }
-  if (elements.statsGrid) renderRankings(stats, elements.statsGrid);
+  if (elements.statsGrid)
+    renderRankings(stats, elements.statsGrid, onSelectRanking);
 }

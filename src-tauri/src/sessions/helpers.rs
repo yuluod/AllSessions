@@ -108,6 +108,13 @@ pub(crate) fn local_date_key(timestamp: &str) -> Option<String> {
         .or_else(|| timestamp.get(..10).map(ToOwned::to_owned))
 }
 pub(crate) fn matches_filters(summary: &Value, query: &HashMap<String, String>) -> bool {
+    if super::has_activity_range(query)
+        && !super::activity::dates(summary)
+            .iter()
+            .any(|date| super::in_activity_range(date, query))
+    {
+        return false;
+    }
     for (name, field) in [("provider", "model_provider"), ("cwd", "cwd")] {
         if let Some(expected) = query.get(name).filter(|value| !value.is_empty())
             && summary[field].as_str() != Some(expected)
@@ -186,6 +193,13 @@ pub(crate) fn paginate(
         .clamp(1, 200);
     let has_more = sessions.len() > limit;
     sessions.truncate(limit);
+    // 用量账本只供聚合使用，列表和搜索结果沿用轻量摘要。
+    for summary in &mut sessions {
+        if let Some(object) = summary.as_object_mut() {
+            object.remove("usage");
+            object.remove("activity");
+        }
+    }
     let next = has_more
         .then(|| {
             sessions

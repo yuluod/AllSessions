@@ -18,7 +18,12 @@ use serde_json::Value;
 /// 版本 5：zcode 会话改用 modelID 作为 model_provider（账号域 providerID 无辨识度）。
 /// 版本 6：deepseek 会话改用模型名作为 model_provider（账号域 providerID 无辨识度）。
 /// 版本 7：媒体块改占位、system/developer 统一按上下文、Cursor/Devin/ZCode 消息结构修正。
-const CACHE_VERSION: i32 = 7;
+/// 版本 8：摘要新增 tool_counts/command_counts 字段（按工具名与命令首词的调用分布）。
+/// 版本 9：缓存读写分离及逐日用量账本。
+/// 版本 10：工具／命令调用定位及最近执行时间。
+/// 版本 11：文件操作的归一化字段。
+/// 版本 12：逐日消息与工具／命令调用活动账本。
+const CACHE_VERSION: i32 = 12;
 
 pub struct IndexCache {
     /// Arc 共享的全文索引：搜索在会话锁之外克隆句柄执行查询。

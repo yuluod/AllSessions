@@ -7,6 +7,9 @@ use std::path::Path;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use super::activity::ActivityLedger;
+use super::usage::{TokenUsage, UsageLedger};
+
 use super::claude_legacy::{parse_legacy_claude_detail, parse_legacy_claude_summary};
 use super::helpers::{
     compact, compact_title, error_text, is_synthetic_context, nullable_string, string_at,
@@ -37,7 +40,15 @@ pub(crate) struct ParseState {
     pub(crate) input_tokens: u64,
     pub(crate) output_tokens: u64,
     pub(crate) cached_input_tokens: u64,
+    pub(super) usage: UsageLedger,
+    pub(super) activity: ActivityLedger,
     pub(crate) roles: BTreeMap<String, u64>,
+    /// 按工具名（小写归并）统计调用次数；仅计调用，不计结果。
+    pub(crate) tool_counts: BTreeMap<String, u64>,
+    /// shell 类调用提取的命令首词计数（如 adb/python），非全部工具。
+    pub(crate) command_counts: BTreeMap<String, u64>,
+    pub(crate) tool_last_used: BTreeMap<String, String>,
+    pub(crate) command_last_used: BTreeMap<String, String>,
     pub(crate) first_user: String,
     pub(crate) first_assistant: String,
     pub(crate) first_message: String,
@@ -80,7 +91,13 @@ impl ParseState {
             input_tokens: 0,
             output_tokens: 0,
             cached_input_tokens: 0,
+            usage: UsageLedger::default(),
+            activity: ActivityLedger::default(),
             roles: BTreeMap::new(),
+            tool_counts: BTreeMap::new(),
+            command_counts: BTreeMap::new(),
+            tool_last_used: BTreeMap::new(),
+            command_last_used: BTreeMap::new(),
             first_user: String::new(),
             first_assistant: String::new(),
             first_message: String::new(),
@@ -210,9 +227,34 @@ impl ParseState {
             }
             let input = total["input_tokens"].as_u64().unwrap_or(0);
             let cached = total["cached_input_tokens"].as_u64().unwrap_or(0);
-            self.input_tokens = input.saturating_sub(cached);
+            let uncached = input.saturating_sub(cached);
+            let output = total["output_tokens"].as_u64().unwrap_or(0);
+            let reset = uncached < self.input_tokens
+                || cached < self.cached_input_tokens
+                || output < self.output_tokens;
+            if reset {
+                // 累计值回退后无法可靠还原历史日期，按最新总量重新建立未分配账本。
+                self.usage = UsageLedger::default();
+                self.input_tokens = 0;
+                self.cached_input_tokens = 0;
+                self.output_tokens = 0;
+            }
+            self.record_usage(
+                if reset {
+                    ""
+                } else {
+                    record["timestamp"].as_str().unwrap_or_default()
+                },
+                TokenUsage {
+                    input: uncached.saturating_sub(self.input_tokens),
+                    output: output.saturating_sub(self.output_tokens),
+                    cache_read: cached.saturating_sub(self.cached_input_tokens),
+                    cache_write: 0,
+                },
+            );
+            self.input_tokens = uncached;
             self.cached_input_tokens = cached;
-            self.output_tokens = total["output_tokens"].as_u64().unwrap_or(0);
+            self.output_tokens = output;
             return;
         }
         if record_type == Some("assistant") {
@@ -225,13 +267,25 @@ impl ParseState {
             if !response_id.is_empty() && !self.counted_response_ids.insert(response_id) {
                 return;
             }
-            self.input_tokens += usage["input_tokens"].as_u64().unwrap_or(0);
-            self.cached_input_tokens += usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
-                + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
-            self.output_tokens += usage["output_tokens"].as_u64().unwrap_or(0);
+            self.record_usage(
+                record["timestamp"].as_str().unwrap_or_default(),
+                TokenUsage {
+                    input: usage["input_tokens"].as_u64().unwrap_or(0),
+                    output: usage["output_tokens"].as_u64().unwrap_or(0),
+                    cache_read: usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
+                    cache_write: usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
+                },
+            );
         }
     }
-    pub(crate) fn accept_message(&mut self, message: Value) -> Option<Value> {
+    pub(super) fn record_usage(&mut self, timestamp: &str, usage: TokenUsage) {
+        self.input_tokens += usage.input;
+        self.output_tokens += usage.output;
+        self.cached_input_tokens += usage.cache_read + usage.cache_write;
+        self.usage.record(timestamp, usage);
+    }
+    pub(crate) fn accept_message(&mut self, mut message: Value) -> Option<Value> {
+        annotate_activity(&mut message);
         let role = message["role"].as_str().unwrap_or("unknown");
         let text = message["text"].as_str().unwrap_or_default();
         let source_type = message["source_type"].as_str().unwrap_or_default();
@@ -249,7 +303,27 @@ impl ParseState {
             return Some(message);
         }
         self.message_count += 1;
+        self.activity.record(&message);
         *self.roles.entry(role.into()).or_default() += 1;
+        if is_tool_call(&message)
+            && let Some(name) = message["tool_name"]
+                .as_str()
+                .filter(|value| !value.is_empty())
+        {
+            *self.tool_counts.entry(name.to_lowercase()).or_default() += 1;
+            let timestamp = message["timestamp"].as_str().unwrap_or_default();
+            let latest = self.tool_last_used.entry(name.to_lowercase()).or_default();
+            if timestamp > latest.as_str() {
+                *latest = timestamp.to_string();
+            }
+            if let Some(command) = tool_call_command(&message) {
+                *self.command_counts.entry(command.clone()).or_default() += 1;
+                let latest = self.command_last_used.entry(command).or_default();
+                if timestamp > latest.as_str() {
+                    *latest = timestamp.to_string();
+                }
+            }
+        }
         if self.first_message.is_empty() {
             self.first_message = compact(text, 160);
         }
@@ -337,7 +411,7 @@ impl ParseState {
         } else {
             &self.originator
         };
-        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
+        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "usage": self.usage, "activity": self.activity, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "tool_counts": self.tool_counts, "command_counts": self.command_counts, "tool_last_used": self.tool_last_used, "command_last_used": self.command_last_used, "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
     }
 }
 pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
@@ -485,7 +559,7 @@ pub(crate) fn visit_detail(
         summary["detail_truncated"] = Value::Bool(true);
     }
     Ok(
-        json!({ "summary": summary, "conversation_messages": message_values, "raw_events": event_values, "truncation": { "truncated": omitted_messages + omitted_events > 0, "messages": { "total": total_messages, "omitted": omitted_messages }, "raw_events": { "total": total_events, "omitted": omitted_events } } }),
+        json!({ "summary": summary, "usage_events": state.usage.events, "usage_event_count": state.usage.event_count, "conversation_messages": message_values, "raw_events": event_values, "truncation": { "truncated": omitted_messages + omitted_events > 0, "messages": { "total": total_messages, "omitted": omitted_messages }, "raw_events": { "total": total_events, "omitted": omitted_events } } }),
     )
 }
 
@@ -704,6 +778,128 @@ pub(crate) fn conversation_messages(
     generic_conversation_message(record, timestamp, tool_names)
         .into_iter()
         .collect()
+}
+
+/// 命令排行只统计 shell 类工具的调用；名称为小写。
+const COMMAND_TOOL_NAMES: [&str; 12] = [
+    "bash",
+    "shell",
+    "sh",
+    "zsh",
+    "exec",
+    "cmd",
+    "powershell",
+    "terminal",
+    "run_command",
+    "execute_command",
+    "exec_command",
+    "functions.exec_command",
+];
+
+/// 从 shell 类工具调用的展示文本提取命令首词（如 `adb`、`python`）。
+/// 文本多为 `[bash] {"command": "..."}` 或纯 JSON 参数字符串；
+/// 提取不到时返回 None，该调用不进入命令排行。
+fn command_from_tool_call(name: &str, text: &str) -> Option<String> {
+    if !COMMAND_TOOL_NAMES.contains(&name.to_lowercase().as_str()) {
+        return None;
+    }
+    let args: Value = serde_json::from_str(text.get(text.find('{')?..)?).ok()?;
+    let command = ["command", "cmd", "input", "script", "code"]
+        .iter()
+        .find_map(|key| {
+            args[*key]
+                .as_str()
+                .or_else(|| args[*key].as_array()?.first()?.as_str())
+        })?;
+    let command = command.trim_start();
+    let first = if let Some(quote) = command.chars().next().filter(|ch| matches!(ch, '"' | '\'')) {
+        command.get(1..)?.split(quote).next()?
+    } else {
+        command.split_whitespace().next()?
+    };
+    if first.contains('=') {
+        return None;
+    }
+    let program = first.rsplit(['/', '\\']).next()?;
+    (!program.is_empty()).then(|| program.to_lowercase())
+}
+
+pub(crate) fn tool_call_command(message: &Value) -> Option<String> {
+    if !is_tool_call(message) {
+        return None;
+    }
+    if let Some(command) = message["command_name"].as_str() {
+        return Some(command.to_string());
+    }
+    command_from_tool_call(message["tool_name"].as_str()?, message["text"].as_str()?)
+}
+
+pub(super) fn annotate_combined_tool(message: &mut Value, input: &Value) {
+    // 数据库来源以单条 part 保存输入与最终结果，派生字段只保留有界定位信息。
+    let mut call = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": message["tool_name"], "text": input.to_string() });
+    annotate_activity(&mut call);
+    message["includes_tool_call"] = json!(true);
+    for field in ["command_name", "file_activity"] {
+        if let Some(value) = call.get(field) {
+            message[field] = value.clone();
+        }
+    }
+}
+
+pub(crate) fn annotate_activity(message: &mut Value) {
+    if let Some(command) = tool_call_command(message) {
+        message["command_name"] = json!(command);
+    }
+    if !is_tool_call(message) {
+        return;
+    }
+    let name = message["tool_name"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+    let action = match name.as_str() {
+        "read" | "read_file" | "readfile" => "read",
+        "write" | "write_file" | "writefile" => "write",
+        "edit" | "edit_file" | "editfile" => "edit",
+        "grep" | "glob" | "search_files" => "search",
+        _ => return,
+    };
+    let text = message["text"].as_str().unwrap_or_default();
+    let Some(args) = text
+        .find('{')
+        .and_then(|start| serde_json::from_str::<Value>(&text[start..]).ok())
+    else {
+        return;
+    };
+    let mut paths = ["file_path", "filePath", "path"]
+        .iter()
+        .filter_map(|field| args[*field].as_str())
+        .collect::<Vec<_>>();
+    if let Some(values) = args["paths"].as_array() {
+        paths.extend(values.iter().take(32).filter_map(Value::as_str));
+    }
+    let paths = paths
+        .into_iter()
+        .filter(|path| !path.is_empty() && path.len() <= 2048)
+        .take(32)
+        .collect::<BTreeSet<_>>();
+    if !paths.is_empty() {
+        message["file_activity"] = json!(
+            paths
+                .into_iter()
+                .map(|path| json!({ "path": path, "action": action }))
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+pub(crate) fn is_tool_call(message: &Value) -> bool {
+    message["role"] == "tool"
+        && (message["includes_tool_call"] == true
+            || matches!(
+                message["tool_kind"].as_str(),
+                Some("tool_call" | "tool_use" | "function_call")
+            ))
 }
 
 /// 系统/开发者角色属于指令上下文，统一按 synthetic_context 处理。

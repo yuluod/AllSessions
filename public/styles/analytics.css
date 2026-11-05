@@ -41,6 +41,29 @@
   font-variant-numeric: tabular-nums;
 }
 
+.stats-range-presets,
+.stats-range-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.stats-range-form label {
+  display: grid;
+  gap: 3px;
+}
+
+.stats-range-form button {
+  align-self: end;
+}
+
+.stats-range-presets button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--text-inverse);
+  border-color: var(--accent);
+}
+
 .stats-surface {
   min-width: 0;
   overflow: hidden;
@@ -49,10 +72,132 @@
   background: var(--surface);
 }
 
+.stats-sessions {
+  padding: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.stats-sessions-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stats-sessions-heading h3 {
+  margin: 0;
+  font-family: var(--font-display);
+}
+
+.stats-sessions-hint,
+.stats-session-meta {
+  color: var(--muted);
+  font-size: var(--control-font-compact);
+  overflow-wrap: anywhere;
+}
+
+.stats-session-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stats-session-list li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.stats-session-list button,
+.stats-session-note {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.stats-session-meta,
+.stats-session-note {
+  margin: 7px 0;
+}
+
+.stats-session-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 7px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--control-font-compact);
+}
+
+.stats-session-metrics dt {
+  color: var(--muted);
+}
+
+.stats-session-metrics dd {
+  margin: 0;
+}
+
 .stats-metrics {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   background: var(--surface-subtle);
+}
+
+.stats-coverage {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px;
+}
+
+.stats-activity-link {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.project-review > h3,
+.project-review-path {
+  margin: 12px 18px;
+}
+
+.project-review-path,
+.project-review-meta {
+  color: var(--muted);
+  font-size: var(--control-font-compact);
+  overflow-wrap: anywhere;
+}
+
+.project-review-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-review-list li + li {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.project-review-list button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.project-review-meta,
+.project-review-note {
+  margin: 5px 0 0;
+}
+
+.project-review-note {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .metric-card {
@@ -64,12 +209,12 @@
   border-left: 1px solid var(--line);
 }
 
-.metric-card:nth-child(7n + 1) {
+.metric-card:nth-child(8n + 1) {
   border-left: 0;
 }
 
 .metric-value {
-  color: var(--accent-strong);
+  color: var(--text);
   font-family: var(--font-display);
   font-size: clamp(1.12rem, 1.36vw, 1.44rem);
   font-weight: 780;
@@ -107,7 +252,7 @@
 .chart-card h3,
 .stats-section h3 {
   margin: 0 0 13px;
-  color: var(--accent-strong);
+  color: var(--text);
   font-family: var(--font-display);
   font-size: 0.75rem;
   font-weight: 780;
@@ -126,6 +271,7 @@
 
 .trend-plot {
   position: relative;
+  overflow-x: auto;
 }
 
 .trend-guides {
@@ -152,7 +298,7 @@
 
 .trend-col {
   display: flex;
-  min-width: 0;
+  min-width: 28px;
   height: 100%;
   flex: 1;
   flex-direction: column;
@@ -181,7 +327,7 @@
   margin: 0 auto;
   min-height: 2px;
   border-radius: var(--radius-small) var(--radius-small) 2px 2px;
-  background: var(--accent);
+  background: var(--chart);
   opacity: 0.9;
 }
 
@@ -224,7 +370,7 @@
 }
 
 .donut-center strong {
-  color: var(--accent-strong);
+  color: var(--text);
   font-family: var(--font-display);
   font-size: 1.22rem;
   font-variant-numeric: tabular-nums;
@@ -318,7 +464,7 @@
 .stats-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--chart);
 }
 
 .stats-bar-count,
@@ -399,21 +545,35 @@
   background: var(--surface-sunken);
 }
 
-/* 色阶用底色到强调色的显式混色,避免透明度方案在浅色主题下低档位不可辨认。 */
+button.token-heatmap-cell {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+button.token-heatmap-cell[aria-pressed="true"],
+button.token-heatmap-cell:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+/* 色阶用底色到数据色的显式混色,避免透明度方案在浅色主题下低档位不可辨认。 */
 .token-heatmap-cell[data-level="1"] {
-  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+  background: color-mix(in srgb, var(--chart) 45%, var(--surface));
 }
 
 .token-heatmap-cell[data-level="2"] {
-  background: color-mix(in srgb, var(--accent) 70%, var(--surface));
+  background: color-mix(in srgb, var(--chart) 70%, var(--surface));
 }
 
 .token-heatmap-cell[data-level="3"] {
-  background: color-mix(in srgb, var(--accent) 88%, var(--surface));
+  background: color-mix(in srgb, var(--chart) 88%, var(--surface));
 }
 
 .token-heatmap-cell[data-level="4"] {
-  background: var(--accent-strong);
+  background: var(--chart-strong);
 }
 
 .token-heatmap-cell[data-level]:hover {
@@ -494,7 +654,7 @@
 }
 
 .token-heatmap-tooltip strong {
-  color: var(--accent-strong);
+  color: var(--text);
   font-weight: 780;
 }
 

@@ -143,6 +143,22 @@ export function renderWorkspaceStatus() {
     }
   }
 
+  // 文件监听状态：活跃时低调标记「监听中」，失败时警示并引导进设置；
+  // 静默失败比看不到新会话更难排查，这里让它可见。
+  if (elements.statusWatch) {
+    const watcher = state.watcherStatus;
+    const failed = Boolean(watcher?.last_error);
+    const live = watcher?.active === true && !failed;
+    elements.statusWatch.hidden = !(live || failed);
+    elements.statusWatch.dataset.state = failed ? "warning" : "live";
+    if (elements.statusWatchText) {
+      elements.statusWatchText.textContent = t(
+        failed ? "statusWatchError" : "statusWatchLive"
+      );
+    }
+    elements.statusWatch.title = watcher?.last_error || t("statusWatchHint");
+  }
+
   if (elements.statusFilterText) {
     const count = activeFilterEntries().filter(
       (entry) => state.activeView !== "stats" || entry.type !== "search"
@@ -152,6 +168,9 @@ export function renderWorkspaceStatus() {
         ? t("statusFilterCountOne", { n: count })
         : t("statusFilterCount", { n: count })
       : t("statusFilterNone");
+    if (elements.statusFilterClear) {
+      elements.statusFilterClear.hidden = count === 0;
+    }
   }
   if (elements.statusLanguage) {
     elements.statusLanguage.textContent = t(

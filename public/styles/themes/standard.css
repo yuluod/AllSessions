@@ -39,6 +39,9 @@
   --accent: #2563eb;
   --accent-strong: #1d4ed8;
   --accent-soft: #eaf3ff;
+  --chart: #059669;
+  --chart-strong: #047857;
+  --chart-soft: #d1fae5;
   --signal: #dc2626;
   --signal-soft: #fef2f2;
   --info: #2563eb;
@@ -83,6 +86,9 @@
   --accent: #4cc0d1;
   --accent-strong: #7fd9e5;
   --accent-soft: #143a42;
+  --chart: #34d399;
+  --chart-strong: #6ee7b7;
+  --chart-soft: #14382c;
   --signal: #f87171;
   --signal-soft: #492426;
   --info: #7db1ff;

@@ -23,6 +23,11 @@ use crate::{
     workspace::{WorkspaceSnapshot, WorkspaceStore},
 };
 
+/// 托盘菜单条目数；取数口径与前端默认列表一致（不含归档/移除/隐藏）。
+/// 收藏段与最近段分开取数，最近段排除已进收藏段的会话避免重复。
+const TRAY_FAVORITE_SESSION_LIMIT: usize = 5;
+const TRAY_RECENT_SESSION_LIMIT: usize = 8;
+
 #[derive(Clone)]
 pub struct BackendState {
     store: Arc<Mutex<SessionStore>>,
@@ -189,8 +194,7 @@ impl BackendState {
                 .map_err(lock_error)?
                 .publish_metadata_from(&working);
             self.sync_watcher_roots(app);
-            app.emit("sessions-changed", json!({"type":"session-updated"}))
-                .map_err(|e| e.to_string())?;
+            emit_sessions_changed(app, json!({"type":"session-updated"}))?;
             let metadata_ms = started.elapsed().as_millis();
             let indexing = Instant::now();
             indexed_any = working.rebuild_search_index_with_progress(|processed, total| {
@@ -224,8 +228,7 @@ impl BackendState {
         // 轮询 index-status 获知，重复事件只会让前端整表重拉一遍。
         // 出错时保留广播，让前端重拉列表与错误状态。
         if indexed_any || result.is_err() {
-            app.emit("sessions-changed", json!({"type":"session-updated"}))
-                .map_err(|e| e.to_string())?;
+            emit_sessions_changed(app, json!({"type":"session-updated"}))?;
         }
         result
     }
@@ -260,6 +263,50 @@ impl BackendState {
 
     pub fn watch_roots(&self) -> Result<Vec<std::path::PathBuf>, String> {
         Ok(self.store.lock().map_err(lock_error)?.watch_roots())
+    }
+
+    /// 托盘菜单数据：(收藏段, 最近段)；锁失败时返回空列表，托盘只显示固定项。
+    pub fn tray_sessions(&self) -> (Vec<Value>, Vec<Value>) {
+        let Ok(workspace) = self
+            .workspace
+            .lock()
+            .map_err(lock_error)
+            .and_then(|store| store.snapshot())
+        else {
+            return (Vec::new(), Vec::new());
+        };
+        let Ok(store) = self.store.lock() else {
+            return (Vec::new(), Vec::new());
+        };
+        let favorites = store.favorite_summaries(TRAY_FAVORITE_SESSION_LIMIT, &workspace);
+        let favorite_keys: BTreeSet<&str> = favorites
+            .iter()
+            .filter_map(|summary| summary["_key"].as_str())
+            .collect();
+        // 多取收藏段上限条，保证去重后仍能凑满最近段配额。
+        let recents = store
+            .recent_summaries(
+                TRAY_RECENT_SESSION_LIMIT + TRAY_FAVORITE_SESSION_LIMIT,
+                &workspace,
+            )
+            .into_iter()
+            .filter(|summary| {
+                // 无 _key 的摘要无法构造菜单项，不应占用配额。
+                summary["_key"]
+                    .as_str()
+                    .is_some_and(|key| !favorite_keys.contains(key))
+            })
+            .take(TRAY_RECENT_SESSION_LIMIT)
+            .collect();
+        (favorites, recents)
+    }
+
+    /// 登录自启动偏好；托盘常驻语义独立于该注册项。
+    pub fn launch_at_login(&self) -> bool {
+        self.config
+            .lock()
+            .map(|config| config.preferences.launch_at_login)
+            .unwrap_or(false)
     }
 }
 
@@ -298,6 +345,7 @@ fn route_request(
         .map_err(|_| ApiError::invalid("请求地址无效"))?;
     let path = parsed.path();
     let query = parsed.query_pairs().into_owned().collect::<HashMap<_, _>>();
+    crate::sessions::validate_activity_range(&query).map_err(ApiError::invalid)?;
     let method = request.method.to_uppercase();
 
     // 修改来源或索引的操作与扫描串行；普通读取不等待全文索引。
@@ -399,9 +447,7 @@ fn route_request(
             {
                 return Err(ApiError::from(format!("全文索引构建失败：{error}")));
             }
-            if query.get("q").is_none_or(|value| value.trim().is_empty()) {
-                return Err(ApiError::invalid("缺少搜索内容"));
-            }
+            validate_search_query(&query)?;
             let workspace = state.workspace_snapshot()?;
             // 摘要快照在会话锁内快速取样；耗时的全文查询在锁外执行，
             // 搜索期间列表和详情读取不被阻塞。
@@ -440,8 +486,7 @@ fn route_request(
             {
                 eprintln!("清理已删除会话的工作台数据失败：{error}");
             }
-            app.emit("sessions-changed", json!({ "type": "session-deleted" }))
-                .map_err(|error| error.to_string())?;
+            emit_sessions_changed(&app, json!({ "type": "session-deleted" }))?;
             Ok(result)
         }
         ("POST", "/api/sessions/resume") => {
@@ -498,8 +543,7 @@ fn route_request(
             {
                 eprintln!("清理已删除消息的工作台数据失败：{error}");
             }
-            app.emit("sessions-changed", json!({ "type": "session-updated" }))
-                .map_err(|error| error.to_string())?;
+            emit_sessions_changed(&app, json!({ "type": "session-updated" }))?;
             Ok(result)
         }
         ("POST", "/api/sessions/attachment") => {
@@ -525,11 +569,22 @@ fn route_request(
         }
         ("GET", "/api/settings") => Ok(state.settings_payload(&app)?),
         ("GET", "/api/workspace") => Ok(state.workspace_snapshot()?.value()),
-        ("POST", "/api/workspace/session") => Ok(state
-            .workspace
-            .lock()
-            .map_err(lock_error)?
-            .update_session(&request.body)?),
+        ("POST", "/api/workspace/session") => {
+            // 归档/移除/收藏影响托盘会话段可见性；备注、标签更新与
+            // 托盘无关，不重建菜单。
+            let affects_tray = ["archived", "removed", "favorite"]
+                .iter()
+                .any(|field| request.body.get(field).is_some());
+            let result = state
+                .workspace
+                .lock()
+                .map_err(lock_error)?
+                .update_session(&request.body)?;
+            if affects_tray {
+                crate::refresh_tray_menu(&app);
+            }
+            Ok(result)
+        }
         ("POST", "/api/workspace/message") => Ok(state
             .workspace
             .lock()
@@ -592,11 +647,14 @@ fn route_request(
             let icon_changed = config.preferences.app_icon != preferences.app_icon;
             config.preferences = preferences;
             let app_icon = config.preferences.app_icon.clone();
+            let launch_at_login = config.preferences.launch_at_login;
             config::save(&config_path, &config)?;
             drop(config);
             state.clear_startup_error()?;
             // 图标切换立即生效；失败只在内部记录，不影响设置保存结果。
             crate::app_icon::apply(&app, &app_icon);
+            // 登录自启动注册与偏好保持同步；失败同样只记录。
+            crate::sync_autostart(&app, launch_at_login);
             let mut payload = state.settings_payload(&app)?;
             // Windows 托盘可能受系统刷新时机影响，切换后提供可选重启入口。
             payload["app_icon_restart_available"] =
@@ -640,6 +698,20 @@ fn route_request(
             facets["workspace_tags"] = json!(workspace.tags());
             Ok(facets)
         }
+        ("GET", "/api/stats/sessions") => {
+            if query
+                .get("sort")
+                .is_some_and(|sort| !matches!(sort.as_str(), "recent" | "tokens"))
+            {
+                return Err(ApiError::invalid("相关会话排序方式无效"));
+            }
+            let workspace = state.workspace_snapshot()?;
+            Ok(state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .stats_sessions(&query, &workspace))
+        }
         ("GET", "/api/stats") => {
             let workspace = state.workspace_snapshot()?;
             Ok(state
@@ -656,6 +728,7 @@ fn route_request(
             let key = percent_decode_str(path.trim_start_matches("/api/sessions/"))
                 .decode_utf8()
                 .map_err(|_| ApiError::invalid("会话 ID 编码无效"))?;
+            let workspace = state.workspace_snapshot()?;
             let mut store = state.store.lock().map_err(lock_error)?;
             let mut detail = if let Some(around) = query.get("around") {
                 let ordinal = around
@@ -670,14 +743,94 @@ fn route_request(
             } else {
                 store.detail(&key)?
             };
+            detail["related_sessions"] = store.related_sessions(&key, &workspace);
             drop(store);
-            state.workspace_snapshot()?.decorate_detail(&mut detail);
+            workspace.decorate_detail(&mut detail);
             Ok(detail)
         }
         _ => Err(ApiError::invalid(format!("不支持的请求：{method} {path}"))),
     }
 }
 
+/// 会话列表变化同时发布前端事件并刷新托盘菜单；菜单重建失败不打断发布。
+fn emit_sessions_changed(app: &AppHandle, payload: Value) -> Result<(), String> {
+    let result = app
+        .emit("sessions-changed", payload)
+        .map_err(|error| error.to_string());
+    crate::refresh_tray_menu(app);
+    result
+}
+
+fn validate_search_query(query: &HashMap<String, String>) -> Result<(), ApiError> {
+    if query.get("q").is_none_or(|value| value.trim().is_empty())
+        && !crate::search::SearchFilters::from_query(query).activity_only()
+    {
+        return Err(ApiError::invalid("缺少搜索内容"));
+    }
+    Ok(())
+}
+
 fn lock_error<T>(_: std::sync::PoisonError<T>) -> String {
     "应用内部状态已损坏".into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn search_query(search: &str) -> HashMap<String, String> {
+        Url::parse(&format!("http://allsessions.local/api/search?{search}"))
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect()
+    }
+
+    #[test]
+    fn 排行请求允许无关键词的明确工具或命令条件() {
+        for query in [
+            "q=&exact_tool=read_file",
+            "q=&command=cargo",
+            "exact_tool=bash",
+            "command=git",
+        ] {
+            assert!(
+                validate_search_query(&search_query(query)).is_ok(),
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn 普通搜索仍要求内容且空白排行条件无效() {
+        assert!(validate_search_query(&search_query("q=cargo")).is_ok());
+        for query in [
+            "",
+            "q=",
+            "q=%20&command=%20",
+            "exact_tool=%20",
+            "tool=bash",
+            "role=tool",
+        ] {
+            let error = validate_search_query(&search_query(query)).unwrap_err();
+            assert_eq!(error.code, ApiError::INVALID_REQUEST, "{query}");
+        }
+    }
+
+    #[test]
+    fn 活动范围拒绝非法日期与倒置边界() {
+        for query in [
+            "activity_from=2026-02-30",
+            "activity_from=2026-03-02&activity_to=2026-03-01",
+            "activity_to=invalid",
+        ] {
+            assert!(crate::sessions::validate_activity_range(&search_query(query)).is_err());
+        }
+        assert!(
+            crate::sessions::validate_activity_range(&search_query(
+                "activity_from=2026-03-01&activity_to=2026-03-01"
+            ))
+            .is_ok()
+        );
+    }
 }

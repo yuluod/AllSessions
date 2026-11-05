@@ -3,7 +3,45 @@ import test from "node:test";
 import {
   calendarHeatmapDays,
   presetHeatmapRange,
+  statsPresetRange,
+  heatmapNextIndex,
 } from "../public/stats-calendar.js";
+
+test("热力图方向键按日与周移动并限制日期边界", () => {
+  assert.equal(heatmapNextIndex(10, "ArrowLeft", 30), 3);
+  assert.equal(heatmapNextIndex(10, "ArrowRight", 30), 17);
+  assert.equal(heatmapNextIndex(10, "ArrowUp", 30), 9);
+  assert.equal(heatmapNextIndex(29, "ArrowDown", 30), 29);
+  assert.equal(heatmapNextIndex(10, "Home", 30), 0);
+  assert.equal(heatmapNextIndex(10, "End", 30), 29);
+  assert.equal(heatmapNextIndex(10, "Enter", 30), null);
+});
+
+test("统一统计预设包含今天并正确跨月", () => {
+  const now = new Date(2026, 2, 2, 12);
+  assert.deepEqual(statsPresetRange("today", now), {
+    start: "2026-03-02",
+    end: "2026-03-02",
+  });
+  assert.deepEqual(statsPresetRange("week", now), {
+    start: "2026-02-24",
+    end: "2026-03-02",
+  });
+  assert.deepEqual(statsPresetRange("month", now), {
+    start: "2026-02-01",
+    end: "2026-03-02",
+  });
+  assert.deepEqual(statsPresetRange("all", now), { start: "", end: "" });
+});
+
+test("超长日历范围保持有界且保留最后一天", () => {
+  const days = calendarHeatmapDays([], {
+    start: "2000-01-01",
+    end: "2026-11-05",
+  });
+  assert.equal(days.length, 4096);
+  assert.equal(days.at(-1).label, "2026-11-05");
+});
 
 test("热力图按所选日历日期补齐空白日并保留用量", () => {
   const days = [

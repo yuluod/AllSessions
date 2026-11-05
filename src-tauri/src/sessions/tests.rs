@@ -217,6 +217,270 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 相关会话按范围用量排序稳定分页且保留未知状态() {
+    let (_directory, mut store) = structured_search_store();
+    let base = store.summaries[0].clone();
+    store.summaries = (0..3).map(|index| {
+        let mut summary = base.clone();
+        summary["_key"] = json!(format!("codex:related-{index}"));
+        summary["activity"] = Value::Null;
+        summary["last_timestamp"] = json!(format!("2026-03-01T12:00:0{index}Z"));
+        summary["input_tokens"] = json!([1010, 30, 0][index]);
+        summary["usage"] = if index == 2 { Value::Null } else { json!({
+            "known": true, "totals": {"input": ([1010, 30][index])},
+            "by_date": {"2026-03-01": {"input": ([10, 30][index])}, "2026-03-02": {"input": ([1000, 0][index])}}
+        }) };
+        summary
+    }).collect();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let mut query = HashMap::from([
+        ("sort".into(), "tokens".into()),
+        ("limit".into(), "1".into()),
+    ]);
+    assert_eq!(
+        store.stats_sessions(&query, &workspace)["sessions"][0]["_key"],
+        "codex:related-0"
+    );
+    query.insert("activity_from".into(), "2026-03-01".into());
+    query.insert("activity_to".into(), "2026-03-01".into());
+    let first = store.stats_sessions(&query, &workspace);
+    assert_eq!(first["total"], 3);
+    assert_eq!(first["sessions"][0]["_key"], "codex:related-1");
+    assert_eq!(first["sessions"][0]["tokens"], 30);
+    query.insert(
+        "cursor".into(),
+        first["next_cursor"].as_str().unwrap().into(),
+    );
+    let second = store.stats_sessions(&query, &workspace);
+    assert_eq!(second["sessions"][0]["_key"], "codex:related-0");
+    assert_eq!(second["sessions"][0]["tokens"], 10);
+    query.insert(
+        "cursor".into(),
+        second["next_cursor"].as_str().unwrap().into(),
+    );
+    let third = store.stats_sessions(&query, &workspace);
+    assert!(third["sessions"][0]["tokens"].is_null());
+    assert_eq!(third["has_more"], false);
+}
+
+#[test]
+fn 时间范围统一筛选跨天会话用量排行及调用定位() {
+    let (_directory, mut store) = structured_search_store();
+    let path = store.records["codex:structured"].path.clone();
+    let records = [
+        json!({"type":"session_meta","timestamp":"2026-03-01T12:00:00Z","payload":{"id":"structured","cwd":"/project"}}),
+        json!({"type":"event_msg","timestamp":"2026-03-01T12:00:01Z","payload":{"type":"user_message","message":"第一天"}}),
+        json!({"type":"response_item","timestamp":"2026-03-01T12:00:02Z","payload":{"type":"function_call","call_id":"c1","name":"bash","arguments":"{\"command\":\"cargo test\"}"}}),
+        json!({"type":"event_msg","timestamp":"2026-03-01T12:00:03Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10}}}}),
+        json!({"type":"response_item","timestamp":"2026-03-02T12:00:01Z","payload":{"type":"function_call","call_id":"c2","name":"bash","arguments":"{\"command\":\"git status\"}"}}),
+        json!({"type":"event_msg","timestamp":"2026-03-02T12:00:02Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":300,"cached_input_tokens":100,"output_tokens":40}}}}),
+    ];
+    std::fs::write(
+        &path,
+        records
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
+    store.refresh().unwrap();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let mut query = HashMap::from([
+        ("activity_from".into(), "2026-03-01".into()),
+        ("activity_to".into(), "2026-03-01".into()),
+    ]);
+    let stats = store.stats(&query, &workspace);
+    assert_eq!(stats["total"], 1);
+    assert_eq!(stats["total_tokens"], 110);
+    assert_eq!(stats["total_messages"], 2);
+    assert_eq!(stats["total_tool_calls"], 1);
+    assert_eq!(stats["by_command"][0]["label"], "cargo");
+    assert_eq!(stats["by_date"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        store.list(&query, &workspace)["sessions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    query.insert("command".into(), "git".into());
+    assert_eq!(store.search(&query, &workspace).unwrap()["total"], 0);
+    query.insert("command".into(), "cargo".into());
+    assert_eq!(store.search(&query, &workspace).unwrap()["total"], 1);
+    query.insert("activity_from".into(), "2026-03-02".into());
+    query.insert("activity_to".into(), "2026-03-02".into());
+    let stats = store.stats(&query, &workspace);
+    assert_eq!(stats["total_tokens"], 230);
+    assert_eq!(stats["by_command"][0]["label"], "git");
+}
+
+#[test]
+fn 命令程序名支持带空格的引号路径且跳过变量赋值() {
+    let command = |text: &str| {
+        super::tool_call_command(&json!({
+            "role": "tool", "tool_kind": "tool_call", "tool_name": "bash",
+            "text": serde_json::to_string(&json!({"command": text})).unwrap()
+        }))
+    };
+    assert_eq!(
+        command("\"/Applications/My Tools/python3\" run.py"),
+        Some("python3".into())
+    );
+    assert_eq!(command("TOKEN=value cargo test"), None);
+}
+
+#[test]
+fn 文件操作只归一化明确工具参数且工具结果不重复计数() {
+    for (name, action) in [
+        ("Read", "read"),
+        ("write_file", "write"),
+        ("Edit", "edit"),
+        ("grep", "search"),
+    ] {
+        let mut message = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": name, "text": "[tool] {\"file_path\":\"/project/a.rs\"}" });
+        super::annotate_activity(&mut message);
+        assert_eq!(
+            message["file_activity"],
+            json!([{ "path": "/project/a.rs", "action": action }])
+        );
+        message.as_object_mut().unwrap().remove("file_activity");
+        message["tool_kind"] = json!("tool_result");
+        super::annotate_activity(&mut message);
+        assert!(message["file_activity"].is_null());
+    }
+    let mut message = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": "unknown", "text": "{\"path\":\"/project/a.rs\"}" });
+    super::annotate_activity(&mut message);
+    assert!(message["file_activity"].is_null());
+}
+
+#[test]
+fn 父子会话遵守来源边界并排除本地移除记录() {
+    let (_directory, mut store) = structured_search_store();
+    let base = store.summaries[0].clone();
+    for index in 0..40 {
+        let mut child = base.clone();
+        child["id"] = json!(format!("child-{index}"));
+        child["_key"] = json!(format!("codex:child-{index}"));
+        child["parent_session_id"] = json!("structured");
+        child["hidden"] = json!(true);
+        store.summaries.push(child);
+    }
+    let mut unrelated = base;
+    unrelated["source_kind"] = json!("claude_code");
+    unrelated["_key"] = json!("claude_code:child");
+    unrelated["parent_session_id"] = json!("structured");
+    store.summaries.push(unrelated);
+    let mut workspace = crate::workspace::WorkspaceSnapshot::default();
+    workspace.sessions.insert(
+        "codex:child-0".into(),
+        crate::workspace::SessionWorkspace {
+            removed: true,
+            ..Default::default()
+        },
+    );
+    let family = store.related_sessions("codex:structured", &workspace);
+    assert_eq!(family["total"], 39);
+    assert_eq!(family["items"].as_array().unwrap().len(), 32);
+    assert_eq!(family["items"][0]["key"], "codex:child-1");
+}
+
+#[test]
+fn 项目回顾保留用户整理并限制条数且遵守可见性() {
+    let (_directory, mut store) = structured_search_store();
+    let base = store.summaries[0].clone();
+    store.summaries = (0..12)
+        .map(|index| {
+            let mut summary = base.clone();
+            summary["_key"] = json!(format!("codex:review-{index}"));
+            summary["last_timestamp"] = json!(format!("2026-02-{:02}T00:00:00Z", index + 1));
+            summary["hidden"] = json!(index == 9);
+            if index == 11 {
+                summary["cwd"] = json!("/other");
+            }
+            summary
+        })
+        .collect();
+    let mut workspace = crate::workspace::WorkspaceSnapshot::default();
+    workspace.sessions.insert(
+        "codex:review-0".into(),
+        crate::workspace::SessionWorkspace {
+            favorite: true,
+            note: "用户确认的解决方法".into(),
+            tags: BTreeSet::from(["已验证".into()]),
+            ..Default::default()
+        },
+    );
+    workspace.sessions.insert(
+        "codex:review-10".into(),
+        crate::workspace::SessionWorkspace {
+            removed: true,
+            ..Default::default()
+        },
+    );
+    let stats = store.stats(
+        &HashMap::from([("cwd".into(), "/project".into())]),
+        &workspace,
+    );
+    assert_eq!(stats["total"], 9);
+    let review = &stats["project_review"];
+    assert_eq!(review["recent"].as_array().unwrap().len(), 8);
+    assert_eq!(review["recent"][0]["key"], "codex:review-8");
+    assert_eq!(review["saved"][0]["key"], "codex:review-0");
+    assert_eq!(review["saved"][0]["note"], "用户确认的解决方法");
+    assert_eq!(review["saved"][0]["tags"], json!(["已验证"]));
+    assert!(store.stats(&HashMap::new(), &workspace)["project_review"].is_null());
+}
+
+#[test]
+fn 工具排行无需关键词即可追溯调用且不匹配结果() {
+    let (_directory, store) = structured_search_store();
+    let result = store
+        .search(
+            &HashMap::from([("exact_tool".into(), "read_file".into())]),
+            &crate::workspace::WorkspaceSnapshot::default(),
+        )
+        .unwrap();
+    assert_eq!(result["total"], 1);
+    assert_eq!(result["sessions"][0]["search_hits"][0]["ordinal"], 1);
+    assert_eq!(
+        result["sessions"][0]["search_hits"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let result = store
+        .search(
+            &HashMap::from([("exact_tool".into(), "read".into())]),
+            &crate::workspace::WorkspaceSnapshot::default(),
+        )
+        .unwrap();
+    assert_eq!(result["total"], 0);
+}
+
+#[test]
+fn 命令索引只匹配实际执行的程序并保留消息位置() {
+    let index = crate::search::SearchIndex::open(None).unwrap();
+    index.refresh("s1", "fp1", |visit| {
+        visit(&json!({ "role": "assistant", "text": "cargo test" }));
+        visit(&json!({ "role": "tool", "tool_kind": "function_call", "tool_name": "exec_command", "text": "{\"cmd\":\"/usr/bin/cargo test\"}" }));
+        visit(&json!({ "role": "tool", "tool_kind": "tool_result", "tool_name": "exec_command", "text": "cargo succeeded" }));
+        visit(&json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": "shell", "text": "{\"command\":[\"cat\",\"cargo.log\"]}" }));
+        Ok(())
+    }).unwrap();
+    let filters = crate::search::SearchFilters::from_query(&HashMap::from([(
+        "command".into(),
+        "cargo".into(),
+    )]));
+    let hits = index
+        .read_snapshot(|snapshot| snapshot.query_hits_filtered("", &filters, |_, _| true))
+        .unwrap();
+    assert_eq!(hits["s1"].len(), 1);
+    assert_eq!(hits["s1"][0]["ordinal"], 1);
+}
+
+#[test]
 fn 结构化搜索按角色过滤消息() {
     let (_directory, store) = structured_search_store();
     let workspace = crate::workspace::WorkspaceSnapshot::default();
@@ -429,7 +693,7 @@ fn 来源筛选按来源栏分组匹配归档与_copilot_chat() {
 fn 统计按_agent_归并归档和兼容来源() {
     let store = SessionStore {
         summaries: vec![
-            json!({ "source_kind": "codex", "archived": false, "message_count": 8, "tool_count": 3, "input_tokens": 100, "output_tokens": 20, "cached_input_tokens": 50 }),
+            json!({ "source_kind": "codex", "archived": false, "message_count": 8, "tool_count": 3, "input_tokens": 100, "output_tokens": 20, "cached_input_tokens": 50, "tool_counts": { "bash": 2, "read": 1 }, "command_counts": { "adb": 2 } }),
             json!({ "source_kind": "codex_archived", "archived": true, "message_count": 5, "tool_count": 2, "input_tokens": 30, "output_tokens": 5, "cached_input_tokens": 0 }),
             json!({ "source_kind": "claude_code", "archived": false, "message_count": 4, "tool_count": 1 }),
             json!({ "source_kind": "opencode", "archived": false, "message_count": 7, "tool_count": 4, "input_tokens": 10, "output_tokens": 0, "cached_input_tokens": 0 }),
@@ -464,6 +728,118 @@ fn 统计按_agent_归并归档和兼容来源() {
     assert_eq!(stats["total_tokens"], 215);
     assert_eq!(stats["total_messages"], 24);
     assert_eq!(stats["total_tools"], 10);
+    // 摘要里的按名统计被汇总；无该字段的来源自然跳过。
+    assert_eq!(
+        stats["by_tool"],
+        json!([
+            { "label": "bash", "count": 2, "session_count": 1, "last_timestamp": "" },
+            { "label": "read", "count": 1, "session_count": 1, "last_timestamp": "" }
+        ])
+    );
+    assert_eq!(
+        stats["by_command"],
+        json!([{ "label": "adb", "count": 2, "session_count": 1, "last_timestamp": "" }])
+    );
+}
+
+#[test]
+fn 摘要按工具名统计调用并从shell类调用提取命令首词() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("rollout.jsonl");
+    std::fs::write(
+        &path,
+        format!(
+            "{}\n{}\n{}\n{}\n{}\n",
+            json!({ "type": "session_meta", "payload": { "id": "s1", "cwd": "/work" } }),
+            json!({ "timestamp": "2026-09-01T10:00:00Z", "type": "response_item", "payload": { "type": "function_call", "name": "shell", "call_id": "c1", "arguments": "{\"command\": \"adb shell ls /sdcard\"}" } }),
+            json!({ "timestamp": "2026-09-01T10:00:01Z", "type": "response_item", "payload": { "type": "function_call_output", "call_id": "c1", "output": "ok" } }),
+            json!({ "timestamp": "2026-09-01T10:00:02Z", "type": "response_item", "payload": { "type": "function_call", "name": "shell", "call_id": "c2", "arguments": "{\"command\": \"/usr/bin/python3 run.py\"}" } }),
+            json!({ "timestamp": "2026-09-01T10:00:03Z", "type": "response_item", "payload": { "type": "function_call", "name": "read_file", "call_id": "c3", "arguments": "{\"path\": \"/a\"}" } })
+        ),
+    )
+    .unwrap();
+    let source = Source {
+        kind: "codex",
+        display_name: "Codex",
+        root: directory.path().to_path_buf(),
+        format: SourceFormat::Codex,
+        archived: false,
+    };
+    let (summary, _) = parse_summary(&path, &source).unwrap();
+    // 只统计调用不计结果；工具名小写归并。
+    assert_eq!(
+        summary["tool_counts"],
+        json!({ "shell": 2, "read_file": 1 })
+    );
+    // 命令首词取路径 basename；非 shell 工具不进入命令排行。
+    assert_eq!(summary["command_counts"], json!({ "adb": 1, "python3": 1 }));
+}
+
+#[test]
+fn 最近会话沿用默认可见口径并限制条数() {
+    let store = SessionStore {
+        summaries: vec![
+            json!({ "_key": "first" }),
+            json!({ "_key": "hidden", "hidden": true }),
+            json!({ "_key": "archived", "archived": true }),
+            json!({ "_key": "second" }),
+            json!({ "_key": "third" }),
+        ],
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+
+    let keys: Vec<String> = store
+        .recent_summaries(2, &crate::workspace::WorkspaceSnapshot::default())
+        .iter()
+        .filter_map(|summary| summary["_key"].as_str().map(String::from))
+        .collect();
+    assert_eq!(keys, ["first", "second"]);
+}
+
+#[test]
+fn 收藏会话只含默认可见口径下的收藏项() {
+    let store = SessionStore {
+        summaries: vec![
+            json!({ "_key": "plain" }),
+            json!({ "_key": "fav" }),
+            json!({ "_key": "fav-archived" }),
+        ],
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    let mut workspace = crate::workspace::WorkspaceSnapshot::default();
+    workspace.sessions.insert(
+        "fav".to_string(),
+        crate::workspace::SessionWorkspace {
+            favorite: true,
+            ..Default::default()
+        },
+    );
+    // 已归档的收藏项仍受默认可见口径约束，不出现在托盘收藏段。
+    workspace.sessions.insert(
+        "fav-archived".to_string(),
+        crate::workspace::SessionWorkspace {
+            favorite: true,
+            archived: true,
+            ..Default::default()
+        },
+    );
+
+    let keys: Vec<String> = store
+        .favorite_summaries(5, &workspace)
+        .iter()
+        .filter_map(|summary| summary["_key"].as_str().map(String::from))
+        .collect();
+    assert_eq!(keys, ["fav"]);
 }
 
 #[test]
@@ -697,6 +1073,62 @@ fn codex会话摘要取最后一次token_count的累计值并扣除缓存() {
     assert_eq!(summary["input_tokens"], 600);
     assert_eq!(summary["cached_input_tokens"], 2400);
     assert_eq!(summary["output_tokens"], 260);
+}
+
+#[test]
+fn 用量账本区分缓存读写并按事件日期归属() {
+    let mut state = super::ParseState::new(std::path::Path::new("test.jsonl"));
+    for (id, date) in [
+        ("a", "2026-09-01"),
+        ("b", "2026-09-02"),
+        ("b", "2026-09-02"),
+    ] {
+        state.accept(&json!({ "type": "assistant", "timestamp": date,
+            "message": { "id": id, "role": "assistant", "content": "ok", "usage": {
+                "input_tokens": 10, "output_tokens": 2,
+                "cache_read_input_tokens": 30, "cache_creation_input_tokens": 5
+            } }
+        }));
+    }
+    let usage = serde_json::to_value(&state.usage).unwrap();
+    assert_eq!(usage["totals"]["cache_read"], 60);
+    assert_eq!(usage["totals"]["cache_write"], 10);
+    assert_eq!(usage["by_date"]["2026-09-01"]["input"], 10);
+    assert_eq!(usage["by_date"]["2026-09-02"]["input"], 10);
+    assert_eq!(state.cached_input_tokens, 70);
+}
+
+#[test]
+fn 统计日图使用用量日期并明确无日期用量() {
+    let store = SessionStore {
+        summaries: vec![json!({
+            "timestamp": "2026-09-02", "source_kind": "claude_code",
+            "input_tokens": 20, "cached_input_tokens": 70, "output_tokens": 4,
+            "usage": { "known": true,
+                "totals": { "input": 20, "cache_read": 60, "cache_write": 10, "output": 4 },
+                "by_date": { "2026-09-01": { "input": 10, "cache_read": 30, "cache_write": 5, "output": 2 } },
+                "undated": { "input": 10, "cache_read": 30, "cache_write": 5, "output": 2 }
+            }
+        })],
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    let stats = store.stats(
+        &HashMap::new(),
+        &crate::workspace::WorkspaceSnapshot::default(),
+    );
+    assert_eq!(stats["total_cache_read_tokens"], 60);
+    assert_eq!(stats["cache_eligible_input_tokens"], 90);
+    assert_eq!(stats["undated_tokens"], 47);
+    assert_eq!(
+        stats["by_date"][0],
+        json!({ "label": "2026-09-01", "count": 1, "tokens": 47 })
+    );
+    assert_eq!(stats["by_date"][1]["tokens"], 0);
 }
 
 #[test]

@@ -420,10 +420,13 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   const html = await readProjectFile("public/index.html");
   const i18n = await readProjectFile("public/i18n.js");
 
-  assert.match(source, /value: formatCount\(stats\.total_events\)/);
+  assert.match(source, /formatCount\(stats\.total_events\)/);
   assert.match(source, /value: formatCount\(stats\.total_messages\)/);
-  assert.match(source, /value: formatCount\(stats\.total_tools\)/);
-  assert.match(source, /\(stats\.by_date \|\| \[\]\)\.slice\(-14\)/);
+  assert.match(
+    source,
+    /formatCount\(stats\.total_tool_calls \?\? stats\.total_tools\)/
+  );
+  assert.match(source, /const dates = stats\.by_date \|\| \[\]/);
   assert.match(source, /stats\.by_agent/);
   assert.match(source, /stats\.by_agent_tokens/);
   assert.match(source, /function renderAgents\(stats, container\)/);
@@ -450,7 +453,7 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   assert.match(css, /\.stats-empty\s*\{/);
   assert.match(
     css,
-    /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/
+    /\.stats-metrics\s*\{[\s\S]*grid-template-columns: repeat\(8, minmax\(0, 1fr\)\)/
   );
   // 近期每日排行与趋势图同源重复,已移除;排行区保留 Provider/工作目录两列。
   assert.doesNotMatch(source, /statsRecentDaily/);
@@ -477,11 +480,14 @@ test("统计页提供 Token 热力图与每日用量视图", async () => {
   assert.match(source, /stats\.total_input_tokens/);
   assert.match(source, /stats\.total_output_tokens/);
   assert.match(source, /stats\.total_cached_input_tokens/);
-  assert.match(source, /function renderHeatmap\(stats, container\)/);
+  assert.match(
+    source,
+    /function renderHeatmap\(stats, container, onSelectDay\)/
+  );
   assert.match(source, /function formatTokensCompact\(/);
   assert.match(
     source,
-    /elements\.tokenHeatmapBody[\s\S]*renderHeatmap\(stats, elements\.tokenHeatmapBody\)/
+    /elements\.tokenHeatmapBody[\s\S]*renderHeatmap\(stats, elements\.tokenHeatmapBody, onSelectDay\)/
   );
   // 热力图颜色档位基于当日 token 相对峰值，0 档为空格。
   assert.match(source, /function heatmapLevel\(tokens, max\)/);
@@ -492,7 +498,7 @@ test("统计页提供 Token 热力图与每日用量视图", async () => {
   assert.match(source, /token-heatmap-tooltip/);
   assert.doesNotMatch(source, /cell\.title = /);
   assert.match(html, /id="token-heatmap-body"/);
-  assert.match(html, /data-i18n="statsTokenHeatmap"/);
+  assert.match(html, /data-i18n="statsActivityHeatmap"/);
   assert.match(i18n, /statsTokenTotal: "Token 总量"/);
   assert.match(i18n, /statsTokenHeatmap: "Token 热力图"/);
   assert.match(i18n, /statsSessionsShort: "会话"/);
@@ -693,8 +699,9 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   );
   assert.match(
     view,
-    /state\.conversationDesc \? \[\.\.\.visible\]\.reverse\(\) : visible/
+    /state\.conversationDesc \? \[\.\.\.groups\]\.reverse\(\) : groups/
   );
+  assert.match(view, /groupToolMessages/);
   assert.doesNotMatch(view, /createMessageNavSection/);
   assert.doesNotMatch(view, /message-nav-section/);
   assert.match(filter, /showTools\s*\|\|\s*message\.role !== "tool"/);
@@ -1068,7 +1075,7 @@ test("搜索结果支持使用服务端 cursor 继续加载", async () => {
   assert.match(source, /state\.hasMore = data\.has_more/);
   assert.match(
     source,
-    /state\.searchQuery\s*\? buildSearchUrl\(\{ cursor: state\.nextCursor \}\)/
+    /isSearchActive\(\)\s*\? buildSearchUrl\(\{ cursor: state\.nextCursor \}\)/
   );
 });
 
@@ -1604,7 +1611,7 @@ test("个人工作台数据独立持久化并提供整理与可选脱敏导出",
   assert.doesNotMatch(html, /id="list-sort-label"/);
   assert.match(
     app,
-    /querySelector\("#search-results-toolbar"\)[\s\S]*?classList\.toggle\("hidden", !state.searchQuery\)/
+    /querySelector\("#search-results-toolbar"\)[\s\S]*?classList\.toggle\("hidden", !isSearchActive\(\)\)/
   );
   assert.match(
     html,

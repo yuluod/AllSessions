@@ -5,6 +5,8 @@ use std::{
     time::Duration,
 };
 
+use super::usage::{TokenUsage, UsageLedger};
+
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -101,10 +103,10 @@ fn session_row(row: &Row<'_>) -> rusqlite::Result<SessionRow> {
     })
 }
 
-/// 按会话聚合 `turn_usage` 的 token 用量：(input, output, cached)。
+/// 按会话聚合 `turn_usage` 的 token 用量，分别保留输入、输出、缓存读取与写入。
 /// `turn_usage` 是较新 schema 才有的表；缺失时所有会话按 0 处理。
 /// 各状态（completed/cancelled/error）的轮次都已产生真实消耗，全部计入。
-fn load_turn_usage(connection: &Connection) -> Result<HashMap<String, (u64, u64, u64)>, String> {
+fn load_turn_usage(connection: &Connection) -> Result<HashMap<String, TokenUsage>, String> {
     let present: i64 = connection
         .query_row(
             "select count(*) from sqlite_master where type = 'table' and name = 'turn_usage'",
@@ -119,7 +121,7 @@ fn load_turn_usage(connection: &Connection) -> Result<HashMap<String, (u64, u64,
     let mut statement = connection
         .prepare(
             "select session_id, sum(input_tokens), sum(output_tokens), \
-                    sum(cache_creation_input_tokens + cache_read_input_tokens) \
+                    sum(cache_read_input_tokens), sum(cache_creation_input_tokens) \
              from turn_usage group by session_id",
         )
         .map_err(|error| format!("ZCode 数据库不是受支持的最新格式：{error}"))?;
@@ -130,19 +132,21 @@ fn load_turn_usage(connection: &Connection) -> Result<HashMap<String, (u64, u64,
                 row.get::<_, Option<i64>>(1)?.unwrap_or_default(),
                 row.get::<_, Option<i64>>(2)?.unwrap_or_default(),
                 row.get::<_, Option<i64>>(3)?.unwrap_or_default(),
+                row.get::<_, Option<i64>>(4)?.unwrap_or_default(),
             ))
         })
         .map_err(|error| format!("无法查询 ZCode token 用量：{error}"))?;
     for row in rows {
-        let (session_id, input, output, cached) =
+        let (session_id, input, output, cache_read, cache_write) =
             row.map_err(|error| format!("无法读取 ZCode token 用量：{error}"))?;
         usage.insert(
             session_id,
-            (
-                input.max(0) as u64,
-                output.max(0) as u64,
-                cached.max(0) as u64,
-            ),
+            TokenUsage {
+                input: input.max(0) as u64,
+                output: output.max(0) as u64,
+                cache_read: cache_read.max(0) as u64,
+                cache_write: cache_write.max(0) as u64,
+            },
         );
     }
     Ok(usage)
@@ -424,6 +428,7 @@ fn part_messages(message: &MessageRow, part: &PartRow) -> Vec<Value> {
             if status == "error" {
                 value["is_error"] = Value::Bool(true);
             }
+            super::parse::annotate_combined_tool(&mut value, &state["input"]);
             vec![value]
         }
         _ => Vec::new(),
@@ -476,17 +481,20 @@ fn finish_summary(
     row: &SessionRow,
     path: &Path,
     source: &Source,
-    turn_usage: Option<(u64, u64, u64)>,
+    turn_usage: Option<TokenUsage>,
 ) -> (Value, String) {
     let mut summary = state.summary(path, source);
     if !row.title.trim().is_empty() {
         summary["title"] = Value::String(row.title.clone());
     }
     // turn_usage 的聚合值优先于流式累加（含被 ParseState 忽略的分片）。
-    if let Some((input, output, cached)) = turn_usage {
-        summary["input_tokens"] = json!(input);
-        summary["output_tokens"] = json!(output);
-        summary["cached_input_tokens"] = json!(cached);
+    if let Some(usage) = turn_usage {
+        summary["input_tokens"] = json!(usage.input);
+        summary["output_tokens"] = json!(usage.output);
+        summary["cached_input_tokens"] = json!(usage.cache_read + usage.cache_write);
+        let mut ledger = UsageLedger::default();
+        ledger.record("", usage);
+        summary["usage"] = json!(ledger);
     }
     summary["source_read_only"] = Value::Bool(true);
     let mut search_text = summary_search_text(&summary);
@@ -1052,6 +1060,11 @@ mod tests {
         assert_eq!(main.summary["title"], "修复构建流程");
         assert_eq!(main.summary["cwd"], "/work/project");
         assert_eq!(main.summary["model_provider"], "zhipu");
+        assert_eq!(main.summary["tool_counts"]["bash"], 2);
+        assert_eq!(
+            main.summary["command_counts"],
+            json!({ "pwd": 1, "false": 1 })
+        );
         assert_eq!(main.summary["source_read_only"], true);
         assert!(main.search_text.contains("请检查发布构建"));
     }

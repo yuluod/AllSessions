@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 
 use super::SessionStore;
 use super::helpers::{
-    agent_kind, count_values, diagnostic_source_kind, increment, insert_string, local_date_key,
-    matches_filters, timestamp_of,
+    agent_kind, compact, count_values, diagnostic_source_kind, increment, insert_string,
+    matches_filters, paginate, timestamp_of,
 };
 
 /// 只影响列表可见性、不改变导航维度的查询开关。
@@ -19,6 +19,63 @@ const DISPLAY_FLAGS: [&str; 4] = [
 ];
 
 impl SessionStore {
+    pub fn stats_sessions(
+        &self,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Value {
+        let mut sessions = self
+            .filtered(query, workspace)
+            .into_iter()
+            .map(|mut summary| {
+                super::activity::scope_summary(&mut summary, query);
+                let known_usage = summary["usage"]["known"] == true;
+                let tokens = ["input_tokens", "output_tokens", "cached_input_tokens"]
+                    .iter()
+                    .map(|field| summary[*field].as_u64().unwrap_or_default())
+                    .sum::<u64>();
+                let calls = summary["tool_counts"].as_object().map(|counts| {
+                    counts.values().filter_map(Value::as_u64).sum::<u64>()
+                });
+                let known_messages = !super::has_activity_range(query)
+                    || summary["activity"].is_object();
+                json!({
+                    "_key": summary["_key"],
+                    "title": summary["title"],
+                    "cwd": summary["cwd"],
+                    "source_kind": summary["source_kind"],
+                    "display_source": summary["display_source"],
+                    "last_timestamp": timestamp_of(&summary),
+                    "tokens": if known_usage || (!super::has_activity_range(query) && tokens > 0) {
+                        json!(tokens)
+                    } else { Value::Null },
+                    "message_count": if known_messages {
+                        summary["message_count"].clone()
+                    } else { Value::Null },
+                    "tool_calls": calls,
+                    "workspace": {
+                        "favorite": summary["workspace"]["favorite"],
+                        "tags": summary["workspace"]["tags"],
+                        "note": compact(summary["workspace"]["note"].as_str().unwrap_or_default(), 240)
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        let sort = query.get("sort").map(String::as_str).unwrap_or("recent");
+        sessions.sort_by(|a, b| {
+            let usage_order = if sort == "tokens" {
+                b["tokens"].as_u64().cmp(&a["tokens"].as_u64())
+            } else {
+                std::cmp::Ordering::Equal
+            };
+            usage_order
+                .then_with(|| timestamp_of(b).cmp(timestamp_of(a)))
+                .then_with(|| a["_key"].as_str().cmp(&b["_key"].as_str()))
+        });
+        let total = sessions.len();
+        paginate(sessions, query, json!({ "total": total, "sort": sort }))
+    }
+
     pub fn facets(
         &self,
         query: &HashMap<String, String>,
@@ -36,9 +93,7 @@ impl SessionStore {
             if summary["hidden"].as_bool() == Some(true) {
                 insert_string(&mut hidden_reasons, &summary["hidden_reason"]);
             }
-            if let Some(date) = local_date_key(timestamp_of(summary)) {
-                dates.insert(date);
-            }
+            dates.extend(super::activity::dates(summary));
         }
         // 项目计数应用显示开关：隐藏、归档与本地移除的会话默认不计入，
         // 与列表可见口径一致；来源/项目筛选本身不收窄项目计数。
@@ -122,7 +177,10 @@ impl SessionStore {
         query: &HashMap<String, String>,
         workspace: &crate::workspace::WorkspaceSnapshot,
     ) -> Value {
-        let filtered = self.filtered(query, workspace);
+        let mut filtered = self.filtered(query, workspace);
+        for summary in &mut filtered {
+            super::activity::scope_summary(summary, query);
+        }
         let mut by_date: BTreeMap<String, DayUsage> = BTreeMap::new();
         let mut by_agent = HashMap::new();
         let mut by_agent_tokens: HashMap<String, u64> = HashMap::new();
@@ -130,16 +188,28 @@ impl SessionStore {
         let mut by_provider = HashMap::new();
         let mut by_provider_tokens: HashMap<String, u64> = HashMap::new();
         let mut by_cwd = HashMap::new();
+        let mut by_tool: HashMap<String, ActivityCount> = HashMap::new();
+        let mut by_command: HashMap<String, ActivityCount> = HashMap::new();
         let mut total_events = 0_u64;
         let mut total_messages = 0_u64;
         let mut total_tools = 0_u64;
+        let mut total_tool_calls = 0_u64;
         let mut total_input_tokens = 0_u64;
         let mut total_output_tokens = 0_u64;
         let mut total_cached_input_tokens = 0_u64;
+        let mut total_cache_read_tokens = 0_u64;
+        let mut total_cache_write_tokens = 0_u64;
+        let mut cache_eligible_input_tokens = 0_u64;
+        let mut usage_sessions = 0_u64;
+        let mut tool_sessions = 0_u64;
+        let mut undated_tokens = 0_u64;
         for summary in &filtered {
             total_events += summary["event_count"].as_u64().unwrap_or_default();
             total_messages += summary["message_count"].as_u64().unwrap_or_default();
             total_tools += summary["tool_count"].as_u64().unwrap_or_default();
+            if let Some(counts) = summary["tool_counts"].as_object() {
+                total_tool_calls += counts.values().filter_map(Value::as_u64).sum::<u64>();
+            }
             let input = summary["input_tokens"].as_u64().unwrap_or_default();
             let output = summary["output_tokens"].as_u64().unwrap_or_default();
             let cached = summary["cached_input_tokens"].as_u64().unwrap_or_default();
@@ -147,10 +217,35 @@ impl SessionStore {
             total_output_tokens += output;
             total_cached_input_tokens += cached;
             let tokens = input + output + cached;
-            if let Some(date) = local_date_key(timestamp_of(summary)) {
-                let day = by_date.entry(date).or_default();
-                day.count += 1;
-                day.tokens += tokens;
+            let usage = &summary["usage"];
+            if usage["known"] == true {
+                usage_sessions += 1;
+                let totals = &usage["totals"];
+                total_cache_read_tokens += totals["cache_read"].as_u64().unwrap_or_default();
+                total_cache_write_tokens += totals["cache_write"].as_u64().unwrap_or_default();
+                cache_eligible_input_tokens += totals["input"].as_u64().unwrap_or_default()
+                    + totals["cache_read"].as_u64().unwrap_or_default()
+                    + totals["cache_write"].as_u64().unwrap_or_default();
+                undated_tokens += usage_total(&usage["undated"]);
+                if let Some(days) = usage["by_date"].as_object() {
+                    for (date, value) in days {
+                        by_date.entry(date.clone()).or_default().tokens += usage_total(value);
+                    }
+                }
+            } else {
+                undated_tokens += if super::has_activity_range(query) {
+                    summary["_undated_tokens"].as_u64().unwrap_or_default()
+                } else {
+                    tokens
+                };
+            }
+            if summary["tool_counts"].is_object() {
+                tool_sessions += 1;
+            }
+            for date in super::activity::dates(summary) {
+                if super::in_activity_range(&date, query) {
+                    by_date.entry(date).or_default().count += 1;
+                }
             }
             if let Some(agent) = agent_kind(&summary["source_kind"]) {
                 *by_agent.entry(agent.into()).or_default() += 1;
@@ -170,16 +265,47 @@ impl SessionStore {
                 *by_provider_tokens.entry(provider.into()).or_default() += tokens;
             }
             increment(&mut by_cwd, &summary["cwd"]);
+            // 按名统计来自摘要的 tool_counts/command_counts；
+            // 旧缓存或无该字段的来源自然跳过。
+            for (target, field, last_field) in [
+                (&mut by_tool, "tool_counts", "tool_last_used"),
+                (&mut by_command, "command_counts", "command_last_used"),
+            ] {
+                if let Some(counts) = summary[field].as_object() {
+                    for (name, count) in counts {
+                        let count = count.as_u64().unwrap_or_default();
+                        if count == 0 {
+                            continue;
+                        }
+                        let activity = target.entry(name.clone()).or_default();
+                        activity.count += count;
+                        activity.session_count += 1;
+                        let timestamp = summary[last_field][name].as_str().unwrap_or_default();
+                        if timestamp > activity.last_timestamp.as_str() {
+                            activity.last_timestamp = timestamp.to_string();
+                        }
+                    }
+                }
+            }
         }
-        let active_days = by_date.len();
+        let active_days = by_date.values().filter(|day| day.count > 0).count();
         json!({
             "total": filtered.len(),
-            "total_events": total_events,
+            "total_events": if super::has_activity_range(query) { Value::Null } else { json!(total_events) },
             "total_messages": total_messages,
             "total_tools": total_tools,
+            "total_tool_calls": total_tool_calls,
+            "range": { "start": query.get("activity_from"), "end": query.get("activity_to") },
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "total_cached_input_tokens": total_cached_input_tokens,
+            "total_cache_read_tokens": total_cache_read_tokens,
+            "total_cache_write_tokens": total_cache_write_tokens,
+            "cache_eligible_input_tokens": cache_eligible_input_tokens,
+            "usage_sessions": usage_sessions,
+            "tool_sessions": tool_sessions,
+            "undated_tokens": undated_tokens,
+            "project_review": query.get("cwd").filter(|cwd| !cwd.is_empty()).map(|cwd| project_review(&filtered, cwd)),
             "total_tokens": total_input_tokens + total_output_tokens + total_cached_input_tokens,
             "active_days": active_days,
             "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) },
@@ -189,7 +315,9 @@ impl SessionStore {
             "by_source_kind": count_values(by_source_kind, usize::MAX),
             "by_provider": count_values(by_provider, usize::MAX),
             "by_provider_tokens": count_values(by_provider_tokens, usize::MAX),
-            "by_cwd": count_values(by_cwd, 16)
+            "by_cwd": count_values(by_cwd, 16),
+            "by_tool": activity_values(by_tool, 32),
+            "by_command": activity_values(by_command, 16)
         })
     }
 
@@ -208,6 +336,47 @@ impl SessionStore {
             .filter(|summary| matches_filters(summary, query))
             .collect()
     }
+    /// 托盘「最近会话」按默认可见口径取前 N 条；惰性过滤取够即停，
+    /// 不需要像 filtered 那样收集全量结果。
+    pub(crate) fn recent_summaries(
+        &self,
+        limit: usize,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Vec<Value> {
+        self.visible_summaries(limit, &HashMap::new(), workspace)
+    }
+
+    /// 托盘「收藏会话」：默认可见口径加收藏标记，按最近活动取前 N 条。
+    pub(crate) fn favorite_summaries(
+        &self,
+        limit: usize,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Vec<Value> {
+        self.visible_summaries(
+            limit,
+            &HashMap::from([("favorite".to_string(), "true".to_string())]),
+            workspace,
+        )
+    }
+
+    fn visible_summaries(
+        &self,
+        limit: usize,
+        query: &HashMap<String, String>,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Vec<Value> {
+        self.summaries
+            .iter()
+            .cloned()
+            .map(|mut summary| {
+                workspace.decorate_summary(&mut summary);
+                summary
+            })
+            .filter(|summary| matches_filters(summary, query))
+            .take(limit)
+            .collect()
+    }
+
     pub(crate) fn session_roots(&self) -> Vec<String> {
         self.sources
             .iter()
@@ -215,6 +384,69 @@ impl SessionStore {
             .map(|source| source.root.to_string_lossy().into_owned())
             .collect()
     }
+}
+
+fn usage_total(value: &Value) -> u64 {
+    ["input", "output", "cache_read", "cache_write"]
+        .iter()
+        .map(|field| value[*field].as_u64().unwrap_or_default())
+        .sum()
+}
+
+#[derive(Default)]
+struct ActivityCount {
+    count: u64,
+    session_count: u64,
+    last_timestamp: String,
+}
+
+fn project_review(summaries: &[Value], cwd: &str) -> Value {
+    let mut recent = summaries.iter().collect::<Vec<_>>();
+    recent.sort_by(|a, b| {
+        timestamp_of(b)
+            .cmp(timestamp_of(a))
+            .then_with(|| a["_key"].as_str().cmp(&b["_key"].as_str()))
+    });
+    let entry = |summary: &&Value| {
+        json!({
+            "key": summary["_key"], "title": summary["title"],
+            "source": summary["display_source"], "timestamp": timestamp_of(summary),
+            "favorite": summary["workspace"]["favorite"],
+            "tags": summary["workspace"]["tags"],
+            "note": super::helpers::compact(summary["workspace"]["note"].as_str().unwrap_or_default(), 240)
+        })
+    };
+    let saved = recent
+        .iter()
+        .copied()
+        .filter(|summary| {
+            summary["workspace"]["favorite"] == true
+                || summary["workspace"]["note"]
+                    .as_str()
+                    .is_some_and(|note| !note.is_empty())
+                || summary["workspace"]["tags"]
+                    .as_array()
+                    .is_some_and(|tags| !tags.is_empty())
+        })
+        .take(8)
+        .map(|summary| entry(&summary))
+        .collect::<Vec<_>>();
+    json!({ "cwd": cwd, "recent": recent.iter().take(8).map(entry).collect::<Vec<_>>(), "saved": saved })
+}
+
+fn activity_values(counts: HashMap<String, ActivityCount>, limit: usize) -> Vec<Value> {
+    let mut values = counts.into_iter().collect::<Vec<_>>();
+    values.sort_by(|a, b| b.1.count.cmp(&a.1.count).then_with(|| a.0.cmp(&b.0)));
+    values.truncate(limit);
+    values
+        .into_iter()
+        .map(|(label, item)| {
+            json!({
+                "label": label, "count": item.count,
+                "session_count": item.session_count, "last_timestamp": item.last_timestamp
+            })
+        })
+        .collect()
 }
 
 #[derive(Default)]

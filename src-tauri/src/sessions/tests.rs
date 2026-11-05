@@ -429,7 +429,7 @@ fn 来源筛选按来源栏分组匹配归档与_copilot_chat() {
 fn 统计按_agent_归并归档和兼容来源() {
     let store = SessionStore {
         summaries: vec![
-            json!({ "source_kind": "codex", "archived": false, "message_count": 8, "tool_count": 3, "input_tokens": 100, "output_tokens": 20, "cached_input_tokens": 50 }),
+            json!({ "source_kind": "codex", "archived": false, "message_count": 8, "tool_count": 3, "input_tokens": 100, "output_tokens": 20, "cached_input_tokens": 50, "tool_counts": { "bash": 2, "read": 1 }, "command_counts": { "adb": 2 } }),
             json!({ "source_kind": "codex_archived", "archived": true, "message_count": 5, "tool_count": 2, "input_tokens": 30, "output_tokens": 5, "cached_input_tokens": 0 }),
             json!({ "source_kind": "claude_code", "archived": false, "message_count": 4, "tool_count": 1 }),
             json!({ "source_kind": "opencode", "archived": false, "message_count": 7, "tool_count": 4, "input_tokens": 10, "output_tokens": 0, "cached_input_tokens": 0 }),
@@ -464,6 +464,48 @@ fn 统计按_agent_归并归档和兼容来源() {
     assert_eq!(stats["total_tokens"], 215);
     assert_eq!(stats["total_messages"], 24);
     assert_eq!(stats["total_tools"], 10);
+    // 摘要里的按名统计被汇总；无该字段的来源自然跳过。
+    assert_eq!(
+        stats["by_tool"],
+        json!([
+            { "label": "bash", "count": 2 },
+            { "label": "read", "count": 1 }
+        ])
+    );
+    assert_eq!(stats["by_command"], json!([{ "label": "adb", "count": 2 }]));
+}
+
+#[test]
+fn 摘要按工具名统计调用并从shell类调用提取命令首词() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("rollout.jsonl");
+    std::fs::write(
+        &path,
+        format!(
+            "{}\n{}\n{}\n{}\n{}\n",
+            json!({ "type": "session_meta", "payload": { "id": "s1", "cwd": "/work" } }),
+            json!({ "timestamp": "2026-09-01T10:00:00Z", "type": "response_item", "payload": { "type": "function_call", "name": "shell", "call_id": "c1", "arguments": "{\"command\": \"adb shell ls /sdcard\"}" } }),
+            json!({ "timestamp": "2026-09-01T10:00:01Z", "type": "response_item", "payload": { "type": "function_call_output", "call_id": "c1", "output": "ok" } }),
+            json!({ "timestamp": "2026-09-01T10:00:02Z", "type": "response_item", "payload": { "type": "function_call", "name": "shell", "call_id": "c2", "arguments": "{\"command\": \"/usr/bin/python3 run.py\"}" } }),
+            json!({ "timestamp": "2026-09-01T10:00:03Z", "type": "response_item", "payload": { "type": "function_call", "name": "read_file", "call_id": "c3", "arguments": "{\"path\": \"/a\"}" } })
+        ),
+    )
+    .unwrap();
+    let source = Source {
+        kind: "codex",
+        display_name: "Codex",
+        root: directory.path().to_path_buf(),
+        format: SourceFormat::Codex,
+        archived: false,
+    };
+    let (summary, _) = parse_summary(&path, &source).unwrap();
+    // 只统计调用不计结果；工具名小写归并。
+    assert_eq!(
+        summary["tool_counts"],
+        json!({ "shell": 2, "read_file": 1 })
+    );
+    // 命令首词取路径 basename；非 shell 工具不进入命令排行。
+    assert_eq!(summary["command_counts"], json!({ "adb": 1, "python3": 1 }));
 }
 
 #[test]

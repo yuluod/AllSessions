@@ -89,10 +89,21 @@ function renderMetrics(stats, container) {
   const average =
     stats.avg_daily ?? (activeDays > 0 ? (total / activeDays).toFixed(1) : "0");
   const totalTokens = Number(stats.total_tokens || 0);
+  const cachedInput = Number(stats.total_cached_input_tokens || 0);
+  const uncachedInput = Number(stats.total_input_tokens || 0);
+  const cacheHit =
+    cachedInput + uncachedInput > 0
+      ? `${((cachedInput / (cachedInput + uncachedInput)) * 100).toFixed(2)}%`
+      : "—";
   const cards = [
     { label: t("statsTotalSessions"), value: String(total) },
     { label: t("statsMessages"), value: formatCount(stats.total_messages) },
     { label: t("statsTools"), value: formatCount(stats.total_tools) },
+    {
+      label: t("statsCachedHit"),
+      value: cacheHit,
+      title: `${t("statsTokenCached")} ${formatCount(cachedInput)} / ${t("statsTokenInput")} ${formatCount(cachedInput + uncachedInput)}`,
+    },
     {
       label: t("statsTokenTotal"),
       value: formatTokensCompact(totalTokens),
@@ -593,6 +604,16 @@ function renderRankings(stats, container) {
       items: (stats.by_cwd || []).slice(0, 8),
       isPath: true,
       kind: "cwd",
+    },
+    {
+      title: t("statsToolRanking"),
+      items: (stats.by_tool || []).slice(0, 10),
+      kind: "tool",
+    },
+    {
+      title: t("statsCommandRanking"),
+      items: (stats.by_command || []).slice(0, 10),
+      kind: "command",
     },
   ];
   sections.forEach(({ title, items, isPath, kind, tokensOf }) => {

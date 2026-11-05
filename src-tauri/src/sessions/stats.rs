@@ -130,6 +130,8 @@ impl SessionStore {
         let mut by_provider = HashMap::new();
         let mut by_provider_tokens: HashMap<String, u64> = HashMap::new();
         let mut by_cwd = HashMap::new();
+        let mut by_tool: HashMap<String, u64> = HashMap::new();
+        let mut by_command: HashMap<String, u64> = HashMap::new();
         let mut total_events = 0_u64;
         let mut total_messages = 0_u64;
         let mut total_tools = 0_u64;
@@ -170,6 +172,19 @@ impl SessionStore {
                 *by_provider_tokens.entry(provider.into()).or_default() += tokens;
             }
             increment(&mut by_cwd, &summary["cwd"]);
+            // 按名统计来自摘要的 tool_counts/command_counts；
+            // 旧缓存或无该字段的来源自然跳过。
+            for (target, field) in [
+                (&mut by_tool, "tool_counts"),
+                (&mut by_command, "command_counts"),
+            ] {
+                if let Some(counts) = summary[field].as_object() {
+                    for (name, count) in counts {
+                        *target.entry(name.clone()).or_default() +=
+                            count.as_u64().unwrap_or_default();
+                    }
+                }
+            }
         }
         let active_days = by_date.len();
         json!({
@@ -189,7 +204,9 @@ impl SessionStore {
             "by_source_kind": count_values(by_source_kind, usize::MAX),
             "by_provider": count_values(by_provider, usize::MAX),
             "by_provider_tokens": count_values(by_provider_tokens, usize::MAX),
-            "by_cwd": count_values(by_cwd, 16)
+            "by_cwd": count_values(by_cwd, 16),
+            "by_tool": count_values(by_tool, usize::MAX),
+            "by_command": count_values(by_command, 16)
         })
     }
 

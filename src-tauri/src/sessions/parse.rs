@@ -38,6 +38,10 @@ pub(crate) struct ParseState {
     pub(crate) output_tokens: u64,
     pub(crate) cached_input_tokens: u64,
     pub(crate) roles: BTreeMap<String, u64>,
+    /// 按工具名（小写归并）统计调用次数；仅计调用，不计结果。
+    pub(crate) tool_counts: BTreeMap<String, u64>,
+    /// shell 类调用提取的命令首词计数（如 adb/python），非全部工具。
+    pub(crate) command_counts: BTreeMap<String, u64>,
     pub(crate) first_user: String,
     pub(crate) first_assistant: String,
     pub(crate) first_message: String,
@@ -81,6 +85,8 @@ impl ParseState {
             output_tokens: 0,
             cached_input_tokens: 0,
             roles: BTreeMap::new(),
+            tool_counts: BTreeMap::new(),
+            command_counts: BTreeMap::new(),
             first_user: String::new(),
             first_assistant: String::new(),
             first_message: String::new(),
@@ -250,6 +256,18 @@ impl ParseState {
         }
         self.message_count += 1;
         *self.roles.entry(role.into()).or_default() += 1;
+        if matches!(
+            message["tool_kind"].as_str(),
+            Some("tool_call" | "tool_use" | "function_call")
+        ) && let Some(name) = message["tool_name"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+        {
+            *self.tool_counts.entry(name.to_lowercase()).or_default() += 1;
+            if let Some(command) = command_from_tool_call(name, text) {
+                *self.command_counts.entry(command).or_default() += 1;
+            }
+        }
         if self.first_message.is_empty() {
             self.first_message = compact(text, 160);
         }
@@ -337,7 +355,7 @@ impl ParseState {
         } else {
             &self.originator
         };
-        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
+        json!({ "id": self.id, "_key": format!("{}:{}", source.kind, self.id), "source_kind": source.kind, "display_source": source.display_name, "timestamp": nullable_string(&self.timestamp), "last_timestamp": nullable_string(&self.last_timestamp), "model_provider": provider, "cwd": self.cwd, "source": if hidden { "subagent" } else { "cli" }, "originator": originator, "file_path": path.to_string_lossy(), "event_count": self.event_count, "message_count": self.message_count, "context_count": self.context_count, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cached_input_tokens": self.cached_input_tokens, "role_counts": self.roles, "tool_count": self.roles.get("tool").copied().unwrap_or_default(), "tool_counts": self.tool_counts, "command_counts": self.command_counts, "title": title, "preview_text": preview, "archived": source.archived, "archive_source": if source.archived { "codex" } else { "" }, "hidden": hidden, "hidden_reason": hidden_reason, "parent_session_id": if self.parent_session_id.is_empty() { Value::Null } else { Value::String(self.parent_session_id.clone()) } })
     }
 }
 pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, String), String> {
@@ -704,6 +722,39 @@ pub(crate) fn conversation_messages(
     generic_conversation_message(record, timestamp, tool_names)
         .into_iter()
         .collect()
+}
+
+/// 命令排行只统计 shell 类工具的调用；名称为小写。
+const COMMAND_TOOL_NAMES: [&str; 10] = [
+    "bash",
+    "shell",
+    "sh",
+    "zsh",
+    "exec",
+    "cmd",
+    "powershell",
+    "terminal",
+    "run_command",
+    "execute_command",
+];
+
+/// 从 shell 类工具调用的展示文本提取命令首词（如 `adb`、`python`）。
+/// 文本多为 `[bash] {"command": "..."}` 或纯 JSON 参数字符串；
+/// 提取不到时返回 None，该调用不进入命令排行。
+fn command_from_tool_call(name: &str, text: &str) -> Option<String> {
+    if !COMMAND_TOOL_NAMES.contains(&name.to_lowercase().as_str()) {
+        return None;
+    }
+    let args: Value = serde_json::from_str(text.get(text.find('{')?..)?).ok()?;
+    let command = ["command", "cmd", "input", "script", "code"]
+        .iter()
+        .find_map(|key| args[*key].as_str())?;
+    let first = command
+        .split_whitespace()
+        .next()?
+        .trim_matches(|c| c == '"' || c == '\'');
+    let program = first.rsplit(['/', '\\']).next()?;
+    (!program.is_empty()).then(|| program.to_lowercase())
 }
 
 /// 系统/开发者角色属于指令上下文，统一按 synthetic_context 处理。

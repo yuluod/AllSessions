@@ -214,7 +214,7 @@
 }
 
 .metric-value {
-  color: var(--accent-strong);
+  color: var(--text);
   font-family: var(--font-display);
   font-size: clamp(1.12rem, 1.36vw, 1.44rem);
   font-weight: 780;
@@ -252,7 +252,7 @@
 .chart-card h3,
 .stats-section h3 {
   margin: 0 0 13px;
-  color: var(--accent-strong);
+  color: var(--text);
   font-family: var(--font-display);
   font-size: 0.75rem;
   font-weight: 780;
@@ -327,7 +327,7 @@
   margin: 0 auto;
   min-height: 2px;
   border-radius: var(--radius-small) var(--radius-small) 2px 2px;
-  background: var(--accent);
+  background: var(--chart);
   opacity: 0.9;
 }
 
@@ -370,7 +370,7 @@
 }
 
 .donut-center strong {
-  color: var(--accent-strong);
+  color: var(--text);
   font-family: var(--font-display);
   font-size: 1.22rem;
   font-variant-numeric: tabular-nums;
@@ -464,7 +464,7 @@
 .stats-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--chart);
 }
 
 .stats-bar-count,
@@ -559,21 +559,21 @@ button.token-heatmap-cell:focus-visible {
   outline-offset: 1px;
 }
 
-/* 色阶用底色到强调色的显式混色,避免透明度方案在浅色主题下低档位不可辨认。 */
+/* 色阶用底色到数据色的显式混色,避免透明度方案在浅色主题下低档位不可辨认。 */
 .token-heatmap-cell[data-level="1"] {
-  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+  background: color-mix(in srgb, var(--chart) 45%, var(--surface));
 }
 
 .token-heatmap-cell[data-level="2"] {
-  background: color-mix(in srgb, var(--accent) 70%, var(--surface));
+  background: color-mix(in srgb, var(--chart) 70%, var(--surface));
 }
 
 .token-heatmap-cell[data-level="3"] {
-  background: color-mix(in srgb, var(--accent) 88%, var(--surface));
+  background: color-mix(in srgb, var(--chart) 88%, var(--surface));
 }
 
 .token-heatmap-cell[data-level="4"] {
-  background: var(--accent-strong);
+  background: var(--chart-strong);
 }
 
 .token-heatmap-cell[data-level]:hover {
@@ -654,7 +654,7 @@ button.token-heatmap-cell:focus-visible {
 }
 
 .token-heatmap-tooltip strong {
-  color: var(--accent-strong);
+  color: var(--text);
   font-weight: 780;
 }
 

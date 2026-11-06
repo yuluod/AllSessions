@@ -31,6 +31,7 @@ const SOURCE_KINDS = [
   { key: "vscode_copilot", agent: "copilot", label: "VS Code Copilot Chat" },
   { key: "deepseek", agent: "deepseek", label: "DeepSeek Harness" },
   { key: "jetbrains_air", agent: "jetbrains_air", label: "JetBrains Air" },
+  { key: "workbuddy", agent: "workbuddy", label: "WorkBuddy" },
 ];
 
 export function summarizeSourceSupport(payload) {

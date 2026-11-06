@@ -17,6 +17,7 @@ export const SOURCE_RAIL_AGENTS = [
   { agent: "hermes", kinds: ["hermes"] },
   { agent: "deepseek", kinds: ["deepseek"] },
   { agent: "jetbrains_air", kinds: ["jetbrains_air"] },
+  { agent: "workbuddy", kinds: ["workbuddy"] },
 ];
 
 export function sourceAgentForKind(sourceKind) {

@@ -60,6 +60,7 @@
   --src-zcode: #315f91;
   --src-devin: #4b5563;
   --src-copilot: #be185d;
+  --src-workbuddy: #0e9377;
   --src-hermes: #9a3412;
   --shadow-raised:
     0 2px 6px rgb(15 17 21 / 6%), 0 12px 32px rgb(15 17 21 / 12%);
@@ -107,6 +108,7 @@
   --src-zcode: #7eb0e0;
   --src-devin: #9ca3af;
   --src-copilot: #f472b6;
+  --src-workbuddy: #3ed2a6;
   --src-hermes: #e8a87c;
   --shadow-raised: 0 4px 12px rgb(0 0 0 / 35%), 0 14px 40px rgb(0 0 0 / 42%);
   --shadow-hover: 0 2px 6px rgb(0 0 0 / 30%), 0 8px 20px rgb(0 0 0 / 35%);

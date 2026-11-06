@@ -1475,6 +1475,13 @@ body.is-resizing {
   background: color-mix(in srgb, var(--src-zcode) 13%, var(--surface));
 }
 
+.session-source-kind[data-source-kind="workbuddy"],
+.detail-tag.tag-source[data-source-kind="workbuddy"] {
+  border-color: color-mix(in srgb, var(--src-workbuddy) 42%, var(--surface));
+  color: var(--src-workbuddy);
+  background: color-mix(in srgb, var(--src-workbuddy) 13%, var(--surface));
+}
+
 .session-source-kind[data-source-kind="cursor"],
 .detail-tag.tag-source[data-source-kind="cursor"] {
   border-color: color-mix(in srgb, var(--text) 42%, var(--surface));
@@ -3793,6 +3800,11 @@ body.is-resizing {
   color: var(--src-zcode);
 }
 
+.source-tree__item[data-source-agent="workbuddy"] .source-tree__dot,
+.settings-source-card[data-source-agent="workbuddy"] .source-tree__dot {
+  color: var(--src-workbuddy);
+}
+
 .source-tree__item[data-source-agent="codex"] .source-tree__dot,
 .settings-source-card[data-source-agent="codex"] .source-tree__dot {
   mask-image: url("../assets/agents/openai.svg");
@@ -3836,6 +3848,12 @@ body.is-resizing {
 .settings-source-card[data-source-agent="zcode"] .source-tree__dot {
   mask: none;
   background: url("../assets/agents/zcode.png") center / contain no-repeat;
+}
+
+.source-tree__item[data-source-agent="workbuddy"] .source-tree__dot,
+.settings-source-card[data-source-agent="workbuddy"] .source-tree__dot {
+  mask: none;
+  background: url("../assets/agents/workbuddy.png") center / contain no-repeat;
 }
 
 .source-tree__item[data-source-agent="cursor"] .source-tree__dot,

@@ -26,6 +26,7 @@ const AGENT_PRESENTATION = {
   hermes: { label: "Hermes Agent", color: "#be185d" },
   deepseek: { label: "DeepSeek", color: "#52525b" },
   jetbrains_air: { label: "JetBrains Air", color: "#fe2857" },
+  workbuddy: { label: "WorkBuddy", color: "#0e9377" },
 };
 
 function renderBar(label, count, max, displayLabel = label, tokens = null) {

@@ -17,6 +17,7 @@ impl ApiError {
     pub const READ_ONLY_SOURCE: &'static str = "read_only_source";
     pub const FILE_CHANGED: &'static str = "file_changed";
     pub const MAINTENANCE_DISABLED: &'static str = "maintenance_disabled";
+    pub const EXTERNAL_LINKS_DISABLED: &'static str = "external_links_disabled";
 
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {

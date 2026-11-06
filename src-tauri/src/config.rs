@@ -54,6 +54,8 @@ pub struct Preferences {
     pub terminal_custom: String,
     /// 应用图标变体；合法取值见 `app_icon::ICON_IDS`。
     pub app_icon: String,
+    /// 允许把会话内容中的 http/https/mailto 链接交给系统打开；默认关闭。
+    pub open_external_links: bool,
 }
 
 impl Default for Preferences {
@@ -65,6 +67,7 @@ impl Default for Preferences {
             terminal_app: "auto".to_string(),
             terminal_custom: String::new(),
             app_icon: "default".to_string(),
+            open_external_links: false,
         }
     }
 }
@@ -355,6 +358,12 @@ mod tests {
         assert!(preferences.check_updates_on_startup);
         assert!(preferences.launch_at_login);
         assert!(!parse_preferences(&json!({})).unwrap().launch_at_login);
+        assert!(!parse_preferences(&json!({})).unwrap().open_external_links);
+        assert!(
+            parse_preferences(&json!({ "open_external_links": true }))
+                .unwrap()
+                .open_external_links
+        );
         assert!(parse_preferences(&json!({ "keep_running_in_tray": "yes" })).is_err());
         assert!(parse_preferences(&json!({ "unknown": true })).is_err());
     }

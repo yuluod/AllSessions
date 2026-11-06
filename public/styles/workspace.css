@@ -2480,6 +2480,14 @@ body.is-resizing {
   font-weight: var(--control-weight);
 }
 
+/* 会话分析折叠态摘要行：标题后跟随关键指标，弱化显示以区分正文。 */
+.session-insights-metrics {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: var(--control-font-compact);
+  font-weight: 400;
+}
+
 .tool-operations-controls {
   display: flex;
   flex-wrap: wrap;

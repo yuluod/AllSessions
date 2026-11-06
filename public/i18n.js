@@ -323,6 +323,8 @@ const DICT = {
     toolOperationReturned: "已返回",
     toolOperationMissing: "未见结果",
     sessionInsights: "会话分析",
+    insightsMetricFiles: "{n} 个文件",
+    insightsMetricFamily: "关联 {n}",
     sessionFiles: "文件操作",
     sessionFilesScope:
       "当前显示消息中已识别的文件操作，显示 {n}/{total} 项。点击可定位首次记录。",
@@ -1056,6 +1058,8 @@ const DICT = {
     toolOperationReturned: "Result received",
     toolOperationMissing: "No result in view",
     sessionInsights: "Session insights",
+    insightsMetricFiles: "{n} files",
+    insightsMetricFamily: "{n} related",
     sessionFiles: "File activity",
     sessionFilesScope:
       "Recognized file operations in visible messages, {n}/{total} shown. Select to locate the first record.",

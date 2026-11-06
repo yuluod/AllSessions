@@ -40,7 +40,44 @@ export function renderSessionInsights(
   if (!files.length && !changes.length && !family.length && !events.length)
     return;
   const summary = document.createElement("summary");
-  summary.textContent = t("sessionInsights");
+  const title = document.createElement("span");
+  title.textContent = t("sessionInsights");
+  summary.append(title);
+  const metrics = [];
+  if (files.length) metrics.push(t("insightsMetricFiles", { n: files.length }));
+  if (changes.length) {
+    let added = 0;
+    let removed = 0;
+    for (const file of changes) {
+      added += file.added;
+      removed += file.removed;
+    }
+    metrics.push(`+${formatCount(added)} −${formatCount(removed)}`);
+  }
+  if (family.length)
+    metrics.push(
+      t("insightsMetricFamily", {
+        n: detail?.related_sessions?.total || family.length,
+      })
+    );
+  if (events.length) {
+    const tokens = events.reduce(
+      (sum, event) =>
+        sum +
+        ["input", "output", "cache_read", "cache_write"].reduce(
+          (acc, key) => acc + Number(event.usage[key] || 0),
+          0
+        ),
+      0
+    );
+    if (tokens) metrics.push(`${formatCount(tokens)} tokens`);
+  }
+  if (metrics.length) {
+    const badge = document.createElement("span");
+    badge.className = "session-insights-metrics";
+    badge.textContent = metrics.join(" · ");
+    summary.append(badge);
+  }
   container.append(summary);
 
   if (files.length) {

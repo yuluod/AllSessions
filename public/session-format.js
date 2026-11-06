@@ -62,6 +62,24 @@ export function sessionTimestamp(session) {
   return session.last_timestamp || session.timestamp || "";
 }
 
+// 文件最近写入在该窗口内视为"进行中"：agent 持续输出时 mtime 紧贴当前时间。
+export const RUNNING_WINDOW_MS = 90_000;
+
+export function isSessionRunning(session, now = Date.now()) {
+  const mtime = Number(session?.file_mtime_ms || 0);
+  return mtime > 0 && now - mtime < RUNNING_WINDOW_MS;
+}
+
+// 列表摘要与已打开详情对比：消息数、文件写入时间或最后消息时间变化即需重载。
+export function sessionNeedsLiveReload(fresh, current) {
+  if (!fresh || !current) return false;
+  return (
+    Number(fresh.message_count || 0) !== Number(current.message_count || 0) ||
+    Number(fresh.file_mtime_ms || 0) !== Number(current.file_mtime_ms || 0) ||
+    (fresh.last_timestamp || "") !== (current.last_timestamp || "")
+  );
+}
+
 // 自定义名称优先，空值回退到原始标题；调用方继续处理空标题兜底。
 export function displaySessionTitle(session) {
   return session?.workspace?.display_name || session?.title || "";

@@ -10,9 +10,46 @@ const {
   displaySessionTitle,
   formatListTimestamp,
   isDefaultSessionSource,
+  isSessionRunning,
+  sessionNeedsLiveReload,
   sessionTimestamp,
   providerLabel,
 } = await import("../public/session-format.js");
+
+test("进行中标记以文件写入窗口为准并自然过期", () => {
+  const now = 1_700_000_000_000;
+  assert.equal(isSessionRunning({ file_mtime_ms: now - 10_000 }, now), true);
+  assert.equal(isSessionRunning({ file_mtime_ms: now - 91_000 }, now), false);
+  assert.equal(isSessionRunning({ file_mtime_ms: 0 }, now), false);
+  assert.equal(isSessionRunning({}, now), false);
+  assert.equal(isSessionRunning(undefined, now), false);
+});
+
+test("实时重载只在消息数、写入时间或最后时间变化时触发", () => {
+  const current = {
+    message_count: 10,
+    file_mtime_ms: 1000,
+    last_timestamp: "2024-01-01T00:00:10Z",
+  };
+  assert.equal(sessionNeedsLiveReload({ ...current }, current), false);
+  assert.equal(
+    sessionNeedsLiveReload({ ...current, message_count: 11 }, current),
+    true
+  );
+  assert.equal(
+    sessionNeedsLiveReload({ ...current, file_mtime_ms: 2000 }, current),
+    true
+  );
+  assert.equal(
+    sessionNeedsLiveReload(
+      { ...current, last_timestamp: "2024-01-01T00:00:20Z" },
+      current
+    ),
+    true
+  );
+  assert.equal(sessionNeedsLiveReload(null, current), false);
+  assert.equal(sessionNeedsLiveReload({ ...current }, null), false);
+});
 
 test("自定义名称优先于原始标题，缺失时逐层回退", () => {
   assert.equal(

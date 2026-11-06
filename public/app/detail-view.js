@@ -1,7 +1,11 @@
 // 详情视图:标签行、属性面板、信息抽屉、原始事件与详情占位。
 import { t } from "../i18n.js";
 import { roleCounts } from "../conversation-filter.js";
-import { formatTimestamp, providerLabel } from "../session-format.js";
+import {
+  formatTimestamp,
+  isSessionRunning,
+  providerLabel,
+} from "../session-format.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   INSPECTOR_DRAWER_QUERY,
@@ -115,6 +119,10 @@ export function renderDetailTags(summary) {
       sourceKind: sourceKindValue(summary),
     },
     { text: hiddenReasonLabel(summary), cls: "tag-hidden" },
+    {
+      text: isSessionRunning(summary) ? t("sessionRunning") : "",
+      cls: "tag-running",
+    },
     {
       text: workspace.removed === true ? t("removedSession") : "",
       cls: "tag-removed",

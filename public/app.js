@@ -34,6 +34,7 @@ import {
 import {
   renderSessionList,
   setSessionSelected,
+  syncRunningBadges,
   updateBulkToolbar,
 } from "./app/session-list.js";
 import {
@@ -78,6 +79,7 @@ import {
   loadSessionDetail,
   loadSessions,
   loadStats,
+  refreshOpenDetailIfChanged,
   renderCurrentStats,
   loadWorkspaceDiagnostics,
 } from "./app/data.js";
@@ -226,6 +228,7 @@ async function bindTauriSessionEventsOnce() {
         void indexProgressPoller.refresh();
         await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
         await Promise.all([loadSessions({ background: true }), loadStats()]);
+        await refreshOpenDetailIfChanged();
       },
       onSessionAdded: (summary) => {
         const ariaLive = document.querySelector("#aria-live");
@@ -884,6 +887,8 @@ async function initialize() {
     });
   });
 
+  // 进行中徽标依赖 mtime 新鲜度，会话停写后靠定时摘除，无需整表重渲。
+  setInterval(() => syncRunningBadges(), 30_000);
   await loadInitialWorkspace();
 }
 

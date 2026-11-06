@@ -218,6 +218,22 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 列表摘要附带文件最近写入时间且不写回缓存摘要() {
+    let (_directory, store) = structured_search_store();
+    let mtime = store.summaries[0]["file_mtime_ms"]
+        .as_i64()
+        .expect("摘要应带 file_mtime_ms");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    assert!((0..120_000).contains(&(now - mtime)));
+    // 盖章发生在列表构建层，records 内的缓存摘要不被污染。
+    let record = store.records.values().next().unwrap();
+    assert!(record.summary["file_mtime_ms"].is_null());
+}
+
+#[test]
 fn 相关会话按范围用量排序稳定分页且保留未知状态() {
     let (_directory, mut store) = structured_search_store();
     let base = store.summaries[0].clone();

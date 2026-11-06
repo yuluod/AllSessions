@@ -62,6 +62,8 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 
 Edit/MultiEdit/Write 类调用在 `file_activity` 之外额外生成 `file_edit`：`{path, create, truncated, edits:[{old,new,truncated}]}`，其中 `edits` 最多 16 段、单段文本最多 16K 字符，超出打 `truncated` 标记。前端据此渲染单条消息的行级/词级 diff，并在会话分析里按路径聚合展示每个文件的增删行数。
 
+列表与详情摘要在构建时附带 `file_mtime_ms`（源文件最近写入毫秒时间戳）：该值在列表构建层采集、不写入摘要缓存。前端将窗口内仍新鲜（90 秒）的会话标记为"进行中"，并在 `sessions-changed` 刷新后按消息数/写入时间变化重载已打开详情的正文。
+
 OpenCode／Kilo 与 ZCode 的工具 part 同时包含调用输入和最终结果。归一化消息保留原有展示，并以 `includes_tool_call` 标记其包含一次调用；排行和消息索引据此计数，命令及文件定位字段从该 part 的结构化 input 提取。
 
 详情的 `related_sessions` 依据来源内明确的 `parent_session_id` 关联父子会话，最多返回 32 条并保留完整计数，父会话优先显示。本地已移除会话不返回；子代理可通过显式关系访问，列表的隐藏偏好保持独立。

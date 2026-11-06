@@ -159,6 +159,15 @@ impl SessionStore {
             parse_detail(&record.path, &record.source)
         }
         .map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))?;
+        // 与列表摘要一致的最近写入时间，供"进行中"标记与实时刷新判断。
+        if let Some(ms) = std::fs::metadata(&record.path)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+        {
+            detail["summary"]["file_mtime_ms"] = json!(ms);
+        }
         if let Some(messages) = detail["conversation_messages"].as_array_mut() {
             for message in messages {
                 super::annotate_activity(message);

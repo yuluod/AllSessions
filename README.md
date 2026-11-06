@@ -46,7 +46,7 @@ AllSessions is built on Tauri 2. Session discovery, parsing, search, caching, fi
 - Filter by source, provider, date, project, and working directory
 - Inspect normalized conversations, thinking, tool calls, and raw events
 - Hide sessions marked as subagents or sidechains by default, with a filter to show them; injected context is shown by default in session details and can be toggled, while thinking appears within normalized messages
-- Watch source files and refresh automatically
+- Watch source files and refresh automatically; sessions still being written show a Running badge, and an open detail view appends new messages live
 
 ### Full-text search
 

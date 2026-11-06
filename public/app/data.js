@@ -29,7 +29,10 @@ import {
   setActivityRange,
   updateFacetFilters,
 } from "./filters.js";
-import { displaySessionTitle } from "../session-format.js";
+import {
+  displaySessionTitle,
+  sessionNeedsLiveReload,
+} from "../session-format.js";
 import {
   appendLoadedSessions,
   renderSessionList,
@@ -54,9 +57,21 @@ import { openActivitySearch, openReviewSession } from "./navigation.js";
 
 export async function loadSessionDetail(
   id,
-  { silent = false, initial = false } = {}
+  { silent = false, initial = false, live = false } = {}
 ) {
   const request = detailRequestGate.begin();
+  // 实时刷新前先记录滚动状态：在底部则跟随新内容，否则保持原阅读位置。
+  const scroller = live
+    ? elements.conversationList?.closest(".detail-shell")
+    : null;
+  const liveScroll = scroller
+    ? {
+        top: scroller.scrollTop,
+        atBottom:
+          scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <
+          80,
+      }
+    : null;
   try {
     const around =
       isSearchActive() && state.selectedSearchHit?.sessionKey === id
@@ -129,6 +144,13 @@ export async function loadSessionDetail(
         card.querySelector(".message-toggle")?.click();
       target?.scrollIntoView({ block: "center" });
     }
+    if (liveScroll && scroller) {
+      requestAnimationFrame(() => {
+        scroller.scrollTop = liveScroll.atBottom
+          ? scroller.scrollHeight
+          : Math.min(liveScroll.top, scroller.scrollHeight);
+      });
+    }
     renderRawEvents(detail.raw_events);
     updateTabs();
     // 初始化恢复的首条详情不滚动：此时 _initialized 已置 true，
@@ -155,6 +177,19 @@ export async function loadSessionDetail(
     }
     return false;
   }
+}
+
+// 会话仍被选中且源文件在刷新后有新内容时重载详情，保持滚动位置。
+// search_context 是定位局部视图，不自动重载；removed 会话内容仍可读。
+export async function refreshOpenDetailIfChanged() {
+  const detail = state.currentDetail;
+  const key = detail?.summary?._key;
+  if (!key || detail.search_context || state.selectedSessionKey !== key) {
+    return false;
+  }
+  const fresh = state.sessions.find((item) => item._key === key);
+  if (!sessionNeedsLiveReload(fresh, detail.summary)) return false;
+  return loadSessionDetail(key, { silent: true, live: true });
 }
 export async function loadSessions({
   reportError = true,

@@ -8,6 +8,7 @@ import {
   formatListTimestamp,
   formatTimestamp,
   isDefaultSessionSource,
+  isSessionRunning,
   providerLabel,
   sessionTimestamp,
 } from "../session-format.js";
@@ -229,6 +230,13 @@ export function appendSessionItems(sessions) {
       "aria-label",
       t("sessionMessageCount", { n: messageCount })
     );
+    button.dataset.fileMtime = String(session.file_mtime_ms || 0);
+    if (isSessionRunning(session)) {
+      const runningBadge = document.createElement("span");
+      runningBadge.className = "session-running-badge";
+      runningBadge.textContent = t("sessionRunning");
+      button.querySelector(".session-tertiary").append(runningBadge);
+    }
     const hiddenReason = hiddenReasonLabel(session);
     if (hiddenReason) {
       const hiddenBadge = document.createElement("span");
@@ -376,4 +384,25 @@ export function renderSessionList() {
   renderedSessionCount = visible.length;
   appendSessionBatch(visible, sessionGroupCounts(visible));
   renderSessionListFooter();
+}
+
+// 进行中徽标随时间自然过期：会话停写后不再有刷新事件，靠定时器原地摘除。
+export function syncRunningBadges(now = Date.now()) {
+  elements.sessionList
+    ?.querySelectorAll(".session-item[data-file-mtime]")
+    .forEach((button) => {
+      const running = isSessionRunning(
+        { file_mtime_ms: Number(button.dataset.fileMtime) },
+        now
+      );
+      let badge = button.querySelector(".session-running-badge");
+      if (running && !badge) {
+        badge = document.createElement("span");
+        badge.className = "session-running-badge";
+        badge.textContent = t("sessionRunning");
+        button.querySelector(".session-tertiary")?.append(badge);
+      } else if (!running && badge) {
+        badge.remove();
+      }
+    });
 }

@@ -3,6 +3,7 @@ import { t } from "../i18n.js";
 import { highlightMatches } from "../search-view.js";
 import {
   cwdParts,
+  displaySessionTitle,
   formatDateGroup,
   formatListTimestamp,
   formatTimestamp,
@@ -173,7 +174,8 @@ export function appendSessionItems(sessions) {
       "aria-selected",
       session._key === state.selectedSessionKey ? "true" : "false"
     );
-    const title = session.title || cwdParts(session.cwd).main || session.id;
+    const title =
+      displaySessionTitle(session) || cwdParts(session.cwd).main || session.id;
     const preview = session.search_snippet
       ? `${t("searchMatch")}: ${session.search_snippet}`
       : session.preview_text || "";

@@ -207,6 +207,7 @@ export const elements = {
   sessionFavoriteBtn: document.querySelector("#session-favorite-btn"),
   sessionOrganizeMenu: document.querySelector("#session-organize-menu"),
   detailMoreMenu: document.querySelector("#detail-more-menu"),
+  sessionNameInput: document.querySelector("#session-name-input"),
   sessionTagsInput: document.querySelector("#session-tags-input"),
   sessionNoteInput: document.querySelector("#session-note-input"),
   saveSessionWorkspaceBtn: document.querySelector(

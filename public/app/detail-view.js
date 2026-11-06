@@ -41,6 +41,11 @@ export function syncSessionWorkspaceControls(summary) {
   const favoriteText = t(favorite ? "unfavorite" : "favorite");
   elements.sessionFavoriteBtn?.setAttribute("aria-label", favoriteText);
   elements.sessionFavoriteBtn?.setAttribute("title", favoriteText);
+  if (elements.sessionNameInput) {
+    elements.sessionNameInput.value = workspace.display_name || "";
+    elements.sessionNameInput.placeholder =
+      summary.title || t("workspaceDisplayNamePlaceholder");
+  }
   if (elements.sessionTagsInput) {
     elements.sessionTagsInput.value = (workspace.tags || []).join(", ");
   }

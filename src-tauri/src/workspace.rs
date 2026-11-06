@@ -15,6 +15,7 @@ use uuid::Uuid;
 const MAX_SESSION_KEY_CHARS: usize = 512;
 const MAX_MESSAGE_KEY_CHARS: usize = 512;
 const MAX_NOTE_CHARS: usize = 10_000;
+const MAX_DISPLAY_NAME_CHARS: usize = 120;
 const MAX_TAGS: usize = 20;
 const MAX_TAG_CHARS: usize = 40;
 const MAX_FILTER_NAME_CHARS: usize = 60;
@@ -26,6 +27,7 @@ pub struct SessionWorkspace {
     pub removed: bool,
     pub favorite: bool,
     pub note: String,
+    pub display_name: String,
     pub tags: BTreeSet<String>,
 }
 
@@ -61,6 +63,7 @@ impl WorkspaceSnapshot {
             "removed": state.removed,
             "favorite": state.favorite,
             "note": state.note,
+            "display_name": state.display_name,
             "tags": state.tags,
         });
     }
@@ -102,6 +105,7 @@ impl WorkspaceSnapshot {
                         "removed": state.removed,
                         "favorite": state.favorite,
                         "note": state.note,
+                        "display_name": state.display_name,
                         "tags": state.tags,
                     }),
                 )
@@ -165,6 +169,7 @@ impl WorkspaceStore {
                    removed integer not null default 0,
                    favorite integer not null default 0,
                    note text not null default '',
+                   display_name text not null default '',
                    updated_at text not null
                  );
                  create table if not exists message_workspace(
@@ -187,6 +192,8 @@ impl WorkspaceStore {
                  );",
             )
             .map_err(error_text)?;
+        // 存量库补列：create table if not exists 不会修改已有表。
+        ensure_column(&connection, "session_workspace", "display_name")?;
         lock_down_database(path)?;
         Ok(Self {
             connection,
@@ -203,7 +210,7 @@ impl WorkspaceStore {
             let mut statement = self
                 .connection
                 .prepare(
-                    "select session_key, archived, removed, favorite, note
+                    "select session_key, archived, removed, favorite, note, display_name
                      from session_workspace",
                 )
                 .map_err(error_text)?;
@@ -216,6 +223,7 @@ impl WorkspaceStore {
                             removed: row.get::<_, i64>(2)? != 0,
                             favorite: row.get::<_, i64>(3)? != 0,
                             note: row.get(4)?,
+                            display_name: row.get(5)?,
                             tags: BTreeSet::new(),
                         },
                     ))
@@ -316,6 +324,14 @@ impl WorkspaceStore {
             validate_length(note, "备注", MAX_NOTE_CHARS)?;
             state.note = note.to_string();
         }
+        if let Some(value) = body.get("display_name") {
+            let name = value
+                .as_str()
+                .ok_or_else(|| "display_name 必须是字符串".to_string())?
+                .trim();
+            validate_length(name, "会话名称", MAX_DISPLAY_NAME_CHARS)?;
+            state.display_name = name.to_string();
+        }
         let tags = body.get("tags").map(parse_tags).transpose()?;
         let transaction = self.connection.transaction().map_err(error_text)?;
         write_session_state(&transaction, &key, &state)?;
@@ -341,6 +357,7 @@ impl WorkspaceStore {
                 "removed": state.removed,
                 "favorite": state.favorite,
                 "note": state.note,
+                "display_name": state.display_name,
                 "tags": state.tags,
             }
         }))
@@ -497,7 +514,7 @@ impl WorkspaceStore {
         let mut state = self
             .connection
             .query_row(
-                "select archived, removed, favorite, note from session_workspace where session_key = ?1",
+                "select archived, removed, favorite, note, display_name from session_workspace where session_key = ?1",
                 [key],
                 |row| {
                     Ok(SessionWorkspace {
@@ -505,6 +522,7 @@ impl WorkspaceStore {
                         removed: row.get::<_, i64>(1)? != 0,
                         favorite: row.get::<_, i64>(2)? != 0,
                         note: row.get(3)?,
+                        display_name: row.get(4)?,
                         tags: BTreeSet::new(),
                     })
                 },
@@ -533,20 +551,41 @@ fn write_session_state(
 ) -> Result<(), String> {
     transaction
         .execute(
-            "insert into session_workspace(session_key, archived, removed, favorite, note, updated_at)
-             values(?1, ?2, ?3, ?4, ?5, ?6)
+            "insert into session_workspace(session_key, archived, removed, favorite, note, display_name, updated_at)
+             values(?1, ?2, ?3, ?4, ?5, ?6, ?7)
              on conflict(session_key) do update set archived = excluded.archived, removed = excluded.removed,
-               favorite = excluded.favorite, note = excluded.note, updated_at = excluded.updated_at",
+               favorite = excluded.favorite, note = excluded.note, display_name = excluded.display_name,
+               updated_at = excluded.updated_at",
             params![
                 key,
                 i64::from(state.archived),
                 i64::from(state.removed),
                 i64::from(state.favorite),
                 state.note,
+                state.display_name,
                 now(),
             ],
         )
         .map_err(error_text)?;
+    Ok(())
+}
+
+fn ensure_column(connection: &Connection, table: &str, column: &str) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(&format!("pragma table_info({table})"))
+        .map_err(error_text)?;
+    let exists = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(error_text)?
+        .any(|name| name.as_deref() == Ok(column));
+    if !exists {
+        connection
+            .execute(
+                &format!("alter table {table} add column {column} text not null default ''"),
+                [],
+            )
+            .map_err(error_text)?;
+    }
     Ok(())
 }
 
@@ -738,6 +777,71 @@ mod tests {
         assert_eq!(detail["summary"]["workspace"]["tags"][0], "工作");
         assert_eq!(detail["conversation_messages"][0]["_removed"], true);
         assert_eq!(detail["conversation_messages"][1]["_removed"], false);
+    }
+
+    #[test]
+    fn 自定义名称随工作区状态持久化且可清空() {
+        let directory = tempdir().unwrap();
+        let mut store =
+            WorkspaceStore::open_at(&directory.path().join("workspace.sqlite")).unwrap();
+        store
+            .update_session(&json!({
+                "sessionKey": "claude:s1",
+                "display_name": " 修复登录问题 ",
+                "note": "已有备注"
+            }))
+            .unwrap();
+        let snapshot = store.snapshot().unwrap();
+        assert_eq!(snapshot.sessions["claude:s1"].display_name, "修复登录问题");
+
+        // 其他字段更新不清空名称；显式传空串才恢复原始标题。
+        store
+            .update_session(&json!({ "sessionKey": "claude:s1", "favorite": true }))
+            .unwrap();
+        assert_eq!(
+            store.snapshot().unwrap().sessions["claude:s1"].display_name,
+            "修复登录问题"
+        );
+        let updated = store
+            .update_session(&json!({ "sessionKey": "claude:s1", "display_name": "" }))
+            .unwrap();
+        assert_eq!(updated["workspace"]["display_name"], "");
+
+        assert!(
+            store
+                .update_session(&json!({
+                    "sessionKey": "claude:s1",
+                    "display_name": "x".repeat(121)
+                }))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn 旧版工作区库打开时补齐display_name列() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("workspace.sqlite");
+        {
+            let connection = rusqlite::Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "create table session_workspace(
+                       session_key text primary key,
+                       archived integer not null default 0,
+                       removed integer not null default 0,
+                       favorite integer not null default 0,
+                       note text not null default '',
+                       updated_at text not null
+                     );
+                     insert into session_workspace(session_key, note, updated_at)
+                       values('codex:old', '旧备注', '2024-01-01');",
+                )
+                .unwrap();
+        }
+        let store = WorkspaceStore::open_at(&path).unwrap();
+        let snapshot = store.snapshot().unwrap();
+        assert_eq!(snapshot.sessions["codex:old"].note, "旧备注");
+        assert_eq!(snapshot.sessions["codex:old"].display_name, "");
     }
 
     #[test]

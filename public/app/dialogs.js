@@ -1,5 +1,6 @@
 // 删除与归档对话框:二次确认、永久删除(带备份)与恢复移除。
 import { t } from "../i18n.js";
+import { displaySessionTitle } from "../session-format.js";
 import {
   announce,
   elements,
@@ -78,12 +79,10 @@ export function openDeleteDialog({ kind, message = null }) {
   pendingDeletion = { kind, sessionKey, messageKey, removed };
   const sessionTitle =
     kind === "session"
-      ? (state.currentDetail?.summary?.title || "").trim()
+      ? displaySessionTitle(state.currentDetail?.summary).trim()
       : "";
   const namedTitle =
-    sessionTitle.length > 24
-      ? `${sessionTitle.slice(0, 24)}…`
-      : sessionTitle;
+    sessionTitle.length > 24 ? `${sessionTitle.slice(0, 24)}…` : sessionTitle;
   elements.deleteDialogTitle.textContent = t(
     removed
       ? "manageRemovedTitle"

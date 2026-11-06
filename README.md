@@ -68,7 +68,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 
 ### Organize and statistics
 
-- Favorite sessions and attach tags and notes
+- Favorite sessions, attach tags and notes, and rename sessions with a custom display name shown across lists and details (the original title stays as fallback)
 - Select a project and open Project review to revisit recent sessions, favorites, tags and notes. Each group shows up to 8 sessions within the current filters.
 - Statistics share an activity date range. Switch the heatmap between sessions and tokens, select a day to filter, and browse related sessions by recent activity or in-range usage with pagination and detail links.
 - Save reusable filters
@@ -249,7 +249,7 @@ The Codex provider maintenance tool likewise only modifies Codex data after you 
 
 Claude Cowork, Grok Build, Pi, Oh My Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, VS Code Copilot Chat, DeepSeek Harness, and JetBrains Air are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
 
-Favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
+Display names, favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
 
 ### Export and local data
 

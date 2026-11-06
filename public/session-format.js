@@ -62,6 +62,11 @@ export function sessionTimestamp(session) {
   return session.last_timestamp || session.timestamp || "";
 }
 
+// 自定义名称优先，空值回退到原始标题；调用方继续处理空标题兜底。
+export function displaySessionTitle(session) {
+  return session?.workspace?.display_name || session?.title || "";
+}
+
 // 部分来源（如 Cursor）不记录 Provider 但记录模型名，展示时回退到模型名。
 export function providerLabel(summary) {
   const provider = summary?.model_provider;

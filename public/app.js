@@ -53,6 +53,7 @@ import {
   syncSessionWorkspaceControls,
   updateTabs,
 } from "./app/detail-view.js";
+import { displaySessionTitle } from "./session-format.js";
 import {
   applySoftDeletion,
   clearPendingArchive,
@@ -120,7 +121,7 @@ export function rerenderLocalizedContent() {
   if (state.currentDetail) {
     const fullCwd = state.currentDetail.summary.cwd || t("noWorkDir");
     elements.detailTitle.textContent =
-      state.currentDetail.summary.title ||
+      displaySessionTitle(state.currentDetail.summary) ||
       fullCwd.split(/[\\/]/).pop() ||
       fullCwd;
     elements.detailTitle.title = fullCwd;
@@ -589,12 +590,18 @@ async function initialize() {
     elements.saveSessionWorkspaceBtn.disabled = true;
     try {
       await updateSessionWorkspace(key, {
+        display_name: elements.sessionNameInput?.value || "",
         tags: parseWorkspaceTags(elements.sessionTagsInput?.value || ""),
         note: elements.sessionNoteInput?.value || "",
       });
       syncSessionWorkspaceControls(state.currentDetail.summary);
       renderDetailTags(state.currentDetail.summary);
       renderSessionList();
+      const fullCwd = state.currentDetail.summary.cwd || t("noWorkDir");
+      elements.detailTitle.textContent =
+        displaySessionTitle(state.currentDetail.summary) ||
+        fullCwd.split(/[\\/]/).pop() ||
+        fullCwd;
       await loadFacets();
       announce(t("workspaceSaved"));
       if (elements.sessionOrganizeMenu)

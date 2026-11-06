@@ -68,7 +68,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 
 ### 整理与统计
 
-- 收藏会话并添加标签、备注
+- 收藏会话并添加标签、备注，还可自定义会话名称（列表与详情优先显示，原始标题作为兜底）
 - 选择项目后打开“项目回顾”，查看近期会话及收藏、标签、备注，并直接返回会话；回顾遵循当前筛选条件，每组最多展示 8 条。
 - 统计页支持统一活动日期范围、会话／Token 热力图切换及日期点击筛选；相关会话可按最近活动或范围内用量排序、分页并打开详情。
 - 保存常用筛选
@@ -249,7 +249,7 @@ Codex Provider 维护工具同样只有在用户主动启用维护模式并确�
 
 Claude Cowork、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness 和 JetBrains Air 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
 
-收藏、标签、备注、常用筛选以及本地归档 / 移除状态属于 AllSessions 自身的用户数据，独立保存在 `workspace.sqlite` 中。它们不会修改 Agent 的原始记录，也不会随着可重建的索引缓存一起清除。
+自定义名称、收藏、标签、备注、常用筛选以及本地归档 / 移除状态属于 AllSessions 自身的用户数据，独立保存在 `workspace.sqlite` 中。它们不会修改 Agent 的原始记录，也不会随着可重建的索引缓存一起清除。
 
 ### 导出与本地数据
 

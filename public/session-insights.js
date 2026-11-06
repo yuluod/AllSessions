@@ -1,5 +1,9 @@
 import { t } from "./i18n.js";
-import { formatCount, formatListTimestamp } from "./session-format.js";
+import {
+  displaySessionTitle,
+  formatCount,
+  formatListTimestamp,
+} from "./session-format.js";
 import { collectFileEdits, renderHunk } from "./diff-view.js";
 
 export function fileActivity(groups) {
@@ -132,7 +136,7 @@ export function renderSessionInsights(
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ghost-button tool-operation-link";
-      button.textContent = `${t(`sessionRelation_${session.relation}`)} · ${session.title || session.key}`;
+      button.textContent = `${t(`sessionRelation_${session.relation}`)} · ${displaySessionTitle(session) || session.key}`;
       button.addEventListener("click", () => onSelectSession?.(session.key));
       container.append(button);
     }

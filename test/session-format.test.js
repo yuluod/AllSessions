@@ -7,11 +7,29 @@ globalThis.localStorage = {
 };
 
 const {
+  displaySessionTitle,
   formatListTimestamp,
   isDefaultSessionSource,
   sessionTimestamp,
   providerLabel,
 } = await import("../public/session-format.js");
+
+test("自定义名称优先于原始标题，缺失时逐层回退", () => {
+  assert.equal(
+    displaySessionTitle({
+      title: "原始标题",
+      workspace: { display_name: "我的名字" },
+    }),
+    "我的名字"
+  );
+  assert.equal(displaySessionTitle({ title: "原始标题" }), "原始标题");
+  assert.equal(
+    displaySessionTitle({ title: "原始标题", workspace: { display_name: "" } }),
+    "原始标题"
+  );
+  assert.equal(displaySessionTitle({}), "");
+  assert.equal(displaySessionTitle(undefined), "");
+});
 
 test("Provider 优先显示服务商，缺失时回退模型名且不修改数据", () => {
   assert.equal(

@@ -1,5 +1,5 @@
 import { t } from "./i18n.js";
-import { formatListTimestamp } from "./session-format.js";
+import { displaySessionTitle, formatListTimestamp } from "./session-format.js";
 
 export function renderProjectReview(review, container, onSelectSession) {
   if (!container) return;
@@ -38,7 +38,7 @@ export function renderProjectReview(review, container, onSelectSession) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "stats-activity-link";
-      button.textContent = session.title || session.key;
+      button.textContent = displaySessionTitle(session) || session.key;
       button.disabled = !onSelectSession;
       button.addEventListener("click", () => onSelectSession?.(session.key));
       const meta = document.createElement("p");

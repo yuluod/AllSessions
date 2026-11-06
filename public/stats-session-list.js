@@ -1,5 +1,6 @@
 import { t } from "./i18n.js";
 import {
+  displaySessionTitle,
   formatCount,
   formatCost,
   formatListTimestamp,
@@ -44,7 +45,7 @@ export function renderStatsSessionList(
     const open = document.createElement("button");
     open.type = "button";
     open.className = "stats-activity-link";
-    open.textContent = session.title || session._key;
+    open.textContent = displaySessionTitle(session) || session._key;
     open.addEventListener("click", () => onSelectSession(session._key));
     const meta = document.createElement("p");
     meta.className = "stats-session-meta";

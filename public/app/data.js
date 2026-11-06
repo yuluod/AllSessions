@@ -29,6 +29,7 @@ import {
   setActivityRange,
   updateFacetFilters,
 } from "./filters.js";
+import { displaySessionTitle } from "../session-format.js";
 import {
   appendLoadedSessions,
   renderSessionList,
@@ -94,7 +95,9 @@ export async function loadSessionDetail(
     elements.detailView.classList.remove("hidden");
     const fullCwd = detail.summary.cwd || t("noWorkDir");
     elements.detailTitle.textContent =
-      detail.summary.title || fullCwd.split(/[\\/]/).pop() || fullCwd;
+      displaySessionTitle(detail.summary) ||
+      fullCwd.split(/[\\/]/).pop() ||
+      fullCwd;
     elements.detailTitle.title = fullCwd;
     renderDetailTags(detail.summary);
     syncSessionWorkspaceControls(detail.summary);

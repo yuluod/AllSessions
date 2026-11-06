@@ -31,7 +31,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 - `sessions/jetbrains_air.rs`：JetBrains Air（IDE 内 ACP 工作区）线程 `events.jsonl` 的只读回放；按产品目录枚举 `acp` 根，流式正文、工具更新与逐轮用量归约，相邻 `summary.json`/`store.json` 参与复合指纹；空线程不进列表。
 - `cache.rs`：以路径、文件大小和修改时间为指纹的 SQLite 摘要/搜索缓存；负责导入旧版 JSON 索引。
 - `search.rs`：全文搜索索引连接，在会话锁之外执行耗时的全文查询。
-- `workspace.rs`：`workspace.sqlite` 中的收藏、标签、备注、归档与软移除等工作区状态。
+- `workspace.rs`：`workspace.sqlite` 中的收藏、标签、备注、自定义名称（`display_name`，空串回退原始标题）、归档与软移除等工作区状态。
 - `deletion_backup.rs`：永久删除前的会话备份与备份清理。
 - `resume.rs`：按来源白名单构造命令在系统终端恢复会话，不接受前端传入的任意命令。
 - `updater.rs`：应用更新检查与安装。

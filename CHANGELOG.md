@@ -2,6 +2,12 @@
 
 本文件记录 AllSessions 各版本面向用户的主要变化。
 
+## [0.3.2] - 2026-11-06
+
+### 修复
+
+- 修复 JetBrains Air 来源在 macOS/Linux 下默认目录枚举遗漏缓存侧路径的问题：macOS 实际数据位于 `~/Library/Caches/JetBrains/<产品版本>/acp`、Linux 位于 `~/.cache/JetBrains/<产品版本>/acp`，此前仅枚举数据目录（`~/Library/Application Support`、`~/.local/share`）导致这些平台上的 ACP 线程无法被发现；现两个基座同时枚举并去重，兼容两类布局。
+
 ## [0.3.1] - 2026-11-05
 
 ### 新增

@@ -1366,7 +1366,6 @@ mod tests {
         let directory = tempdir().unwrap();
         let outside = tempdir().unwrap();
         let acp = directory.path().join("acp");
-        let project = acp.join("projects/proj9");
         let path = write_thread(&acp, "proj9", "acp%3At9", &[]);
         std::fs::write(
             outside.path().join("store.json"),
@@ -1375,7 +1374,9 @@ mod tests {
         .unwrap();
         #[cfg(unix)]
         {
+            // project 变量仅在 unix 下使用，放进同一 cfg 避免 Windows 报未使用。
             use std::os::unix::fs::symlink;
+            let project = acp.join("projects/proj9");
             symlink(
                 outside.path().join("store.json"),
                 project.join("store.json"),

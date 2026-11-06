@@ -1,5 +1,9 @@
 import { t } from "./i18n.js";
-import { formatCount, formatListTimestamp } from "./session-format.js";
+import {
+  formatCount,
+  formatCost,
+  formatListTimestamp,
+} from "./session-format.js";
 import { createEmptyState } from "./ui-components.js";
 
 export function renderStatsSessionList(
@@ -18,6 +22,7 @@ export function renderStatsSessionList(
   for (const [value, label] of [
     ["recent", "searchRecent"],
     ["tokens", "statsSessionsMostTokens"],
+    ["cost", "statsSessionsMostCost"],
   ]) {
     const option = document.createElement("option");
     option.value = value;
@@ -54,15 +59,16 @@ export function renderStatsSessionList(
       .join(" · ");
     const metrics = document.createElement("dl");
     metrics.className = "stats-session-metrics";
-    for (const [label, value] of [
-      ["statsTokenShort", session.tokens],
-      ["statsMessages", session.message_count],
-      ["statsTools", session.tool_calls],
+    for (const [label, value, format] of [
+      ["statsTokenShort", session.tokens, formatCount],
+      ["statsMessages", session.message_count, formatCount],
+      ["statsTools", session.tool_calls, formatCount],
+      ["statsCostShort", session.cost, formatCost],
     ]) {
       const term = document.createElement("dt");
       term.textContent = t(label);
       const count = document.createElement("dd");
-      count.textContent = value == null ? "—" : formatCount(value);
+      count.textContent = value == null ? "—" : format(value);
       if (value == null) count.title = t("statsUsageUnknown");
       metrics.append(term, count);
     }

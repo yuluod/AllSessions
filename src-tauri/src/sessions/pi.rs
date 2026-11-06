@@ -413,6 +413,7 @@ fn build_state(
                     cache_read: usage["cacheRead"].as_u64().unwrap_or_default(),
                     cache_write: usage["cacheWrite"].as_u64().unwrap_or_default(),
                 },
+                record["message"]["model"].as_str().unwrap_or_default(),
             );
         }
         for message in record_messages(&record) {

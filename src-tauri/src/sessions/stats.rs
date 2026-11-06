@@ -34,6 +34,7 @@ impl SessionStore {
                     .iter()
                     .map(|field| summary[*field].as_u64().unwrap_or_default())
                     .sum::<u64>();
+                let (cost, priced, _) = super::pricing::usage_cost(&summary["usage"], query);
                 let calls = summary["tool_counts"].as_object().map(|counts| {
                     counts.values().filter_map(Value::as_u64).sum::<u64>()
                 });
@@ -49,6 +50,7 @@ impl SessionStore {
                     "tokens": if known_usage || (!super::has_activity_range(query) && tokens > 0) {
                         json!(tokens)
                     } else { Value::Null },
+                    "cost": if priced { json!(cost) } else { Value::Null },
                     "message_count": if known_messages {
                         summary["message_count"].clone()
                     } else { Value::Null },
@@ -63,10 +65,15 @@ impl SessionStore {
             .collect::<Vec<_>>();
         let sort = query.get("sort").map(String::as_str).unwrap_or("recent");
         sessions.sort_by(|a, b| {
-            let usage_order = if sort == "tokens" {
-                b["tokens"].as_u64().cmp(&a["tokens"].as_u64())
-            } else {
-                std::cmp::Ordering::Equal
+            let usage_order = match sort {
+                "tokens" => b["tokens"].as_u64().cmp(&a["tokens"].as_u64()),
+                // 估算成本为 null 的会话排在末尾，与未知用量同口径。
+                "cost" => b["cost"]
+                    .as_f64()
+                    .unwrap_or(f64::NEG_INFINITY)
+                    .partial_cmp(&a["cost"].as_f64().unwrap_or(f64::NEG_INFINITY))
+                    .unwrap_or(std::cmp::Ordering::Equal),
+                _ => std::cmp::Ordering::Equal,
             };
             usage_order
                 .then_with(|| timestamp_of(b).cmp(timestamp_of(a)))
@@ -203,6 +210,9 @@ impl SessionStore {
         let mut usage_sessions = 0_u64;
         let mut tool_sessions = 0_u64;
         let mut undated_tokens = 0_u64;
+        let mut total_cost = 0_f64;
+        let mut cost_sessions = 0_u64;
+        let mut unpriced_tokens = 0_u64;
         for summary in &filtered {
             total_events += summary["event_count"].as_u64().unwrap_or_default();
             total_messages += summary["message_count"].as_u64().unwrap_or_default();
@@ -229,9 +239,17 @@ impl SessionStore {
                 undated_tokens += usage_total(&usage["undated"]);
                 if let Some(days) = usage["by_date"].as_object() {
                     for (date, value) in days {
-                        by_date.entry(date.clone()).or_default().tokens += usage_total(value);
+                        let day = by_date.entry(date.clone()).or_default();
+                        day.tokens += usage_total(value);
+                        day.cost += super::pricing::date_cost(usage, date);
                     }
                 }
+                let (cost, priced, unpriced) = super::pricing::usage_cost(usage, query);
+                if priced {
+                    cost_sessions += 1;
+                    total_cost += cost;
+                }
+                unpriced_tokens += unpriced;
             } else {
                 undated_tokens += if super::has_activity_range(query) {
                     summary["_undated_tokens"].as_u64().unwrap_or_default()
@@ -305,11 +323,14 @@ impl SessionStore {
             "usage_sessions": usage_sessions,
             "tool_sessions": tool_sessions,
             "undated_tokens": undated_tokens,
+            "total_cost": if cost_sessions > 0 { json!(total_cost) } else { Value::Null },
+            "cost_sessions": cost_sessions,
+            "unpriced_tokens": unpriced_tokens,
             "project_review": query.get("cwd").filter(|cwd| !cwd.is_empty()).map(|cwd| project_review(&filtered, cwd)),
             "total_tokens": total_input_tokens + total_output_tokens + total_cached_input_tokens,
             "active_days": active_days,
             "avg_daily": if active_days == 0 { "0".into() } else { format!("{:.1}", filtered.len() as f64 / active_days as f64) },
-            "by_date": by_date.into_iter().map(|(label, day)| json!({ "label": label, "count": day.count, "tokens": day.tokens })).collect::<Vec<_>>(),
+            "by_date": by_date.into_iter().map(|(label, day)| json!({ "label": label, "count": day.count, "tokens": day.tokens, "cost": day.cost })).collect::<Vec<_>>(),
             "by_agent": count_values(by_agent, usize::MAX),
             "by_agent_tokens": count_values(by_agent_tokens, usize::MAX),
             "by_source_kind": count_values(by_source_kind, usize::MAX),
@@ -461,11 +482,12 @@ struct ProjectFacet {
     source_last_timestamps: BTreeMap<String, String>,
 }
 
-/// 按日聚合的会话数与 token 用量（input + output + cached）。
+/// 按日聚合的会话数、token 用量（input + output + cached）与估算成本（美元）。
 #[derive(Default)]
 struct DayUsage {
     count: u64,
     tokens: u64,
+    cost: f64,
 }
 impl ProjectFacet {
     fn value(self) -> Value {

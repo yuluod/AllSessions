@@ -75,6 +75,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 - 管理本地归档 / 移除状态
 - 按 Agent 对比会话、消息、工具、活跃度、Provider 和工作目录统计
 - 统计 Token 用量（输入 / 输出 / 缓存）；仅覆盖会记录用量的来源（Codex、Claude Code、ZCode、Pi、DeepSeek Harness、JetBrains Air、Gemini CLI 的 chats 会话）
+- 按内置价格表估算美元成本：统计页展示估算成本卡片与成本热力图，相关会话支持按成本排序；未识别模型的用量计为未计价
 - 批量选择当前已加载的会话并导出为 JSON 或 Markdown
 - 导出时可选择启用脱敏，默认关闭
 

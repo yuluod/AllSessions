@@ -1,5 +1,5 @@
 import { t, getLang } from "./i18n.js";
-import { formatCount } from "./session-format.js";
+import { formatCount, formatCost } from "./session-format.js";
 import {
   calendarHeatmapDays,
   presetHeatmapRange,
@@ -120,6 +120,13 @@ function renderMetrics(stats, container) {
       title: `${formatCount(totalTokens)} (${t("statsTokenInput")} ${formatCount(stats.total_input_tokens)} · ${t("statsTokenOutput")} ${formatCount(stats.total_output_tokens)} · ${t("statsTokenCached")} ${formatCount(stats.total_cached_input_tokens)})`,
     },
     {
+      label: t("statsEstCost"),
+      value: stats.total_cost == null ? "—" : formatCost(stats.total_cost),
+      title: t("statsCostHint", {
+        n: formatCount(stats.unpriced_tokens || 0),
+      }),
+    },
+    {
       label: t("statsEvents"),
       value: stats.total_events == null ? "—" : formatCount(stats.total_events),
     },
@@ -165,7 +172,7 @@ function renderTrend(stats, container) {
   }
   const wrap = document.createElement("div");
   wrap.className = "trend-bars";
-  dates.forEach(({ label, count, tokens }) => {
+  dates.forEach(({ label, count, tokens, cost }) => {
     const column = document.createElement("div");
     column.className = "trend-col";
     const value = document.createElement("span");
@@ -179,7 +186,8 @@ function renderTrend(stats, container) {
     const tokenText = tokens
       ? ` · ${t("statsTokenShort")} ${formatTokensCompact(tokens)}`
       : "";
-    bar.title = `${label}: ${count}${tokenText}`;
+    const costText = cost ? ` · ${formatCost(cost)}` : "";
+    bar.title = `${label}: ${count}${tokenText}${costText}`;
     barWrap.append(bar);
     const date = document.createElement("span");
     date.className = "trend-date";
@@ -254,6 +262,7 @@ function renderHeatmap(stats, container, onSelectDay) {
   for (const [metric, label] of [
     ["count", "statsSessionsShort"],
     ["tokens", "statsTokenShort"],
+    ["cost", "statsCostShort"],
   ]) {
     const button = document.createElement("button");
     button.type = "button";
@@ -278,11 +287,23 @@ function renderHeatmap(stats, container, onSelectDay) {
   const grid = document.createElement("div");
   grid.className = "token-heatmap-grid";
   grid.setAttribute("role", "group");
+  const metricTotal = recent.reduce(
+    (sum, day) => sum + (day[heatmapMetric] || 0),
+    0
+  );
+  const metricLabelKey =
+    heatmapMetric === "cost"
+      ? "statsCostShort"
+      : heatmapMetric === "tokens"
+        ? "statsTokenShort"
+        : "statsSessionsShort";
+  const metricTotalText =
+    heatmapMetric === "cost"
+      ? formatCost(metricTotal)
+      : formatCount(metricTotal);
   grid.setAttribute(
     "aria-label",
-    `${t("statsActivityHeatmap")} · ${t(heatmapMetric === "tokens" ? "statsTokenShort" : "statsSessionsShort")}: ${formatCount(
-      recent.reduce((sum, day) => sum + (day[heatmapMetric] || 0), 0)
-    )}`
+    `${t("statsActivityHeatmap")} · ${t(metricLabelKey)}: ${metricTotalText}`
   );
   // 第一天前面按星期补空格，让列对齐真实的周内位置（周一起始）。
   const firstDay = recent[0];
@@ -359,11 +380,16 @@ function renderHeatmap(stats, container, onSelectDay) {
     cell.dataset.level = String(heatmapLevel(day[heatmapMetric], max));
     cell.dataset.date = day.label;
     cell.dataset.tokens = String(day.tokens || 0);
+    cell.dataset.cost = String(day.cost || 0);
     cell.dataset.count = String(day.count || 0);
     cell.tabIndex = index === recent.length - 1 ? 0 : -1;
+    const costLabel =
+      Number(day.cost) > 0
+        ? ` · ${t("statsCostShort")} ${formatCost(day.cost)}`
+        : "";
     cell.setAttribute(
       "aria-label",
-      `${day.label} · ${t("statsSessionsShort")} ${day.count || 0} · ${t("statsTokenShort")} ${formatCount(day.tokens)}`
+      `${day.label} · ${t("statsSessionsShort")} ${day.count || 0} · ${t("statsTokenShort")} ${formatCount(day.tokens)}${costLabel}`
     );
     cell.setAttribute(
       "aria-pressed",
@@ -433,6 +459,12 @@ function attachHeatmapTooltip(grid) {
     const count = document.createElement("span");
     count.textContent = `${t("statsSessionsShort")} ${cell.dataset.count}`;
     heatmapTooltip.append(date, tokens, count);
+    // 当日有可计价用量才显示成本，避免把未计价误读成 $0.00。
+    if (Number(cell.dataset.cost) > 0) {
+      const cost = document.createElement("span");
+      cost.textContent = `${t("statsCostShort")} ${formatCost(cell.dataset.cost)}`;
+      heatmapTooltip.append(cost);
+    }
     document.body.append(heatmapTooltip);
     const cellRect = cell.getBoundingClientRect();
     const size = heatmapTooltip.getBoundingClientRect();

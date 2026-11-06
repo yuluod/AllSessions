@@ -25,6 +25,7 @@ mod mutation;
 mod opencode;
 mod parse;
 mod pi;
+mod pricing;
 mod query;
 mod roots;
 mod scan;

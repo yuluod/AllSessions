@@ -819,6 +819,7 @@ fn parse(
                         cache_read: payload["cacheReadTokens"].as_u64().unwrap_or_default(),
                         cache_write: payload["cacheWriteTokens"].as_u64().unwrap_or_default(),
                     },
+                    &model,
                 );
                 chunk = None;
             }

@@ -75,6 +75,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 - Manage local archive/removal state
 - Compare session, message, tool, activity, provider, and working-directory statistics by agent
 - Token usage statistics (input / output / cached); only sources that record usage are covered (Codex, Claude Code, ZCode, Pi, DeepSeek Harness, JetBrains Air, and Gemini CLI chats sessions)
+- Estimated USD cost from a built-in price table: a cost card and cost heatmap in statistics, cost sorting for related sessions; usage on unrecognized models counts as unpriced
 - Batch-select loaded sessions and export as JSON or Markdown
 - Optional export redaction, off by default
 

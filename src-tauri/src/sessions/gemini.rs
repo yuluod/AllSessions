@@ -742,6 +742,7 @@ fn accumulate_chat_tokens(state: &mut ParseState, messages: &[Value]) {
                 cache_read: cached,
                 cache_write: 0,
             },
+            record["model"].as_str().unwrap_or_default(),
         );
     }
 }

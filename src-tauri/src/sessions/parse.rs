@@ -58,6 +58,9 @@ pub(crate) struct ParseState {
     /// Claude 流式会把同一次 API 响应写多行（usage 完全相同），
     /// 按 message.id 去重避免重复计数。
     pub(crate) counted_response_ids: BTreeSet<String>,
+    /// 最近一次 turn_context/session_meta 记录的模型名；Codex 的
+    /// token_count 事件本身不带模型，按它归属用量用于成本估算。
+    pub(crate) current_model: String,
 }
 
 impl ParseState {
@@ -105,6 +108,7 @@ impl ParseState {
             tool_names: HashMap::new(),
             previous_message: None,
             counted_response_ids: BTreeSet::new(),
+            current_model: String::new(),
         }
     }
     pub(crate) fn accept(&mut self, record: &Value) -> Vec<Value> {
@@ -130,6 +134,9 @@ impl ParseState {
             if let Some(value) = string_at(payload, &["originator"]) {
                 self.originator = value;
             }
+            if let Some(value) = string_at(payload, &["model"]) {
+                self.current_model = value;
+            }
             if payload
                 .get("source")
                 .and_then(|value| value.get("subagent"))
@@ -138,6 +145,11 @@ impl ParseState {
                 self.hidden = true;
                 self.hidden_reason = "subagent".into();
             }
+        }
+        if record.get("type").and_then(Value::as_str) == Some("turn_context")
+            && let Some(value) = string_at(&record["payload"], &["model"])
+        {
+            self.current_model = value;
         }
         if let Some(value) = string_at(record, &["cwd"]) {
             self.cwd = value;
@@ -239,6 +251,8 @@ impl ParseState {
                 self.cached_input_tokens = 0;
                 self.output_tokens = 0;
             }
+            let model = string_at(&payload["info"], &["model"])
+                .unwrap_or_else(|| self.current_model.clone());
             self.record_usage(
                 if reset {
                     ""
@@ -251,6 +265,7 @@ impl ParseState {
                     cache_read: cached.saturating_sub(self.cached_input_tokens),
                     cache_write: 0,
                 },
+                &model,
             );
             self.input_tokens = uncached;
             self.cached_input_tokens = cached;
@@ -267,6 +282,7 @@ impl ParseState {
             if !response_id.is_empty() && !self.counted_response_ids.insert(response_id) {
                 return;
             }
+            let model = string_at(message, &["model"]).unwrap_or_default();
             self.record_usage(
                 record["timestamp"].as_str().unwrap_or_default(),
                 TokenUsage {
@@ -275,14 +291,16 @@ impl ParseState {
                     cache_read: usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
                     cache_write: usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
                 },
+                &model,
             );
         }
     }
-    pub(super) fn record_usage(&mut self, timestamp: &str, usage: TokenUsage) {
+    /// `model` 为该次用量归属的模型名（用于成本估算），未知传空串。
+    pub(super) fn record_usage(&mut self, timestamp: &str, usage: TokenUsage, model: &str) {
         self.input_tokens += usage.input;
         self.output_tokens += usage.output;
         self.cached_input_tokens += usage.cache_read + usage.cache_write;
-        self.usage.record(timestamp, usage);
+        self.usage.record(timestamp, usage, model);
     }
     pub(crate) fn accept_message(&mut self, mut message: Value) -> Option<Value> {
         annotate_activity(&mut message);

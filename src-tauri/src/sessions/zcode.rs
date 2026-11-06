@@ -493,7 +493,13 @@ fn finish_summary(
         summary["output_tokens"] = json!(usage.output);
         summary["cached_input_tokens"] = json!(usage.cache_read + usage.cache_write);
         let mut ledger = UsageLedger::default();
-        ledger.record("", usage);
+        // ZCode 的 turn_usage 是整会话聚合，模型归属取摘要识别到的 modelID。
+        let model = if state.provider == "unknown" {
+            ""
+        } else {
+            state.provider.as_str()
+        };
+        ledger.record("", usage, model);
         summary["usage"] = json!(ledger);
     }
     summary["source_read_only"] = Value::Bool(true);

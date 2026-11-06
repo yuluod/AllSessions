@@ -553,6 +553,7 @@ fn parse(
                             cache_read: usage["cacheReadTokens"].as_u64().unwrap_or(0),
                             cache_write: usage["cacheWriteTokens"].as_u64().unwrap_or(0),
                         },
+                        &model,
                     );
                 }
             }

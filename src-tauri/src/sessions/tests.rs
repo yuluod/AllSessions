@@ -1128,7 +1128,7 @@ fn 统计日图使用用量日期并明确无日期用量() {
     assert_eq!(stats["undated_tokens"], 47);
     assert_eq!(
         stats["by_date"][0],
-        json!({ "label": "2026-09-01", "count": 1, "tokens": 47 })
+        json!({ "label": "2026-09-01", "count": 1, "tokens": 47, "cost": 0.0 })
     );
     assert_eq!(stats["by_date"][1]["tokens"], 0);
 }

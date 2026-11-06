@@ -445,6 +445,7 @@ const DICT = {
     statsTokenCached: "缓存",
     statsTokenShort: "Token",
     statsSessionsShort: "会话",
+    statsCostShort: "成本",
     statsMetricSessions: "会话数",
     statsAgentOther: "其他",
     statsTokenHeatmap: "Token 热力图",
@@ -472,6 +473,7 @@ const DICT = {
     statsRelatedSessions: "相关会话",
     statsSessionsSort: "相关会话排序",
     statsSessionsMostTokens: "Token 用量最多",
+    statsSessionsMostCost: "估算成本最高",
     statsSessionsHint:
       "按当前项目、来源及日期范围列出会话；用量显示范围内已记录的值。打开会话可查看完整记录与整理信息。",
     statsUsageUnknown: "来源未提供可用于当前范围的记录",
@@ -492,6 +494,9 @@ const DICT = {
     statsCoverage: "用量记录覆盖 {n}/{total} 个会话",
     statsToolCoverage: "工具统计覆盖 {n}/{total} 个会话",
     statsUndatedTokens: "未分配日期的 Token {n}",
+    statsEstCost: "估算成本",
+    statsCostHint:
+      "按内置价格表估算的美元成本；未计价 Token {n}（模型未识别或来源未记录模型）",
     statsDailyUsageHint:
       "统计按活动和用量事件日期筛选；未知日期的用量不计入指定范围。",
     statsToolRanking: "常用工具",
@@ -1175,6 +1180,7 @@ const DICT = {
     statsTokenCached: "Cached",
     statsTokenShort: "Tokens",
     statsSessionsShort: "Sessions",
+    statsCostShort: "Cost",
     statsMetricSessions: "Sessions",
     statsAgentOther: "Other",
     statsTokenHeatmap: "Token heatmap",
@@ -1203,6 +1209,7 @@ const DICT = {
     statsRelatedSessions: "Related sessions",
     statsSessionsSort: "Sort related sessions",
     statsSessionsMostTokens: "Most tokens",
+    statsSessionsMostCost: "Highest cost",
     statsSessionsHint:
       "Sessions match the current project, source and date range. Usage shows recorded values within that range. Open a session for its full history and organization details.",
     statsUsageUnknown: "The source has no usable record for this range",
@@ -1224,6 +1231,9 @@ const DICT = {
     statsCoverage: "Usage recorded for {n}/{total} sessions",
     statsToolCoverage: "Tool statistics for {n}/{total} sessions",
     statsUndatedTokens: "Tokens without a date {n}",
+    statsEstCost: "Est. cost",
+    statsCostHint:
+      "Estimated USD cost from the built-in price table; {n} unpriced tokens (model unrecognized or not recorded)",
     statsDailyUsageHint:
       "Statistics use activity and usage event dates. Undated usage is excluded from a specified range.",
     statsToolRanking: "Top Tools",

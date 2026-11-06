@@ -8,6 +8,19 @@ export function formatCount(value) {
   return new Intl.NumberFormat(locale()).format(Number(value || 0));
 }
 
+// 成本是内置价目的估算值（USD）：不足 1 美分显示下限提示，
+// 大额按整数显示避免长小数；空值/非法值交给调用方显示占位符。
+export function formatCost(value) {
+  const cost = Number(value);
+  if (!Number.isFinite(cost)) return "—";
+  if (cost > 0 && cost < 0.01) return "<$0.01";
+  return new Intl.NumberFormat(locale(), {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: cost >= 100 ? 0 : 2,
+  }).format(cost);
+}
+
 // 各来源的默认会话形态：普通会话为 cli，Cursor 为 ide。
 // 列表里逐行重复没有信息量，只保留 subagent/desktop 这类有区分度的值。
 const DEFAULT_SESSION_SOURCES = new Set(["cli", "ide"]);

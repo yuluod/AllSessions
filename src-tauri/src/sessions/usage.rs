@@ -23,6 +23,17 @@ impl TokenUsage {
         self.cache_read += other.cache_read;
         self.cache_write += other.cache_write;
     }
+    pub(super) fn sum(&self) -> u64 {
+        self.input + self.output + self.cache_read + self.cache_write
+    }
+}
+
+/// 单个模型的用量分布：总量 + 逐日归属，用于成本估算的按模型计价。
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub(super) struct ModelUsage {
+    pub totals: TokenUsage,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub by_date: BTreeMap<String, TokenUsage>,
 }
 
 #[cfg(test)]
@@ -39,6 +50,7 @@ mod tests {
                     input: 10,
                     ..Default::default()
                 },
+                "claude-sonnet-4-5",
             );
         }
         ledger.record(
@@ -47,6 +59,7 @@ mod tests {
                 input: 7,
                 ..Default::default()
             },
+            "",
         );
         assert_eq!(ledger.events.len(), MAX_USAGE_EVENTS);
         assert_eq!(ledger.event_count, 350);
@@ -67,6 +80,7 @@ mod tests {
                 cache_write: 5,
                 output: 2,
             },
+            "claude-sonnet-4-5",
         );
         let mut other = UsageLedger::default();
         other.record(
@@ -75,6 +89,7 @@ mod tests {
                 input: 20,
                 ..Default::default()
             },
+            "gpt-5",
         );
         other.record(
             "",
@@ -82,6 +97,7 @@ mod tests {
                 output: 7,
                 ..Default::default()
             },
+            "",
         );
         ledger.merge(other);
         assert_eq!(ledger.totals.input, 30);
@@ -89,6 +105,11 @@ mod tests {
         assert_eq!(ledger.totals.cache_write, 5);
         assert_eq!(ledger.by_date.len(), 2);
         assert_eq!(ledger.undated.output, 7);
+        assert_eq!(ledger.by_model.len(), 3);
+        assert_eq!(ledger.by_model["claude-sonnet-4-5"].totals.input, 10);
+        assert_eq!(ledger.by_model["gpt-5"].by_date["2026-09-02"].input, 20);
+        assert_eq!(ledger.by_model[""].totals.output, 7);
+        assert!(ledger.by_model[""].by_date.is_empty());
     }
 
     #[test]
@@ -105,6 +126,7 @@ mod tests {
                 input: 11,
                 ..Default::default()
             },
+            "",
         );
         assert_eq!(ledger.by_date.len(), MAX_USAGE_DAYS);
         assert_eq!(ledger.undated.input, 11);
@@ -118,6 +140,10 @@ pub(super) struct UsageLedger {
     pub totals: TokenUsage,
     pub by_date: BTreeMap<String, TokenUsage>,
     pub undated: TokenUsage,
+    /// 按模型拆分的用量，供查询侧价格表估算成本；空串键表示未能归属模型的
+    /// 用量，计价时计入未估算部分。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub by_model: BTreeMap<String, ModelUsage>,
     // 明细仅随会话详情返回，不进入摘要缓存及列表。
     #[serde(skip)]
     pub events: VecDeque<UsageEvent>,
@@ -132,7 +158,8 @@ pub(super) struct UsageEvent {
 }
 
 impl UsageLedger {
-    pub fn record(&mut self, timestamp: &str, usage: TokenUsage) {
+    /// 记录一次用量事件；`model` 为该次用量归属的模型名，未知传空串。
+    pub fn record(&mut self, timestamp: &str, usage: TokenUsage, model: &str) {
         self.known = true;
         self.totals.add(usage);
         let date = local_date_key(timestamp)
@@ -158,12 +185,19 @@ impl UsageLedger {
             });
         }
         // 超长历史保留总量，超出日期上限的部分归入未分配用量。
-        if let Some(date) = date
-            && (self.by_date.len() < MAX_USAGE_DAYS || self.by_date.contains_key(&date))
+        if let Some(date) = &date
+            && (self.by_date.len() < MAX_USAGE_DAYS || self.by_date.contains_key(date))
         {
-            self.by_date.entry(date).or_default().add(usage);
+            self.by_date.entry(date.clone()).or_default().add(usage);
         } else {
             self.undated.add(usage);
+        }
+        let entry = self.by_model.entry(model.to_string()).or_default();
+        entry.totals.add(usage);
+        if let Some(date) = &date
+            && (entry.by_date.len() < MAX_USAGE_DAYS || entry.by_date.contains_key(date))
+        {
+            entry.by_date.entry(date.clone()).or_default().add(usage);
         }
     }
 
@@ -179,6 +213,15 @@ impl UsageLedger {
                 self.by_date.entry(date).or_default().add(usage);
             } else {
                 self.undated.add(usage);
+            }
+        }
+        for (model, entry) in other.by_model {
+            let target = self.by_model.entry(model).or_default();
+            target.totals.add(entry.totals);
+            for (date, usage) in entry.by_date {
+                if target.by_date.len() < MAX_USAGE_DAYS || target.by_date.contains_key(&date) {
+                    target.by_date.entry(date).or_default().add(usage);
+                }
             }
         }
         self.event_count += other.event_count;

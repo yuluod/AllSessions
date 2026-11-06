@@ -45,6 +45,9 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 - 在一个界面中浏览多个 AI Coding Agent 的本地会话
 - 按来源、Provider、日期、项目和工作目录筛选
 - 查看归一化后的对话、Thinking、工具调用和原始事件
+- 合并展示工具调用与结果，查看 Edit/Write diff 和会话级文件变更
+- 通过「会话分析」查看文件操作、父子 Agent 关联会话与用量趋势；通过「操作回顾」筛选工具操作并定位原始消息
+- 会话图片按需加载，支持大图预览
 - 默认隐藏标记为 subagent、sidechain 的会话，可通过筛选显示；详情默认显示注入的系统上下文，可单独切换，Thinking 随归一化消息展示
 - 监听来源文件变化并自动刷新，仍在写入的会话标记“进行中”，已打开的详情页实时追加新消息
 
@@ -52,7 +55,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 
 - 同时搜索标题、路径、标签、备注和消息正文
 - 支持空格分隔的多关键词匹配，所有关键词均需命中
-- 中文一至两个字使用子串匹配，其余内容使用本地 trigram 索引
+- 一至两个字符的关键词按子串匹配，三个及以上字符使用本地 trigram 索引
 - 搜索结果可按相关度或最近活动时间排序
 - 按消息角色（用户 / 助手 / 工具）与工具名过滤命中
 - 按会话活动日期范围收窄结果
@@ -71,10 +74,11 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 - 收藏会话并添加标签、备注，还可自定义会话名称（列表与详情优先显示，原始标题作为兜底）
 - 选择项目后打开“项目回顾”，查看近期会话及收藏、标签、备注，并直接返回会话；回顾遵循当前筛选条件，每组最多展示 8 条。
 - 统计页支持统一活动日期范围、会话／Token 热力图切换及日期点击筛选；相关会话可按最近活动或范围内用量排序、分页并打开详情。
+- 查看缓存命中率与常用工具、命令排行，点击排行条目追溯对应调用
 - 保存常用筛选
 - 管理本地归档 / 移除状态
 - 按 Agent 对比会话、消息、工具、活跃度、Provider 和工作目录统计
-- 统计 Token 用量（输入 / 输出 / 缓存）；仅覆盖会记录用量的来源（Codex、Claude Code、ZCode、Pi、DeepSeek Harness、JetBrains Air、Gemini CLI 的 chats 会话）
+- 统计 Token 用量（输入 / 输出 / 缓存）；仅覆盖会记录用量的来源（Codex、Claude Code、ZCode、Pi、Oh My Pi、DeepSeek Harness、JetBrains Air、Gemini CLI 的 chats 会话）
 - 按内置价格表估算美元成本：统计页展示估算成本卡片与成本热力图，相关会话支持按成本排序；未识别模型的用量计为未计价
 - 批量选择当前已加载的会话并导出为 JSON 或 Markdown
 - 导出时可选择启用脱敏，默认关闭
@@ -83,10 +87,12 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 
 - 在系统文件管理器中定位会话来源文件或项目目录
 - 从会话工作目录打开系统终端
-- 恢复对应 Agent 的会话（Cursor 和 VS Code Copilot Chat 为只读来源，不支持恢复）
-- 托盘菜单直达最近会话
+- 在支持的 Agent 中恢复会话；Claude Cowork、Kilo、Cursor、VS Code Copilot Chat、DeepSeek Harness 和 JetBrains Air 不支持恢复
+- 托盘菜单提供收藏与最近会话，每条会话可展开「打开详情 / 恢复会话」子菜单
 - 可选择终端应用或配置自定义可执行文件
-- 提供五套界面主题
+- 可启用登录后自动启动并驻留托盘（默认关闭）
+- 来源栏可收起为图标条，设置中可切换应用图标
+- 提供六套界面主题：Standard、TUI、Greenbar、HD Web、Blind 和 Pixel
 - 支持浅色、深色和跟随系统模式
 - 支持键盘快捷键切换主视图、设置分区和浏览对话
 
@@ -110,19 +116,21 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 | **Claude Cowork**        | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions`（macOS） | 本地任务转录、Thinking、工具、任务标题与主机目录、搜索及刷新；来源只读；[边界说明](./docs/sources/claude-cowork.md)                                                                                                                |
 | **Gemini CLI**           | `~/.gemini/tmp/*`                                                               | `logs.json` 与 v0.61+ `chats/session-*.json[l]` 完整会话（JSONL 回放、`$set`/`$rewindTo`/消息更新，chats 优先去重）；消息、Thinking、工具、Token 用量（chats）、原始事件、搜索、实时刷新；[边界说明](./docs/sources/gemini-cli.md) |
 | **Grok Build**           | `~/.grok/sessions`                                                              | `updates.jsonl` 与 `summary.json`；流式正文、Thinking、工具、回退过滤、原始事件、搜索、刷新、恢复；来源只读；[边界说明](./docs/sources/grok-build.md)                                                                              |
-| **Pi**                   | `~/.pi/agent/sessions`                                                          | 从 v1-v3 JSONL 树重建当前分支；消息、Thinking、工具、摘要、原始事件、搜索、实时刷新                                                                                                                                                |
+| **Pi**                   | `~/.pi/agent/sessions`                                                          | 从 v1-v3 JSONL 树重建当前分支；消息、Thinking、工具、摘要、原始事件、搜索、实时刷新、恢复                                                                                                                                          |
 | **Oh My Pi**             | `~/.omp/agent/sessions`                                                         | Oh My Pi（Pi fork）的 JSONL 会话，复用 Pi 解析；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读；[边界说明](./docs/sources/oh-my-pi.md)                                                                             |
-| **Kimi Code CLI**        | `~/.kimi/sessions`                                                              | `wire.jsonl`、工作目录、自定义标题、流式内容、子 Agent、工具、原始事件、搜索、实时刷新                                                                                                                                             |
-| **OpenCode**             | `~/.local/share/opencode/opencode.db`                                           | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读                                                                                                                                                     |
+| **Kimi Code CLI**        | `~/.kimi-code/sessions`、`~/.kimi/sessions`                                     | `wire.jsonl`、工作目录、自定义标题、流式内容、子 Agent、工具、原始事件、搜索、实时刷新、恢复                                                                                                                                       |
+| **OpenCode**             | `~/.local/share/opencode/opencode.db`                                           | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新、恢复；来源只读                                                                                                                                               |
 | **Kilo**                 | `~/.local/share/kilo/kilo.db`                                                   | SQLite；消息、Thinking、工具、子 Agent、原始事件、搜索、WAL 实时刷新；来源只读                                                                                                                                                     |
-| **ZCode**                | `~/.zcode/cli/db/db.sqlite`                                                     | SQLite；消息、Thinking、工具、压缩标记、原始事件、搜索、WAL 实时刷新；排除子 Agent 会话；来源只读                                                                                                                                  |
+| **ZCode**                | `~/.zcode/cli/db/db.sqlite`                                                     | SQLite；消息、Thinking、工具、压缩标记、原始事件、搜索、WAL 实时刷新、恢复；排除子 Agent 会话；来源只读                                                                                                                            |
 | **Cursor**               | 系统配置目录下的 `Cursor/User`                                                  | IDE conversation 与 agent-transcripts；浏览、搜索、统计、导出、本地移除；来源只读                                                                                                                                                  |
 | **Devin**                | 系统配置目录下的 `Devin/User` 与 `~/.local/share/devin/cli`                     | 桌面版 `acp-messages`/`state.vscdb` 与 CLI `sessions.db`；浏览、搜索、统计、导出、本地移除、恢复；来源只读；[边界说明](./docs/sources/devin.md)                                                                                    |
 | **GitHub Copilot**       | `~/.copilot/session-state`                                                      | 每会话 `events.jsonl` 与相邻 `workspace.yaml` 元数据；消息、Thinking、工具、原始事件、搜索、实时刷新、恢复；来源只读                                                                                                               |
 | **Hermes Agent**         | macOS/Linux `~/.hermes`、Windows `%LOCALAPPDATA%\hermes`                        | SQLite `state.db`（含 `profiles/<name>` 命名库）；消息、Thinking、工具、压缩归档过滤、子代理排除、原始事件、搜索、WAL 实时刷新、恢复；来源只读                                                                                     |
 | **VS Code Copilot Chat** | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User`                          | 面板会话（`workspaceStorage`/`globalStorage` 下平铺 `.json` 与 1.109 起 `.jsonl` 追加日志）；消息、Thinking、工具、文件编辑、自定义标题、搜索、实时刷新；排除空占位会话；来源只读                                                  |
 | **DeepSeek Harness**     | `~/.dsh/sessions`                                                               | 每会话 `session[.vN].jsonl[.zstd]` 多帧事件日志，每个目录只读最新一代；消息、Thinking、工具、标题、Token 用量、原始事件、搜索、实时刷新；排除空占位会话；来源只读；[边界说明](./docs/sources/deepseek-harness.md)                  |
-| **JetBrains Air**        | 系统本地数据目录下的 `JetBrains/<产品版本>/acp`                                 | 每线程 `events.jsonl` 与 `summary.json`/`attachments/`；ACP 事件回放：消息、Thinking、工具、标题、逐轮 Token 用量、原始事件、图片附件、搜索、实时刷新；排除空线程；来源只读；[边界说明](./docs/sources/jetbrains-air.md)           |
+| **JetBrains Air**        | 系统本地数据目录与缓存目录下的 `JetBrains/<产品版本>/acp`                       | 每线程 `events.jsonl` 与 `summary.json`/`attachments/`；ACP 事件回放：消息、Thinking、工具、标题、逐轮 Token 用量、原始事件、图片附件、搜索、实时刷新；排除空线程；来源只读；[边界说明](./docs/sources/jetbrains-air.md)           |
+
+JetBrains Air 会枚举本地数据目录与缓存目录下已存在的 `acp` 目录，包括 macOS 的 `~/Library/Caches/JetBrains/<产品版本>/acp` 和 Linux 的 `~/.cache/JetBrains/<产品版本>/acp`。
 
 对于只读来源，AllSessions 不会修改 Agent 的原始数据。你仍然可以在 AllSessions 中执行本地移除；如需删除原始记录，需要在对应 Agent 中操作。
 
@@ -177,39 +185,40 @@ AllSessions/config.json
 
 环境变量需要在启动桌面应用之前设置，应用在启动时读取一次。
 
-| 变量                           | 说明                                        | 默认值                                                  |
-| ------------------------------ | ------------------------------------------- | ------------------------------------------------------- |
-| `CODEX_HOME`                   | Codex 数据根目录（单路径）                  | `~/.codex`                                              |
-| `CODEX_SESSIONS_DIR`           | Codex 会话根目录（路径列表）                | `$CODEX_HOME/sessions`                                  |
-| `CODEX_ARCHIVED_SESSIONS_DIR`  | Codex 归档根目录（路径列表）                | `$CODEX_HOME/archived_sessions`                         |
-| `CLAUDE_SESSIONS_DIR`          | Claude Code 根目录（路径列表）              | `~/.claude`                                             |
-| `GEMINI_SESSIONS_DIR`          | Gemini CLI 根目录（路径列表）               | `~/.gemini`                                             |
-| `CLAUDE_COWORK_SESSIONS_DIR`   | Claude Cowork 本地任务根目录（路径列表）    | Claude Desktop 数据目录下的 `local-agent-mode-sessions` |
-| `GROK_SESSIONS_DIR`            | Grok Build 会话根目录（路径列表）           | `$GROK_HOME/sessions`                                   |
-| `GROK_HOME`                    | Grok 官方数据根目录（单路径）               | `~/.grok`                                               |
-| `PI_SESSIONS_DIR`              | Pi 会话根目录（路径列表）                   | `~/.pi/agent/sessions`                                  |
-| `PI_CODING_AGENT_SESSION_DIR`  | Pi 官方会话目录                             | —                                                       |
-| `PI_CODING_AGENT_DIR`          | Pi 官方数据目录                             | `~/.pi/agent`                                           |
-| `OMP_SESSIONS_DIR`             | Oh My Pi 会话根目录（路径列表）             | `~/.omp/agent/sessions`                                 |
-| `OMP_AGENT_DIR`                | Oh My Pi 数据目录（单路径）                 | `~/.omp/agent`                                          |
-| `KIMI_SESSIONS_DIR`            | Kimi Code CLI 数据根目录（路径列表）        | `~/.kimi`                                               |
-| `KIMI_SHARE_DIR`               | Kimi Code CLI 官方数据目录                  | `~/.kimi`                                               |
-| `OPENCODE_DB`                  | OpenCode 官方 SQLite 数据库路径             | `~/.local/share/opencode/opencode.db`                   |
-| `KILO_DB`                      | Kilo SQLite 数据库路径                      | `~/.local/share/kilo/kilo.db`                           |
-| `ZCODE_DB`                     | ZCode 官方 SQLite 数据库路径                | `~/.zcode/cli/db/db.sqlite`                             |
-| `DEVIN_SESSIONS_DIR`           | Devin 数据根目录（路径列表）                | `Devin/User` 与 `~/.local/share/devin/cli`              |
-| `COPILOT_SESSIONS_DIR`         | GitHub Copilot 会话根目录（路径列表）       | `~/.copilot/session-state`                              |
-| `HERMES_SESSIONS_DIR`          | Hermes Agent 数据根目录（路径列表）         | `%LOCALAPPDATA%\hermes`（Windows）或 `~/.hermes`        |
-| `HERMES_HOME`                  | Hermes 官方数据根目录（单路径）             | 同上                                                    |
-| `VSCODE_COPILOT_SESSIONS_DIR`  | VS Code Copilot Chat 数据根目录（路径列表） | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User`  |
-| `DSH_SESSIONS_DIR`             | DeepSeek Harness 数据根目录（路径列表）     | `$DSH_HOME` 或 `~/.dsh`                                 |
-| `DSH_HOME`                     | DeepSeek Harness 官方数据根目录（单路径）   | `~/.dsh`                                                |
-| `JETBRAINS_AIR_SESSIONS_DIR`   | JetBrains Air `acp` 根目录（路径列表）      | 系统本地数据目录下的 `JetBrains/<产品版本>/acp`         |
-| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录                    | 系统用户缓存目录下的 `AllSessions`                      |
-| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存                     | 未设置                                                  |
-| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径            | 系统应用数据目录                                        |
+| 变量                           | 说明                                        | 默认值                                                    |
+| ------------------------------ | ------------------------------------------- | --------------------------------------------------------- |
+| `CODEX_HOME`                   | Codex 数据根目录（单路径）                  | `~/.codex`                                                |
+| `CODEX_SESSIONS_DIR`           | Codex 会话根目录（路径列表）                | `$CODEX_HOME/sessions`                                    |
+| `CODEX_ARCHIVED_SESSIONS_DIR`  | Codex 归档根目录（路径列表）                | `$CODEX_HOME/archived_sessions`                           |
+| `CLAUDE_SESSIONS_DIR`          | Claude Code 根目录（路径列表）              | `~/.claude`                                               |
+| `GEMINI_SESSIONS_DIR`          | Gemini CLI 根目录（路径列表）               | `~/.gemini`                                               |
+| `CLAUDE_COWORK_SESSIONS_DIR`   | Claude Cowork 本地任务根目录（路径列表）    | Claude Desktop 数据目录下的 `local-agent-mode-sessions`   |
+| `GROK_SESSIONS_DIR`            | Grok Build 会话根目录（路径列表）           | `$GROK_HOME/sessions`                                     |
+| `GROK_HOME`                    | Grok 官方数据根目录（单路径）               | `~/.grok`                                                 |
+| `PI_SESSIONS_DIR`              | Pi 会话根目录（路径列表）                   | `~/.pi/agent/sessions`                                    |
+| `PI_CODING_AGENT_SESSION_DIR`  | Pi 官方会话目录                             | —                                                         |
+| `PI_CODING_AGENT_DIR`          | Pi 官方数据目录                             | `~/.pi/agent`                                             |
+| `OMP_SESSIONS_DIR`             | Oh My Pi 会话根目录（路径列表）             | `~/.omp/agent/sessions`                                   |
+| `OMP_AGENT_DIR`                | Oh My Pi 数据目录（单路径）                 | `~/.omp/agent`                                            |
+| `KIMI_SESSIONS_DIR`            | Kimi Code CLI 数据根目录（路径列表）        | `~/.kimi-code`、`~/.kimi`                                 |
+| `KIMI_CODE_HOME`               | Kimi Code CLI 数据根目录（单路径）          | `~/.kimi-code`                                            |
+| `KIMI_SHARE_DIR`               | Kimi Code CLI 官方数据目录                  | `~/.kimi`                                                 |
+| `OPENCODE_DB`                  | OpenCode 官方 SQLite 数据库路径             | `~/.local/share/opencode/opencode.db`                     |
+| `KILO_DB`                      | Kilo SQLite 数据库路径                      | `~/.local/share/kilo/kilo.db`                             |
+| `ZCODE_DB`                     | ZCode 官方 SQLite 数据库路径                | `~/.zcode/cli/db/db.sqlite`                               |
+| `DEVIN_SESSIONS_DIR`           | Devin 数据根目录（路径列表）                | `Devin/User` 与 `~/.local/share/devin/cli`                |
+| `COPILOT_SESSIONS_DIR`         | GitHub Copilot 会话根目录（路径列表）       | `~/.copilot/session-state`                                |
+| `HERMES_SESSIONS_DIR`          | Hermes Agent 数据根目录（路径列表）         | `%LOCALAPPDATA%\hermes`（Windows）或 `~/.hermes`          |
+| `HERMES_HOME`                  | Hermes 官方数据根目录（单路径）             | 同上                                                      |
+| `VSCODE_COPILOT_SESSIONS_DIR`  | VS Code Copilot Chat 数据根目录（路径列表） | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User`    |
+| `DSH_SESSIONS_DIR`             | DeepSeek Harness 数据根目录（路径列表）     | `$DSH_HOME` 或 `~/.dsh`                                   |
+| `DSH_HOME`                     | DeepSeek Harness 官方数据根目录（单路径）   | `~/.dsh`                                                  |
+| `JETBRAINS_AIR_SESSIONS_DIR`   | JetBrains Air `acp` 根目录（路径列表）      | 系统本地数据目录与缓存目录下的 `JetBrains/<产品版本>/acp` |
+| `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录                    | 系统用户缓存目录下的 `AllSessions`                        |
+| `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存                     | 未设置                                                    |
+| `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径            | 系统应用数据目录                                          |
 
-七个 `*_SESSIONS_DIR` 变量支持配置多个路径，使用系统路径分隔符分隔：
+`*_SESSIONS_DIR` 变量支持配置多个路径，使用系统路径分隔符分隔：
 
 - macOS / Linux：`:`
 - Windows：`;`
@@ -223,6 +232,8 @@ CODEX_SESSIONS_DIR=~/.codex/sessions:~/backups/codex/sessions
 路径支持将开头的 `~` 展开为用户主目录，从 Finder / Dock 启动应用、没有 shell 参与路径展开时同样有效。
 
 未设置 AllSessions 专用变量时，Pi 和 Kimi 会继续使用各自的官方变量。
+
+`XDG_DATA_HOME` 会影响 OpenCode、Kilo 的默认数据目录，以及非 Windows 平台的 Devin CLI 数据目录。
 
 `OPENCODE_DB` 遵循 OpenCode 自身的路径规则：绝对路径直接使用，相对路径基于 OpenCode 数据目录解析。
 

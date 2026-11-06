@@ -29,7 +29,7 @@
 
 </div>
 
-AllSessions 将 **Codex、Claude Code、Claude Cowork、Gemini CLI、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness 和 JetBrains Air** 的本地会话集中到一个桌面应用中。
+AllSessions 将 **Codex、Claude Code、Claude Cowork、Gemini CLI、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness、JetBrains Air 和 WorkBuddy** 的本地会话集中到一个桌面应用中。
 
 无需在不同工具和目录之间来回查找历史记录，你可以在一个界面中浏览会话、全文搜索、查看工具调用、整理收藏与标签、统计使用情况，并按需导出会话。
 
@@ -78,7 +78,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 - 保存常用筛选
 - 管理本地归档 / 移除状态
 - 按 Agent 对比会话、消息、工具、活跃度、Provider 和工作目录统计
-- 统计 Token 用量（输入 / 输出 / 缓存）；仅覆盖会记录用量的来源（Codex、Claude Code、ZCode、Pi、Oh My Pi、DeepSeek Harness、JetBrains Air、Gemini CLI 的 chats 会话）
+- 统计 Token 用量（输入 / 输出 / 缓存）；仅覆盖会记录用量的来源（Codex、Claude Code、ZCode、Pi、Oh My Pi、DeepSeek Harness、JetBrains Air、WorkBuddy、Gemini CLI 的 chats 会话）
 - 按内置价格表估算美元成本：统计页展示估算成本卡片与成本热力图，相关会话支持按成本排序；未识别模型的用量计为未计价
 - 批量选择当前已加载的会话并导出为 JSON 或 Markdown
 - 导出时可选择启用脱敏，默认关闭
@@ -87,7 +87,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 
 - 在系统文件管理器中定位会话来源文件或项目目录
 - 从会话工作目录打开系统终端
-- 在支持的 Agent 中恢复会话；Claude Cowork、Kilo、Cursor、VS Code Copilot Chat、DeepSeek Harness 和 JetBrains Air 不支持恢复
+- 在支持的 Agent 中恢复会话；Claude Cowork、Kilo、Cursor、VS Code Copilot Chat、DeepSeek Harness、JetBrains Air 和 WorkBuddy 不支持恢复
 - 托盘菜单提供收藏与最近会话，每条会话可展开「打开详情 / 恢复会话」子菜单
 - 可选择终端应用或配置自定义可执行文件
 - 可启用登录后自动启动并驻留托盘（默认关闭）
@@ -129,6 +129,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 | **VS Code Copilot Chat** | 系统配置目录下的 `Code/User` 与 `Code - Insiders/User`                          | 面板会话（`workspaceStorage`/`globalStorage` 下平铺 `.json` 与 1.109 起 `.jsonl` 追加日志）；消息、Thinking、工具、文件编辑、自定义标题、搜索、实时刷新；排除空占位会话；来源只读                                                  |
 | **DeepSeek Harness**     | `~/.dsh/sessions`                                                               | 每会话 `session[.vN].jsonl[.zstd]` 多帧事件日志，每个目录只读最新一代；消息、Thinking、工具、标题、Token 用量、原始事件、搜索、实时刷新；排除空占位会话；来源只读；[边界说明](./docs/sources/deepseek-harness.md)                  |
 | **JetBrains Air**        | 系统本地数据目录与缓存目录下的 `JetBrains/<产品版本>/acp`                       | 每线程 `events.jsonl` 与 `summary.json`/`attachments/`；ACP 事件回放：消息、Thinking、工具、标题、逐轮 Token 用量、原始事件、图片附件、搜索、实时刷新；排除空线程；来源只读；[边界说明](./docs/sources/jetbrains-air.md)           |
+| **WorkBuddy**            | `~/.workbuddy`                                                                  | `projects/<工作区>/<会话>.jsonl` 事件回放：消息、Thinking、工具、AI 标题、逐次 Token 用量、图片附件（`blobs/` 内容寻址副本）、搜索、实时刷新；排除空占位会话；来源只读；[边界说明](./docs/sources/workbuddy.md)                    |
 
 JetBrains Air 会枚举本地数据目录与缓存目录下已存在的 `acp` 目录，包括 macOS 的 `~/Library/Caches/JetBrains/<产品版本>/acp` 和 Linux 的 `~/.cache/JetBrains/<产品版本>/acp`。
 
@@ -214,6 +215,8 @@ AllSessions/config.json
 | `DSH_SESSIONS_DIR`             | DeepSeek Harness 数据根目录（路径列表）     | `$DSH_HOME` 或 `~/.dsh`                                   |
 | `DSH_HOME`                     | DeepSeek Harness 官方数据根目录（单路径）   | `~/.dsh`                                                  |
 | `JETBRAINS_AIR_SESSIONS_DIR`   | JetBrains Air `acp` 根目录（路径列表）      | 系统本地数据目录与缓存目录下的 `JetBrains/<产品版本>/acp` |
+| `WORKBUDDY_SESSIONS_DIR`       | WorkBuddy 数据根目录（路径列表）            | `$WORKBUDDY_HOME` 或 `~/.workbuddy`                       |
+| `WORKBUDDY_HOME`               | WorkBuddy 官方数据根目录（单路径）          | `~/.workbuddy`                                            |
 | `SESSION_VIEWER_CACHE_DIR`     | Rust SQLite 索引缓存目录                    | 系统用户缓存目录下的 `AllSessions`                        |
 | `SESSION_VIEWER_DISABLE_CACHE` | 设为 `1` 时禁用持久缓存                     | 未设置                                                    |
 | `ALLSESSIONS_WORKSPACE_DB`     | AllSessions 用户数据 SQLite 路径            | 系统应用数据目录                                          |
@@ -261,7 +264,7 @@ AllSessions 处理的是本地 AI 会话数据，其中可能包含：
 
 Codex Provider 维护工具同样只有在用户主动启用维护模式并确认执行后才会修改 Codex 数据。
 
-Claude Cowork、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness 和 JetBrains Air 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
+Claude Cowork、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness、JetBrains Air 和 WorkBuddy 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
 
 自定义名称、收藏、标签、备注、常用筛选以及本地归档 / 移除状态属于 AllSessions 自身的用户数据，独立保存在 `workspace.sqlite` 中。它们不会修改 Agent 的原始记录，也不会随着可重建的索引缓存一起清除。
 

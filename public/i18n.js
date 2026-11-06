@@ -590,6 +590,7 @@ const DICT = {
     schemeToggleToLight: "切换至浅色模式",
     schemeToggleToDark: "切换至深色模式",
     language: "语言",
+    languageSystem: "跟随系统",
     settingsLanguageHint: "用于界面文案、日期和时间格式",
     settingsKeepRunning: "关闭窗口后继续运行",
     settingsKeepRunningHint: "保留菜单栏或系统托盘入口，便于快速重新打开",
@@ -1342,6 +1343,7 @@ const DICT = {
     schemeToggleToLight: "Switch to light mode",
     schemeToggleToDark: "Switch to dark mode",
     language: "Language",
+    languageSystem: "Follow system",
     settingsLanguageHint: "Used for interface copy, dates, and time formats",
     settingsKeepRunning: "Keep running after closing the window",
     settingsKeepRunningHint:
@@ -1477,17 +1479,39 @@ const DICT = {
   },
 };
 
-function readStoredLang() {
-  const stored = localStorage.getItem(LANG_KEY);
-  if (stored) return stored;
-  const legacy = localStorage.getItem(LEGACY_LANG_KEY);
-  if (!legacy) return "";
-  localStorage.setItem(LANG_KEY, legacy);
-  localStorage.removeItem(LEGACY_LANG_KEY);
-  return legacy;
+export const LANG_SYSTEM = "system";
+const SUPPORTED_LANGS = ["zh", "en"];
+
+function readStoredPreference() {
+  let stored = localStorage.getItem(LANG_KEY);
+  if (!stored) {
+    const legacy = localStorage.getItem(LEGACY_LANG_KEY);
+    if (legacy) {
+      localStorage.setItem(LANG_KEY, legacy);
+      localStorage.removeItem(LEGACY_LANG_KEY);
+      stored = legacy;
+    }
+  }
+  return SUPPORTED_LANGS.includes(stored) ? stored : LANG_SYSTEM;
 }
 
-let currentLang = readStoredLang() || "zh";
+function systemLanguages() {
+  const nav = globalThis.navigator;
+  if (Array.isArray(nav?.languages) && nav.languages.length) {
+    return nav.languages;
+  }
+  return nav?.language ? [nav.language] : [];
+}
+
+export function resolveLang(preference, languages = systemLanguages()) {
+  if (SUPPORTED_LANGS.includes(preference)) return preference;
+  const primary = String(languages[0] || "").toLowerCase();
+  return primary === "zh" || primary.startsWith("zh-") ? "zh" : "en";
+}
+
+let langPreference = readStoredPreference();
+let currentLang = resolveLang(langPreference);
+const langChangeListeners = new Set();
 
 // 将后端错误码翻译为当前语言；未知错误码返回 null 以便调用方回退到原始文案。
 // 后端 message 携带具体原因（如"iTerm2 未安装"），统一拼在码文案之后，
@@ -1504,11 +1528,41 @@ export function t(key, vars = {}) {
   return str.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
 }
 
-export function setLang(lang) {
+function applyLang(lang) {
+  const changed = lang !== currentLang;
   currentLang = lang;
-  localStorage.setItem(LANG_KEY, lang);
-  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-  updateStaticI18n();
+  if (globalThis.document) {
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+    updateStaticI18n();
+  }
+  if (changed) langChangeListeners.forEach((listener) => listener(lang));
+  return changed;
+}
+
+export function setLangPreference(preference) {
+  langPreference = SUPPORTED_LANGS.includes(preference)
+    ? preference
+    : LANG_SYSTEM;
+  localStorage.setItem(LANG_KEY, langPreference);
+  return applyLang(resolveLang(langPreference));
+}
+
+export function setLang(lang) {
+  return setLangPreference(lang);
+}
+
+export function getLangPreference() {
+  return langPreference;
+}
+
+export function refreshSystemLang() {
+  if (langPreference !== LANG_SYSTEM) return false;
+  return applyLang(resolveLang(langPreference));
+}
+
+export function onLangChange(listener) {
+  langChangeListeners.add(listener);
+  return () => langChangeListeners.delete(listener);
 }
 
 export function getLang() {

@@ -15,6 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use url::Url;
 
 use crate::{
+    UiLanguage,
     config::{self, AppConfig},
     error::ApiError,
     maintenance,
@@ -41,6 +42,7 @@ pub struct BackendState {
     search_indexing: Arc<AtomicBool>,
     search_index_error: Arc<Mutex<Option<String>>>,
     index_progress: Arc<Mutex<Value>>,
+    ui_language: Arc<Mutex<UiLanguage>>,
 }
 
 impl BackendState {
@@ -72,6 +74,7 @@ impl BackendState {
             search_indexing: Arc::new(AtomicBool::new(true)),
             search_index_error: Arc::new(Mutex::new(None)),
             index_progress: Arc::new(Mutex::new(json!({"phase":"scanning"}))),
+            ui_language: Arc::new(Mutex::new(UiLanguage::default())),
         })
     }
 
@@ -263,6 +266,13 @@ impl BackendState {
 
     pub fn watch_roots(&self) -> Result<Vec<std::path::PathBuf>, String> {
         Ok(self.store.lock().map_err(lock_error)?.watch_roots())
+    }
+
+    pub fn ui_language(&self) -> UiLanguage {
+        self.ui_language
+            .lock()
+            .map(|language| *language)
+            .unwrap_or_default()
     }
 
     /// 托盘菜单数据：(收藏段, 最近段)；锁失败时返回空列表，托盘只显示固定项。
@@ -660,6 +670,17 @@ fn route_request(
             payload["app_icon_restart_available"] =
                 json!(cfg!(target_os = "windows") && icon_changed);
             Ok(payload)
+        }
+        ("POST", "/api/ui-language") => {
+            let language = request
+                .body
+                .get("language")
+                .and_then(Value::as_str)
+                .and_then(UiLanguage::parse)
+                .ok_or_else(|| ApiError::invalid("界面语言无效"))?;
+            *state.ui_language.lock().map_err(lock_error)? = language;
+            crate::refresh_tray_menu(&app);
+            Ok(json!({ "ok": true }))
         }
         ("POST", "/api/settings/restart") => {
             if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {

@@ -7,7 +7,7 @@ use super::helpers::{bool_query, paginate, timestamp_of};
 use super::parse::parse_detail;
 use super::{
     DetailLocator, SessionStore, SourceFormat, cursor, deepseek, devin, gemini, hermes,
-    jetbrains_air, opencode, zcode,
+    jetbrains_air, opencode, workbuddy, zcode,
 };
 
 impl SessionStore {
@@ -199,6 +199,9 @@ impl SessionStore {
             }
             None if record.source.format == SourceFormat::JetBrainsAir => {
                 jetbrains_air::read_attachment(&record.path, &record.source, request)
+            }
+            None if record.source.format == SourceFormat::WorkBuddy => {
+                workbuddy::read_attachment(&record.path, &record.source, request)
             }
             None => super::attachment::read_image(record, request),
         };

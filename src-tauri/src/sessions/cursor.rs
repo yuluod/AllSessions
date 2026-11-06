@@ -1128,6 +1128,7 @@ mod tests {
                 vscode_copilot: Some(vec![]),
                 deepseek: Some(vec![]),
                 jetbrains_air: Some(vec![]),
+                workbuddy: Some(vec![]),
             },
             index_cache: crate::cache::IndexCache::disabled(),
             detail_cache: s::DetailCache::new(s::DETAIL_CACHE_BYTES),

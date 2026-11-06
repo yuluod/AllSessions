@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 
 use super::{
     Source, SourceFormat, claude_cowork, copilot, cursor, deepseek, devin, grok, hermes,
-    jetbrains_air, kimi, vscode_copilot,
+    jetbrains_air, kimi, vscode_copilot, workbuddy,
 };
 
 pub(crate) struct RootLists {
@@ -33,6 +33,7 @@ pub(crate) struct RootLists {
     pub vscode_copilot: Vec<PathBuf>,
     pub deepseek: Vec<PathBuf>,
     pub jetbrains_air: Vec<PathBuf>,
+    pub workbuddy: Vec<PathBuf>,
 }
 
 pub(crate) fn resolve_kind(
@@ -305,6 +306,21 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         &["JETBRAINS_AIR_SESSIONS_DIR"],
         default_air_roots(),
     );
+    let workbuddy_home = env::var_os("WORKBUDDY_HOME")
+        .map(PathBuf::from)
+        .map(expand_tilde);
+    let (workbuddy, mut workbuddy_origin) = resolve_kind(
+        config.get("workbuddy"),
+        &["WORKBUDDY_SESSIONS_DIR"],
+        vec![
+            workbuddy_home
+                .clone()
+                .unwrap_or_else(|| home.join(".workbuddy")),
+        ],
+    );
+    if workbuddy_origin == "default" && workbuddy_home.is_some() {
+        workbuddy_origin = "env";
+    }
     let description = json!({
         "codex": { "roots": codex.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_origin },
         "codex_archived": { "roots": codex_archived.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": codex_archived_origin },
@@ -325,6 +341,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
         "vscode_copilot": { "roots": vscode_copilot.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": vscode_copilot_origin },
         "deepseek": { "roots": deepseek.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": deepseek_origin },
         "jetbrains_air": { "roots": jetbrains_air.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": jetbrains_air_origin },
+        "workbuddy": { "roots": workbuddy.iter().map(|path| path.to_string_lossy()).collect::<Vec<_>>(), "origin": workbuddy_origin },
     });
     (
         RootLists {
@@ -347,6 +364,7 @@ pub(crate) fn root_lists(config: &crate::config::SourceRoots) -> (RootLists, Val
             vscode_copilot,
             deepseek,
             jetbrains_air,
+            workbuddy,
         },
         description,
     )
@@ -483,6 +501,7 @@ pub(crate) fn describe_protected_sources(config: &crate::config::SourceRoots) ->
         "vscode_copilot": describe_protected_source_roots(config.vscode_copilot.as_deref().unwrap_or_default(), &inherited.vscode_copilot),
         "deepseek": describe_protected_source_roots(config.deepseek.as_deref().unwrap_or_default(), &inherited.deepseek),
         "jetbrains_air": describe_protected_source_roots(config.jetbrains_air.as_deref().unwrap_or_default(), &inherited.jetbrains_air),
+        "workbuddy": describe_protected_source_roots(config.workbuddy.as_deref().unwrap_or_default(), &inherited.workbuddy),
     })
 }
 
@@ -597,6 +616,13 @@ pub(crate) fn configured_sources(config: &crate::config::SourceRoots) -> Vec<Sou
         display_name: "JetBrains Air",
         root: root.clone(),
         format: SourceFormat::JetBrainsAir,
+        archived: false,
+    }));
+    sources.extend(lists.workbuddy.iter().map(|root| Source {
+        kind: "workbuddy",
+        display_name: "WorkBuddy",
+        root: workbuddy::sessions_root(root),
+        format: SourceFormat::WorkBuddy,
         archived: false,
     }));
     sources
@@ -750,6 +776,9 @@ pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
     if matches!(source.format, SourceFormat::JetBrainsAir) {
         return jetbrains_air::discover_files(source);
     }
+    if matches!(source.format, SourceFormat::WorkBuddy) {
+        return workbuddy::discover_files(source);
+    }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {
             "json"
@@ -805,6 +834,9 @@ pub(crate) fn source_matches_path(source: &Source, path: &Path) -> bool {
     }
     if matches!(source.format, SourceFormat::JetBrainsAir) {
         return jetbrains_air::matches_path(&source.root, path);
+    }
+    if matches!(source.format, SourceFormat::WorkBuddy) {
+        return workbuddy::matches_path(&source.root, path);
     }
     let extension =
         if matches!(source.format, SourceFormat::Claude) && source.root.ends_with("sessions") {

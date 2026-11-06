@@ -32,6 +32,7 @@ mod scan;
 mod stats;
 mod usage;
 mod vscode_copilot;
+mod workbuddy;
 mod zcode;
 
 #[cfg(test)]
@@ -112,6 +113,8 @@ pub(crate) enum SourceFormat {
     DeepSeek,
     /// JetBrains Air（IDE 内 ACP 线程）；事件日志回放，只读。
     JetBrainsAir,
+    /// WorkBuddy 桌面版会话日志；事件日志回放，只读。
+    WorkBuddy,
 }
 
 #[derive(Clone)]
@@ -279,6 +282,8 @@ impl SessionStore {
             "hermes",
             "vscode_copilot",
             "deepseek",
+            "jetbrains_air",
+            "workbuddy",
         ] {
             let enabled = self
                 .sources_config
@@ -320,6 +325,8 @@ impl SessionStore {
             ("hermes", lists.hermes.as_slice()),
             ("vscode_copilot", lists.vscode_copilot.as_slice()),
             ("deepseek", lists.deepseek.as_slice()),
+            ("jetbrains_air", lists.jetbrains_air.as_slice()),
+            ("workbuddy", lists.workbuddy.as_slice()),
         ] {
             let entry = sources.entry(kind.to_string()).or_insert_with(|| json!({}));
             entry["declared_roots"] = json!(roots.len());

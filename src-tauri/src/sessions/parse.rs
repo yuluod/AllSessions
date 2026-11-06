@@ -17,6 +17,7 @@ use super::helpers::{
 use super::{
     DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT, Source,
     SourceFormat, claude_cowork, copilot, deepseek, grok, jetbrains_air, kimi, pi, vscode_copilot,
+    workbuddy,
 };
 
 pub(crate) struct ParseState {
@@ -405,6 +406,9 @@ impl ParseState {
                 // Air 线程可运行不同 ACP agent；模型名记录在 ConfigOptionUpdated，
                 // 未记录时不推断 provider。
                 SourceFormat::JetBrainsAir => "unknown",
+                // WorkBuddy 可切换多家模型；模型名记录在 providerData，
+                // 未记录时不做推断。
+                SourceFormat::WorkBuddy => "unknown",
             }
         } else {
             &self.provider
@@ -429,6 +433,7 @@ impl ParseState {
                 SourceFormat::VsCodeCopilot => "vscode_copilot_chat",
                 SourceFormat::DeepSeek => "deepseek_harness",
                 SourceFormat::JetBrainsAir => "jetbrains_air",
+                SourceFormat::WorkBuddy => "workbuddy",
             }
         } else {
             &self.originator
@@ -446,6 +451,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
         SourceFormat::VsCodeCopilot => return vscode_copilot::parse_summary(path, source),
         SourceFormat::DeepSeek => return deepseek::parse_summary(path, source),
         SourceFormat::JetBrainsAir => return jetbrains_air::parse_summary(path, source),
+        SourceFormat::WorkBuddy => return workbuddy::parse_summary(path, source),
         SourceFormat::OpenCode | SourceFormat::Kilo => {
             return Err("SQLite 数据库必须通过聚合来源解析".into());
         }
@@ -485,6 +491,7 @@ pub(crate) fn parse_detail(path: &Path, source: &Source) -> Result<Value, String
         SourceFormat::VsCodeCopilot => return vscode_copilot::parse_detail(path, source),
         SourceFormat::DeepSeek => return deepseek::parse_detail(path, source),
         SourceFormat::JetBrainsAir => return jetbrains_air::parse_detail(path, source),
+        SourceFormat::WorkBuddy => return workbuddy::parse_detail(path, source),
         _ => {}
     }
     visit_detail(path, source, &mut |_| {})
@@ -506,6 +513,7 @@ pub(crate) fn visit_detail(
         SourceFormat::JetBrainsAir => {
             return jetbrains_air::visit_detail(path, source, visitor);
         }
+        SourceFormat::WorkBuddy => return workbuddy::visit_detail(path, source, visitor),
         SourceFormat::OpenCode | SourceFormat::Kilo => {
             return Err("SQLite 数据库必须通过详情定位器解析".into());
         }

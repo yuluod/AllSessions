@@ -152,9 +152,9 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 > [!NOTE]
 > 部分 GNOME 桌面环境需要 AppIndicator/KStatusNotifierItem 扩展。
 >
-> 安装包目前尚未进行代码签名（后续会提供已签名 / 已公证版本）：
+> 安装包目前尚未使用 Developer ID 签名或公证（后续会提供已签名 / 已公证版本）：
 >
-> - **macOS**：Gatekeeper 可能提示应用“已损坏”，无法直接打开。把应用拷贝到「应用程序」后，在终端执行 `xattr -dr com.apple.quarantine /Applications/AllSessions.app`，再正常打开。
+> - **macOS**：安装包仅为 ad-hoc 签名，首次打开会被 Gatekeeper 拦截。把应用拷贝到「应用程序」后，在「系统设置」→「隐私与安全性」中选择「仍要打开」，或在终端执行 `xattr -dr com.apple.quarantine /Applications/AllSessions.app`，再正常打开。
 > - **Windows**：SmartScreen 可能提示“无法识别的应用”，选择「更多信息」→「仍要运行」即可。
 
 ## 配置

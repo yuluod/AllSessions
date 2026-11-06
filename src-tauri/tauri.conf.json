@@ -52,7 +52,8 @@
       }
     },
     "macOS": {
-      "bundleVersion": "3003"
+      "bundleVersion": "3003",
+      "signingIdentity": "-"
     }
   },
   "plugins": {

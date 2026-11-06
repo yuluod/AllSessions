@@ -887,7 +887,7 @@ pub(crate) fn annotate_activity(message: &mut Value) {
     let action = match name.as_str() {
         "read" | "read_file" | "readfile" => "read",
         "write" | "write_file" | "writefile" => "write",
-        "edit" | "edit_file" | "editfile" => "edit",
+        "edit" | "edit_file" | "editfile" | "multiedit" => "edit",
         "grep" | "glob" | "search_files" => "search",
         _ => return,
     };
@@ -918,6 +918,85 @@ pub(crate) fn annotate_activity(message: &mut Value) {
                 .collect::<Vec<_>>()
         );
     }
+    if matches!(action, "edit" | "write")
+        && let Some(edit) = file_edit(&args, action)
+    {
+        message["file_edit"] = edit;
+    }
+}
+
+/// diff 渲染的结构化编辑内容：单个字符串最多 16 KiB，编辑段最多 16 段，
+/// 超长截断并打 truncated 标记；Write 没有旧文本，只有 create 段。
+const EDIT_TEXT_LIMIT: usize = 16 * 1024;
+const EDIT_HUNK_LIMIT: usize = 16;
+
+fn bounded_edit_text(value: &Value) -> Option<(String, bool)> {
+    let text = value.as_str()?;
+    if text.chars().count() <= EDIT_TEXT_LIMIT {
+        return Some((text.to_string(), false));
+    }
+    Some((text.chars().take(EDIT_TEXT_LIMIT).collect(), true))
+}
+
+fn file_edit(args: &Value, action: &str) -> Option<Value> {
+    let path = ["file_path", "filePath", "path"]
+        .iter()
+        .find_map(|field| args[*field].as_str())
+        .unwrap_or_default();
+    if path.is_empty() || path.len() > 2048 {
+        return None;
+    }
+    let mut edits = Vec::new();
+    let mut truncated = false;
+    if action == "write" {
+        // Write 只带新文本：整个文件作为新增段渲染。
+        let content = ["content", "new_string", "newString", "text"]
+            .iter()
+            .find_map(|field| args.get(*field));
+        if let Some((text, cut)) = content.and_then(bounded_edit_text) {
+            truncated |= cut;
+            edits.push(json!({ "old": "", "new": text, "truncated": cut }));
+        }
+    } else {
+        // Edit 单段与 MultiEdit 段列表统一归一成 old/new 对。
+        if let Some(list) = args["edits"].as_array() {
+            for item in list {
+                push_edit(&mut edits, &mut truncated, item);
+            }
+        }
+        if edits.is_empty() {
+            push_edit(&mut edits, &mut truncated, args);
+        }
+    }
+    if edits.is_empty() {
+        return None;
+    }
+    Some(json!({
+        "path": path,
+        "create": action == "write",
+        "truncated": truncated,
+        "edits": edits,
+    }))
+}
+
+fn push_edit(edits: &mut Vec<Value>, truncated: &mut bool, value: &Value) {
+    if edits.len() >= EDIT_HUNK_LIMIT {
+        *truncated = true;
+        return;
+    }
+    let pick = |keys: &[&str]| keys.iter().find_map(|field| value.get(*field));
+    let old = pick(&["old_string", "oldString", "old"]).and_then(bounded_edit_text);
+    let new = pick(&["new_string", "newString", "new", "content"]).and_then(bounded_edit_text);
+    if old.is_none() && new.is_none() {
+        return;
+    }
+    let cut = old.as_ref().is_some_and(|(_, c)| *c) || new.as_ref().is_some_and(|(_, c)| *c);
+    *truncated |= cut;
+    edits.push(json!({
+        "old": old.map(|(text, _)| text).unwrap_or_default(),
+        "new": new.map(|(text, _)| text).unwrap_or_default(),
+        "truncated": cut,
+    }));
 }
 
 pub(crate) fn is_tool_call(message: &Value) -> bool {

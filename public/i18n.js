@@ -326,6 +326,11 @@ const DICT = {
     fileActivity_write: "写入",
     fileActivity_edit: "编辑",
     fileActivity_search: "搜索",
+    sessionFileChanges: "文件变更",
+    sessionFileChangesScope:
+      "当前显示消息中可还原的编辑内容，显示 {n}/{total} 个文件。展开可查看逐段 diff。",
+    fileEditCreate: "新建文件",
+    fileEditTruncated: "内容过长已截断",
     sessionFamily: "父子 Agent",
     sessionFamilyScope: "来自明确的父子关系记录，显示 {n}/{total} 个相关会话。",
     sessionRelation_parent: "父会话",
@@ -1049,6 +1054,11 @@ const DICT = {
     fileActivity_write: "Write",
     fileActivity_edit: "Edit",
     fileActivity_search: "Search",
+    sessionFileChanges: "File changes",
+    sessionFileChangesScope:
+      "Recoverable edit contents in visible messages, {n}/{total} files shown. Expand to see per-hunk diffs.",
+    fileEditCreate: "New file",
+    fileEditTruncated: "Content truncated",
     sessionFamily: "Parent and child agents",
     sessionFamilyScope:
       "Explicit parent-child records, {n}/{total} related sessions shown.",

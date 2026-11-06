@@ -2580,6 +2580,153 @@ body.is-resizing {
 .message-card.collapsed .tool-result-head {
   margin-bottom: 0;
 }
+
+.file-edit {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-round);
+  overflow: hidden;
+}
+
+.message-card.collapsed .file-edit {
+  display: none;
+}
+
+.file-edit-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.file-edit-path {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.file-edit-create,
+.file-edit-truncated {
+  font-size: 0.64rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.file-edit-truncated {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.diff-counts {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-count-add {
+  color: var(--success);
+}
+
+.diff-count-del {
+  color: var(--signal);
+}
+
+.diff-table {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.diff-table + .diff-table {
+  border-top: 1px dashed var(--line-strong);
+}
+
+.diff-line {
+  display: flex;
+  white-space: pre;
+  min-height: 1.2em;
+}
+
+.diff-sign {
+  flex: 0 0 2ch;
+  text-align: center;
+  user-select: none;
+  color: var(--muted);
+}
+
+.diff-text {
+  flex: 1;
+  padding-right: 10px;
+}
+
+.diff-add {
+  background: var(--success-soft);
+}
+
+.diff-add .diff-sign {
+  color: var(--success);
+}
+
+.diff-del {
+  background: var(--signal-soft);
+}
+
+.diff-del .diff-sign {
+  color: var(--signal);
+}
+
+.diff-changed {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 3px;
+}
+
+.file-changes-list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.file-change {
+  border: 1px solid var(--line);
+  border-radius: var(--control-round);
+}
+
+.file-change > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.file-change-path {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.file-change-hunk {
+  padding: 4px 10px 0;
+}
+
+.file-change .diff-table {
+  border-top: 1px dashed var(--line);
+  margin: 6px 0;
+  padding-bottom: 6px;
+}
+
 .message-card[data-role="user"] header {
   justify-content: flex-end;
 }

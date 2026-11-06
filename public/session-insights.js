@@ -1,5 +1,6 @@
 import { t } from "./i18n.js";
 import { formatCount, formatListTimestamp } from "./session-format.js";
+import { collectFileEdits, renderHunk } from "./diff-view.js";
 
 export function fileActivity(groups) {
   const files = new Map();
@@ -25,13 +26,15 @@ export function renderSessionInsights(
   if (!container) return;
   container.replaceChildren();
   const files = fileActivity(groups);
+  const changes = collectFileEdits(groups);
   const family = detail?.related_sessions?.items || [];
   const events = detail?.usage_events || [];
   container.classList.toggle(
     "hidden",
-    !files.length && !family.length && !events.length
+    !files.length && !changes.length && !family.length && !events.length
   );
-  if (!files.length && !family.length && !events.length) return;
+  if (!files.length && !changes.length && !family.length && !events.length)
+    return;
   const summary = document.createElement("summary");
   summary.textContent = t("sessionInsights");
   container.append(summary);
@@ -56,6 +59,61 @@ export function renderSessionInsights(
       button.addEventListener("click", () => onSelectMessage?.(file.index));
       item.append(button);
       list.append(item);
+    }
+    container.append(heading, scope, list);
+  }
+
+  if (changes.length) {
+    const heading = document.createElement("h4");
+    heading.textContent = t("sessionFileChanges");
+    const scope = document.createElement("p");
+    scope.className = "tool-operations-scope";
+    scope.textContent = t("sessionFileChangesScope", {
+      n: Math.min(changes.length, 64),
+      total: changes.length,
+    });
+    const list = document.createElement("div");
+    list.className = "file-changes-list";
+    for (const file of changes.slice(0, 64)) {
+      const detail = document.createElement("details");
+      detail.className = "file-change";
+      const summary = document.createElement("summary");
+      const path = document.createElement("span");
+      path.className = "file-change-path";
+      path.textContent = file.path;
+      path.title = file.path;
+      const counts = document.createElement("span");
+      counts.className = "diff-counts";
+      const add = document.createElement("span");
+      add.className = "diff-count-add";
+      add.textContent = `+${file.added}`;
+      const del = document.createElement("span");
+      del.className = "diff-count-del";
+      del.textContent = `−${file.removed}`;
+      counts.append(add, del);
+      summary.append(path, counts);
+      detail.append(summary);
+      // diff 在首次展开时才计算：多文件会话可避免一次性跑全部 LCS。
+      detail.addEventListener(
+        "toggle",
+        () => {
+          if (!detail.open || detail.dataset.rendered) return;
+          detail.dataset.rendered = "1";
+          for (const { index, hunk } of file.edits) {
+            const link = document.createElement("button");
+            link.type = "button";
+            link.className = "ghost-button tool-operation-link";
+            link.textContent = `#${index + 1}`;
+            link.addEventListener("click", () => onSelectMessage?.(index));
+            const host = document.createElement("div");
+            host.className = "file-change-hunk";
+            host.append(link);
+            detail.append(host, renderHunk(hunk));
+          }
+        },
+        { passive: true }
+      );
+      list.append(detail);
     }
     container.append(heading, scope, list);
   }

@@ -58,7 +58,9 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 
 会话详情可包含 `usage_events` 和 `usage_event_count`。Codex、Claude、DeepSeek、Pi／Oh My Pi 与 Gemini chats 在读取详情时重建最多最近 300 条有日期的非零用量事件，界面展示最近 30 条；累计快照使用差值，事件不序列化进摘要缓存。来源未记录用量时不推测请求次数。
 
-文件操作的 `file_activity` 仅从已识别 Read/read_file、Write/write_file、Edit/edit_file、grep/glob/search_files 等调用的路径参数生成，单次最多 32 个路径，每条路径最多 2048 字节；不解析 shell 命令推断文件修改。详情按当前显示消息汇总，最多展示 64 项并保留消息定位。
+文件操作的 `file_activity` 仅从已识别 Read/read_file、Write/write_file、Edit/edit_file/MultiEdit、grep/glob/search_files 等调用的路径参数生成，单次最多 32 个路径，每条路径最多 2048 字节；不解析 shell 命令推断文件修改。详情按当前显示消息汇总，最多展示 64 项并保留消息定位。
+
+Edit/MultiEdit/Write 类调用在 `file_activity` 之外额外生成 `file_edit`：`{path, create, truncated, edits:[{old,new,truncated}]}`，其中 `edits` 最多 16 段、单段文本最多 16K 字符，超出打 `truncated` 标记。前端据此渲染单条消息的行级/词级 diff，并在会话分析里按路径聚合展示每个文件的增删行数。
 
 OpenCode／Kilo 与 ZCode 的工具 part 同时包含调用输入和最终结果。归一化消息保留原有展示，并以 `includes_tool_call` 标记其包含一次调用；排行和消息索引据此计数，命令及文件定位字段从该 part 的结构化 input 提取。
 

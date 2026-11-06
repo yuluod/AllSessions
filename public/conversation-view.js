@@ -12,6 +12,7 @@ import {
 import { displayMessageText } from "./session-export.js";
 import { createToolOperations } from "./tool-operations.js";
 import { renderSessionInsights } from "./session-insights.js";
+import { renderFileEdit } from "./diff-view.js";
 import {
   filterConversationMessages,
   groupToolMessages,
@@ -452,6 +453,10 @@ export function createConversationView({
       const messageContent = fragment.querySelector(".message-text");
       messageContent.id = `message-content-${message._origIdx + 1}`;
       renderMarkdown(messageContent, messageText);
+      const editBlock = message.file_edit
+        ? renderFileEdit(t, message.file_edit)
+        : null;
+      if (editBlock) messageContent.after(editBlock);
       const attachmentsHost = fragment.querySelector(".message-attachments");
       if (attachmentsHost) {
         renderAttachments(attachmentsHost, message.attachments, {

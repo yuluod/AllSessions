@@ -356,6 +356,43 @@ fn 文件操作只归一化明确工具参数且工具结果不重复计数() {
 }
 
 #[test]
+fn 编辑内容归一化为file_edit且兼容多段与新建() {
+    let mut message = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": "Edit", "text": "[Edit] {\"file_path\":\"/p/a.rs\",\"old_string\":\"x = 1\",\"new_string\":\"x = 2\"}" });
+    super::annotate_activity(&mut message);
+    assert_eq!(
+        message["file_edit"],
+        json!({
+            "path": "/p/a.rs",
+            "create": false,
+            "truncated": false,
+            "edits": [{ "old": "x = 1", "new": "x = 2", "truncated": false }],
+        })
+    );
+
+    let mut message = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": "MultiEdit", "text": "[MultiEdit] {\"file_path\":\"/p/b.rs\",\"edits\":[{\"old_string\":\"a\",\"new_string\":\"b\"},{\"old_string\":\"c\",\"new_string\":\"d\"}]}" });
+    super::annotate_activity(&mut message);
+    assert_eq!(message["file_edit"]["edits"].as_array().unwrap().len(), 2);
+    assert_eq!(message["file_edit"]["edits"][1]["new"], "d");
+
+    let mut message = json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": "Write", "text": "[Write] {\"file_path\":\"/p/c.md\",\"content\":\"# hi\"}" });
+    super::annotate_activity(&mut message);
+    assert_eq!(message["file_edit"]["create"], true);
+    assert_eq!(message["file_edit"]["edits"][0]["new"], "# hi");
+
+    // Read/Grep 等只读工具与缺路径/缺内容的编辑不产生 file_edit。
+    for (name, text) in [
+        ("Read", "{\"file_path\":\"/p/a.rs\"}"),
+        ("Edit", "{\"old_string\":\"x\",\"new_string\":\"y\"}"),
+        ("Edit", "{\"file_path\":\"/p/a.rs\"}"),
+    ] {
+        let mut message =
+            json!({ "role": "tool", "tool_kind": "tool_call", "tool_name": name, "text": text });
+        super::annotate_activity(&mut message);
+        assert!(message["file_edit"].is_null(), "{name} {text}");
+    }
+}
+
+#[test]
 fn 父子会话遵守来源边界并排除本地移除记录() {
     let (_directory, mut store) = structured_search_store();
     let base = store.summaries[0].clone();

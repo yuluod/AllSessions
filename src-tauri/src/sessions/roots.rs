@@ -365,20 +365,27 @@ pub(crate) fn default_hermes_root() -> PathBuf {
         .join(".hermes")
 }
 
-/// JetBrains Air 数据根：各平台均为 `<JetBrains 本地数据目录>/<产品>/acp`
-/// （Windows `%LOCALAPPDATA%\JetBrains\IntelliJIdea2026.3\acp`、macOS
-/// `~/Library/Application Support/JetBrains/<产品>/acp`、Linux
-/// `~/.local/share/JetBrains/<产品>/acp`）。默认枚举已存在的 acp 目录。
+/// JetBrains Air 数据根：`<JetBrains 本地目录>/<产品>/acp`。
+/// Windows 写在 `%LOCALAPPDATA%\JetBrains\<产品>\acp`；macOS/Linux 的 IDE
+/// system 目录位于缓存侧（`~/Library/Caches/JetBrains/<产品>`、
+/// `~/.cache/JetBrains/<产品>`），数据目录侧（Application Support、
+/// `~/.local/share`）同样枚举以兼容可能存在的布局。默认只返回已存在的
+/// acp 目录；两基目录在 Windows 下解析为同一位置，需去重。
 fn default_air_roots() -> Vec<PathBuf> {
-    let mut roots = dirs::data_local_dir()
-        .map(|dir| dir.join("JetBrains"))
-        .and_then(|base| std::fs::read_dir(base).ok())
+    let bases: BTreeSet<PathBuf> = [dirs::data_local_dir(), dirs::cache_dir()]
         .into_iter()
+        .flatten()
+        .map(|dir| dir.join("JetBrains"))
+        .collect();
+    let mut roots = bases
+        .iter()
+        .filter_map(|base| std::fs::read_dir(base).ok())
         .flatten()
         .filter_map(|entry| entry.ok().map(|entry| entry.path().join("acp")))
         .filter(|path| path.is_dir())
         .collect::<Vec<_>>();
     roots.sort();
+    roots.dedup();
     roots
 }
 
@@ -672,6 +679,7 @@ pub(crate) fn existing_watch_root(path: &Path) -> Option<PathBuf> {
         dirs::config_dir(),
         dirs::data_dir(),
         dirs::data_local_dir(),
+        dirs::cache_dir(),
     ]
     .into_iter()
     .flatten()

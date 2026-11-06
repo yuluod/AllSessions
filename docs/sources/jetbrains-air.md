@@ -4,11 +4,13 @@
 
 ## 数据布局
 
-线程历史由 IDE 侧持久化，位于各产品本地数据目录下：
+线程历史由 IDE 侧持久化，位于各产品的 IDE system/本地目录下：
 
 - Windows：`%LOCALAPPDATA%\JetBrains\<产品版本>\acp`
-- macOS：`~/Library/Application Support/JetBrains/<产品版本>/acp`
-- Linux：`~/.local/share/JetBrains/<产品版本>/acp`
+- macOS：`~/Library/Caches/JetBrains/<产品版本>/acp`
+- Linux：`~/.cache/JetBrains/<产品版本>/acp`
+
+默认枚举同时覆盖数据目录侧（macOS `~/Library/Application Support`、Linux `~/.local/share`）的 `JetBrains/<产品版本>/acp`，兼容可能写在配置目录的布局。
 
 每个 `acp` 目录即一个来源根，结构为：
 

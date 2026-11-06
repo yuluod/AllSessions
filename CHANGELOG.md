@@ -2,6 +2,19 @@
 
 本文件记录 AllSessions 各版本面向用户的主要变化。
 
+## [0.3.3] - 2026-11-06
+
+### 新增
+
+- 新增 WorkBuddy 只读来源（腾讯桌面 AI 办公智能体）：自动发现 `~/.workbuddy/projects/<工作区>/<会话>.jsonl` 会话日志，回放消息、Thinking、工具调用与逐次 Token 用量；用户真实提问从 `<user_query>` 标签提取，注入上下文不计入正文与搜索，AI 生成标题作会话标题。
+- WorkBuddy 图片附件支持：从 `blobs/` 内容寻址副本按需回读，逐层校验符号链接与记录指纹，副本缺失时明确报错。
+- 来源栏、设置页与统计页展示 WorkBuddy 条目与品牌图标，六套主题适配品牌色；可用 `WORKBUDDY_HOME` / `WORKBUDDY_SESSIONS_DIR` 环境变量或来源设置自定义路径。
+
+### 修复
+
+- 修复 JetBrains Air 工具排行被随机后缀刷屏的问题：`exec-<uuid>`、`call_<hex>` 等无冒号 toolCallId 归一为稳定的工具名，`get_output` 等正常名称保持原样。
+- JetBrains Air 项目级 `store.json` 与图片副本路径拒绝符号链接，读取边界与其他来源一致。
+
 ## [0.3.2] - 2026-11-06
 
 ### 修复

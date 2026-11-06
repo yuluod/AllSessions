@@ -35,7 +35,7 @@ acp/
 - `MessageDelta`/`MessageCompleted` 按 `messageId` 归并用户消息；`contextItems` 与 `attachments` 中的非图片上下文以原文附加，图片经线程 `attachments/` 副本按需读取，正文保留 `[image]` 占位。
 - `PromptRetryRequestUpdated` 在无同名 `messageId` 增量时产出重试用户消息，避免重复。
 - `MessageChunk` 按角色合并流式正文：`Agent` 为助手正文，`Runtime` 为 Thinking（合成消息）。
-- `ToolCallUpdated` 按 `toolCallId` 归并并遵循 ACP 替换语义；完成或失败时展示最终结果，不重复累计中间输出。工具名取 `toolCallId` 前缀。
+- `ToolCallUpdated` 按 `toolCallId` 归并并遵循 ACP 替换语义；完成或失败时展示最终结果，不重复累计中间输出。工具名取 `toolCallId` 冒号前缀，并剥除 `exec-<uuid>`、`call_<hex>` 这类随机后缀段，保证工具排行稳定归一。
 - `PromptTurnFinished` 记录逐轮 Token 用量（含缓存读写）；`UsageUpdated` 等累计快照不重复计入账本。
 - `ConfigOptionUpdated` 的 `model` 选项提供当前模型；`RuntimeSessionBound` 的 `agentSessionId`（agent 原生会话标识）保留在摘要中，便于与 agent 原生来源对照。
 - 审批、计划更新、连接状态等事件保留在原始事件中，不生成普通对话消息；`ThreadFailed`/带说明的断开事件生成为错误标记消息。

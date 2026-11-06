@@ -116,6 +116,8 @@ fn metadata(path: &Path) -> Result<Value, String> {
 }
 
 /// 项目级 `store.json`（`{"projectDirectory": ...}`），cwd 缺失时的回退。
+/// 与 summary.json 一致拒绝符号链接，避免越出声明目录读取；本回退是
+/// 尽力而为，任何读取失败都返回空串。
 fn store_project_dir(path: &Path) -> String {
     let Some(store_path) = path
         .parent()
@@ -125,6 +127,10 @@ fn store_project_dir(path: &Path) -> String {
     else {
         return String::new();
     };
+    match std::fs::symlink_metadata(&store_path) {
+        Ok(meta) if !meta.file_type().is_symlink() => {}
+        _ => return String::new(),
+    }
     let Ok(file) = File::open(store_path) else {
         return String::new();
     };
@@ -175,6 +181,23 @@ fn decode_agent_id(agent_id: &str) -> String {
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .filter(|text| !text.is_empty())
         .unwrap_or_else(|| agent_id.to_string())
+}
+
+/// 工具统计名归一：`exec-<uuid>`、`call_<32 位 hex>` 这类无冒号
+/// toolCallId 逐段剥掉尾部的长十六进制随机段，得到稳定的工具名；
+/// `exec:3` 的冒号前缀与 `get_output` 这类含非十六进制词的分隔名
+/// 保持原样。至少保留一段，全十六进制的短词 id 不受影响。
+fn stable_tool_prefix(segment: &str) -> &str {
+    let mut current = segment;
+    while let Some((head, tail)) = current.rsplit_once(['-', '_']) {
+        let is_hash =
+            (4..=32).contains(&tail.len()) && tail.bytes().all(|byte| byte.is_ascii_hexdigit());
+        if !is_hash {
+            break;
+        }
+        current = head;
+    }
+    current
 }
 
 fn timestamp(record: &Value) -> String {
@@ -472,10 +495,13 @@ fn entry_messages(
         "tool" => {
             let title = tool["title"].as_str().unwrap_or_default();
             let id = tool["toolCallId"].as_str().unwrap_or_default();
-            // 工具统计名归一到 toolCallId 前缀（exec/read/edit），title 仅展示。
+            // 工具统计名归一到 toolCallId 前缀（exec/read/edit，随机后缀
+            // 一并剥除），title 仅展示。
             let name = id
                 .split(':')
                 .next()
+                .filter(|prefix| !prefix.is_empty())
+                .map(stable_tool_prefix)
                 .filter(|prefix| !prefix.is_empty())
                 .or_else(|| tool["kind"].as_str())
                 .unwrap_or("tool");
@@ -837,8 +863,12 @@ fn parse(
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
     let mut sequence = 0;
     for entry in &entries {
-        for mut message in entry_messages(&mut reader, entry, &seen_user_ids)? {
-            state.accept_message(message.clone());
+        for message in entry_messages(&mut reader, entry, &seen_user_ids)? {
+            // accept_message 返回带 command_name/file_activity/file_edit 标注的
+            // 归一化副本，详情与 visitor 必须使用它；None 表示重复消息被去重。
+            let Some(mut message) = state.accept_message(message) else {
+                continue;
+            };
             if detail {
                 attach_message_key(
                     &mut message,
@@ -1062,6 +1092,26 @@ mod tests {
     }
 
     #[test]
+    fn 工具统计名剥除随机后缀() {
+        use super::stable_tool_prefix;
+        // ACP 代理的 uuid 后缀与内置助手的 hex 后缀各归一到工具名。
+        assert_eq!(
+            stable_tool_prefix("exec-46cf3aed-7983-47c0-a0d7-107edb76f64c"),
+            "exec"
+        );
+        assert_eq!(
+            stable_tool_prefix("call_c7ca01fa94804567977c0f0490ebbe28"),
+            "call"
+        );
+        // 冒号前缀格式（由调用方先行 split）与含非十六进制词的分隔名原样保留。
+        assert_eq!(stable_tool_prefix("get_output"), "get_output");
+        assert_eq!(stable_tool_prefix("edit"), "edit");
+        // 短于 4 位或含非十六进制字符的尾段不剥，避免误伤普通命名。
+        assert_eq!(stable_tool_prefix("my-tool"), "my-tool");
+        assert_eq!(stable_tool_prefix("run-ab"), "run-ab");
+    }
+
+    #[test]
     fn 发现与匹配只认线程事件文件() {
         let directory = tempdir().unwrap();
         let acp = directory.path().join("IntelliJIdea2026.3/acp");
@@ -1273,6 +1323,68 @@ mod tests {
         assert_eq!(detail["usage_events"][0]["usage"]["input"], 4);
         assert_eq!(detail["raw_events"].as_array().unwrap().len(), 4);
         assert!(messages[0]["_message_key"].is_string());
+    }
+
+    #[test]
+    fn 工具消息携带文件活动标注() {
+        let directory = tempdir().unwrap();
+        let acp = directory.path().join("acp");
+        let path = write_thread(
+            &acp,
+            "proj1",
+            "acp%3At6",
+            &[event(
+                0,
+                "acp:t6",
+                "Agent",
+                "ToolCallUpdated",
+                json!({
+                    "toolCallId": "write:1", "kind": "write", "status": "completed",
+                    "title": "写入文件",
+                    "rawInput": {"path": "/work/demo/weekly.md", "content": "本周三件事"},
+                    "content": [{"type": "diff", "path": "/work/demo/weekly.md",
+                                 "oldText": "", "newText": "本周三件事"}],
+                }),
+            )],
+        );
+        let detail = parse_detail(&path, &source(&acp)).unwrap();
+        let messages = detail["conversation_messages"].as_array().unwrap();
+        let call = messages
+            .iter()
+            .find(|message| message["tool_kind"] == "tool_call")
+            .unwrap();
+        assert_eq!(
+            call["file_activity"],
+            json!([{ "path": "/work/demo/weekly.md", "action": "write" }])
+        );
+        assert_eq!(call["file_edit"]["path"], "/work/demo/weekly.md");
+        assert_eq!(call["file_edit"]["edits"][0]["new"], "本周三件事");
+    }
+
+    #[test]
+    fn 项目_store_json_符号链接不外读() {
+        let directory = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let acp = directory.path().join("acp");
+        let project = acp.join("projects/proj9");
+        let path = write_thread(&acp, "proj9", "acp%3At9", &[]);
+        std::fs::write(
+            outside.path().join("store.json"),
+            r#"{"projectDirectory":"/outside"}"#,
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            symlink(
+                outside.path().join("store.json"),
+                project.join("store.json"),
+            )
+            .unwrap();
+        }
+        // 符号链接的 store.json 被跳过（cwd 留空），解析不受影响。
+        let (summary, _) = parse_summary(&path, &source(&acp)).unwrap();
+        assert_eq!(summary["cwd"], "");
     }
 
     #[test]

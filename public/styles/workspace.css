@@ -4389,6 +4389,24 @@ body.is-resizing {
   color: var(--accent-strong);
   background: var(--accent-soft);
 }
+#detail-title:hover {
+  cursor: text;
+}
+
+/* 双击标题进入的内联重命名输入框：继承 h2 字号字重，保持顶栏高度稳定。 */
+.detail-title-input {
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  min-width: 0;
+  padding: 0 6px;
+  margin: 0;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line-accent);
+  border-radius: var(--radius-small);
+  outline: none;
+}
+
 .detail-shell.is-reading #detail-title {
   /* 阅读态标题下缘的淡出投影：依附文本色的效果而非浮层高度，
      不属于 --shadow-* 的语义范围，保留字面量。 */

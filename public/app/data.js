@@ -29,10 +29,7 @@ import {
   setActivityRange,
   updateFacetFilters,
 } from "./filters.js";
-import {
-  displaySessionTitle,
-  sessionNeedsLiveReload,
-} from "../session-format.js";
+import { sessionNeedsLiveReload } from "../session-format.js";
 import {
   appendLoadedSessions,
   renderSessionList,
@@ -46,6 +43,7 @@ import {
   setDetailPlaceholder,
   setPropsPlaceholder,
   showSelectSessionPlaceholder,
+  syncDetailTitle,
   syncRoleFilterButtons,
   syncSessionArchiveButton,
   syncSessionDeleteButton,
@@ -108,12 +106,7 @@ export async function loadSessionDetail(
     syncRoleFilterButtons();
     elements.detailEmpty.classList.add("hidden");
     elements.detailView.classList.remove("hidden");
-    const fullCwd = detail.summary.cwd || t("noWorkDir");
-    elements.detailTitle.textContent =
-      displaySessionTitle(detail.summary) ||
-      fullCwd.split(/[\\/]/).pop() ||
-      fullCwd;
-    elements.detailTitle.title = fullCwd;
+    syncDetailTitle(detail.summary);
     renderDetailTags(detail.summary);
     syncSessionWorkspaceControls(detail.summary);
     syncSessionArchiveButton();

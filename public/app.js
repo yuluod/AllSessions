@@ -47,6 +47,7 @@ import {
   setDetailPlaceholder,
   setInspectorOpen,
   setPropsPlaceholder,
+  syncDetailTitle,
   syncInspectorLayout,
   syncSessionArchiveButton,
   syncSessionDeleteButton,
@@ -54,7 +55,6 @@ import {
   syncSessionWorkspaceControls,
   updateTabs,
 } from "./app/detail-view.js";
-import { displaySessionTitle } from "./session-format.js";
 import {
   applySoftDeletion,
   clearPendingArchive,
@@ -121,12 +121,7 @@ export function rerenderLocalizedContent() {
     renderSessionList();
   }
   if (state.currentDetail) {
-    const fullCwd = state.currentDetail.summary.cwd || t("noWorkDir");
-    elements.detailTitle.textContent =
-      displaySessionTitle(state.currentDetail.summary) ||
-      fullCwd.split(/[\\/]/).pop() ||
-      fullCwd;
-    elements.detailTitle.title = fullCwd;
+    syncDetailTitle(state.currentDetail.summary);
     renderDetailTags(state.currentDetail.summary);
     syncSessionWorkspaceControls(state.currentDetail.summary);
     syncSessionArchiveButton();
@@ -587,6 +582,48 @@ async function initialize() {
     }
   });
 
+  // 双击详情标题进入内联重命名：Enter/失焦保存，Esc 取消，空值恢复原始标题。
+  elements.detailTitle?.addEventListener("dblclick", () => {
+    const summary = state.currentDetail?.summary;
+    const key = summary?._key;
+    if (!key || elements.detailTitle.querySelector("input")) return;
+    const input = document.createElement("input");
+    input.className = "detail-title-input";
+    input.type = "text";
+    input.maxLength = 120;
+    input.value = sessionWorkspace(summary).display_name || "";
+    input.placeholder = summary.title || t("workspaceDisplayNamePlaceholder");
+    input.setAttribute("aria-label", t("renameSession"));
+    let cancelled = false;
+    const stillOpen = () => state.currentDetail?.summary?._key === key;
+    const finish = async () => {
+      const name = input.value.trim();
+      const previous = sessionWorkspace(summary).display_name || "";
+      if (!cancelled && name !== previous) {
+        try {
+          await updateSessionWorkspace(key, { display_name: name });
+          if (stillOpen()) syncSessionWorkspaceControls(summary);
+          renderSessionList();
+          announce(t("workspaceSaved"));
+        } catch (error) {
+          showError(`${t("workspaceSaveFailed")}: ${error.message}`);
+        }
+      }
+      if (stillOpen()) syncDetailTitle(summary);
+    };
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") input.blur();
+      else if (event.key === "Escape") {
+        cancelled = true;
+        input.blur();
+      }
+    });
+    input.addEventListener("blur", () => void finish());
+    elements.detailTitle.replaceChildren(input);
+    input.focus();
+    input.select();
+  });
+
   elements.saveSessionWorkspaceBtn?.addEventListener("click", async () => {
     const key = state.currentDetail?.summary?._key;
     if (!key) return;
@@ -598,13 +635,9 @@ async function initialize() {
         note: elements.sessionNoteInput?.value || "",
       });
       syncSessionWorkspaceControls(state.currentDetail.summary);
+      syncDetailTitle(state.currentDetail.summary);
       renderDetailTags(state.currentDetail.summary);
       renderSessionList();
-      const fullCwd = state.currentDetail.summary.cwd || t("noWorkDir");
-      elements.detailTitle.textContent =
-        displaySessionTitle(state.currentDetail.summary) ||
-        fullCwd.split(/[\\/]/).pop() ||
-        fullCwd;
       await loadFacets();
       announce(t("workspaceSaved"));
       if (elements.sessionOrganizeMenu)

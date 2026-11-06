@@ -2,6 +2,7 @@
 import { t } from "../i18n.js";
 import { roleCounts } from "../conversation-filter.js";
 import {
+  displaySessionTitle,
   formatTimestamp,
   isSessionRunning,
   providerLabel,
@@ -33,6 +34,16 @@ export function parseWorkspaceTags(value) {
         .filter(Boolean)
     )
   );
+}
+
+// 详情标题统一入口：自定义名称 > 原始标题 > 工作目录尾段。
+export function syncDetailTitle(summary) {
+  const fullCwd = summary?.cwd || t("noWorkDir");
+  elements.detailTitle.textContent =
+    displaySessionTitle(summary) || fullCwd.split(/[\\/]/).pop() || fullCwd;
+  elements.detailTitle.title = summary?.cwd
+    ? `${fullCwd}\n${t("renameSessionHint")}`
+    : fullCwd;
 }
 
 export function syncSessionWorkspaceControls(summary) {

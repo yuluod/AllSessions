@@ -74,6 +74,23 @@ export function sourceHealthState(diagnostic) {
   return "ready";
 }
 
+// 设置页卡片动态排序：有会话数据的按已索引数降序在前，可用但零数据
+// 次之，未检测到最后；同档保持静态顺序，与来源栏「有会话的在前」一致。
+export function sortedSourceKinds(payload) {
+  const diagnostics = payload?.diagnostics?.sources;
+  return SOURCE_KINDS.map((entry, index) => {
+    const diagnostic = diagnostics?.[entry.key];
+    const indexed = diagnostic?.indexed_sessions || 0;
+    const tier =
+      indexed > 0 ? 0 : (diagnostic?.available_roots || 0) > 0 ? 1 : 2;
+    return { entry, index, tier, indexed };
+  })
+    .sort(
+      (a, b) => a.tier - b.tier || b.indexed - a.indexed || a.index - b.index
+    )
+    .map(({ entry }) => entry);
+}
+
 function sourceText(key, directoryKey, databaseKey) {
   return t(
     ["opencode", "kilo", "zcode"].includes(key) ? databaseKey : directoryKey
@@ -381,7 +398,7 @@ export function createSettingsController({
     const grid = document.createElement("div");
     grid.className = "settings-source-grid";
 
-    SOURCE_KINDS.forEach(({ key, label, agent }) => {
+    sortedSourceKinds(payload).forEach(({ key, label, agent }) => {
       const source = sourceSnapshot(payload, key);
       const card = document.createElement("button");
       card.type = "button";

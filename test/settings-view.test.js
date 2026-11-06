@@ -38,8 +38,69 @@ test("来源概览按 Agent 去重并统计当前检测结果", () => {
   assert.deepEqual(result, { supported: 17, detected: 2 });
 });
 
-const { cloneSourceSettings, hasSourceChanges, sourceHealthState } =
-  await import("../public/settings-view.js");
+const {
+  cloneSourceSettings,
+  hasSourceChanges,
+  sortedSourceKinds,
+  sourceHealthState,
+} = await import("../public/settings-view.js");
+
+test("设置页来源卡片按索引数据动态排序，同档保持静态顺序", () => {
+  // 静态顺序：codex, codex_archived, claude, opencode, deepseek, workbuddy
+  const payload = {
+    diagnostics: {
+      sources: {
+        codex: { enabled: true, available_roots: 1, indexed_sessions: 79 },
+        codex_archived: { enabled: true, available_roots: 1 },
+        claude: {
+          enabled: true,
+          available_roots: 1,
+          indexed_sessions: 33,
+        },
+        opencode: { enabled: true, available_roots: 1 },
+        deepseek: {
+          enabled: true,
+          available_roots: 1,
+          indexed_sessions: 10,
+        },
+        workbuddy: {},
+      },
+    },
+  };
+  assert.deepEqual(
+    sortedSourceKinds(payload).map(({ key }) => key),
+    [
+      // 有索引数据：按数量降序
+      "codex",
+      "claude",
+      "deepseek",
+      // 可用但零数据：静态顺序
+      "codex_archived",
+      "opencode",
+      // 未检测到：静态顺序
+      "claude_cowork",
+      "gemini",
+      "grok",
+      "pi",
+      "omp",
+      "kimi",
+      "kilo",
+      "zcode",
+      "cursor",
+      "devin",
+      "copilot",
+      "hermes",
+      "vscode_copilot",
+      "jetbrains_air",
+      "workbuddy",
+    ]
+  );
+  // 无诊断数据时保持静态顺序。
+  assert.deepEqual(
+    sortedSourceKinds(undefined).map(({ key }) => key)[0],
+    "codex"
+  );
+});
 
 test("编辑目录草稿不会修改保存基线，恢复原值后不再需要保存", () => {
   const saved = { codex: ["/demo/default", "/demo/extra"], claude: null };

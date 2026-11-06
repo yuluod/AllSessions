@@ -4,6 +4,7 @@ mod cache;
 mod config;
 mod deletion_backup;
 mod error;
+mod external_link;
 mod maintenance;
 mod platform;
 mod resume;

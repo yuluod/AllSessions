@@ -91,6 +91,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 - Open favorite or recent sessions from the system tray menu, with per-session actions to open details or resume
 - Pick a terminal app or configure a custom executable
 - Optionally launch at login and stay in the system tray (off by default)
+- Optionally open http, https, and mailto links from session messages in your default browser or mail app (off by default)
 - Collapse the source sidebar to an icon strip and choose an application icon in settings
 - Six visual themes: Standard, TUI, Greenbar, HD Web, Blind, and Pixel
 - Light, dark, and system color schemes

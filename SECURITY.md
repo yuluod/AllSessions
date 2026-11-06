@@ -19,6 +19,7 @@ Include only the minimum information needed to reproduce the issue. Replace prom
 - Browsing, search, filtering, statistics, and export do not modify Agent source data.
 - Explicitly confirmed permanent deletion modifies Codex, Claude Code, or Gemini CLI source data. A local backup is created before the write; these backups contain the original sensitive data, are not encrypted, and currently require manual inspection for recovery.
 - Codex Provider maintenance is disabled by default. It can modify Codex databases and JSONL metadata only after maintenance mode is enabled and a preview and confirmation are completed; its own backup and rollback rules are documented separately.
+- Opening links from session content is disabled by default. When enabled in Settings, the Rust backend accepts only `http`, `https`, and `mailto` URLs and hands them to the system default handler; the WebView's own opener permission remains limited to the project's About links.
 - Session content, index caches, configuration paths, deletion backups, and maintenance backups may reveal sensitive local information. Review and redact them before sharing.
 
 ## Scope

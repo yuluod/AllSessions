@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 globalThis.localStorage = {
-  getItem: () => null,
+  getItem: (key) => (key === "allsessions_lang" ? "zh" : null),
   setItem: () => {},
 };
 

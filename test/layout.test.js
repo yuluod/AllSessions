@@ -1327,10 +1327,8 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
     backend,
     /\("POST", "\/api\/settings\/preferences"\)[\s\S]*config::parse_preferences/
   );
-  assert.match(
-    source,
-    /setLang\(event\.target\.value === "en" \? "en" : "zh"\)/
-  );
+  assert.match(source, /setLangPreference\(event\.target\.value\)/);
+  assert.match(source, /settingsLanguageSelect\.value = getLangPreference\(\)/);
   assert.match(source, /originKey[\s\S]*resolved\.origin/);
   assert.match(source, /t\(`settingsOrigin_\$\{source\.originKey\}`\)/);
   assert.match(source, /key: "pi", agent: "pi", label: "Pi"/);

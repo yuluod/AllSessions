@@ -1,5 +1,12 @@
 // 应用入口:装配各模块、绑定全局事件并执行初始化与首屏加载。
-import { t, getLang, setLang, updateStaticI18n } from "./i18n.js";
+import {
+  t,
+  getLang,
+  onLangChange,
+  refreshSystemLang,
+  setLang,
+  updateStaticI18n,
+} from "./i18n.js";
 import { initTheme, setScheme } from "./theme-manager.js";
 import { initPaneLayout, syncRailToggle } from "./pane-layout.js";
 import { initReadingToolbar } from "./reading-toolbar.js";
@@ -14,6 +21,7 @@ import {
   announce,
   detailRequestGate,
   elements,
+  fetchJson,
   scrollToWorkspaceSection,
   sessionRequestGate,
   sessionWorkspace,
@@ -870,6 +878,21 @@ async function initialize() {
   });
   void bindTauriTrayEvents().catch((error) => {
     console.error("绑定托盘会话事件失败", error);
+  });
+  // 托盘菜单由 Rust 构建，需随界面语言重建。
+  const syncBackendLanguage = () =>
+    fetchJson("/api/ui-language", {
+      method: "POST",
+      body: { language: getLang() },
+    }).catch((error) => {
+      if (error.code !== DESKTOP_RUNTIME_REQUIRED) {
+        console.error("同步界面语言失败", error);
+      }
+    });
+  onLangChange(() => void syncBackendLanguage());
+  void syncBackendLanguage();
+  window.addEventListener("languagechange", () => {
+    if (refreshSystemLang()) rerenderLocalizedContent();
   });
 
   elements.detailSearchInput?.addEventListener("input", (event) => {

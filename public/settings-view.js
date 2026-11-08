@@ -1,4 +1,10 @@
-import { t, getLang, setLang, translateBackendError } from "./i18n.js";
+import {
+  t,
+  getLang,
+  getLangPreference,
+  setLangPreference,
+  translateBackendError,
+} from "./i18n.js";
 import {
   DESKTOP_RUNTIME_REQUIRED,
   fetchJson as requestJson,
@@ -914,7 +920,7 @@ export function createSettingsController({
     const requestVersion = ++loadVersion;
     setStatus("");
     if (elements.settingsLanguageSelect) {
-      elements.settingsLanguageSelect.value = getLang();
+      elements.settingsLanguageSelect.value = getLangPreference();
     }
     syncAppearance();
     if (!target.open) target.showModal();
@@ -1238,7 +1244,7 @@ export function createSettingsController({
       });
     });
     elements.settingsLanguageSelect?.addEventListener("change", (event) => {
-      setLang(event.target.value === "en" ? "en" : "zh");
+      setLangPreference(event.target.value);
       onLanguageChanged?.();
       if (latestPayload) {
         renderSources(latestPayload);

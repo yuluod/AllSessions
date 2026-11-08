@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const storage = new Map();
+const storage = new Map([["allsessions_lang", "zh"]]);
 const classes = new Set();
 const shell = {
   classList: {

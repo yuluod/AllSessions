@@ -39,4 +39,6 @@ Pick checks by the scope of your change (full matrix in [AGENTS.md](AGENTS.md#å¼
 
 1. Fork the repository and create a branch from `main`.
 2. Fill in the pull request template, checking only the verification you actually ran and noting anything unverified.
-3. CI (build and test on Windows, macOS, and Linux) must pass before review; rebase onto `main` when conflicts appear.
+3. Update to the latest `main` before merging, pass CI on Windows, macOS, and Linux, and obtain at least one maintainer approval. New commits dismiss previous approvals, and all review conversations must be resolved. Repository administrators retain an exception for solo maintenance.
+
+CI checks Prettier formatting for changed files and Rust formatting. Changes to Rust sources, packaging configuration, build scripts, dependencies, or workflows also build installers on all three platforms. These checks use no release secrets, generate no updater signatures, and publish no installers. macOS Intel packaging remains covered by the release workflow; installation and first launch require separate manual verification.

@@ -18,6 +18,7 @@ jobs:
   verify:
     name: 测试与构建 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +29,9 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: 安装 Node.js
         uses: actions/setup-node@v5
@@ -41,7 +45,7 @@ jobs:
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@1.99.1
         with:
-          components: clippy
+          components: clippy,rustfmt
 
       - name: 安装 Linux 构建依赖
         if: runner.os == 'Linux'
@@ -51,6 +55,16 @@ jobs:
 
       - name: 安装项目依赖
         run: pnpm install --frozen-lockfile
+
+      - name: 检查变更文件格式与打包范围
+        id: changes
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CI_HEAD_SHA: ${{ github.sha }}
+        run: node scripts/check-ci-changes.mjs
+
+      - name: 检查 Rust 格式
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
       - name: 获取锁定的 Rust 依赖
         run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
@@ -72,3 +86,16 @@ jobs:
 
       - name: 编译测试 Tauri 桌面端
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+      # 仅关闭更新包签名产物，不覆盖应用本身的打包与签名配置。
+      - name: 验证安装包构建
+        if: steps.changes.outputs.packaging == 'true'
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Windows) bundles=nsis ;;
+            macOS) bundles=app,dmg ;;
+            Linux) bundles=deb ;;
+            *) echo "::error::不支持的平台：$RUNNER_OS"; exit 1 ;;
+          esac
+          pnpm desktop:build --ci --bundles "$bundles" --config .github/tauri-ci.json -- --locked

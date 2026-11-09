@@ -245,6 +245,9 @@ export const elements = {
   ),
   settingsKeepRunning: document.querySelector("#settings-keep-running"),
   settingsLaunchAtLogin: document.querySelector("#settings-launch-at-login"),
+  settingsOpenExternalLinks: document.querySelector(
+    "#settings-open-external-links"
+  ),
   settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
   settingsAppIconInputs: Array.from(
     document.querySelectorAll('[name="settings-app-icon"]')

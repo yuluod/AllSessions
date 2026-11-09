@@ -191,6 +191,8 @@ impl SessionStore {
         let mut by_date: BTreeMap<String, DayUsage> = BTreeMap::new();
         let mut by_agent = HashMap::new();
         let mut by_agent_tokens: HashMap<String, u64> = HashMap::new();
+        // 各模型累计用量；空串键为未能归属模型的用量，已计入未计价提示，不单列。
+        let mut by_model_tokens: HashMap<String, u64> = HashMap::new();
         let mut by_source_kind = HashMap::new();
         let mut by_provider = HashMap::new();
         let mut by_provider_tokens: HashMap<String, u64> = HashMap::new();
@@ -237,6 +239,31 @@ impl SessionStore {
                     + totals["cache_read"].as_u64().unwrap_or_default()
                     + totals["cache_write"].as_u64().unwrap_or_default();
                 undated_tokens += usage_total(&usage["undated"]);
+                if let Some(models) = usage["by_model"].as_object() {
+                    for (model, entry) in models {
+                        if model.is_empty() {
+                            continue;
+                        }
+                        // 与 pricing::usage_cost 同口径：带活动范围时按逐日
+                        // 归属取范围内部分，无范围时用总量。
+                        let tokens = if super::has_activity_range(query) {
+                            let mut tokens = 0_u64;
+                            if let Some(days) = entry["by_date"].as_object() {
+                                for (date, value) in days {
+                                    if super::activity::in_range(date, query) {
+                                        tokens += usage_total(value);
+                                    }
+                                }
+                            }
+                            tokens
+                        } else {
+                            usage_total(&entry["totals"])
+                        };
+                        if tokens > 0 {
+                            *by_model_tokens.entry(model.clone()).or_default() += tokens;
+                        }
+                    }
+                }
                 if let Some(days) = usage["by_date"].as_object() {
                     for (date, value) in days {
                         let day = by_date.entry(date.clone()).or_default();
@@ -336,6 +363,7 @@ impl SessionStore {
             "by_source_kind": count_values(by_source_kind, usize::MAX),
             "by_provider": count_values(by_provider, usize::MAX),
             "by_provider_tokens": count_values(by_provider_tokens, usize::MAX),
+            "by_model_tokens": count_values(by_model_tokens, usize::MAX),
             "by_cwd": count_values(by_cwd, 16),
             "by_tool": activity_values(by_tool, 32),
             "by_command": activity_values(by_command, 16)

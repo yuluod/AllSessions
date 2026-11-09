@@ -8,6 +8,25 @@ export function formatCount(value) {
   return new Intl.NumberFormat(locale()).format(Number(value || 0));
 }
 
+const TOKEN_UNIT_STEPS = [
+  { limit: 1_000_000_000, suffix: "B" },
+  { limit: 1_000_000, suffix: "M" },
+  { limit: 1_000, suffix: "k" },
+];
+
+// 卡片与图表轴上的紧凑写法；完整千分位数值放在 title 里。
+export function formatTokensCompact(value) {
+  const count = Number(value || 0);
+  for (const { limit, suffix } of TOKEN_UNIT_STEPS) {
+    if (count >= limit) {
+      const scaled = count / limit;
+      const digits = scaled >= 100 ? 0 : 1;
+      return `${scaled.toFixed(digits).replace(/\.0$/, "")}${suffix}`;
+    }
+  }
+  return String(count);
+}
+
 // 成本是内置价目的估算值（USD）：不足 1 美分显示下限提示，
 // 大额按整数显示避免长小数；空值/非法值交给调用方显示占位符。
 export function formatCost(value) {

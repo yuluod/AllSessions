@@ -287,6 +287,7 @@ fn 时间范围统一筛选跨天会话用量排行及调用定位() {
     let path = store.records["codex:structured"].path.clone();
     let records = [
         json!({"type":"session_meta","timestamp":"2026-03-01T12:00:00Z","payload":{"id":"structured","cwd":"/project"}}),
+        json!({"type":"turn_context","timestamp":"2026-03-01T12:00:00Z","payload":{"model":"gpt-5"}}),
         json!({"type":"event_msg","timestamp":"2026-03-01T12:00:01Z","payload":{"type":"user_message","message":"第一天"}}),
         json!({"type":"response_item","timestamp":"2026-03-01T12:00:02Z","payload":{"type":"function_call","call_id":"c1","name":"bash","arguments":"{\"command\":\"cargo test\"}"}}),
         json!({"type":"event_msg","timestamp":"2026-03-01T12:00:03Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10}}}}),
@@ -314,6 +315,9 @@ fn 时间范围统一筛选跨天会话用量排行及调用定位() {
     assert_eq!(stats["total_messages"], 2);
     assert_eq!(stats["total_tool_calls"], 1);
     assert_eq!(stats["by_command"][0]["label"], "cargo");
+    // 用量归属 turn_context 记录的模型，跨天合计进同一模型桶。
+    assert_eq!(stats["by_model_tokens"][0]["label"], "gpt-5");
+    assert_eq!(stats["by_model_tokens"][0]["count"], 110);
     assert_eq!(stats["by_date"].as_array().unwrap().len(), 1);
     assert_eq!(
         store.list(&query, &workspace)["sessions"]

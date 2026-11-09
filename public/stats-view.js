@@ -1,5 +1,9 @@
 import { t, getLang } from "./i18n.js";
-import { formatCount, formatCost } from "./session-format.js";
+import {
+  formatCount,
+  formatCost,
+  formatTokensCompact,
+} from "./session-format.js";
 import {
   calendarHeatmapDays,
   presetHeatmapRange,
@@ -29,7 +33,14 @@ const AGENT_PRESENTATION = {
   workbuddy: { label: "WorkBuddy", color: "#0e9377" },
 };
 
-function renderBar(label, count, max, displayLabel = label, tokens = null) {
+function renderBar(
+  label,
+  count,
+  max,
+  displayLabel = label,
+  tokens = null,
+  compactCount = false
+) {
   const row = document.createElement("div");
   row.className = "stats-bar-row";
   const percent = max > 0 ? Math.round((count / max) * 100) : 0;
@@ -45,7 +56,9 @@ function renderBar(label, count, max, displayLabel = label, tokens = null) {
   track.append(fill);
   const countElement = document.createElement("span");
   countElement.className = "stats-bar-count";
-  countElement.textContent = String(count);
+  countElement.textContent = compactCount
+    ? formatTokensCompact(count)
+    : String(count);
   row.append(labelElement, track, countElement);
   if (tokens !== null) {
     const tokenElement = document.createElement("span");
@@ -67,25 +80,6 @@ function renderEmpty(container) {
   });
   empty.classList.add("stats-empty");
   container.append(empty);
-}
-
-const TOKEN_UNIT_STEPS = [
-  { limit: 1_000_000_000, suffix: "B" },
-  { limit: 1_000_000, suffix: "M" },
-  { limit: 1_000, suffix: "k" },
-];
-
-// 卡片与图表轴上的紧凑写法；完整千分位数值放在 title 里。
-function formatTokensCompact(value) {
-  const count = Number(value || 0);
-  for (const { limit, suffix } of TOKEN_UNIT_STEPS) {
-    if (count >= limit) {
-      const scaled = count / limit;
-      const digits = scaled >= 100 ? 0 : 1;
-      return `${scaled.toFixed(digits).replace(/\.0$/, "")}${suffix}`;
-    }
-  }
-  return String(count);
 }
 
 function renderMetrics(stats, container) {
@@ -117,7 +111,8 @@ function renderMetrics(stats, container) {
     },
     {
       label: t("statsTokenTotal"),
-      value: formatTokensCompact(totalTokens),
+      // 筛选集里没有任何有用量记录的会话时显示占位符，0 只代表无数据。
+      value: stats.usage_sessions > 0 ? formatTokensCompact(totalTokens) : "—",
       title: `${formatCount(totalTokens)} (${t("statsTokenInput")} ${formatCount(stats.total_input_tokens)} · ${t("statsTokenOutput")} ${formatCount(stats.total_output_tokens)} · ${t("statsTokenCached")} ${formatCount(stats.total_cached_input_tokens)})`,
     },
     {
@@ -131,8 +126,11 @@ function renderMetrics(stats, container) {
       label: t("statsEvents"),
       value: stats.total_events == null ? "—" : formatCount(stats.total_events),
     },
-    { label: t("statsActiveDays"), value: String(activeDays) },
-    { label: t("statsAvgDaily"), value: String(average) },
+    {
+      label: t("statsActiveDays"),
+      value: String(activeDays),
+      title: t("statsAvgDailyTitle", { n: String(average) }),
+    },
   ];
   cards.forEach(({ label, value, title }, index) => {
     const card = document.createElement("div");
@@ -646,6 +644,12 @@ function renderRankings(stats, container, onSelectRanking) {
       tokensOf: (label) => tokenByProvider.get(label) ?? 0,
     },
     {
+      title: t("statsCommonModel"),
+      items: stats.by_model_tokens || [],
+      kind: "model",
+      compact: true,
+    },
+    {
       title: t("statsCommonCwd"),
       items: (stats.by_cwd || []).slice(0, 8),
       isPath: true,
@@ -662,7 +666,7 @@ function renderRankings(stats, container, onSelectRanking) {
       kind: "command",
     },
   ];
-  sections.forEach(({ title, items, isPath, kind, tokensOf }) => {
+  sections.forEach(({ title, items, isPath, kind, tokensOf, compact }) => {
     if (!items.length) return;
     const section = document.createElement("div");
     section.className = `stats-section stats-section--${kind}`;
@@ -678,7 +682,8 @@ function renderRankings(stats, container, onSelectRanking) {
         count,
         max,
         displayLabel,
-        tokensOf?.(label) ?? null
+        tokensOf?.(label) ?? null,
+        compact
       );
       if ((kind === "tool" || kind === "command") && onSelectRanking) {
         const button = document.createElement("button");

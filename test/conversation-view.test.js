@@ -12,7 +12,8 @@ const {
   groupToolMessages,
   roleCounts,
 } = await import("../public/conversation-filter.js");
-const { fileActivity } = await import("../public/session-insights.js");
+const { fileActivity, modelUsage } =
+  await import("../public/session-insights.js");
 
 test("文件活动汇总保留动作差异和原始消息定位", () => {
   const groups = [
@@ -43,6 +44,32 @@ test("文件活动汇总保留动作差异和原始消息定位", () => {
     2
   );
   assert.equal(filterToolOperations(groups, { kind: "commands" }).length, 0);
+});
+
+test("模型分布按累计用量降序，过滤零用量并保留未归属条目", () => {
+  const usage = {
+    by_model: {
+      "claude-sonnet-4-5": {
+        totals: { input: 100, output: 40, cache_read: 10, cache_write: 0 },
+      },
+      "gpt-5": {
+        totals: { input: 5, output: 0, cache_read: 0, cache_write: 0 },
+      },
+      "": {
+        totals: { input: 0, output: 3, cache_read: 0, cache_write: 0 },
+      },
+      零用量模型: {
+        totals: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+      },
+    },
+  };
+  assert.deepEqual(modelUsage(usage), [
+    { name: "claude-sonnet-4-5", tokens: 150 },
+    { name: "gpt-5", tokens: 5 },
+    { name: "", tokens: 3 },
+  ]);
+  assert.deepEqual(modelUsage({}), []);
+  assert.deepEqual(modelUsage(undefined), []);
 });
 
 const messages = [

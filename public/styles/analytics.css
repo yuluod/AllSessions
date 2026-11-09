@@ -12,9 +12,10 @@
 .stats-header {
   display: flex;
   min-width: 0;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 12px 20px;
   padding: 0 2px;
 }
 
@@ -34,8 +35,12 @@
 }
 
 .stats-range {
-  flex: 0 0 auto;
-  padding-bottom: 2px;
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
   color: var(--muted);
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
@@ -45,7 +50,29 @@
 .stats-range-form {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
+  margin-top: 0;
+}
+
+.stats-range-custom > summary {
+  cursor: pointer;
+}
+
+.stats-range:has(.stats-range-custom[open]) {
+  flex-basis: 100%;
+}
+
+.stats-range-custom[open] {
+  flex-basis: 100%;
+}
+
+.stats-range-custom[open] > summary {
+  width: fit-content;
+  margin-left: auto;
+}
+
+.stats-range-custom .stats-range-form {
   margin-top: 8px;
 }
 
@@ -62,6 +89,35 @@
   background: var(--accent);
   color: var(--text-inverse);
   border-color: var(--accent);
+}
+
+#stats-filter-slot {
+  padding: 0;
+}
+
+#stats-filter-slot .session-query-controls {
+  padding: 0;
+  gap: 10px;
+}
+
+/* 统计页由顶部活动范围统一控制日期，保留列表页的单日入口。 */
+#stats-filter-slot .session-filter-field:has(#date-filter) {
+  display: none;
+}
+
+#stats-filter-slot .session-filter-field {
+  flex-basis: 180px;
+  max-width: 280px;
+}
+
+#stats-filter-slot .session-active-filters {
+  align-items: flex-start;
+}
+
+#stats-filter-slot .filter-chip-value {
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .stats-surface {

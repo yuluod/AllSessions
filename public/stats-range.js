@@ -6,8 +6,7 @@ export function renderStatsRange(range, container, onChangeRange) {
   container.replaceChildren();
   const start = range?.start || "";
   const end = range?.end || "";
-  const label = document.createElement("p");
-  label.textContent =
+  const rangeLabel =
     start || end
       ? `${start || t("statsRangeAnyStart")} — ${end || t("statsRangeAnyEnd")}`
       : t("statsRangeAll");
@@ -15,6 +14,7 @@ export function renderStatsRange(range, container, onChangeRange) {
   presets.className = "stats-range-presets";
   presets.setAttribute("role", "group");
   presets.setAttribute("aria-label", t("statsRange"));
+  presets.title = rangeLabel;
   for (const [preset, key] of [
     ["today", "statsRangeToday"],
     ["week", "statsRangeWeek"],
@@ -33,6 +33,13 @@ export function renderStatsRange(range, container, onChangeRange) {
     button.addEventListener("click", () => onChangeRange?.(expected));
     presets.append(button);
   }
+  const custom = document.createElement("details");
+  custom.className = "stats-range-custom";
+  const summary = document.createElement("summary");
+  summary.className = "ghost-button";
+  summary.textContent = t("statsRangeChoose");
+  summary.title = `${t("statsRangeCustom")} · ${rangeLabel}`;
+  custom.append(summary);
   const form = document.createElement("form");
   form.className = "stats-range-form";
   form.setAttribute("aria-label", t("statsRangeCustom"));
@@ -69,5 +76,6 @@ export function renderStatsRange(range, container, onChangeRange) {
     }
     onChangeRange?.({ start: inputs.start.value, end: inputs.end.value });
   });
-  container.append(label, presets, form);
+  custom.append(form);
+  container.append(presets, custom);
 }

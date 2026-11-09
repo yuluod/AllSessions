@@ -14,7 +14,31 @@ export function bindPopoverMenus(root = document) {
     const current = menus.find((menu) => menu.contains(event.target));
     closeOthers(current);
   });
+  root.addEventListener("focusin", (event) => {
+    closeOthers(menus.find((menu) => menu.contains(event.target)));
+  });
   root.addEventListener("keydown", (event) => {
+    // 方向键只在入口接管，不覆盖表单内光标、下拉框和复选框的原生操作。
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const menu = menus.find(
+        (item) => item.querySelector("summary") === event.target
+      );
+      if (!menu) return;
+      closeOthers(menu);
+      menu.open = true;
+      const controls = [
+        ...menu.querySelectorAll(
+          'button, a[href], input, select, textarea, [tabindex="0"]'
+        ),
+      ].filter(
+        (control) =>
+          !control.matches(":disabled") && control.getClientRects().length > 0
+      );
+      const target = event.key === "ArrowDown" ? controls[0] : controls.at(-1);
+      target?.focus();
+      event.preventDefault();
+      return;
+    }
     if (event.key !== "Escape") return;
     const current = menus.find((menu) => menu.open);
     if (!current) return;

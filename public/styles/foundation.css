@@ -6,6 +6,15 @@
   --control-weight: 650;
   --control-line-height: 1.2;
   --control-motion: 160ms;
+  --control-padding-inline: 10px;
+  --control-border: var(--line);
+  --control-background: var(--surface);
+  --control-hover-background: var(--surface-subtle);
+  --control-hover-color: var(--accent-strong);
+  --field-background: var(--surface-subtle);
+  --filter-chip-radius: var(--badge-radius);
+  --filter-chip-background: var(--surface-subtle);
+  --quiet-control-border: transparent;
   --control-round: 999px;
   --badge-radius: 999px;
   --control-thumb-radius: 50%;

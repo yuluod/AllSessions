@@ -14,6 +14,13 @@
   --control-round: 2px;
   --control-thumb-radius: 1px;
   --badge-radius: 2px;
+  --control-padding-inline: 12px;
+  --control-border: var(--line);
+  --control-background: var(--surface-raised);
+  --control-hover-background: var(--surface-sunken);
+  --control-hover-color: var(--text);
+  --field-background: var(--surface);
+  --filter-chip-background: var(--surface-sunken);
 }
 
 [data-theme="greenbar"][data-scheme="light"],

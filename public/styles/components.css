@@ -27,8 +27,8 @@
 .role-filter-btn,
 .mobile-back-button {
   min-height: var(--control-height);
-  padding: 6px 10px;
-  border: 1px solid var(--line);
+  padding: 6px var(--control-padding-inline);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-small);
   cursor: pointer;
   font-size: var(--control-font-size);
@@ -43,13 +43,17 @@
 
 :where(.ghost-button, .tab-button, .mobile-back-button) {
   color: var(--text-secondary);
-  background: var(--surface);
+  background: var(--control-background);
 }
 
-:where(.ghost-button:hover, .tab-button:hover, .mobile-back-button:hover) {
+:where(
+  .ghost-button:hover:not(:disabled),
+  .tab-button:hover:not(:disabled),
+  .mobile-back-button:hover:not(:disabled)
+) {
   border-color: var(--line-strong);
-  color: var(--accent-strong);
-  background: var(--surface-subtle);
+  color: var(--control-hover-color);
+  background: var(--control-hover-background);
 }
 
 .ghost-button:active,
@@ -60,7 +64,9 @@
 }
 
 .ghost-button:disabled,
-.danger-button:disabled {
+.danger-button:disabled,
+.tab-button:disabled,
+.mobile-back-button:disabled {
   cursor: not-allowed;
   opacity: 0.46;
   transform: none;
@@ -74,6 +80,66 @@
 
 .danger-button:hover:not(:disabled) {
   filter: brightness(0.88);
+}
+
+/* 修饰类表达操作层级，沿用同一套尺寸、焦点和主题材质。 */
+.ghost-button.button--primary {
+  border-color: var(--accent);
+  color: var(--text-inverse);
+  background: var(--accent);
+}
+
+.ghost-button.button--primary:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.ghost-button.button--quiet:where(
+    :not([aria-pressed="true"]):not([aria-expanded="true"])
+  ),
+[data-popover]:not([open]) > summary.button--quiet {
+  border-color: var(--quiet-control-border);
+  background: transparent;
+}
+
+.ghost-button.button--quiet:hover:not(:disabled):where(
+    :not([aria-pressed="true"]):not([aria-expanded="true"])
+  ),
+[data-popover]:not([open]) > summary.button--quiet:hover {
+  color: var(--control-hover-color);
+  background: var(--control-hover-background);
+}
+
+.detail-topbar-right svg,
+.export-actions svg {
+  flex: 0 0 auto;
+}
+
+.export-actions .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-filter-panel .visibility-options {
+  gap: 4px;
+}
+
+.list-filter-panel .archive-toggle-label {
+  min-height: var(--control-height);
+  padding: 6px 8px;
+  border-radius: var(--radius-small);
+  line-height: var(--control-line-height);
+}
+
+.list-filter-panel .archive-toggle-label:hover,
+.list-filter-panel .archive-toggle-label:focus-within {
+  background: var(--control-hover-background);
+}
+
+.list-filter-panel .archive-toggle-label:has(input:checked) {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
 }
 
 .detail-topbar-right > button,
@@ -263,10 +329,10 @@
 .bulk-actions select {
   min-height: var(--control-height);
   padding: 6px 9px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-small);
   color: var(--text);
-  background-color: var(--surface-subtle);
+  background-color: var(--field-background);
   font-size: var(--control-font-size);
   line-height: var(--control-line-height);
 }
@@ -294,16 +360,67 @@
   border-color: var(--line-accent);
 }
 
+/* 筛选条件由列表与统计页共用，外观随主题参数切换。 */
+.filter-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--filter-chip-radius);
+  color: var(--text-secondary);
+  background: var(--filter-chip-background);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.filter-chip:hover {
+  border-color: var(--line-accent);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.filter-chip-label {
+  color: var(--muted);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.filter-chip-value {
+  max-width: 124px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-chip-close {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.field :is(input, select):disabled,
+.session-filter-field select:disabled,
+.settings-general-row select:disabled,
+.settings-root-row input:disabled,
+.session-organize-body :is(input, textarea):disabled,
+.bulk-actions select:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
 [data-popover] > summary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: var(--control-height);
   padding: 5px 9px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-small);
   color: var(--text-secondary);
-  background: var(--surface);
+  background: var(--control-background);
   font-size: var(--control-font-size);
   font-weight: var(--control-weight);
   line-height: var(--control-line-height);

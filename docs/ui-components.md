@@ -24,9 +24,13 @@
 
 高度是最小高度，长文案和字体回退仍可撑开控件。实际字体取决于系统已安装字体；不要为了统一字体而覆盖主题的 `--font-ui`、`--font-display` 和 `--font-mono`。`blind` 是现有主题标识，不表示通过了无障碍认证。
 
+控件材质也由主题分别配置，并同时引用浅色／深色语义色：经典报表用纸面按钮和浅底标签；开发者终端用抬升按钮、小圆角标签；现代青白用中性边框和轻量标签；高对比红白加强直角边界；工业警示用强边框区分按钮和下沉输入区；像素工作站保留硬边框、阴影和即时反馈。普通控件悬停优先体现表面层次，选中和展开状态继续使用强调色。
+
 ## 可配置参数
 
 - 尺寸和排版：`--control-height`、`--control-height-compact`、`--control-font-size`、`--control-font-compact`、`--control-weight`、`--control-line-height`。
+- 控件外观：`--control-padding-inline`、`--control-border`、`--control-background`、`--control-hover-background`、`--control-hover-color`、`--field-background`；主题可分别调整按钮与表单的层次，明暗配色继续引用各自的语义色。
+- 筛选标签：`--filter-chip-radius`、`--filter-chip-background`；默认跟随主题徽章形状，现代青白使用小圆角和下沉底色。像素主题保留直角规则。
 - 分段控件：`--segment-height`、`--segment-height-compact`、`--segment-font-size`、`--segment-font-compact`。
 - 开关：`--switch-width`、`--switch-height`、`--switch-thumb` 及对应的 `-compact` 参数；`--control-round`、`--control-thumb-radius` 定义开关形状。
 - 徽章：`--badge-radius` 独立于开关形状，避免相互影响。
@@ -37,9 +41,11 @@
 ## 组件使用
 
 - 普通操作使用 `.ghost-button`，危险执行使用 `.danger-button`；保留页面已有的危险文字按钮等语义变体。
+- 在 `.ghost-button` 上用 `.button--primary` 强调当前区域主要操作，用 `.button--quiet` 降低辅助操作的边框和底色；按下／展开状态保留原有反馈。像素主题通过 `--quiet-control-border` 保留硬边界。
 - 设置、正文和维护开关共用状态规则；正文使用紧凑尺寸，维护开关通过 `--switch-tone` 切换警示色。
 - 明暗切换和角色切换共用分段选中态，文字版与图标版保留布局差异。
 - 临时菜单使用原生 `details` 并标记 `data-popover`，统一交给 `bindPopoverMenus` 处理互斥、外部点击与 Escape。表单内部操作不会关闭当前菜单。
+- 菜单入口支持方向下／上键打开并聚焦第一个／最后一个可用控件，内部表单保留原生方向键行为；Tab 移出菜单后关闭，Escape 关闭并将焦点返回入口。显示范围选项提供整行悬停、焦点和选中反馈。
 - 弹窗必须绑定可访问标题，正文能够滚动；新增表单行后聚焦新输入框，关闭后回到入口。
 - 简单空状态使用 `createEmptyState`，图表与列表使用紧凑变体；无数据与失败应有不同说明。
 

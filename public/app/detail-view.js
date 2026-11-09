@@ -1,9 +1,12 @@
 // 详情视图:标签行、属性面板、信息抽屉、原始事件与详情占位。
 import { t } from "../i18n.js";
 import { roleCounts } from "../conversation-filter.js";
+import { modelUsage } from "../session-insights.js";
 import {
   displaySessionTitle,
+  formatCount,
   formatTimestamp,
+  formatTokensCompact,
   isSessionRunning,
   providerLabel,
 } from "../session-format.js";
@@ -272,10 +275,45 @@ export function renderPropsPanel(summary) {
   }
 
   elements.propsContent.innerHTML = "";
-  elements.propsContent.append(
-    section(t("basicInfo"), basic),
-    section(t("techInfo"), tech)
-  );
+  elements.propsContent.append(section(t("basicInfo"), basic));
+  const models = modelUsage(summary.usage);
+  if (models.length) {
+    const totalTokens = models.reduce((sum, model) => sum + model.tokens, 0);
+    const wrap = document.createElement("div");
+    wrap.className = "props-section";
+    const h3 = document.createElement("h3");
+    h3.textContent = t("sessionModels");
+    const list = document.createElement("div");
+    list.className = "session-model-list session-model-list--panel";
+    for (const model of models) {
+      const label = model.name || t("sessionModelsUnknown");
+      const row = document.createElement("div");
+      row.className = "session-model-row";
+      const name = document.createElement("span");
+      name.className = "session-model-name";
+      name.title = label;
+      name.textContent = label;
+      const track = document.createElement("span");
+      track.className = "session-model-track";
+      const fill = document.createElement("span");
+      fill.className = "session-model-fill";
+      fill.style.width = `${Math.max(
+        2,
+        Math.round((model.tokens / totalTokens) * 100)
+      )}%`;
+      fill.title = `${label} · ${formatCount(model.tokens)} Token`;
+      track.append(fill);
+      const count = document.createElement("span");
+      count.className = "session-model-count";
+      count.textContent = formatTokensCompact(model.tokens);
+      count.title = `${formatCount(model.tokens)} Token`;
+      row.append(name, track, count);
+      list.append(row);
+    }
+    wrap.append(h3, list);
+    elements.propsContent.append(wrap);
+  }
+  elements.propsContent.append(section(t("techInfo"), tech));
 }
 
 export function setPropsPlaceholder(message) {

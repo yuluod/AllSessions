@@ -21,6 +21,19 @@ export function fileActivity(groups) {
   );
 }
 
+export function modelUsage(usage) {
+  return Object.entries(usage?.by_model || {})
+    .map(([name, entry]) => ({
+      name,
+      tokens: ["input", "output", "cache_read", "cache_write"].reduce(
+        (sum, key) => sum + Number(entry?.totals?.[key] || 0),
+        0
+      ),
+    }))
+    .filter((model) => model.tokens > 0)
+    .sort((a, b) => b.tokens - a.tokens);
+}
+
 export function renderSessionInsights(
   detail,
   groups,

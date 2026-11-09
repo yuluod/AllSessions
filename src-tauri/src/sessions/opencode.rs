@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use super::usage::TokenUsage;
 use super::{
     DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, HeadTail, ParseState, SEARCH_TEXT_LIMIT, Source,
     append_limited, attach_message_key, message_value, summary_search_text, timestamp_from_millis,
@@ -416,6 +417,32 @@ fn initial_state(path: &Path, row: &SessionRow, source: &Source) -> Result<Parse
     Ok(state)
 }
 
+/// OpenCode/Kilo 的 assistant 消息带本次 API 调用的 tokens（单次响应增量，
+/// 非 session 累计），按 message_id 去重后归属 modelID；reasoning 已含在
+/// output 里，不重复计入。
+fn record_message_usage(
+    state: &mut ParseState,
+    message: &MessageRow,
+    message_id: &str,
+    timestamp: &str,
+) {
+    if message.data["role"].as_str() != Some("assistant") {
+        return;
+    }
+    let tokens = &message.data["tokens"];
+    let usage = TokenUsage {
+        input: tokens["input"].as_u64().unwrap_or(0),
+        output: tokens["output"].as_u64().unwrap_or(0),
+        cache_read: tokens["cache"]["read"].as_u64().unwrap_or(0),
+        cache_write: tokens["cache"]["write"].as_u64().unwrap_or(0),
+    };
+    if usage.sum() == 0 || !state.counted_response_ids.insert(message_id.to_string()) {
+        return;
+    }
+    let model = message.data["modelID"].as_str().unwrap_or_default();
+    state.record_usage(timestamp, usage, model);
+}
+
 fn accept_part(state: &mut ParseState, message: &MessageRow, part: &PartRow) -> Vec<Value> {
     if state.provider == "unknown"
         && let Some(provider) = message_provider(&message.data)
@@ -423,6 +450,12 @@ fn accept_part(state: &mut ParseState, message: &MessageRow, part: &PartRow) -> 
         state.provider = provider;
     }
     state.event_count += 1;
+    record_message_usage(
+        state,
+        message,
+        &part.message_id,
+        &message_timestamp(message, part),
+    );
     part_messages(message, part, &state.originator)
         .into_iter()
         .filter_map(|value| state.accept_message(value))
@@ -767,7 +800,9 @@ mod tests {
             "parentID":"msg_user",
             "modelID":"gpt-5",
             "providerID":"openai",
-            "agent":"build"
+            "agent":"build",
+            "cost":0.01,
+            "tokens":{"input":100,"output":20,"reasoning":5,"cache":{"read":50,"write":10}}
         });
         connection
             .execute(
@@ -931,6 +966,20 @@ mod tests {
         assert_eq!(main.summary["title"], "修复构建流程");
         assert_eq!(main.summary["cwd"], "/work/project");
         assert_eq!(main.summary["model_provider"], "openai");
+        // assistant 消息带 4 个分片，用量按 message_id 去重只记一次；reasoning
+        // 已含在 output 里不重复计。
+        assert_eq!(main.summary["input_tokens"], 100);
+        assert_eq!(main.summary["output_tokens"], 20);
+        assert_eq!(main.summary["cached_input_tokens"], 60);
+        assert_eq!(
+            main.summary["usage"]["by_model"]["gpt-5"]["totals"]["input"],
+            100
+        );
+        assert_eq!(
+            main.summary["usage"]["by_model"]["gpt-5"]["totals"]["cache_read"],
+            50
+        );
+        assert!(main.summary["usage"]["by_model"][""].is_null());
         assert_eq!(main.summary["tool_counts"]["bash"], 2);
         assert_eq!(
             main.summary["command_counts"],

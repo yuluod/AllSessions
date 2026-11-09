@@ -18,6 +18,13 @@
   --control-weight: 600;
   --control-round: 999px;
   --badge-radius: 999px;
+  --control-padding-inline: 12px;
+  --control-border: color-mix(in srgb, var(--text) 18%, var(--surface));
+  --control-hover-background: var(--surface-sunken);
+  --control-hover-color: var(--text);
+  --field-background: var(--surface);
+  --filter-chip-radius: var(--radius-small);
+  --filter-chip-background: var(--surface-sunken);
 }
 
 [data-theme="standard"][data-scheme="light"],

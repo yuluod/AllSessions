@@ -473,6 +473,8 @@ fn scan_session(
             content_hash.update([0]);
             content_hash.update(row.raw.as_bytes());
             let (messages, timestamp) = message_messages(row);
+            // 摘要口径：每个原始消息节点计一次事件，与消息库来源一致。
+            state.event_count += 1;
             if state.timestamp.is_empty() && !timestamp.is_empty() {
                 state.timestamp = timestamp.clone();
             }
@@ -1097,6 +1099,8 @@ fn scan_cli_session(
     let mut tool_names = HashMap::new();
     for &index in &chain {
         let node = &nodes[index];
+        // 摘要口径：每个原始链节点计一次事件。
+        state.event_count += 1;
         // 内容指纹覆盖链上全部原始节点，识别原地编辑与删除。
         content_hash.update(node.node_id.to_string().as_bytes());
         content_hash.update([0]);

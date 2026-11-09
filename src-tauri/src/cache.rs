@@ -24,7 +24,9 @@ use serde_json::Value;
 /// 版本 11：文件操作的归一化字段。
 /// 版本 12：逐日消息与工具／命令调用活动账本。
 /// 版本 13：用量账本新增 by_model 拆分，供按模型估算成本。
-const CACHE_VERSION: i32 = 14;
+/// 版本 15：OpenCode/Kilo 摘要新增用量账本，旧缓存缺少 usage 需重建。
+/// 版本 16：Devin 摘要补充事件计数，旧缓存的事件数为 0 需重建。
+const CACHE_VERSION: i32 = 16;
 
 pub struct IndexCache {
     /// Arc 共享的全文索引：搜索在会话锁之外克隆句柄执行查询。

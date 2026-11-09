@@ -484,7 +484,10 @@ test("统计页提供 Token 热力图与每日用量视图", async () => {
     source,
     /function renderHeatmap\(stats, container, onSelectDay\)/
   );
-  assert.match(source, /function formatTokensCompact\(/);
+  // 紧凑 token 格式化为共享函数,统计页与详情面板/模型排行共用。
+  const sessionFormat = await readProjectFile("public/session-format.js");
+  assert.match(sessionFormat, /function formatTokensCompact\(/);
+  assert.match(source, /formatTokensCompact\(/);
   assert.match(
     source,
     /elements\.tokenHeatmapBody[\s\S]*renderHeatmap\(stats, elements\.tokenHeatmapBody, onSelectDay\)/
@@ -727,7 +730,7 @@ test("详情筛选直接显示，导出保留按需展开", async () => {
   assert.doesNotMatch(html, /<details class="conversation-display-options">/);
   assert.doesNotMatch(html, /<summary data-i18n="displayOptions">/);
   assert.match(html, /<details class="export-menu" data-popover>/);
-  assert.match(html, /<summary data-i18n="export">/);
+  assert.match(html, /<summary\b[^>]*\bdata-i18n="export"/);
 });
 
 test("详情标题、工具区与正文共用详情滚动容器", async () => {

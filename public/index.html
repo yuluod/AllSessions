@@ -902,7 +902,7 @@
                   <div class="detail-topbar-right">
                     <button
                       id="session-favorite-btn"
-                      class="ghost-button session-favorite-button"
+                      class="ghost-button button--quiet session-favorite-button"
                       type="button"
                       aria-pressed="false"
                       aria-label="收藏"
@@ -933,7 +933,12 @@
                       data-popover
                       class="session-organize-menu"
                     >
-                      <summary data-i18n="organizeSession">整理</summary>
+                      <summary
+                        class="button--quiet"
+                        data-i18n="organizeSession"
+                      >
+                        整理
+                      </summary>
                       <div class="session-organize-body">
                         <label>
                           <span data-i18n="workspaceDisplayName">名称</span>
@@ -975,7 +980,7 @@
                         <div class="session-organize-actions">
                           <button
                             id="save-session-workspace-btn"
-                            class="ghost-button"
+                            class="ghost-button button--primary"
                             type="button"
                             data-i18n="saveOrganization"
                           >
@@ -983,7 +988,7 @@
                           </button>
                           <button
                             id="reveal-source-btn"
-                            class="ghost-button"
+                            class="ghost-button button--quiet"
                             type="button"
                             data-i18n="revealSourceFile"
                           >
@@ -991,7 +996,7 @@
                           </button>
                           <button
                             id="reveal-project-btn"
-                            class="ghost-button"
+                            class="ghost-button button--quiet"
                             type="button"
                             data-i18n="revealProjectFolder"
                           >
@@ -1002,7 +1007,7 @@
                     </details>
                     <button
                       id="resume-session-btn"
-                      class="ghost-button"
+                      class="ghost-button button--primary"
                       type="button"
                       data-i18n="resumeSession"
                       data-i18n-attr="aria-label"
@@ -1012,7 +1017,7 @@
                     </button>
                     <button
                       id="session-inspector-toggle"
-                      class="ghost-button inspector-toggle"
+                      class="ghost-button button--quiet inspector-toggle"
                       type="button"
                       aria-controls="props-panel"
                       aria-expanded="false"
@@ -1022,7 +1027,9 @@
                     </button>
 
                     <details class="export-menu" data-popover>
-                      <summary data-i18n="export">导出</summary>
+                      <summary class="button--quiet" data-i18n="export">
+                        导出
+                      </summary>
                       <div class="export-actions">
                         <span
                           class="export-redact-hint"
@@ -1042,7 +1049,7 @@
                         </span>
                         <button
                           id="export-md-btn"
-                          class="ghost-button"
+                          class="ghost-button button--quiet"
                           type="button"
                           data-i18n-title="exportMd"
                         >
@@ -1061,7 +1068,7 @@
                         </button>
                         <button
                           id="export-json-btn"
-                          class="ghost-button"
+                          class="ghost-button button--quiet"
                           type="button"
                           data-i18n-title="exportJson"
                         >

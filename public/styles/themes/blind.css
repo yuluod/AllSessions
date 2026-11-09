@@ -22,6 +22,13 @@
   --control-round: 2px;
   --control-thumb-radius: 1px;
   --badge-radius: 2px;
+  --control-padding-inline: 12px;
+  --control-border: var(--line-strong);
+  --control-background: var(--surface-raised);
+  --control-hover-background: var(--accent-soft);
+  --control-hover-color: var(--text);
+  --field-background: var(--surface-sunken);
+  --filter-chip-background: var(--surface-raised);
   --segment-height: 32px;
   --segment-height-compact: 28px;
   --segment-font-compact: 0.78rem;

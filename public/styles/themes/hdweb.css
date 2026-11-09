@@ -19,6 +19,13 @@
   --control-round: 2px;
   --control-thumb-radius: 1px;
   --badge-radius: 0px;
+  --control-padding-inline: 10px;
+  --control-border: color-mix(in srgb, var(--text) 32%, var(--surface));
+  --control-background: var(--surface);
+  --control-hover-background: var(--surface-sunken);
+  --control-hover-color: var(--text);
+  --field-background: var(--surface);
+  --filter-chip-background: var(--surface-sunken);
   --segment-height: 28px;
   --segment-height-compact: 24px;
 }

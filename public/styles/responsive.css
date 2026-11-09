@@ -119,7 +119,7 @@
   }
 
   .stats-metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .metric-card:nth-child(n) {
@@ -127,11 +127,11 @@
     border-left: 1px solid var(--line);
   }
 
-  .metric-card:nth-child(3n + 1) {
+  .metric-card:nth-child(4n + 1) {
     border-left: 0;
   }
 
-  .metric-card:nth-child(n + 4) {
+  .metric-card:nth-child(n + 5) {
     border-top: 1px solid var(--line);
   }
 }
@@ -355,11 +355,29 @@
   .stats-header {
     align-items: flex-start;
     flex-direction: column;
+    flex-wrap: nowrap;
     gap: 5px;
   }
 
   .stats-range {
-    padding-bottom: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .stats-range:has(.stats-range-custom[open]) {
+    flex-basis: auto;
+  }
+
+  .stats-range-presets {
+    justify-content: flex-start;
+  }
+
+  .stats-range-form {
+    justify-content: flex-start;
+  }
+
+  .stats-range-custom[open] > summary {
+    margin-left: 0;
   }
 
   .tool-card-header,

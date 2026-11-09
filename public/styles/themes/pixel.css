@@ -14,6 +14,14 @@
   --control-round: 0px;
   --control-thumb-radius: 0px;
   --badge-radius: 0px;
+  --control-padding-inline: 10px;
+  --control-border: var(--line-strong);
+  --control-background: var(--surface-raised);
+  --control-hover-background: var(--accent-soft);
+  --control-hover-color: var(--text);
+  --field-background: var(--surface-sunken);
+  --filter-chip-background: var(--surface-sunken);
+  --quiet-control-border: var(--line);
   --control-motion: 0ms;
   --preview-line-width: 2px;
   --preview-shadow: 1px 1px 0 var(--line-strong);

@@ -137,7 +137,7 @@ jobs:
 
       # Apple 证书未配置时不下发空值：tauri CLI 看到 APPLE_CERTIFICATE
       # 存在（即使为空）就会尝试导入钥匙串并失败，未配置必须整组缺席，
-      # 回退到 v0.3.2 的未签名构建路径。
+      # 回退到 tauri.conf.json 中 signingIdentity "-" 的 ad-hoc 签名。
       - name: 准备 Apple 签名环境
         if: matrix.platform == 'mac'
         shell: bash

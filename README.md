@@ -153,10 +153,11 @@ Windows, macOS, and Linux share the same Tauri 2 app shell, system tray, and sig
 > [!NOTE]
 > Some GNOME desktops require an AppIndicator/KStatusNotifierItem extension.
 >
-> Release installers are not code-signed yet; signed and notarized builds are planned:
+> Release installers are not Developer ID signed or notarized yet; signed and notarized builds are planned:
 >
-> - **macOS**: Gatekeeper may report the app as "damaged". After copying it to
->   Applications, run `xattr -dr com.apple.quarantine /Applications/AllSessions.app`
+> - **macOS**: builds are ad-hoc signed, so Gatekeeper blocks the first launch. After
+>   copying the app to Applications, choose **Open Anyway** in System Settings →
+>   Privacy & Security, or run `xattr -dr com.apple.quarantine /Applications/AllSessions.app`
 >   in Terminal, then open it normally.
 > - **Windows**: SmartScreen may flag the setup as unrecognized. Choose
 >   **More info** → **Run anyway**.

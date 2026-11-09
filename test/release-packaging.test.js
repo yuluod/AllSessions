@@ -296,6 +296,16 @@ test("macOS 构建号独立于显示版本且发布会汇总更新清单", async
   const expectedBuildNumber = String(major * 1_000_000 + minor * 1_000 + patch);
 
   assert.equal(config.bundle.macOS.bundleVersion, expectedBuildNumber);
+  assert.equal(config.bundle.macOS.signingIdentity, "-");
+  const appleEnvStep =
+    workflow.match(
+      /- name: 准备 Apple 签名环境[\s\S]*?- name: 构建 Tauri 安装包/
+    )?.[0] ?? "";
+  assert.match(
+    appleEnvStep,
+    /if \[ -n "\$APPLE_CERTIFICATE" \]; then[\s\S]*APPLE_SIGNING_IDENTITY[\s\S]*GITHUB_ENV[\s\S]*fi/
+  );
+  assert.doesNotMatch(appleEnvStep, /\belse\b/);
   assert.match(workflow, /bundles: app,dmg/);
   assert.match(workflow, /actions\/upload-artifact@v7/);
   assert.match(workflow, /actions\/download-artifact@v8/);

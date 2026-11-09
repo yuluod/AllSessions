@@ -98,4 +98,4 @@ jobs:
             Linux) bundles=deb ;;
             *) echo "::error::不支持的平台：$RUNNER_OS"; exit 1 ;;
           esac
-          pnpm desktop:build --ci --bundles "$bundles" --config .github/tauri-ci.json -- --locked
+          bash scripts/verify-ci-package.sh "$bundles"

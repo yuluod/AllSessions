@@ -15,6 +15,10 @@
   --filter-chip-radius: var(--badge-radius);
   --filter-chip-background: var(--surface-subtle);
   --quiet-control-border: transparent;
+  --detail-title-size: 1.35rem;
+  --conversation-measure: 88ch;
+  --conversation-font-size: 0.9rem;
+  --conversation-line-height: 1.85;
   --control-round: 999px;
   --badge-radius: 999px;
   --control-thumb-radius: 50%;

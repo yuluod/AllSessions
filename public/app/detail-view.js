@@ -122,15 +122,22 @@ export function renderDetailTags(summary) {
   const workspace = sessionWorkspace(summary);
   const tags = [
     {
-      text: formatTimestamp(summary.timestamp),
-      icon: "calendar",
-      cls: "tag-time",
-    },
-    { text: providerLabel(summary), cls: "tag-provider" },
-    {
       text: displaySourceLabel(summary),
       cls: "tag-source",
       sourceKind: sourceKindValue(summary),
+    },
+    { text: providerLabel(summary), cls: "tag-provider" },
+    {
+      text: modelUsage(summary.usage)
+        .map((model) => model.name)
+        .filter(Boolean)
+        .join(" · "),
+      cls: "tag-model",
+    },
+    {
+      text: formatTimestamp(summary.timestamp),
+      icon: "calendar",
+      cls: "tag-time",
     },
     { text: hiddenReasonLabel(summary), cls: "tag-hidden" },
     {
@@ -156,7 +163,7 @@ export function renderDetailTags(summary) {
     const span = document.createElement("span");
     span.className = `detail-tag ${cls || ""}`.trim();
     if (sourceKind) span.dataset.sourceKind = sourceKind;
-    if (cls === "tag-provider") span.title = text;
+    span.title = text;
     if (icon) {
       span.append(createTagIcon(icon), document.createTextNode(` ${text}`));
     } else {
@@ -164,6 +171,14 @@ export function renderDetailTags(summary) {
     }
     elements.detailTags.append(span);
   });
+
+  if (summary.cwd) {
+    const cwd = document.createElement("span");
+    cwd.className = "detail-tag tag-cwd";
+    cwd.textContent = summary.cwd;
+    cwd.title = `${t("cwdLabel")}: ${summary.cwd}`;
+    elements.detailTags.append(cwd);
+  }
 
   if (summary.id) {
     const shortId = summary.id.length > 8 ? summary.id.slice(0, 8) : summary.id;

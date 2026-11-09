@@ -42,6 +42,8 @@
 
 - 普通操作使用 `.ghost-button`，危险执行使用 `.danger-button`；保留页面已有的危险文字按钮等语义变体。
 - 在 `.ghost-button` 上用 `.button--primary` 强调当前区域主要操作，用 `.button--quiet` 降低辅助操作的边框和底色；按下／展开状态保留原有反馈。像素主题通过 `--quiet-control-border` 保留硬边界。
+- 会话详情保留终端恢复、整理、收藏和信息入口；导出选项、归档和删除集中于“更多”，删除仍走原有确认流程。标题下分层展示来源、Provider、已记录用量对应的模型、时间和工作目录，属性面板保持完整。
+- 阅读区通过 `--detail-title-size`、`--conversation-measure`、`--conversation-font-size` 和 `--conversation-line-height` 管理标题和正文规格；工具调用保留原有折叠与定位行为，折叠态使用紧凑行。
 - 设置、正文和维护开关共用状态规则；正文使用紧凑尺寸，维护开关通过 `--switch-tone` 切换警示色。
 - 明暗切换和角色切换共用分段选中态，文字版与图标版保留布局差异。
 - 临时菜单使用原生 `details` 并标记 `data-popover`，统一交给 `bindPopoverMenus` 处理互斥、外部点击与 Escape。表单内部操作不会关闭当前菜单。

@@ -1609,13 +1609,13 @@ body.is-resizing {
   z-index: var(--z-reading-heading);
   align-self: start;
   margin: 0;
-  padding: 8px 0;
+  padding: 12px 0;
   background: var(--surface);
   transition: box-shadow 180ms var(--ease-out);
   display: -webkit-box;
   overflow: hidden;
   color: var(--text);
-  font-size: 1.12rem;
+  font-size: var(--detail-title-size);
   font-weight: 760;
   line-height: 1.35;
   -webkit-box-orient: vertical;
@@ -1638,8 +1638,9 @@ body.is-resizing {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
-  margin-top: 8px;
+  gap: 6px 10px;
+  margin-top: 0;
+  margin-bottom: 6px;
 }
 
 .detail-tag {
@@ -1673,9 +1674,34 @@ body.is-resizing {
   max-width: min(280px, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
-  border-color: color-mix(in srgb, var(--info) 42%, var(--surface));
-  color: var(--info);
-  background: var(--info-soft);
+  padding-inline: 0;
+  border-color: transparent;
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.detail-tag.tag-model {
+  max-width: min(320px, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-color: transparent;
+  color: var(--muted);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--control-font-compact);
+}
+
+.detail-tag.tag-cwd {
+  order: 1;
+  flex-basis: 100%;
+  padding: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--control-font-compact);
 }
 
 .detail-tag.tag-source {
@@ -1976,6 +2002,8 @@ body.is-resizing {
 .conversation-body .conversation-list {
   flex: 1;
   min-width: 0;
+  max-width: min(100%, var(--conversation-measure));
+  margin-inline: auto;
 }
 
 .message-outline {
@@ -2445,6 +2473,10 @@ body.is-resizing {
 
 .message-card[data-role="tool"].collapsed .message-text {
   display: none;
+}
+.message-card[data-role="tool"].collapsed {
+  padding: 8px 10px;
+  border-radius: var(--radius-small);
 }
 .message-card[data-role="tool"].collapsed header {
   margin-bottom: 0;
@@ -3131,6 +3163,14 @@ body.is-resizing {
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.conversation-list
+  .message-card:is([data-role="user"], [data-role="assistant"])
+  .message-text {
+  color: var(--text);
+  font-size: var(--conversation-font-size);
+  line-height: var(--conversation-line-height);
 }
 
 .markdown-body {

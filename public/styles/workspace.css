@@ -1890,6 +1890,22 @@ body.is-resizing {
   justify-content: flex-start;
 }
 
+.session-more-heading {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: var(--control-font-compact);
+  font-weight: var(--control-weight);
+}
+
+.session-more-management {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
 .inspector-toggle[aria-expanded="true"] {
   border-color: var(--line-accent);
   color: var(--accent-strong);

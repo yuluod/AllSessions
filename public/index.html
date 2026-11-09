@@ -1027,10 +1027,13 @@
                     </button>
 
                     <details class="export-menu" data-popover>
-                      <summary class="button--quiet" data-i18n="export">
-                        导出
+                      <summary class="button--quiet" data-i18n="moreActions">
+                        更多
                       </summary>
                       <div class="export-actions">
+                        <h3 class="session-more-heading" data-i18n="export">
+                          导出
+                        </h3>
                         <span
                           class="export-redact-hint"
                           data-i18n="exportScopeHint"
@@ -1085,24 +1088,26 @@
                           </svg>
                           JSON
                         </button>
+                        <div class="session-more-management">
+                          <button
+                            id="session-archive-btn"
+                            class="ghost-button button--quiet"
+                            type="button"
+                            data-i18n="archive"
+                          >
+                            归档
+                          </button>
+                          <button
+                            id="session-delete-btn"
+                            class="ghost-button session-delete-button"
+                            type="button"
+                            data-i18n="deleteSession"
+                          >
+                            删除
+                          </button>
+                        </div>
                       </div>
                     </details>
-                    <button
-                      id="session-archive-btn"
-                      class="ghost-button"
-                      type="button"
-                      data-i18n="archive"
-                    >
-                      归档
-                    </button>
-                    <button
-                      id="session-delete-btn"
-                      class="ghost-button session-delete-button"
-                      type="button"
-                      data-i18n="deleteSession"
-                    >
-                      删除
-                    </button>
                   </div>
                   <div
                     class="tabs"

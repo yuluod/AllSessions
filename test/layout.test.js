@@ -723,14 +723,25 @@ test("详情页提供会话内搜索、工具消息开关和消息导航", async
   assert.match(app, /classList\.toggle\("hidden", !available\)/);
 });
 
-test("详情筛选直接显示，导出保留按需展开", async () => {
+test("详情筛选直接显示，导出和管理操作收进更多菜单", async () => {
   const html = await readProjectFile("public/index.html");
 
   assert.match(html, /<div class="conversation-display-options">/);
   assert.doesNotMatch(html, /<details class="conversation-display-options">/);
   assert.doesNotMatch(html, /<summary data-i18n="displayOptions">/);
   assert.match(html, /<details class="export-menu" data-popover>/);
-  assert.match(html, /<summary\b[^>]*\bdata-i18n="export"/);
+  assert.match(html, /<summary\b[^>]*\bdata-i18n="moreActions"/);
+  const moreMenu = html.match(
+    /<details class="export-menu"[\s\S]*?<\/details>/
+  )?.[0];
+  for (const id of [
+    "export-md-btn",
+    "export-json-btn",
+    "session-archive-btn",
+    "session-delete-btn",
+  ]) {
+    assert.ok(moreMenu?.includes(`id="${id}"`));
+  }
 });
 
 test("详情标题、工具区与正文共用详情滚动容器", async () => {

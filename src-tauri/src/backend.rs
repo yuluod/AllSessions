@@ -12,6 +12,7 @@ use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
 use crate::{
@@ -660,6 +661,31 @@ fn route_request(
             payload["app_icon_restart_available"] =
                 json!(cfg!(target_os = "windows") && icon_changed);
             Ok(payload)
+        }
+        ("POST", "/api/links/open") => {
+            let enabled = state
+                .config
+                .lock()
+                .map_err(lock_error)?
+                .preferences
+                .open_external_links;
+            if !enabled {
+                return Err(ApiError::new(
+                    ApiError::EXTERNAL_LINKS_DISABLED,
+                    "未开启在浏览器中打开会话链接",
+                ));
+            }
+            let url = crate::external_link::validate_external_url(
+                request
+                    .body
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ApiError::invalid("缺少 url 字段"))?,
+            )?;
+            app.opener()
+                .open_url(url, None::<&str>)
+                .map_err(|error| format!("打开链接失败：{error}"))?;
+            Ok(json!({ "opened": true }))
         }
         ("POST", "/api/settings/restart") => {
             if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {

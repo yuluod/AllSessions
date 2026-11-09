@@ -803,7 +803,12 @@ export function createSettingsController({
       terminal_app: preferences.terminal_app || "auto",
       terminal_custom: preferences.terminal_custom || "",
       app_icon: preferences.app_icon || "default",
+      open_external_links: preferences.open_external_links === true,
     };
+    if (elements.settingsOpenExternalLinks) {
+      elements.settingsOpenExternalLinks.checked =
+        savedPreferences.open_external_links;
+    }
     if (elements.settingsKeepRunning) {
       elements.settingsKeepRunning.checked =
         savedPreferences.keep_running_in_tray;
@@ -872,6 +877,9 @@ export function createSettingsController({
     }
     if (elements.settingsLaunchAtLogin) {
       elements.settingsLaunchAtLogin.disabled = disabled;
+    }
+    if (elements.settingsOpenExternalLinks) {
+      elements.settingsOpenExternalLinks.disabled = disabled;
     }
     if (elements.settingsStartupUpdates) {
       elements.settingsStartupUpdates.disabled = disabled;
@@ -1004,6 +1012,7 @@ export function createSettingsController({
           ?.value ||
         savedPreferences.app_icon ||
         "default",
+      open_external_links: elements.settingsOpenExternalLinks?.checked === true,
     };
     setPreferenceControlsDisabled(true);
     setStatus(t("settingsSaving"));
@@ -1174,6 +1183,10 @@ export function createSettingsController({
     elements.settingsLicenseLink?.addEventListener("click", openExternalLink);
     elements.settingsKeepRunning?.addEventListener("change", savePreferences);
     elements.settingsLaunchAtLogin?.addEventListener("change", savePreferences);
+    elements.settingsOpenExternalLinks?.addEventListener(
+      "change",
+      savePreferences
+    );
     elements.settingsStartupUpdates?.addEventListener(
       "change",
       savePreferences

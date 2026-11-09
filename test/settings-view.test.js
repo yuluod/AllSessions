@@ -346,3 +346,72 @@ test("重启请求失败明确显示错误且保留已保存的图标", async ()
   assert.match(status.textContent, /重启请求失败/);
   assert.equal(inputs[1].checked, true);
 });
+
+test("会话链接开关默认关闭，切换后随常规设置保存", async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const calls = [];
+  const toggle = {
+    checked: true,
+    disabled: false,
+    listeners: new Map(),
+    addEventListener(name, handler) {
+      this.listeners.set(name, handler);
+    },
+  };
+  globalThis.document = {
+    documentElement: { classList: { add() {}, remove() {} } },
+    addEventListener() {},
+  };
+  globalThis.window = {
+    __TAURI__: {
+      core: {
+        invoke: async (_command, { request }) => {
+          calls.push(request);
+          if (request.url === "/api/settings") {
+            return { sources: {}, preferences: { app_icon: "default" } };
+          }
+          if (request.url === "/api/settings/preferences") {
+            return { preferences: request.body.preferences };
+          }
+          throw new Error(`意外请求：${request.url}`);
+        },
+      },
+    },
+  };
+  try {
+    const { createSettingsController } =
+      await import("../public/settings-view.js");
+    const controller = createSettingsController({
+      elements: {
+        settingsDialog: {
+          open: false,
+          setAttribute() {},
+          addEventListener() {},
+          showModal() {
+            this.open = true;
+          },
+          close() {
+            this.open = false;
+          },
+        },
+        settingsOpenExternalLinks: toggle,
+        settingsStatus: { textContent: "", dataset: {} },
+      },
+    });
+    controller.bind();
+    await controller.open();
+    assert.equal(toggle.checked, false);
+
+    toggle.checked = true;
+    await toggle.listeners.get("change")();
+
+    const saved = calls.find(({ url }) => url === "/api/settings/preferences");
+    assert.equal(saved.body.preferences.open_external_links, true);
+    assert.equal(toggle.checked, true);
+    assert.equal(toggle.disabled, false);
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});

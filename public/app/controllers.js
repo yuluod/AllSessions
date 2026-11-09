@@ -29,6 +29,9 @@ export const conversationView = createConversationView({
   onRequestDelete: (message) => openDeleteDialog({ kind: "message", message }),
   onRestoreMessage: (message) => restoreRemovedMessage(message),
   onHighlightError: showError,
+  onOpenLink: (url) =>
+    fetchJson("/api/links/open", { method: "POST", body: { url } }),
+  onLinkError: showError,
   onLoadAttachment: (sessionKey, locator) =>
     fetchJson("/api/sessions/attachment", {
       method: "POST",

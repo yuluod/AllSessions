@@ -4,6 +4,7 @@ import {
   resetAttachmentObservers,
 } from "./attachment-view.js";
 import { markdownToPlainText, renderMarkdown } from "./markdown.js";
+import { bindExternalLinks } from "./external-links.js";
 import {
   compactText,
   formatListTimestamp,
@@ -64,10 +65,16 @@ export function createConversationView({
   onRequestDelete,
   onRestoreMessage,
   onHighlightError,
+  onOpenLink,
+  onLinkError,
   onLoadAttachment,
   onSelectSession,
 }) {
   let highlightController = null;
+  bindExternalLinks(elements.conversationList, {
+    open: onOpenLink,
+    onError: onLinkError,
+  });
   const operationsView = createToolOperations({
     container: elements.toolOperations,
     onSelectMessage: scrollToMessage,

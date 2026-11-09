@@ -436,6 +436,8 @@ const DICT = {
     backendError_read_only_source: "该来源为只读模式，请在原 Agent 中删除",
     backendError_file_changed: "原始文件已经变化，请刷新列表后重试",
     backendError_maintenance_disabled: "Codex 维护模式未开启",
+    backendError_external_links_disabled:
+      "未开启“在浏览器中打开会话链接”，可在设置 › 常规中开启",
     noWorkDir: "未记录工作目录",
     loadDetailFailed: "加载会话详情失败",
     loadListFailed: "加载会话列表失败",
@@ -597,6 +599,9 @@ const DICT = {
     settingsLaunchAtLoginHint: "开机登录时自动运行并驻留托盘",
     settingsStartupUpdates: "启动时检查更新",
     settingsStartupUpdatesHint: "应用启动后自动检查是否有新版本",
+    settingsOpenExternalLinks: "在浏览器中打开会话链接",
+    settingsOpenExternalLinksHint:
+      "点击会话中的网页或邮件链接时，交给系统默认浏览器或邮件应用打开",
     settingsTerminalApp: "终端应用",
     settingsTerminalAppHint: "“在终端恢复”会话时使用的终端",
     settingsTerminalAuto: "自动选择",
@@ -1183,6 +1188,8 @@ const DICT = {
     backendError_file_changed:
       "The original file has changed; refresh the list and retry",
     backendError_maintenance_disabled: "Codex maintenance mode is not enabled",
+    backendError_external_links_disabled:
+      "Opening session links is turned off. Turn it on in Settings › General.",
     noWorkDir: "No working directory recorded",
     loadDetailFailed: "Failed to load session details",
     loadListFailed: "Failed to load session list",
@@ -1352,6 +1359,9 @@ const DICT = {
     settingsStartupUpdates: "Check for updates at startup",
     settingsStartupUpdatesHint:
       "Automatically check for a new version after the app starts",
+    settingsOpenExternalLinks: "Open session links in browser",
+    settingsOpenExternalLinksHint:
+      "Open web and email links in session messages with your default browser or mail app",
     settingsTerminalApp: "Terminal app",
     settingsTerminalAppHint: 'Terminal used by "Resume in terminal"',
     settingsTerminalAuto: "Auto",

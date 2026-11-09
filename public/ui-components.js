@@ -49,6 +49,16 @@ export function bindPopoverMenus(root = document) {
   });
 }
 
+export function showDialogFromPopover(dialog, root = document) {
+  const menu = root.activeElement?.closest?.("[data-popover]");
+  if (menu) {
+    // 原生弹窗记住当前焦点；先返回入口，关闭后就不会聚焦隐藏的菜单项。
+    menu.open = false;
+    menu.querySelector("summary")?.focus();
+  }
+  dialog.showModal();
+}
+
 export function createEmptyState({ title, description = "", compact = false }) {
   const container = document.createElement("div");
   container.className = compact

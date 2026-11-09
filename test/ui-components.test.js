@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bindPopoverMenus } from "../public/ui-components.js";
+import {
+  bindPopoverMenus,
+  showDialogFromPopover,
+} from "../public/ui-components.js";
 
 function setup() {
   const rootEvents = {};
@@ -44,6 +47,33 @@ function setup() {
   });
   return { menus, events: rootEvents };
 }
+
+test("菜单操作打开弹窗前将返回焦点改为入口，普通按钮保持原焦点", () => {
+  const {
+    menus: [menu],
+  } = setup();
+  menu.open = true;
+  let opened = 0;
+  const dialog = {
+    showModal() {
+      assert.equal(menu.open, false);
+      assert.equal(menu.summary.focused, true);
+      opened++;
+    },
+  };
+  showDialogFromPopover(dialog, { activeElement: { closest: () => menu } });
+  assert.equal(opened, 1);
+  let ordinaryOpened = false;
+  showDialogFromPopover(
+    {
+      showModal() {
+        ordinaryOpened = true;
+      },
+    },
+    { activeElement: { closest: () => null } }
+  );
+  assert.equal(ordinaryOpened, true);
+});
 
 test("不同入口的菜单互斥，菜单内容交互不关闭自身，外部点击关闭", () => {
   const {

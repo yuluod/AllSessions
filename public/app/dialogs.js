@@ -1,6 +1,7 @@
 // 删除与归档对话框:二次确认、永久删除(带备份)与恢复移除。
 import { t } from "../i18n.js";
 import { displaySessionTitle } from "../session-format.js";
+import { showDialogFromPopover } from "../ui-components.js";
 import {
   announce,
   elements,
@@ -36,7 +37,7 @@ export function openArchiveConfirmDialog(sessionKey) {
   if (!sessionKey || !elements.archiveDialog) return;
   pendingArchive = sessionKey;
   elements.archiveDialogStatus.textContent = "";
-  elements.archiveDialog.showModal();
+  showDialogFromPopover(elements.archiveDialog);
   elements.archiveDialogConfirm?.focus();
 }
 
@@ -108,7 +109,7 @@ export function openDeleteDialog({ kind, message = null }) {
   elements.deleteSoftBtn.textContent = t(
     removed ? "restore" : "removeFromAllSessions"
   );
-  elements.deleteDialog.showModal();
+  showDialogFromPopover(elements.deleteDialog);
   elements.deleteSoftBtn.focus();
 }
 

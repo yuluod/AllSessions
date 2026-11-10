@@ -33,6 +33,35 @@ const AGENT_PRESENTATION = {
   workbuddy: { label: "WorkBuddy", color: "#0e9377" },
 };
 
+// 图表色跟随主题 token：品牌色来源用 --src-*；中性品牌（官方黑白标志，
+// 徽章随文字色）在图表里用灰阶色阶区分扇区，不再共享同一硬编码灰。
+const AGENT_COLOR_TOKEN = {
+  codex: "--src-codex",
+  claude: "--src-claude",
+  gemini: "--src-gemini",
+  grok: "--text-secondary",
+  pi: "--src-pi",
+  omp: "--src-omp",
+  kimi: "--src-kimi",
+  opencode: "--src-opencode",
+  kilo: "--src-opencode",
+  zcode: "--src-zcode",
+  cursor: "--muted",
+  devin: "--src-devin",
+  copilot: "--src-copilot",
+  hermes: "--src-hermes",
+  deepseek: "--line-strong",
+  jetbrains_air: "--text",
+  workbuddy: "--src-workbuddy",
+};
+
+function themeColor(token, fallback) {
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(token)
+    .trim();
+  return value || fallback;
+}
+
 function renderBar(
   label,
   count,
@@ -549,14 +578,25 @@ function renderAgents(stats, container) {
       ? Math.max(0, tokenTotal - topTokenSum)
       : tokenByAgent.get(item.label) || 0;
 
-  const presentations = items.map((item) =>
-    item.label === OTHER_AGENT
-      ? { label: t("statsAgentOther"), color: "#8a949c" }
-      : AGENT_PRESENTATION[item.label] || {
-          label: item.label,
-          color: "#59656d",
-        }
-  );
+  const presentations = items.map((item) => {
+    if (item.label === OTHER_AGENT) {
+      return {
+        label: t("statsAgentOther"),
+        color: themeColor("--muted", "#8a949c"),
+      };
+    }
+    const base = AGENT_PRESENTATION[item.label] || {
+      label: item.label,
+      color: "#59656d",
+    };
+    return {
+      label: base.label,
+      color: themeColor(
+        AGENT_COLOR_TOKEN[item.label] || "--line-strong",
+        base.color
+      ),
+    };
+  });
   const total = items.reduce((sum, item) => sum + item.count, 0);
 
   // Token 环沿用会话环的分组(同一来源同色),两个扇区才能一一对照。

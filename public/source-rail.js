@@ -1,7 +1,9 @@
 // 来源栏状态：按按钮对应的来源计算选中态与计数。
+// kinds 同时列出后端归一键与会话侧原始 source_kind（如 claude_code、
+// codex_archived、vscode_copilot），避免再靠散落的特判做 kind→agent 映射。
 export const SOURCE_RAIL_AGENTS = [
   { agent: "codex", kinds: ["codex", "codex_archived"] },
-  { agent: "claude", kinds: ["claude"] },
+  { agent: "claude", kinds: ["claude", "claude_code"] },
   { agent: "claude_cowork", kinds: ["claude_cowork"] },
   { agent: "gemini", kinds: ["gemini"] },
   { agent: "grok", kinds: ["grok"] },
@@ -21,10 +23,11 @@ export const SOURCE_RAIL_AGENTS = [
 ];
 
 export function sourceAgentForKind(sourceKind) {
-  if (sourceKind === "claude_code") return "claude";
-  if (sourceKind === "codex_archived") return "codex";
-  if (sourceKind === "vscode_copilot") return "copilot";
-  return sourceKind || "all";
+  if (!sourceKind) return "all";
+  return (
+    SOURCE_RAIL_AGENTS.find(({ kinds }) => kinds.includes(sourceKind))?.agent ??
+    sourceKind
+  );
 }
 
 // 计数来自 facets 的 source_counts：与项目计数同口径，只含当前显示开关下可见的会话。

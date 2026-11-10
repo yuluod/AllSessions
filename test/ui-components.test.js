@@ -3,7 +3,35 @@ import test from "node:test";
 import {
   bindPopoverMenus,
   showDialogFromPopover,
+  closeFocusedDialog,
 } from "../public/ui-components.js";
+
+test("Escape 只关闭焦点所在的上层弹窗，遵守取消保护且不依赖 DOM 顺序", () => {
+  let closed = false;
+  let protectedClose = true;
+  const update = {
+    dispatchEvent(event) {
+      assert.equal(event.type, "cancel");
+      if (protectedClose) event.preventDefault();
+      return !event.defaultPrevented;
+    },
+    close() {
+      closed = true;
+    },
+  };
+  const root = {
+    activeElement: { closest: () => update },
+    querySelectorAll() {
+      throw new Error("不得用 DOM 顺序决定弹窗层级");
+    },
+  };
+  assert.equal(closeFocusedDialog(root), true);
+  assert.equal(closed, false);
+  protectedClose = false;
+  assert.equal(closeFocusedDialog(root), true);
+  assert.equal(closed, true);
+  assert.equal(closeFocusedDialog({ activeElement: null }), false);
+});
 
 function setup() {
   const rootEvents = {};

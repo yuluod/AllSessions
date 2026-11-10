@@ -1,3 +1,4 @@
+import { agentPresentation } from "./source-descriptors.js";
 import { t, getLang } from "./i18n.js";
 import {
   formatCount,
@@ -13,53 +14,11 @@ import { createEmptyState } from "./ui-components.js";
 import { renderProjectReview } from "./project-review.js";
 import { renderStatsRange } from "./stats-range.js";
 
-const AGENT_PRESENTATION = {
-  codex: { label: "Codex", color: "#0f766e" },
-  claude: { label: "Claude Code", color: "#a15c07" },
-  gemini: { label: "Gemini CLI", color: "#4f46e5" },
-  grok: { label: "Grok Build", color: "#52525b" },
-  pi: { label: "Pi", color: "#2563eb" },
-  omp: { label: "Oh My Pi", color: "#7c3aed" },
-  kimi: { label: "Kimi Code CLI", color: "#b42318" },
-  opencode: { label: "OpenCode", color: "#16794f" },
-  kilo: { label: "Kilo", color: "#c45038" },
-  zcode: { label: "ZCode", color: "#3b6ea5" },
-  cursor: { label: "Cursor", color: "#52525b" },
-  devin: { label: "Devin", color: "#0891b2" },
-  copilot: { label: "GitHub Copilot", color: "#6f42c1" },
-  hermes: { label: "Hermes Agent", color: "#be185d" },
-  deepseek: { label: "DeepSeek", color: "#52525b" },
-  jetbrains_air: { label: "JetBrains Air", color: "#fe2857" },
-  workbuddy: { label: "WorkBuddy", color: "#0e9377" },
-};
-
-// 图表色跟随主题 token：品牌色来源用 --src-*；中性品牌（官方黑白标志，
-// 徽章随文字色）在图表里用灰阶色阶区分扇区，不再共享同一硬编码灰。
-const AGENT_COLOR_TOKEN = {
-  codex: "--src-codex",
-  claude: "--src-claude",
-  gemini: "--src-gemini",
-  grok: "--text-secondary",
-  pi: "--src-pi",
-  omp: "--src-omp",
-  kimi: "--src-kimi",
-  opencode: "--src-opencode",
-  kilo: "--src-opencode",
-  zcode: "--src-zcode",
-  cursor: "--muted",
-  devin: "--src-devin",
-  copilot: "--src-copilot",
-  hermes: "--src-hermes",
-  deepseek: "--line-strong",
-  jetbrains_air: "--text",
-  workbuddy: "--src-workbuddy",
-};
-
-function themeColor(token, fallback) {
+function themeColor(token) {
   const value = getComputedStyle(document.documentElement)
     .getPropertyValue(token)
     .trim();
-  return value || fallback;
+  return value || "var(--line-strong, currentColor)";
 }
 
 function renderBar(
@@ -582,19 +541,13 @@ function renderAgents(stats, container) {
     if (item.label === OTHER_AGENT) {
       return {
         label: t("statsAgentOther"),
-        color: themeColor("--muted", "#8a949c"),
+        color: themeColor("--muted"),
       };
     }
-    const base = AGENT_PRESENTATION[item.label] || {
-      label: item.label,
-      color: "#59656d",
-    };
+    const base = agentPresentation(item.label);
     return {
       label: base.label,
-      color: themeColor(
-        AGENT_COLOR_TOKEN[item.label] || "--line-strong",
-        base.color
-      ),
+      color: themeColor(base.colorToken),
     };
   });
   const total = items.reduce((sum, item) => sum + item.count, 0);

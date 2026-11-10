@@ -1,3 +1,12 @@
+// 焦点所在的原生弹窗才是当前交互层，DOM 顺序不代表打开顺序。
+export function closeFocusedDialog(root = document) {
+  const dialog = root.activeElement?.closest?.("dialog[open]");
+  if (!dialog) return false;
+  const cancelEvent = new Event("cancel", { cancelable: true });
+  if (dialog.dispatchEvent(cancelEvent)) dialog.close();
+  return true;
+}
+
 export function bindPopoverMenus(root = document) {
   const menus = [...root.querySelectorAll("[data-popover]")];
   function closeOthers(current) {

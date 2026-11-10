@@ -12,10 +12,7 @@
   display: none;
 }
 
-.detail-topbar-right,
-.session-query-controls,
-.bulk-toolbar,
-.settings-source-dialog {
+.control-group--compact {
   --control-height: var(--control-height-compact);
   --control-font-size: var(--control-font-compact);
 }
@@ -64,6 +61,7 @@
 }
 
 .ghost-button:disabled,
+.ghost-button[aria-disabled="true"],
 .danger-button:disabled,
 .tab-button:disabled,
 .mobile-back-button:disabled {
@@ -254,12 +252,14 @@
 }
 
 /* 文字、图标、原生单选三种入口共用分段选中态。 */
+.tabs,
 .role-filter,
 .scheme-control {
   --segment-height: var(--segment-height-compact);
   --segment-font-size: var(--segment-font-compact);
 }
 
+.tabs,
 .role-filter,
 .scheme-control,
 .settings-scheme-options {
@@ -273,6 +273,7 @@
   background: var(--surface-sunken);
 }
 
+.tabs .tab-button,
 .role-filter .role-filter-btn,
 .scheme-control button,
 .settings-scheme-options span {
@@ -308,6 +309,8 @@
   pointer-events: none;
 }
 
+.tabs .tab-button.active,
+.tabs .tab-button[aria-selected="true"],
 .role-filter .role-filter-btn.active,
 .scheme-control button[aria-pressed="true"],
 .settings-scheme-options input:checked + span {
@@ -320,6 +323,12 @@
 .settings-scheme-options input:focus-visible + span {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+.tabs .tab-button:hover:not(:disabled):not(.active),
+.role-filter .role-filter-btn:hover:not(:disabled):not(.active) {
+  color: var(--control-hover-color);
+  background: var(--control-hover-background);
 }
 
 /* 表单共用底色、边框、箭头与焦点；宽度仍由页面布局决定。 */

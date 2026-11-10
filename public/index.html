@@ -612,12 +612,15 @@
                     id="search-shortcut"
                     class="search-kbd"
                     aria-hidden="true"
-                    >⌘/Ctrl K</kbd
+                    >Ctrl K</kbd
                   >
                 </div>
               </div>
               <div id="session-filter-slot">
-                <div id="session-query-controls" class="session-query-controls">
+                <div
+                  id="session-query-controls"
+                  class="session-query-controls control-group--compact"
+                >
                   <div class="session-filter-fields">
                     <label class="session-filter-field">
                       <span data-i18n="date">日期</span>
@@ -717,7 +720,10 @@
                   </div>
                 </div>
               </div>
-              <div id="bulk-toolbar" class="bulk-toolbar hidden">
+              <div
+                id="bulk-toolbar"
+                class="bulk-toolbar hidden control-group--compact"
+              >
                 <button
                   id="select-visible-btn"
                   class="ghost-button session-select-visible"
@@ -794,6 +800,12 @@
                     </option>
                   </select>
                   <span id="search-result-count" role="status"></span>
+                  <span
+                    id="search-options-hint"
+                    class="hidden"
+                    data-i18n="searchOptionsPending"
+                    >输入关键词后应用以下搜索条件</span
+                  >
                 </div>
                 <div class="search-filter-group">
                   <select
@@ -886,7 +898,7 @@
                 </p>
                 <div class="empty-state-hints" aria-hidden="true">
                   <span class="empty-hint">
-                    <kbd>⌘/Ctrl K</kbd>
+                    <kbd data-platform-shortcut="K">Ctrl K</kbd>
                     <span data-i18n="keySearch">搜索</span>
                   </span>
                   <span class="empty-hint">
@@ -937,7 +949,7 @@
                     <h2 id="detail-title">-</h2>
                     <div id="detail-tags" class="detail-tags"></div>
                   </div>
-                  <div class="detail-topbar-right">
+                  <div class="detail-topbar-right control-group--compact">
                     <button
                       id="session-favorite-btn"
                       class="ghost-button button--quiet session-favorite-button"
@@ -2115,7 +2127,8 @@
             data-i18n-attr="aria-label"
           >
             <span
-              ><kbd>⌘/Ctrl K</kbd> <span data-i18n="keySearch">搜索</span></span
+              ><kbd data-platform-shortcut="K">Ctrl K</kbd>
+              <span data-i18n="keySearch">搜索</span></span
             >
             <span><kbd>j/k</kbd> <span data-i18n="keyMove">移动</span></span>
             <span
@@ -2389,7 +2402,7 @@
             <h3 data-i18n="shortcutGroupGlobal">全局</h3>
             <dl>
               <div class="shortcut-row">
-                <dt><kbd>⌘/Ctrl K</kbd></dt>
+                <dt><kbd data-platform-shortcut="K">Ctrl K</kbd></dt>
                 <dd data-i18n="shortcutSearchAll">搜索全部会话</dd>
               </div>
               <div class="shortcut-row">
@@ -2397,15 +2410,15 @@
                 <dd data-i18n="shortcutSearchSession">搜索当前会话</dd>
               </div>
               <div class="shortcut-row">
-                <dt><kbd>⌘/Ctrl ,</kbd></dt>
+                <dt><kbd data-platform-shortcut=",">Ctrl ,</kbd></dt>
                 <dd data-i18n="shortcutSettings">打开或关闭设置</dd>
               </div>
               <div class="shortcut-row">
-                <dt><kbd>⌘/Ctrl R</kbd></dt>
+                <dt><kbd data-platform-shortcut="R">Ctrl R</kbd></dt>
                 <dd data-i18n="shortcutRefresh">刷新会话</dd>
               </div>
               <div class="shortcut-row">
-                <dt><kbd>⌘/Ctrl I</kbd></dt>
+                <dt><kbd data-platform-shortcut="I">Ctrl I</kbd></dt>
                 <dd data-i18n="shortcutInspector">打开或关闭信息面板</dd>
               </div>
               <div class="shortcut-row">
@@ -2426,6 +2439,15 @@
             <h3 data-i18n="shortcutGroupList">会话列表</h3>
             <dl>
               <div class="shortcut-row">
+                <dt><kbd>Space</kbd></dt>
+                <dd data-i18n="shortcutBulkToggle">批量模式：勾选当前会话</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>Tab</kbd></dt>
+                <dd data-i18n="shortcutSearchHits">进入当前会话的搜索命中</dd>
+              </div>
+
+              <div class="shortcut-row">
                 <dt><kbd>j/k</kbd> <kbd>↑/↓</kbd></dt>
                 <dd data-i18n="shortcutMove">移动选择</dd>
               </div>
@@ -2434,7 +2456,7 @@
                 <dd data-i18n="shortcutOpen">打开会话</dd>
               </div>
               <div class="shortcut-row">
-                <dt><kbd>L</kbd></dt>
+                <dt><kbd>l</kbd></dt>
                 <dd data-i18n="shortcutLoadMore">加载更多会话</dd>
               </div>
             </dl>
@@ -2443,22 +2465,32 @@
             <h3 data-i18n="shortcutGroupDetail">会话详情</h3>
             <dl>
               <div class="shortcut-row">
-                <dt><kbd>F</kbd></dt>
+                <dt><kbd>n</kbd> / <kbd>Shift+N</kbd></dt>
+                <dd data-i18n="shortcutMessages">下一条 / 上一条用户消息</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>Enter</kbd> / <kbd>Shift+Enter</kbd></dt>
+                <dd data-i18n="shortcutDetailMatches">
+                  会话搜索框：下一处 / 上一处
+                </dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>f</kbd></dt>
                 <dd data-i18n="shortcutFavorite">收藏 / 取消收藏</dd>
               </div>
               <div class="shortcut-row">
-                <dt><kbd>A</kbd></dt>
+                <dt><kbd>a</kbd></dt>
                 <dd data-i18n="shortcutArchive">归档 / 取消归档</dd>
               </div>
               <div class="shortcut-row">
-                <dt><kbd>R</kbd></dt>
+                <dt><kbd>r</kbd></dt>
                 <dd data-i18n="shortcutResume">在终端恢复</dd>
               </div>
             </dl>
           </section>
         </div>
         <p class="shortcuts-hint" data-i18n="shortcutsHint">
-          输入框中仅 ⌘/Ctrl 组合键与 Escape 可用。
+          输入框中不启用单字母快捷键；会话搜索框支持 Enter / Shift+Enter。
         </p>
       </div>
     </dialog>
@@ -2879,6 +2911,23 @@
               </fieldset>
             </section>
             <div class="settings-general-list">
+              <label class="settings-general-row">
+                <div class="settings-general-copy">
+                  <strong data-i18n="settingsConfirmResume"
+                    >快捷键恢复会话前确认</strong
+                  >
+                  <span data-i18n="settingsConfirmResumeHint"
+                    >重新开启后，按 R 恢复会话时会再次询问。</span
+                  >
+                </div>
+                <input
+                  id="settings-confirm-resume"
+                  class="settings-switch"
+                  type="checkbox"
+                  role="switch"
+                  checked
+                />
+              </label>
               <div class="settings-general-row">
                 <div class="settings-general-copy">
                   <label for="settings-language-select" data-i18n="language">

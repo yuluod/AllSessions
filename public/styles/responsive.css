@@ -24,7 +24,9 @@
    带动作或 sticky 的提示不被后来的普通提示顶掉。 */
 .toast-stack {
   position: fixed;
-  bottom: 52px;
+  bottom: calc(var(--status-h) + 0.75rem);
+  max-height: min(40dvh, 20rem);
+  overflow-y: auto;
   left: 50%;
   z-index: var(--z-toast);
   display: flex;
@@ -94,16 +96,46 @@
   background: var(--surface-subtle);
 }
 
-/* 宽屏：放宽会话阅读列，减少两侧空白 */
+/* 宽屏：消息流铺满详情区，角色分居两侧；限宽留在单条消息上。 */
 @media (min-width: 1600px) {
   .detail-body {
-    max-width: 1200px;
+    max-width: none;
+  }
+
+  .conversation-body .conversation-list {
+    max-width: none;
+    margin-inline: 0;
+  }
+
+  .conversation-list > .message-card {
+    max-width: min(100%, var(--conversation-wide-measure));
+  }
+
+  .conversation-list > .message-card[data-role="assistant"] {
+    max-width: min(calc(100% - 36px), var(--conversation-wide-measure));
+  }
+
+  .conversation-list > .message-card[data-role="user"] {
+    max-width: min(calc(100% - 72px), 84%, var(--conversation-wide-measure));
   }
 }
 
-/* 宽屏：消息导航用阅读区浮动目录/进度轨，工具栏下拉退场。 */
-@media (min-width: 1041px) {
+/* 导航按阅读区实际宽度切换，不受两侧栏拖动或屏幕分辨率误导。 */
+@container reading (min-width: 721px) {
   .conversation-toolbar .message-nav-inline {
+    display: none;
+  }
+}
+
+/* 停靠栏收起后释放整列，正文随之扩展。 */
+@media (min-width: 1641px) {
+  .app-layout.inspector-collapsed:not([data-view="stats"]):not(
+      [data-view="tools"]
+    ) {
+    grid-template-columns: var(--list-w) minmax(0, 1fr);
+  }
+
+  .app-layout.inspector-collapsed .props-panel {
     display: none;
   }
 }
@@ -138,8 +170,13 @@
   .props-header .props-close-btn {
     display: inline-flex;
   }
+}
 
-  .message-nav-inline {
+@container reading (max-width: 720px) {
+  .message-outline {
+    display: none;
+  }
+  .conversation-toolbar .message-nav-inline {
     display: block;
   }
 }
@@ -158,7 +195,7 @@
   .session-pane,
   .props-panel,
   .detail-shell {
-    --detail-edge: 12px;
+    --detail-edge: 0.75rem;
   }
 
   .detail-shell,

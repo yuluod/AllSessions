@@ -37,6 +37,8 @@ export function wrapSelectionIndex(index, length, direction) {
  * @returns {{type: string, view?: string, direction?: number} | null}
  */
 export function resolveGlobalShortcut(event, context) {
+  if (event.isComposing || event.keyCode === 229) return null;
+  if (event.altKey || event.getModifierState?.("AltGraph")) return null;
   const { key } = event;
   if (key === "Escape") {
     if (context.dialogOpen) return { type: "close-dialog" };
@@ -44,11 +46,15 @@ export function resolveGlobalShortcut(event, context) {
     return null;
   }
   if (event.metaKey || event.ctrlKey) {
+    if (context.dialogOpen) {
+      return key === "," && context.settingsDialogActive
+        ? { type: "toggle-settings" }
+        : null;
+    }
     const lower = key.toLowerCase();
     if (lower === "k" || lower === "f") return { type: "focus-search" };
     if (key === ",") return { type: "toggle-settings" };
     if (lower === "r") return { type: "refresh" };
-    if (context.dialogOpen) return null;
     if (VIEW_SHORTCUTS[key]) {
       return { type: "switch-view", view: VIEW_SHORTCUTS[key] };
     }
@@ -64,6 +70,10 @@ export function resolveGlobalShortcut(event, context) {
     return { type: "switch-view", view };
   }
 
+  if (key === " " && context.bulkSelection && context.focusedSession)
+    return { type: "toggle-selection" };
+  if (key.toLowerCase() === "n" && !event.altKey)
+    return { type: "move-message", direction: event.shiftKey ? -1 : 1 };
   const moveDown = key === "j" || key === "ArrowDown";
   const moveUp = key === "k" || key === "ArrowUp";
   if (

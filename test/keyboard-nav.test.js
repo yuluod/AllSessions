@@ -15,6 +15,23 @@ const idle = {
   arrowFromList: true,
 };
 
+test("Alt 和 AltGraph 组合不触发裸键操作或应用命令", () => {
+  for (const key of ["f", "a", "r", "l", "j", "k", "n", "1", "/"]) {
+    assert.equal(resolveGlobalShortcut({ key, altKey: true }, idle), null);
+    assert.equal(
+      resolveGlobalShortcut({ key, altKey: true, ctrlKey: true }, idle),
+      null
+    );
+    assert.equal(
+      resolveGlobalShortcut(
+        { key, getModifierState: (name) => name === "AltGraph" },
+        idle
+      ),
+      null
+    );
+  }
+});
+
 test("侧边栏 Tab 支持左右循环与 Home/End 跳转", () => {
   assert.equal(resolveTabIndex("ArrowRight", 2, 3), 0);
   assert.equal(resolveTabIndex("ArrowLeft", 0, 3), 2);
@@ -70,7 +87,7 @@ test("j/k 始终移动选择，方向键只在焦点位于列表时生效", () =
   });
 });
 
-test("输入框或对话框打开时不响应导航快捷键，但保留 Escape 与 Cmd/Ctrl+K", () => {
+test("输入框保留搜索快捷键，弹窗隔离后台导航并保留 Escape", () => {
   const editing = { ...idle, editableTarget: true };
   const dialog = { ...idle, dialogOpen: true };
   for (const key of ["1", "j", "k", "ArrowDown", "Enter"]) {
@@ -83,9 +100,10 @@ test("输入框或对话框打开时不响应导航快捷键，但保留 Escape 
       type: "focus-search",
     }
   );
-  assert.deepEqual(resolveGlobalShortcut({ key: "K", ctrlKey: true }, dialog), {
-    type: "focus-search",
-  });
+  assert.equal(
+    resolveGlobalShortcut({ key: "K", ctrlKey: true }, dialog),
+    null
+  );
   assert.deepEqual(resolveGlobalShortcut({ key: "Escape" }, dialog), {
     type: "close-dialog",
   });
@@ -118,15 +136,21 @@ test("Cmd/Ctrl 组合键触发应用级命令", () => {
   assert.equal(resolveGlobalShortcut({ key: "x", metaKey: true }, idle), null);
 });
 
-test("对话框打开时 Cmd 组合键仅保留设置/刷新/搜索，输入框中禁用检查器", () => {
+test("弹窗中仅设置自身允许快捷键关闭，不穿透到下层设置或工作区", () => {
   const editing = { ...idle, editableTarget: true };
   const dialog = { ...idle, dialogOpen: true };
-  assert.deepEqual(resolveGlobalShortcut({ key: ",", metaKey: true }, dialog), {
-    type: "toggle-settings",
-  });
-  assert.deepEqual(resolveGlobalShortcut({ key: "r", metaKey: true }, dialog), {
-    type: "refresh",
-  });
+  assert.deepEqual(
+    resolveGlobalShortcut(
+      { key: ",", metaKey: true },
+      { ...dialog, settingsDialogActive: true }
+    ),
+    {
+      type: "toggle-settings",
+    }
+  );
+  for (const key of [",", "r", "k", "f"]) {
+    assert.equal(resolveGlobalShortcut({ key, metaKey: true }, dialog), null);
+  }
   assert.equal(
     resolveGlobalShortcut({ key: "1", metaKey: true }, dialog),
     null
@@ -202,4 +226,58 @@ test("可编辑元素选择器覆盖表单控件与 contenteditable", () => {
   ]) {
     assert.ok(EDITABLE_SHORTCUT_SELECTOR.includes(tag));
   }
+});
+
+test("批量模式仅对聚焦会话处理空格，组合输入不触发任何快捷键", () => {
+  const context = {
+    editableTarget: false,
+    dialogOpen: false,
+    inspectorOpen: false,
+    arrowFromList: true,
+    bulkSelection: true,
+    focusedSession: true,
+  };
+  assert.deepEqual(resolveGlobalShortcut({ key: " " }, context), {
+    type: "toggle-selection",
+  });
+  assert.equal(
+    resolveGlobalShortcut({ key: " " }, { ...context, bulkSelection: false }),
+    null
+  );
+  assert.equal(
+    resolveGlobalShortcut({ key: " " }, { ...context, focusedSession: false }),
+    null
+  );
+  assert.equal(
+    resolveGlobalShortcut({ key: " ", isComposing: true }, context),
+    null
+  );
+  assert.equal(
+    resolveGlobalShortcut({ key: "r", keyCode: 229 }, context),
+    null
+  );
+  assert.equal(
+    resolveGlobalShortcut({ key: " " }, { ...context, editableTarget: true }),
+    null
+  );
+  assert.equal(
+    resolveGlobalShortcut({ key: " " }, { ...context, dialogOpen: true }),
+    null
+  );
+});
+
+test("用户消息快捷键支持前后跳转且不干扰编辑", () => {
+  const context = { editableTarget: false, dialogOpen: false };
+  assert.deepEqual(resolveGlobalShortcut({ key: "n" }, context), {
+    type: "move-message",
+    direction: 1,
+  });
+  assert.deepEqual(
+    resolveGlobalShortcut({ key: "N", shiftKey: true }, context),
+    { type: "move-message", direction: -1 }
+  );
+  assert.equal(
+    resolveGlobalShortcut({ key: "n" }, { ...context, editableTarget: true }),
+    null
+  );
 });

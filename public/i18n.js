@@ -4,6 +4,21 @@ const LEGACY_LANG_KEY = "codex_viewer_lang";
 
 const DICT = {
   zh: {
+    searchOptionsPending: "输入关键词后应用以下搜索条件",
+    sessionResultsStale: "更新失败，当前仍为上次结果",
+    sessionResultsRetryHint: "这些结果可能不符合当前条件，请重试。",
+    noSessionsDiscovered: "尚未发现会话",
+    noSessionsDiscoveredHint:
+      "检查来源目录，或在支持的 Agent 中生成一次会话后重新扫描。",
+    noResultsRecovery: "可清空筛选条件后重新查找。",
+    settingsConfirmResume: "快捷键恢复会话前确认",
+    settingsConfirmResumeHint: "重新开启后，按 R 恢复会话时会再次询问。",
+    shortcutBulkToggle: "批量模式：勾选 / 取消当前会话",
+    shortcutSearchHits: "进入当前会话的搜索命中",
+    shortcutMessages: "下一条 / 上一条用户消息",
+    shortcutDetailMatches: "会话搜索框：下一处 / 上一处",
+    localDiscoverySummary: "本机 {name} · {n} 条可见会话",
+
     searchSort: "搜索排序",
     searchIndexing: "全文索引构建中，结果暂不完整",
     indexProgress: "索引 {processed}/{total} · 列表可用，搜索暂不完整",
@@ -84,7 +99,8 @@ const DICT = {
     shortcutResume: "在终端恢复",
     shortcutHelp: "快捷键一览",
     shortcutClose: "关闭弹窗或面板",
-    shortcutsHint: "输入框中仅 ⌘/Ctrl 组合键与 Escape 可用。",
+    shortcutsHint:
+      "输入框中不启用单字母快捷键；会话搜索框支持 Enter / Shift+Enter。",
     toastUndo: "撤销",
     toastShowInFolder: "在文件管理器显示",
     dismissNotice: "关闭提示",
@@ -425,6 +441,7 @@ const DICT = {
     exportPartialNotice:
       "部分内容导出：包含 {n} 条已加载消息；消息、正文或原始事件存在省略，不是完整会话备份。",
     exportLoadedNotice: "已加载内容导出：包含 {n} 条消息。",
+    backendError_detail_changed: "会话正在更新，请稍后重试。",
     backendError_session_read_failed:
       "无法读取会话详情，请重试或在来源设置中检查诊断信息",
     viewCodexArchived: "在会话页查看归档",
@@ -760,6 +777,23 @@ const DICT = {
     settingsOrigin_disabled: "已停用",
   },
   en: {
+    searchOptionsPending: "These search options apply when you enter a query",
+    sessionResultsStale: "Update failed; previous results are still shown",
+    sessionResultsRetryHint:
+      "These results may not match your current filters. Please retry.",
+    noSessionsDiscovered: "No sessions discovered yet",
+    noSessionsDiscoveredHint:
+      "Check your source folders, or create a session in a supported agent and scan again.",
+    noResultsRecovery: "Clear the filters to browse sessions again.",
+    settingsConfirmResume: "Confirm before resuming via keyboard",
+    settingsConfirmResumeHint:
+      "Turn this back on to restore confirmation when resuming with R.",
+    shortcutBulkToggle: "Bulk mode: select / deselect the focused session",
+    shortcutSearchHits: "Reach search hits in the current session",
+    shortcutMessages: "Next / previous user message",
+    shortcutDetailMatches: "In conversation search: next / previous match",
+    localDiscoverySummary: "On this device: {name} · {n} visible sessions",
+
     searchSort: "Search order",
     searchIndexing: "Indexing messages; results are not complete yet",
     indexProgress:
@@ -847,7 +881,7 @@ const DICT = {
     shortcutHelp: "Show keyboard shortcuts",
     shortcutClose: "Close dialog or panel",
     shortcutsHint:
-      "Inside text fields only ⌘/Ctrl combos and Escape are available.",
+      "Single-letter shortcuts are disabled in text fields. Conversation search supports Enter / Shift+Enter.",
     toastUndo: "Undo",
     toastShowInFolder: "Show in folder",
     dismissNotice: "Dismiss",
@@ -1210,6 +1244,8 @@ const DICT = {
     exportPartialNotice:
       "Partial export: {n} loaded messages. Messages, text, or raw events are omitted; this is not a complete session backup.",
     exportLoadedNotice: "Loaded content export: {n} messages.",
+    backendError_detail_changed:
+      "This session is changing. Please try again shortly.",
     backendError_session_read_failed:
       "Unable to read session details. Retry or check diagnostics in source settings",
     viewCodexArchived: "View archives in Sessions",

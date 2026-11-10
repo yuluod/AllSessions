@@ -17,6 +17,8 @@
   --quiet-control-border: transparent;
   --detail-title-size: 1.35rem;
   --conversation-measure: 88ch;
+  --conversation-wide-measure: 112ch;
+  --reading-min-width: 480px;
   --conversation-font-size: 0.9rem;
   --conversation-line-height: 1.85;
   --control-round: 999px;
@@ -44,7 +46,7 @@
   --sidebar-w: var(--list-w);
   --inspector-w: 280px;
   --header-h: 66px;
-  --status-h: 40px;
+  --status-h: 2.5rem;
   --density: 1;
   /* 用户密度档（设置→界面密度）作用于根字号，让 rem 体系整体缩放；
      --density 仍是各主题的排版基线，两者相乘。 */
@@ -141,7 +143,8 @@ kbd {
   scrollbar-color: var(--line-strong) var(--surface-sunken);
 }
 
-.hidden {
+.hidden,
+[hidden] {
   display: none !important;
 }
 

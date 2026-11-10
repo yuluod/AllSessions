@@ -430,7 +430,15 @@ test("超宽桌面使用完整窗口宽度并保留正文阅读宽度", async ()
   assert.doesNotMatch(foundation, /width: min\(2240px, 100%\)/);
   assert.match(
     responsive,
-    /@media \(min-width: 1600px\)[\s\S]*\.detail-body\s*\{[\s\S]*max-width: 1200px/
+    /@media \(min-width: 1600px\)\s*\{\s*\.detail-body\s*\{\s*max-width: none;/
+  );
+  assert.match(
+    responsive,
+    /\.conversation-body \.conversation-list\s*\{\s*max-width: none;\s*margin-inline: 0;/
+  );
+  assert.match(
+    responsive,
+    /\.conversation-list > \.message-card\s*\{\s*max-width: min\(100%, var\(--conversation-wide-measure\)\);/
   );
 });
 
@@ -454,7 +462,7 @@ test("统计页使用紧凑概览层级展示真实事件、趋势和 Agent 分�
   assert.doesNotMatch(source, /agentMetric/);
   assert.match(source, /donut-tokens/);
   assert.match(source, /tokenStops/);
-  assert.match(source, /codex:[\s\S]*label: "Codex"/);
+  assert.match(source, /agentPresentation\(item.label\)/);
   assert.doesNotMatch(source, /stats\.by_source_kind/);
   assert.match(html, /id="agent-chart-body"/);
   assert.match(html, /class="stats-header"/);
@@ -607,7 +615,10 @@ test("会话列表项使用卡片式堆叠信息层级", async () => {
     css,
     /\.session-message-count\s*\{[^}]*grid-column: 2;[^}]*grid-row: 1;[^}]*border-radius: 999px/
   );
-  assert.match(css, /\.session-item\s*\{[^}]*padding: 7px 10px 7px 30px;/);
+  assert.match(
+    css,
+    /\.session-item\s*\{[^}]*padding: 0\.4375rem 0\.625rem 0\.4375rem 1\.875rem;/
+  );
   assert.match(
     css,
     /\.session-list > :nth-child\(odd of \.session-row\) \.session-item,\s*\.session-list > :nth-child\(even of \.session-row\) \.session-item\s*\{[^}]*background: transparent/
@@ -634,7 +645,10 @@ test("会话列表只保留一个 Tab 停靠点，非 option 内容移出 listbo
   // 行容器与辅助控件不抢 Tab 序：roving tabindex 只作用于 .session-item。
   assert.match(html, /class="session-row" role="presentation"/);
   assert.match(html, /class="session-select-checkbox"[^>]*tabindex="-1"/);
-  assert.match(source, /link\.tabIndex = -1/);
+  assert.match(
+    source,
+    /link\.tabIndex = session\._key === state\.selectedSessionKey \? 0 : -1/
+  );
   assert.match(source, /syncSessionRovingTabindex/);
   assert.match(css, /\.session-list-footer:empty\s*\{\s*display: none/);
 });
@@ -651,7 +665,10 @@ test("j/k 连续移动时延迟拉取详情，R 键恢复先经轻量确认", as
   // 裸键 R 触发外部副作用（打开终端），先确认；「不再提示」持久化跳过。
   assert.match(html, /id="resume-confirm-dialog"/);
   assert.match(html, /id="resume-confirm-skip"/);
-  assert.match(source, /allsessions_resume_skip_confirm/);
+  assert.match(
+    await readProjectFile("public/interaction-preferences.js"),
+    /allsessions_resume_skip_confirm/
+  );
   assert.match(source, /requestResumeWithConfirm\(\)/);
   for (const key of [
     "resumeConfirmTitle",
@@ -669,10 +686,11 @@ test("统计图表色跟随主题 token，toast 短堆叠不覆盖带动作提�
   const source = await readProjectFile("public/app.js");
   const responsive = await readProjectFile("public/styles/responsive.css");
 
-  assert.match(stats, /AGENT_COLOR_TOKEN[\s\S]*--src-codex/);
+  assert.match(stats, /themeColor\(base.colorToken\)/);
   assert.match(stats, /getComputedStyle\(document\.documentElement\)/);
-  assert.match(source, /const TOAST_LIMIT = 2/);
-  assert.match(source, /data\.sticky|dataset\.sticky/);
+  const toast = await readProjectFile("public/toast-controller.js");
+  assert.match(toast, /visible.length < 2/);
+  assert.match(toast, /entry.sticky/);
   assert.match(source, /sticky: true/);
   assert.match(responsive, /\.toast-stack\s*\{[\s\S]*position: fixed/);
 });
@@ -928,12 +946,12 @@ test("详情页宽屏使用四栏工作台并在中等宽度回退为信息抽�
     html,
     /id="session-inspector-toggle"[\s\S]*aria-expanded="false"/
   );
-  // aria-hidden 由 setInspectorOpen 按抽屉模式与展开态动态写入，
+  // aria-hidden 由 syncInspectorLayout 按布局与展开态动态写入，
   // 标记层不再携带与初始 display 状态矛盾的静态值。
   assert.doesNotMatch(html, /id="props-panel"[\s\S]{0,120}aria-hidden=/);
   assert.match(
     source,
-    /setAttribute\(\s*"aria-hidden",\s*!drawerLayout \|\| isOpen \? "false" : "true"/
+    /setAttribute\(\s*"aria-hidden",\s*isOpen \? "false" : "true"/
   );
   // 阅读区可聚焦，键盘用户才能滚动会话内容。
   assert.match(html, /class="detail-shell detail-pane"[\s\S]*tabindex="0"/);
@@ -997,7 +1015,7 @@ test("普通对话默认展开，仅收起工具、上下文和超长消息", as
   assert.match(source, /markdownToPlainText\(messageText\)\.length > 1800/);
   assert.match(
     source,
-    /setMessageCardCollapsed\(card, toggleButton, shouldCollapse\)/
+    /collapsedMessages\.get\(card\.dataset\.messageKey\) \?\? shouldCollapse/
   );
 });
 
@@ -1159,7 +1177,7 @@ test("全局搜索按平台显示快捷键并从其他视图返回会话列表",
 
   // 静态占位用跨平台写法，避免启动瞬间在非 Windows 平台闪出 Ctrl K；
   // 运行时由 syncShortcutHints 按平台改写为 ⌘ K 或 Ctrl K。
-  assert.match(html, /id="search-shortcut"[\s\S]*>⌘\/Ctrl K<\/kbd\s*>/);
+  assert.match(html, /id="search-shortcut"[\s\S]*>Ctrl K<\/kbd\s*>/);
   // Cmd/Ctrl+K 到 focus-search 的映射在 keyboard-nav.test.js 中按行为验证
   assert.match(source, /case "focus-search":/);
   assert.match(
@@ -1211,7 +1229,7 @@ test("语言切换会重渲染动态内容而不是只更新静态文案", async
   );
   assert.match(
     source,
-    /createSettingsController\(\{[\s\S]*onLanguageChanged: \(\) => \{[\s\S]*rerenderLocalizedContent\(\);/
+    /initializeControllers\(\{[\s\S]*onLanguageChanged: rerenderLocalizedContent/
   );
 });
 
@@ -1442,11 +1460,7 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
   );
   assert.match(source, /originKey[\s\S]*resolved\.origin/);
   assert.match(source, /t\(`settingsOrigin_\$\{source\.originKey\}`\)/);
-  assert.match(source, /key: "pi", agent: "pi", label: "Pi"/);
-  assert.match(source, /key: "kimi", agent: "kimi", label: "Kimi Code CLI"/);
-  assert.match(source, /key: "opencode", agent: "opencode", label: "OpenCode"/);
-  assert.match(source, /key: "zcode", agent: "zcode", label: "ZCode"/);
-  assert.match(source, /agent: "codex"/);
+  assert.match(source, /SOURCE_DESCRIPTORS as SOURCE_KINDS/);
   assert.match(source, /summarizeSourceSupport\(payload\)/);
   assert.match(source, /key === "opencode"[\s\S]*settingsOpenCodeReadFailed/);
   assert.match(source, /key === "zcode"[\s\S]*settingsZCodeReadFailed/);
@@ -1721,7 +1735,7 @@ test("个人工作台数据独立持久化并提供整理与可选脱敏导出",
   assert.doesNotMatch(html, /id="list-sort-label"/);
   assert.match(
     app,
-    /querySelector\("#search-results-toolbar"\)[\s\S]*?classList\.toggle\("hidden", !isSearchActive\(\)\)/
+    /querySelector\("#search-results-toolbar"\)[\s\S]*?classList\.toggle\(\s*"hidden",\s*!isSearchActive\(\) && !hasSearchOptions\(\)/
   );
   assert.match(
     html,

@@ -14,14 +14,12 @@ const PANES = {
     paneSelector: "#source-rail",
     min: 180,
     max: 400,
-    viewportShare: 0.3,
   },
   list: {
     varName: "--list-w",
     paneSelector: ".session-pane",
     min: 320,
     max: 760,
-    viewportShare: 0.55,
   },
 };
 
@@ -38,10 +36,7 @@ function clampWidth(pane, value) {
   const config = PANES[pane];
   const width = Number(value);
   if (!Number.isFinite(width)) return null;
-  const viewportMax = Math.round(window.innerWidth * config.viewportShare);
-  const max = Math.min(config.max, viewportMax);
-  if (max <= config.min) return config.min;
-  return Math.min(max, Math.max(config.min, Math.round(width)));
+  return Math.min(config.max, Math.max(config.min, Math.round(width)));
 }
 
 function readStoredWidths() {
@@ -66,30 +61,71 @@ function persistWidths() {
   }
 }
 
-function applyPaneWidths() {
+// 宽度偏好保留原值，窗口变窄时只约束实际宽度，重新放大即可恢复。
+export function fitPaneWidths({ rail, list, budget, railCollapsed = false }) {
+  const railMin = railCollapsed ? rail : PANES.rail.min;
+  const listMin = PANES.list.min;
+  const excess = Math.max(0, rail + list - budget);
+  const flexible = rail - railMin + list - listMin;
+  const ratio = flexible > 0 ? Math.min(1, excess / flexible) : 0;
+  return {
+    rail: Math.floor(rail - (rail - railMin) * ratio),
+    list: Math.floor(list - (list - listMin) * ratio),
+  };
+}
+
+export function syncPaneLayout() {
   const root = document?.documentElement;
   if (!root) return;
   const compact = compactQuery?.matches === true;
+  for (const config of Object.values(PANES))
+    root.style.removeProperty(config.varName);
+  if (compact) return;
+  const collapsed = railShell()?.classList.contains("rail-collapsed") === true;
+  const inspectorOpen = !document
+    .querySelector(".app-layout")
+    ?.classList.contains("inspector-collapsed");
+  const css =
+    typeof getComputedStyle === "function" ? getComputedStyle(root) : null;
+  const pixels = (name, fallback) =>
+    parseFloat(css?.getPropertyValue(name)) || fallback;
+  const viewport = window.innerWidth || 1920;
+  const inspector =
+    viewport > 1640 && inspectorOpen ? pixels("--inspector-w", 280) : 0;
+  const widths = fitPaneWidths({
+    rail: collapsed
+      ? pixels("--rail-collapsed-w", 56)
+      : storedWidths.rail || currentPaneWidth("rail") || 260,
+    list:
+      storedWidths.list ||
+      currentPaneWidth("list") ||
+      Math.min(500, Math.max(400, viewport * 0.32)),
+    budget: viewport - inspector - pixels("--reading-min-width", 480) - 40,
+    railCollapsed: collapsed,
+  });
   for (const [pane, config] of Object.entries(PANES)) {
-    const width = storedWidths[pane];
-    if (compact || !width) {
-      root.style.removeProperty(config.varName);
-    } else {
-      root.style.setProperty(config.varName, `${width}px`);
-    }
+    if (pane === "rail" && collapsed) continue;
+    root.style.setProperty(config.varName, `${widths[pane]}px`);
   }
+  document.querySelectorAll("[data-pane-resizer]").forEach((handle) => {
+    const pane = handle.dataset.paneResizer;
+    if (!PANES[pane]) return;
+    handle.setAttribute("aria-valuemin", String(PANES[pane].min));
+    handle.setAttribute("aria-valuemax", String(PANES[pane].max));
+    handle.setAttribute("aria-valuenow", String(widths[pane]));
+  });
 }
 
 function setPaneWidth(pane, width) {
   const clamped = clampWidth(pane, width);
   if (!clamped) return;
   storedWidths[pane] = clamped;
-  applyPaneWidths();
+  syncPaneLayout();
 }
 
 function resetPaneWidth(pane) {
   delete storedWidths[pane];
-  applyPaneWidths();
+  syncPaneLayout();
   persistWidths();
 }
 
@@ -193,6 +229,7 @@ function applyRailCollapse() {
     railCollapsed && railCollapseQuery?.matches !== true
   );
   syncRailToggle();
+  syncPaneLayout();
 }
 
 function readRailCollapsed() {
@@ -212,13 +249,14 @@ function bindRailToggle() {
 export function initPaneLayout() {
   if (typeof window?.matchMedia === "function") {
     compactQuery = window.matchMedia(COMPACT_LAYOUT_QUERY);
-    compactQuery.addEventListener("change", applyPaneWidths);
+    compactQuery.addEventListener("change", syncPaneLayout);
     railCollapseQuery = window.matchMedia(RAIL_COLLAPSE_DISABLED_QUERY);
     railCollapseQuery.addEventListener("change", applyRailCollapse);
   }
   storedWidths = readStoredWidths();
-  applyPaneWidths();
+  syncPaneLayout();
   bindPaneResizers();
   setRailCollapsed(readRailCollapsed(), { persist: false });
   bindRailToggle();
+  window.addEventListener?.("resize", syncPaneLayout);
 }

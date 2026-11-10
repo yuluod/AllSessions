@@ -1620,8 +1620,8 @@ body.is-resizing {
 
 /* 会话详情 */
 .detail-shell {
-  --detail-edge: 16px;
-  padding: 16px 20px;
+  --detail-edge: 1rem;
+  padding: var(--detail-edge) 1.25rem;
   border-left: 1px solid var(--line);
 }
 
@@ -1997,7 +1997,7 @@ body.is-resizing {
 }
 
 .inspector-toggle {
-  display: none;
+  display: inline-flex;
 }
 
 .session-delete-button {
@@ -2008,40 +2008,6 @@ body.is-resizing {
 .session-delete-button:hover {
   border-color: var(--signal);
   background: var(--signal-soft);
-}
-
-.tabs,
-.role-filter {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-small);
-  background: var(--surface-muted);
-}
-
-.tab-button,
-.role-filter-btn {
-  min-height: 30px;
-  padding: 5px 8px;
-  border-color: transparent;
-  color: var(--muted);
-  background: transparent;
-  font-size: 0.72rem;
-}
-
-.tab-button:hover,
-.role-filter-btn:hover {
-  border-color: transparent;
-  color: var(--text-secondary);
-  background: var(--surface-raised);
-}
-
-.tab-button.active,
-.role-filter-btn.active {
-  border-color: var(--line);
-  color: var(--accent-strong);
-  background: var(--surface);
 }
 
 .export-actions .ghost-button {
@@ -3614,7 +3580,7 @@ body.is-resizing {
 }
 
 .props-header .props-close-btn {
-  display: none;
+  display: inline-grid;
 }
 
 .props-content {
@@ -4127,7 +4093,7 @@ body.is-resizing {
   align-content: center;
   gap: 6px 8px;
   min-height: calc(62px * var(--density) * var(--density-scale));
-  padding: 7px 10px 7px 30px;
+  padding: 0.4375rem 0.625rem 0.4375rem 1.875rem;
   border: 0;
   border-radius: var(--radius);
   overflow: hidden;
@@ -4358,6 +4324,7 @@ body.is-resizing {
 
 .detail-shell {
   min-height: 0;
+  container: reading / inline-size;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -4385,7 +4352,7 @@ body.is-resizing {
   /* 固定高度（不随主题字体行高变化），与侧栏底栏共用同一令牌保持上边线齐平。 */
   height: var(--status-h);
   min-height: var(--status-h);
-  padding: 0 9px;
+  padding: 0 0.5625rem;
   border: 1px solid var(--line);
   border-radius: 0;
   color: var(--text-secondary);

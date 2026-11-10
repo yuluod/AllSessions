@@ -1,26 +1,8 @@
 // 来源栏状态：按按钮对应的来源计算选中态与计数。
 // kinds 同时列出后端归一键与会话侧原始 source_kind（如 claude_code、
 // codex_archived、vscode_copilot），避免再靠散落的特判做 kind→agent 映射。
-export const SOURCE_RAIL_AGENTS = [
-  { agent: "codex", kinds: ["codex", "codex_archived"] },
-  { agent: "claude", kinds: ["claude", "claude_code"] },
-  { agent: "claude_cowork", kinds: ["claude_cowork"] },
-  { agent: "gemini", kinds: ["gemini"] },
-  { agent: "grok", kinds: ["grok"] },
-  { agent: "pi", kinds: ["pi"] },
-  { agent: "omp", kinds: ["omp"] },
-  { agent: "kimi", kinds: ["kimi"] },
-  { agent: "opencode", kinds: ["opencode"] },
-  { agent: "kilo", kinds: ["kilo"] },
-  { agent: "zcode", kinds: ["zcode"] },
-  { agent: "cursor", kinds: ["cursor"] },
-  { agent: "devin", kinds: ["devin"] },
-  { agent: "copilot", kinds: ["copilot", "vscode_copilot"] },
-  { agent: "hermes", kinds: ["hermes"] },
-  { agent: "deepseek", kinds: ["deepseek"] },
-  { agent: "jetbrains_air", kinds: ["jetbrains_air"] },
-  { agent: "workbuddy", kinds: ["workbuddy"] },
-];
+import { SOURCE_RAIL_AGENTS } from "./source-descriptors.js";
+export { SOURCE_RAIL_AGENTS } from "./source-descriptors.js";
 
 export function sourceAgentForKind(sourceKind) {
   if (!sourceKind) return "all";

@@ -53,8 +53,51 @@ globalThis.document = {
   },
 };
 
-const { initPaneLayout, setRailCollapsed } =
+const { initPaneLayout, setRailCollapsed, fitPaneWidths, syncPaneLayout } =
   await import("../public/pane-layout.js");
+
+test("拖宽两侧栏时联合保留正文空间，放大窗口恢复原始偏好", () => {
+  const preferred = { rail: 400, list: 760 };
+  const fitted = fitPaneWidths({ ...preferred, budget: 900 });
+  assert.ok(fitted.rail + fitted.list <= 900);
+  assert.ok(fitted.rail >= 180);
+  assert.ok(fitted.list >= 320);
+  assert.deepEqual(fitPaneWidths({ ...preferred, budget: 2000 }), preferred);
+  const collapsed = fitPaneWidths({
+    rail: 56,
+    list: 760,
+    budget: 700,
+    railCollapsed: true,
+  });
+  assert.equal(collapsed.rail, 56);
+  assert.equal(collapsed.list, 644);
+});
+
+test("小窗口启动不会裁掉已保存栏宽，放大后恢复完整偏好", () => {
+  const values = new Map();
+  globalThis.document.documentElement.style = {
+    setProperty: (key, value) => values.set(key, value),
+    removeProperty: (key) => values.delete(key),
+  };
+  storage.set(
+    "allsessions_pane_widths",
+    JSON.stringify({ rail: 400, list: 760 })
+  );
+  storage.set("allsessions_source_rail_collapsed", "false");
+  globalThis.window.innerWidth = 1100;
+  initPaneLayout();
+  assert.ok(
+    parseInt(values.get("--rail-w")) + parseInt(values.get("--list-w")) <= 580
+  );
+  globalThis.window.innerWidth = 2400;
+  syncPaneLayout();
+  assert.equal(values.get("--rail-w"), "400px");
+  assert.equal(values.get("--list-w"), "760px");
+  assert.deepEqual(JSON.parse(storage.get("allsessions_pane_widths")), {
+    rail: 400,
+    list: 760,
+  });
+});
 
 test("侧栏收起状态持久化并同步无障碍标签", () => {
   storage.set("allsessions_source_rail_collapsed", "true");

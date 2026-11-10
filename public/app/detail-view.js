@@ -1,5 +1,6 @@
 // 详情视图:标签行、属性面板、信息抽屉、原始事件与详情占位。
 import { t } from "../i18n.js";
+import { syncPaneLayout } from "../pane-layout.js";
 import { roleCounts } from "../conversation-filter.js";
 import { modelUsage } from "../session-insights.js";
 import {
@@ -339,24 +340,44 @@ export function setPropsPlaceholder(message) {
   elements.propsContent.replaceChildren(placeholder);
 }
 
+// 停靠栏默认展开，浮动抽屉默认关闭；两种布局的选择互不覆盖。
+let dockedInspectorOpen = true;
+let drawerInspectorOpen = false;
+
 export function setInspectorOpen(open) {
-  const panel = elements.propsContent?.closest(".props-panel");
-  const drawerLayout = window.matchMedia(INSPECTOR_DRAWER_QUERY).matches;
-  const isOpen = Boolean(drawerLayout && open && state.currentDetail);
-  panel?.classList.toggle("is-open", isOpen);
-  panel?.setAttribute(
-    "aria-hidden",
-    !drawerLayout || isOpen ? "false" : "true"
-  );
-  elements.sessionInspectorToggle?.setAttribute(
-    "aria-expanded",
-    isOpen ? "true" : "false"
-  );
+  if (window.matchMedia(INSPECTOR_DRAWER_QUERY).matches) {
+    drawerInspectorOpen = Boolean(open && state.currentDetail);
+  } else {
+    dockedInspectorOpen = Boolean(open);
+  }
+  syncInspectorLayout();
+}
+
+export function closeInspectorDrawer() {
+  drawerInspectorOpen = false;
+  syncInspectorLayout();
 }
 
 export function syncInspectorLayout() {
   const panel = elements.propsContent?.closest(".props-panel");
-  setInspectorOpen(panel?.classList.contains("is-open") === true);
+  const drawerLayout = window.matchMedia(INSPECTOR_DRAWER_QUERY).matches;
+  const isOpen = drawerLayout
+    ? Boolean(drawerInspectorOpen && state.currentDetail)
+    : dockedInspectorOpen;
+  panel?.classList.toggle("is-open", isOpen);
+  panel?.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  elements.appLayout?.classList.toggle(
+    "inspector-collapsed",
+    !dockedInspectorOpen
+  );
+  syncPaneLayout();
+  elements.sessionInspectorToggle?.setAttribute(
+    "aria-expanded",
+    isOpen ? "true" : "false"
+  );
+  if (!isOpen && panel?.contains(document.activeElement)) {
+    elements.sessionInspectorToggle?.focus();
+  }
 }
 
 export function syncRoleFilterButtons() {
@@ -383,7 +404,13 @@ export function setRawEventCardCollapsed(card, toggleButton, collapsed) {
   toggleButton.setAttribute("aria-label", label);
 }
 
+let pendingRawEvents = [];
+let rawEventsDirty = false;
 export function renderRawEvents(events) {
+  pendingRawEvents = events;
+  rawEventsDirty = true;
+  if (state.activeTab !== "raw") return;
+  rawEventsDirty = false;
   elements.rawEvents.innerHTML = "";
 
   if (!events.length) {
@@ -430,6 +457,7 @@ export function updateTabs() {
     button.tabIndex = isActive ? 0 : -1;
   });
   const conversationActive = state.activeTab === "conversation";
+  if (!conversationActive && rawEventsDirty) renderRawEvents(pendingRawEvents);
   elements.conversationTab.classList.toggle("hidden", !conversationActive);
   elements.conversationTab.setAttribute(
     "aria-hidden",

@@ -55,6 +55,36 @@ export function isAbortError(error) {
   return error instanceof Error && error.name === "AbortError";
 }
 
+// 同一轮刷新共享 Promise；执行中收到变更最多补一轮，不并发重查。
+export function createRefreshCoordinator(run) {
+  let active = null;
+  let pending = new Set();
+  return function refresh(scopes = []) {
+    scopes.forEach((scope) => pending.add(scope));
+    if (!active) {
+      active = Promise.resolve()
+        .then(async () => {
+          let failure;
+          while (pending.size) {
+            const batch = pending;
+            pending = new Set();
+            try {
+              await run(batch);
+            } catch (error) {
+              failure = error;
+            }
+          }
+          if (failure) throw failure;
+        })
+        .finally(() => {
+          active = null;
+          if (pending.size) return refresh([]);
+        });
+    }
+    return active;
+  };
+}
+
 export async function mapWithConcurrency(values, concurrency, mapper) {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new RangeError("concurrency 必须是正整数");

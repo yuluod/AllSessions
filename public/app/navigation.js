@@ -1,5 +1,6 @@
 // 视图导航与键盘操作:工作区切换、返回首页、列表键盘导航与手动刷新。
 import { t } from "../i18n.js";
+import { closeFocusedDialog } from "../ui-components.js";
 import {
   EDITABLE_SHORTCUT_SELECTOR,
   wrapSelectionIndex,
@@ -21,13 +22,15 @@ import {
   syncFilterControls,
   syncUrl,
 } from "./filters.js";
-import { setInspectorOpen, setPropsPlaceholder } from "./detail-view.js";
+import { closeInspectorDrawer, setPropsPlaceholder } from "./detail-view.js";
 import {
   loadFacets,
   loadSessions,
   loadStats,
+  renderCurrentStats,
   loadStatsSessions,
   loadWorkspaceDiagnostics,
+  refreshWorkspace,
 } from "./data.js";
 import { selectSession } from "./session-list.js";
 import { renderWorkspaceStatus } from "./status.js";
@@ -41,11 +44,11 @@ export async function returnHome() {
   state.detailQuery = "";
   state.roleFilter = "";
   setPropsPlaceholder(t("selectSession"));
-  setInspectorOpen(false);
+  closeInspectorDrawer();
   syncFilterControls();
   syncUrl();
   await activateWorkspaceView("list");
-  await Promise.all([loadSessions(), loadStats()]);
+  await refreshWorkspace(["query", "stats"]);
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
@@ -110,12 +113,19 @@ export async function activateWorkspaceView(panel) {
     "#codex-rollback-dashboard"
   );
   const isList = panel === "list";
-  if (!isList) setInspectorOpen(false);
+  if (!isList) closeInspectorDrawer();
   codexRollbackDashboard?.classList.add("hidden");
   renderActiveFilters();
   renderWorkspaceStatus();
-  if (panel === "stats" && !state.statsSessions && !state.statsSessionsLoading)
-    void loadStatsSessions();
+  if (isList && state.sessionsDirty) await loadSessions({ background: true });
+  if (panel === "stats") {
+    if (state.statsDirty || !state.stats) void loadStats();
+    else {
+      renderCurrentStats();
+      if (!state.statsSessions && !state.statsSessionsLoading)
+        void loadStatsSessions();
+    }
+  }
 }
 export function isEditableShortcutTarget(target) {
   if (!(target instanceof Element)) return false;
@@ -164,12 +174,7 @@ export async function refreshSessions() {
 }
 
 export function closeTopDialogFromKeyboard() {
-  const dialogs = Array.from(document.querySelectorAll("dialog[open]"));
-  const dialog = dialogs.at(-1);
-  if (!dialog) return false;
-  const cancelEvent = new Event("cancel", { cancelable: true });
-  if (dialog.dispatchEvent(cancelEvent)) dialog.close();
-  return true;
+  return closeFocusedDialog();
 }
 
 export function openFocusedSession() {

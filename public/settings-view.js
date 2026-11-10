@@ -1,3 +1,9 @@
+import { SOURCE_DESCRIPTORS as SOURCE_KINDS } from "./source-descriptors.js";
+import { performanceSnapshot } from "./performance-metrics.js";
+import {
+  shouldConfirmResume,
+  setConfirmResume,
+} from "./interaction-preferences.js";
 import { t, getLang, setLang, translateBackendError } from "./i18n.js";
 import {
   DESKTOP_RUNTIME_REQUIRED,
@@ -15,29 +21,6 @@ import {
 } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createIcon } from "./app/icons.js";
-
-const SOURCE_KINDS = [
-  { key: "codex", agent: "codex", label: "Codex" },
-  { key: "codex_archived", agent: "codex", label: "Codex Archived" },
-  { key: "claude", agent: "claude", label: "Claude Code" },
-  { key: "claude_cowork", agent: "claude", label: "Claude Cowork" },
-  { key: "gemini", agent: "gemini", label: "Gemini CLI" },
-  { key: "grok", agent: "grok", label: "Grok Build" },
-  { key: "pi", agent: "pi", label: "Pi" },
-  { key: "omp", agent: "omp", label: "Oh My Pi" },
-  { key: "kimi", agent: "kimi", label: "Kimi Code CLI" },
-  { key: "opencode", agent: "opencode", label: "OpenCode" },
-  { key: "kilo", agent: "kilo", label: "Kilo" },
-  { key: "zcode", agent: "zcode", label: "ZCode" },
-  { key: "cursor", agent: "cursor", label: "Cursor" },
-  { key: "devin", agent: "devin", label: "Devin" },
-  { key: "copilot", agent: "copilot", label: "GitHub Copilot" },
-  { key: "hermes", agent: "hermes", label: "Hermes Agent" },
-  { key: "vscode_copilot", agent: "copilot", label: "VS Code Copilot Chat" },
-  { key: "deepseek", agent: "deepseek", label: "DeepSeek Harness" },
-  { key: "jetbrains_air", agent: "jetbrains_air", label: "JetBrains Air" },
-  { key: "workbuddy", agent: "workbuddy", label: "WorkBuddy" },
-];
 
 export function summarizeSourceSupport(payload) {
   const supported = new Set(SOURCE_KINDS.map(({ agent }) => agent)).size;
@@ -206,6 +189,8 @@ export function createSettingsController({
   }
 
   function syncAppearance() {
+    const confirmResume = elements.settingsConfirmResume;
+    if (confirmResume) confirmResume.checked = shouldConfirmResume();
     const state = getThemeState();
     elements.settingsThemeInputs?.forEach((input) => {
       input.checked = input.value === state.theme;
@@ -488,7 +473,8 @@ export function createSettingsController({
   function openSourceConfigDialog(payload, key, label) {
     if (!sourceConfigDialogEl || !sourceConfigDialogEl.isConnected) {
       sourceConfigDialogEl = document.createElement("dialog");
-      sourceConfigDialogEl.className = "delete-dialog settings-source-dialog";
+      sourceConfigDialogEl.className =
+        "delete-dialog settings-source-dialog control-group--compact";
       sourceConfigDialogEl.setAttribute(
         "aria-labelledby",
         "settings-source-dialog-title"
@@ -983,6 +969,7 @@ export function createSettingsController({
     );
     const diagnostic = {
       app: "AllSessions",
+      ui_performance: performanceSnapshot(),
       version: latestPayload.version,
       platform: navigator.platform || "unknown",
       language: getLang(),
@@ -1154,6 +1141,14 @@ export function createSettingsController({
   }
 
   function bind() {
+    elements.settingsConfirmResume?.addEventListener("change", (event) => {
+      try {
+        setConfirmResume(event.target.checked);
+      } catch {
+        event.target.checked = shouldConfirmResume();
+        setStatus(t("workspaceSaveFailed"), true);
+      }
+    });
     elements.settingsToggle?.addEventListener("click", () => open());
     elements.settingsCloseBtn?.addEventListener("click", close);
     dialog()?.addEventListener("cancel", (event) => {

@@ -1,4 +1,6 @@
 // 共享状态与工具:常量、state/elements 快照、请求门闩、来源标签与全局提示。
+import { createToastController } from "../toast-controller.js";
+import { createIcon } from "./icons.js";
 import { t, translateBackendError } from "../i18n.js";
 import { fetchJson as requestJson } from "../api-client.js";
 import { createLatestRequestGate } from "../async-coordinator.js";
@@ -23,11 +25,14 @@ export const state = {
   diagnostics: null,
   facets: null,
   stats: null,
+  statsDirty: true,
+  sessionsTotal: null,
   statsSessions: null,
   statsSessionsSort: "recent",
   statsSessionsLoading: false,
   statsSessionsError: null,
   sessions: [],
+  sessionsDirty: false,
   scanning: false,
   selectedSessionKey: null,
   activeTab: "conversation",
@@ -56,6 +61,8 @@ export const state = {
   conversationDesc: false,
   activeView: "list",
   lastSessionError: null,
+  sessionsLoading: false,
+  searchTotal: null,
   workspaceLoadError: null,
   recoverySettingsOpened: false,
   tauriEventsBound: false,
@@ -82,6 +89,16 @@ export const state = {
 export function isSearchActive() {
   return Boolean(
     state.searchQuery || state.searchExactTool || state.searchCommand
+  );
+}
+
+export function hasSearchOptions() {
+  return Boolean(
+    state.searchRole ||
+    state.searchTool ||
+    state.searchRegex ||
+    state.searchFrom ||
+    state.searchTo
   );
 }
 
@@ -265,6 +282,7 @@ export const elements = {
   settingsAppIconInputs: Array.from(
     document.querySelectorAll('[name="settings-app-icon"]')
   ),
+  settingsConfirmResume: document.querySelector("#settings-confirm-resume"),
   settingsTerminalApp: document.querySelector("#settings-terminal-app"),
   settingsTerminalCustomPick: document.querySelector(
     "#settings-terminal-custom-pick"
@@ -404,71 +422,11 @@ function buildDismissButton(onDismiss) {
   return button;
 }
 
-const TOAST_LIMIT = 2;
-const toastTimers = new WeakMap();
-
-function toastStack() {
-  let stack = document.querySelector("#toast-stack");
-  if (!stack) {
-    stack = document.createElement("div");
-    stack.id = "toast-stack";
-    stack.className = "toast-stack";
-    document.querySelector(".page-shell")?.append(stack);
-  }
-  return stack;
-}
-
-function dismissToast(toast) {
-  if (!toast) return;
-  clearTimeout(toastTimers.get(toast));
-  toastTimers.delete(toast);
-  toast.remove();
-}
-
-// 可见的操作结果提示：与 #aria-live 对偶，面向有视用户；
-// 可携带一个动作按钮（撤销、显示备份目录），带动作的提示驻留更久。
-// 多条提示短堆叠（最多 2 条）：带动作或 sticky 的提示不会被后来的普通
-// 提示顶掉；sticky 提示（如备份路径）只手动关闭，供事后回查。
-export function showToast(
-  message,
-  { actionLabel, onAction, duration, sticky = false } = {}
-) {
-  const stack = toastStack();
-  while (stack.children.length >= TOAST_LIMIT) {
-    const disposable = Array.from(stack.children).find(
-      (item) => !item.dataset.sticky && !item.dataset.action
-    );
-    dismissToast(disposable || stack.firstElementChild);
-  }
-  const toast = document.createElement("div");
-  toast.className = "app-toast";
-  const text = document.createElement("span");
-  text.className = "app-toast-text";
-  text.textContent = message;
-  toast.append(text);
-  if (actionLabel && typeof onAction === "function") {
-    toast.dataset.action = "1";
-    const action = document.createElement("button");
-    action.type = "button";
-    action.className = "app-toast-action";
-    action.textContent = actionLabel;
-    action.addEventListener("click", () => {
-      dismissToast(toast);
-      onAction();
-    });
-    toast.append(action);
-  }
-  toast.append(buildDismissButton(() => dismissToast(toast)));
-  stack.append(toast);
-  if (sticky) {
-    toast.dataset.sticky = "1";
-    return;
-  }
-  toastTimers.set(
-    toast,
-    setTimeout(() => dismissToast(toast), duration ?? (onAction ? 12000 : 4500))
-  );
-}
+export const showToast = createToastController({
+  document,
+  dismissLabel: () => t("dismissNotice"),
+  createDismissIcon: () => createIcon("x", { size: 12 }),
+});
 
 export function announce(message, options) {
   const ariaLive = document.querySelector("#aria-live");

@@ -1,6 +1,13 @@
 // 数据加载:会话列表/详情/统计/ facets/诊断与索引进度轮询。
 import { t } from "../i18n.js";
-import { isAbortError, nextPaint } from "../async-coordinator.js";
+import {
+  isAbortError,
+  nextPaint,
+  createRefreshCoordinator,
+  createLatestRequestGate,
+} from "../async-coordinator.js";
+import { applySessionPage, invalidateQuery } from "../workspace-state.js";
+import { recordMetric } from "../performance-metrics.js";
 import { createIndexProgressPoller } from "../index-progress.js";
 import { renderStats } from "../stats-view.js";
 import { renderStatsSessionList } from "../stats-session-list.js";
@@ -10,6 +17,7 @@ import {
   elements,
   fetchJson,
   isSearchActive,
+  hasSearchOptions,
   scrollToWorkspaceSection,
   sessionRequestGate,
   showError,
@@ -34,6 +42,7 @@ import {
   appendLoadedSessions,
   renderSessionList,
   updateSessionCount,
+  renderSessionListFooter,
 } from "./session-list.js";
 import { conversationView, maintenanceController } from "./controllers.js";
 import {
@@ -58,18 +67,6 @@ export async function loadSessionDetail(
   { silent = false, initial = false, live = false } = {}
 ) {
   const request = detailRequestGate.begin();
-  // 实时刷新前先记录滚动状态：在底部则跟随新内容，否则保持原阅读位置。
-  const scroller = live
-    ? elements.conversationList?.closest(".detail-shell")
-    : null;
-  const liveScroll = scroller
-    ? {
-        top: scroller.scrollTop,
-        atBottom:
-          scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <
-          80,
-      }
-    : null;
   try {
     const around =
       isSearchActive() && state.selectedSearchHit?.sessionKey === id
@@ -88,9 +85,24 @@ export async function loadSessionDetail(
     // 本地 IPC 常在一帧内返回，先让列表高亮与加载占位绘制出来，再做重渲染。
     await nextPaint();
     if (!request.isCurrent() || state.selectedSessionKey !== id) return false;
+    // 请求期间用户仍可能滚动；仅在替换内容前记录最新阅读位置。
+    const scroller = live
+      ? elements.conversationList?.closest(".detail-shell")
+      : null;
+    const liveScroll = scroller
+      ? {
+          top: scroller.scrollTop,
+          atBottom:
+            !state.conversationDesc &&
+            scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <
+              80,
+        }
+      : null;
     state.currentDetail = detail;
-    state.roleFilter = "";
-    state.detailQuery = state.searchQuery;
+    if (!live) {
+      state.roleFilter = "";
+      state.detailQuery = state.searchQuery;
+    }
     if (elements.detailSearchInput) {
       elements.detailSearchInput.value = state.detailQuery;
     }
@@ -112,7 +124,8 @@ export async function loadSessionDetail(
     syncSessionArchiveButton();
     syncSessionDeleteButton();
     renderPropsPanel(detail.summary);
-    conversationView.renderConversation(detail.conversation_messages);
+    await conversationView.renderConversation(detail.conversation_messages);
+    if (!request.isCurrent() || state.selectedSessionKey !== id) return false;
     document
       .querySelector("#search-full-session")
       ?.classList.toggle("hidden", !detail.search_context);
@@ -137,8 +150,14 @@ export async function loadSessionDetail(
         card.querySelector(".message-toggle")?.click();
       target?.scrollIntoView({ block: "center" });
     }
-    if (liveScroll && scroller) {
+    if (liveScroll && scroller && scroller.scrollTop === liveScroll.top) {
       requestAnimationFrame(() => {
+        if (
+          !request.isCurrent() ||
+          state.selectedSessionKey !== id ||
+          scroller.scrollTop !== liveScroll.top
+        )
+          return;
         scroller.scrollTop = liveScroll.atBottom
           ? scroller.scrollHeight
           : Math.min(liveScroll.top, scroller.scrollHeight);
@@ -150,6 +169,7 @@ export async function loadSessionDetail(
     // 但移动端首屏应停留在列表，只有用户后续的详情切换才滚过去。
     if (
       !initial &&
+      !live &&
       state._initialized &&
       window.matchMedia(MOBILE_LAYOUT_QUERY).matches
     ) {
@@ -189,23 +209,24 @@ export async function loadSessions({
   background = false,
 } = {}) {
   const request = sessionRequestGate.begin();
-  detailRequestGate.cancel();
+  if (!background) invalidateQuery(state);
+  if (!background) detailRequestGate.cancel();
   state.lastSessionError = null;
+  state.sessionsLoading = true;
+  syncFilterControls();
+  renderSessionListFooter();
   try {
     let data;
     if (isSearchActive()) {
       data = await fetchJson(buildSearchUrl(), { signal: request.signal });
       if (!request.isCurrent()) return false;
-      state.sessions = data.sessions;
-      state.hasMore = data.has_more;
-      state.nextCursor = data.next_cursor;
     } else {
       data = await fetchJson(buildSessionsUrl(), { signal: request.signal });
       if (!request.isCurrent()) return false;
-      state.sessions = data.sessions;
-      state.hasMore = data.has_more;
-      state.nextCursor = data.next_cursor;
     }
+    state.sessionsLoading = false;
+    state.sessionsDirty = false;
+    applySessionPage(state, data, isSearchActive());
     if (data.session_roots) {
       state.facets = { ...state.facets, session_roots: data.session_roots };
     }
@@ -215,7 +236,7 @@ export async function loadSessions({
       ?.classList.toggle("hidden", !isSearchActive());
     document
       .querySelector("#search-results-toolbar")
-      ?.classList.toggle("hidden", !isSearchActive());
+      ?.classList.toggle("hidden", !isSearchActive() && !hasSearchOptions());
     const searchCount = document.querySelector("#search-result-count");
     if (searchCount)
       searchCount.textContent = isSearchActive()
@@ -260,42 +281,51 @@ export async function loadSessions({
       // 在后台完成，失败回退逻辑在调度时快照初始化状态。
       const restoreKey = state.selectedSessionKey;
       const initializing = !state._initialized;
-      void (async () => {
-        const loaded = await loadSessionDetail(restoreKey, {
-          silent: keepingOffscreenSelection,
-          initial: initializing,
-        });
-        if (
-          keepingOffscreenSelection &&
-          !loaded &&
-          request.isCurrent() &&
-          // 加载期间用户手动选择了其他会话时不回退
-          state.selectedSessionKey === restoreKey
-        ) {
-          if (initializing) {
-            // 初始化恢复的分享链接已失效：静默回退为默认选中第一个
-            state.selectedSessionKey = null;
-            const first = visibleSessions()[0];
-            if (first) {
-              state.selectedSessionKey = first._key;
-              elements.sessionList
-                .querySelectorAll(".session-item")
-                .forEach((el) => {
-                  el.classList.toggle(
-                    "active",
-                    el.dataset.sessionKey === first._key
-                  );
-                });
-              await loadSessionDetail(first._key, { initial: initializing });
+      if (
+        background &&
+        !keepingOffscreenSelection &&
+        state.currentDetail?.summary?._key === restoreKey
+      ) {
+        await refreshOpenDetailIfChanged();
+      } else
+        void (async () => {
+          const loaded = await loadSessionDetail(restoreKey, {
+            silent: keepingOffscreenSelection,
+            initial: initializing,
+            live:
+              background && state.currentDetail?.summary?._key === restoreKey,
+          });
+          if (
+            keepingOffscreenSelection &&
+            !loaded &&
+            request.isCurrent() &&
+            // 加载期间用户手动选择了其他会话时不回退
+            state.selectedSessionKey === restoreKey
+          ) {
+            if (initializing) {
+              // 初始化恢复的分享链接已失效：静默回退为默认选中第一个
+              state.selectedSessionKey = null;
+              const first = visibleSessions()[0];
+              if (first) {
+                state.selectedSessionKey = first._key;
+                elements.sessionList
+                  .querySelectorAll(".session-item")
+                  .forEach((el) => {
+                    el.classList.toggle(
+                      "active",
+                      el.dataset.sessionKey === first._key
+                    );
+                  });
+                await loadSessionDetail(first._key, { initial: initializing });
+              }
+            } else {
+              // 后台刷新时目标会话已被删除：清除选择并显示占位
+              state.selectedSessionKey = null;
+              state.currentDetail = null;
+              showSelectSessionPlaceholder();
             }
-          } else {
-            // 后台刷新时目标会话已被删除：清除选择并显示占位
-            state.selectedSessionKey = null;
-            state.currentDetail = null;
-            showSelectSessionPlaceholder();
           }
-        }
-      })();
+        })();
     } else {
       showSelectSessionPlaceholder();
     }
@@ -304,7 +334,9 @@ export async function loadSessions({
   } catch (error) {
     if (isAbortError(error) || !request.isCurrent()) return false;
     console.error(error);
+    state.sessionsLoading = false;
     state.lastSessionError = error;
+    renderSessionListFooter();
     if (reportError) {
       showError(`${t("loadListFailed")}: ${error.message}`);
     }
@@ -313,6 +345,7 @@ export async function loadSessions({
 }
 
 export async function loadMoreSessions() {
+  if (state.sessionsLoading || state.lastSessionError) return false;
   const request = sessionRequestGate.begin();
   try {
     const url = isSearchActive()
@@ -375,9 +408,7 @@ function renderRelatedSessions() {
         openReviewSession(key).catch((error) => showError(error.message)),
       onSort: (sort) => {
         state.statsSessionsSort = sort;
-        loadStatsSessions().then((loaded) => {
-          if (loaded) elements.statsSessions?.querySelector("select")?.focus();
-        });
+        void loadStatsSessions();
       },
       onMore: () => {
         void loadStatsSessions({ append: true });
@@ -425,6 +456,12 @@ export async function loadStatsSessions({ append = false } = {}) {
 }
 
 export async function loadStats() {
+  state.statsDirty = true;
+  if (state.activeView !== "stats") {
+    statsRequestGate.cancel();
+    statsSessionsRequestGate.cancel();
+    return true;
+  }
   const request = statsRequestGate.begin();
   statsSessionsRequestGate.cancel();
   state.statsSessions = null;
@@ -437,6 +474,7 @@ export async function loadStats() {
     const stats = await fetchJson(url, { signal: request.signal });
     if (!request.isCurrent()) return false;
     state.stats = stats;
+    state.statsDirty = false;
     renderCurrentStats();
     if (state.activeView === "stats") void loadStatsSessions();
     updateSessionCount();
@@ -450,11 +488,55 @@ export async function loadStats() {
 }
 
 export async function loadFacets() {
+  const request = facetsRequestGate.begin();
   const query = buildFacetsQuery();
-  state.facets = await fetchJson(`/api/facets${query ? `?${query}` : ""}`);
+  let facets;
+  try {
+    facets = await fetchJson(`/api/facets${query ? `?${query}` : ""}`, {
+      signal: request.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) return;
+    throw error;
+  }
+  if (!request.isCurrent()) return;
+  state.facets = facets;
   syncSessionRoot();
   updateFacetFilters();
   syncFilterControls();
+}
+
+const facetsRequestGate = createLatestRequestGate();
+const queueWorkspaceRefresh = createRefreshCoordinator(async (scopes) => {
+  recordMetric("refresh.rounds");
+  const metadata = [];
+  if (scopes.has("facets")) metadata.push(loadFacets());
+  if (scopes.has("diagnostics")) metadata.push(loadWorkspaceDiagnostics());
+  const metadataResults = await Promise.allSettled(metadata);
+  const work = [];
+  if (scopes.has("sessions") || scopes.has("query")) {
+    if (!scopes.has("query") && state.activeView !== "list")
+      state.sessionsDirty = true;
+    else work.push(loadSessions({ background: !scopes.has("query") }));
+  }
+  if (scopes.has("stats")) work.push(loadStats());
+  const results = await Promise.allSettled(work);
+  const failure = [...metadataResults, ...results].find(
+    (result) => result.status === "rejected"
+  );
+  if (failure) throw failure.reason;
+});
+
+export function refreshWorkspace(scopes) {
+  if (scopes.includes("query")) {
+    invalidateQuery(state, [
+      sessionRequestGate,
+      detailRequestGate,
+      statsRequestGate,
+      statsSessionsRequestGate,
+    ]);
+  }
+  return queueWorkspaceRefresh(scopes);
 }
 
 export async function loadWorkspaceDiagnostics() {

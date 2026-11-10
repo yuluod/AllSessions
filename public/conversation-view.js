@@ -1,4 +1,7 @@
-import { t } from "./i18n.js";
+import { t, getLang } from "./i18n.js";
+import { nextPaint } from "./async-coordinator.js";
+import { recordMetric } from "./performance-metrics.js";
+import { planMessageUpdates } from "./message-reconciliation.js";
 import {
   renderAttachments,
   resetAttachmentObservers,
@@ -71,6 +74,9 @@ export function createConversationView({
   onSelectSession,
 }) {
   let highlightController = null;
+  let renderedSessionKey = null;
+  const renderedCards = new Map();
+  const collapsedMessages = new Map();
   bindExternalLinks(elements.conversationList, {
     open: onOpenLink,
     onError: onLinkError,
@@ -103,6 +109,8 @@ export function createConversationView({
 
   function setMessageCardCollapsed(card, toggleButton, collapsed) {
     card.classList.toggle("collapsed", collapsed);
+    if (card.dataset.messageKey)
+      collapsedMessages.set(card.dataset.messageKey, collapsed);
     toggleButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
     const label = collapsed ? t("expandMessage") : t("collapseMessage");
     toggleButton.title = label;
@@ -388,12 +396,56 @@ export function createConversationView({
     return content.id;
   }
 
-  function renderConversation(messages) {
+  function moveUserMessage(direction) {
+    const cards = [
+      ...elements.conversationList.querySelectorAll(
+        '.message-card[data-role="user"]'
+      ),
+    ];
+    if (!cards.length) return;
+    const current = document.activeElement?.closest?.(".message-card");
+    let index = cards.indexOf(current);
+    if (index < 0) {
+      const top =
+        elements.conversationList
+          .closest(".detail-shell")
+          ?.getBoundingClientRect().top || 0;
+      index = cards.findIndex(
+        (card) => card.getBoundingClientRect().top >= top
+      );
+      if (index < 0) index = cards.length - 1;
+      if (direction < 0) index = Math.max(0, index - 1);
+    } else index = (index + direction + cards.length) % cards.length;
+    const card = cards[index];
+    const toggle = card.querySelector(".message-toggle");
+    setMessageCardCollapsed(card, toggle, false);
+    toggle?.focus({ preventScroll: true });
+    card.scrollIntoView({ block: "center" });
+  }
+
+  async function renderConversation(messages) {
+    const started = performance.now();
+    const sessionKey = state.currentDetail?.summary?._key;
+    const sameSession = sessionKey && sessionKey === renderedSessionKey;
+    const focused = elements.conversationList.contains(document.activeElement)
+      ? document.activeElement
+      : null;
+    const focusedKey = focused?.closest(".message-card")?.dataset.messageKey;
+    const focusClass = focused?.classList.contains("message-toggle")
+      ? ".message-toggle"
+      : focused?.classList.contains("message-copy-btn")
+        ? ".message-copy-btn"
+        : null;
+    if (!sameSession) {
+      collapsedMessages.clear();
+      renderedCards.clear();
+      elements.conversationList.replaceChildren();
+      resetAttachmentObservers();
+    }
+    renderedSessionKey = sessionKey;
     highlightController?.abort();
-    resetAttachmentObservers();
     highlightController = new AbortController();
     const { signal } = highlightController;
-    elements.conversationList.replaceChildren();
     const visibleGroups = displayed(messages);
     renderSessionInsights(
       state.currentDetail,
@@ -410,6 +462,9 @@ export function createConversationView({
     renderMessageNavigation(messages);
 
     if (!visibleGroups.length) {
+      elements.conversationList.replaceChildren();
+      renderedCards.clear();
+      resetAttachmentObservers({ detachedOnly: true });
       bindMatchNavigation(elements.conversationList);
       const empty = document.createElement("p");
       empty.className = "hero-copy";
@@ -420,15 +475,40 @@ export function createConversationView({
       return;
     }
 
-    const batch = document.createDocumentFragment();
     const messageContents = [];
-    visibleGroups.forEach(({ message, result }) => {
+    const keep = new Set();
+    const updates = planMessageUpdates(visibleGroups, renderedCards, {
+      lang: getLang(),
+      query: state.detailQuery,
+      regex: state.searchRegex,
+    });
+    let built = 0;
+    let reused = 0;
+    let batchStarted = performance.now();
+    for (let index = 0; index < visibleGroups.length; index++) {
+      if (signal.aborted || state.currentDetail?.summary?._key !== sessionKey)
+        return;
+      const { message, result } = visibleGroups[index];
+      const { key, signature, previous, reuse } = updates[index];
+      keep.add(key);
+      if (reuse) {
+        const card = previous.card;
+        if (elements.conversationList.children[index] !== card)
+          elements.conversationList.insertBefore(
+            card,
+            elements.conversationList.children[index] || null
+          );
+        reused++;
+        continue;
+      }
       const fragment =
         elements.conversationItemTemplate.content.cloneNode(true);
       const card = fragment.querySelector(".message-card");
       card.classList.toggle("removed", message._removed === true);
       card.id = `message-${message._origIdx + 1}`;
       card.dataset.role = message.role;
+      card.dataset.messageKey =
+        message._message_key || String(message._origIdx);
       const avatar = card.querySelector(".message-avatar");
       const conversational =
         message.role === "user" || message.role === "assistant";
@@ -488,7 +568,11 @@ export function createConversationView({
         "aria-controls",
         [messageContent.id, resultContentId].filter(Boolean).join(" ")
       );
-      setMessageCardCollapsed(card, toggleButton, shouldCollapse);
+      setMessageCardCollapsed(
+        card,
+        toggleButton,
+        collapsedMessages.get(card.dataset.messageKey) ?? shouldCollapse
+      );
       toggleButton.addEventListener("click", () => {
         setMessageCardCollapsed(
           card,
@@ -533,9 +617,47 @@ export function createConversationView({
         );
         header.append(deleteButton);
       }
-      batch.append(fragment);
-    });
-    elements.conversationList.append(batch);
+      if (previous) previous.card.remove();
+      elements.conversationList.insertBefore(
+        fragment,
+        elements.conversationList.children[index] || null
+      );
+      renderedCards.set(key, { signature, card });
+      built++;
+      if (
+        (built % 16 === 0 || performance.now() - batchStarted >= 8) &&
+        index + 1 < visibleGroups.length
+      ) {
+        recordMetric("conversation.batch_ms", performance.now() - batchStarted);
+        await nextPaint();
+        batchStarted = performance.now();
+      }
+    }
+    if (signal.aborted) return;
+    for (const [key, entry] of renderedCards) {
+      if (!keep.has(key)) {
+        entry.card.remove();
+        renderedCards.delete(key);
+      }
+    }
+    // 清理上一次空态，附件观察器只释放已离开文档的节点。
+    elements.conversationList
+      .querySelectorAll(":scope > .hero-copy")
+      .forEach((node) => node.remove());
+    resetAttachmentObservers({ detachedOnly: true });
+    if (
+      sameSession &&
+      focusedKey &&
+      focusClass &&
+      (document.activeElement === document.body ||
+        document.activeElement === focused)
+    ) {
+      elements.conversationList
+        .querySelector(
+          `[data-message-key="${CSS.escape(focusedKey)}"] ${focusClass}`
+        )
+        ?.focus({ preventScroll: true });
+    }
     bindMatchNavigation(elements.conversationList);
     if (state.searchRegex) {
       void highlightRegexMatches(messageContents, state.detailQuery, { signal })
@@ -549,7 +671,14 @@ export function createConversationView({
     // 卡片就位后：校准导航高亮，并把进度轨圆点对齐到真实内容位置。
     messageNavSpyUpdate?.();
     layoutMessageOutlineRail(visibleGroups);
+    recordMetric("conversation.render_ms", performance.now() - started);
+    recordMetric("conversation.cards_built", built);
+    recordMetric("conversation.cards_reused", reused);
+    recordMetric(
+      "conversation.dom_nodes",
+      elements.conversationList.querySelectorAll("*").length
+    );
   }
 
-  return { renderConversation };
+  return { renderConversation, moveUserMessage };
 }

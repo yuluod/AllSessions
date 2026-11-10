@@ -5,7 +5,7 @@ const MAX_CACHE_ENTRIES = 48;
 const MAX_CACHE_CHARS = 48 * 1024 * 1024;
 
 const cache = new Map();
-const observers = new Set();
+const observers = new Map();
 let cachedChars = 0;
 
 function stableValue(value) {
@@ -32,9 +32,12 @@ export function clearAttachmentCache() {
   cachedChars = 0;
 }
 
-export function resetAttachmentObservers() {
-  observers.forEach((observer) => observer.disconnect());
-  observers.clear();
+export function resetAttachmentObservers({ detachedOnly = false } = {}) {
+  observers.forEach((card, observer) => {
+    if (detachedOnly && card.isConnected) return;
+    observer.disconnect();
+    observers.delete(observer);
+  });
 }
 
 function remember(key, result) {
@@ -153,7 +156,7 @@ function createAttachment(attachment, { sessionKey, loadAttachment }) {
       { rootMargin: "300px" }
     );
     observer.observe(card);
-    observers.add(observer);
+    observers.set(observer, card);
   } else {
     start();
   }

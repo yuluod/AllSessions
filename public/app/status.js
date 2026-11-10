@@ -161,7 +161,8 @@ export function renderWorkspaceStatus() {
 
   if (elements.statusFilterText) {
     const count = activeFilterEntries().filter(
-      (entry) => state.activeView !== "stats" || entry.type !== "search"
+      (entry) =>
+        state.activeView !== "stats" || !entry.type.startsWith("search")
     ).length;
     elements.statusFilterText.textContent = count
       ? count === 1
@@ -182,6 +183,9 @@ export function syncShortcutHints() {
   const platform =
     navigator.userAgentData?.platform || navigator.platform || "";
   const isMac = /^(mac|iphone|ipad|ipod)/i.test(platform);
+  document.querySelectorAll("[data-platform-shortcut]").forEach((element) => {
+    element.textContent = `${isMac ? "⌘" : "Ctrl"} ${element.dataset.platformShortcut}`;
+  });
   if (elements.searchShortcut) {
     elements.searchShortcut.textContent = isMac ? "⌘ K" : "Ctrl K";
   }

@@ -4,13 +4,15 @@ import { projectNavEntries } from "../project-nav.js";
 import { cwdParts, fillSelect } from "../session-format.js";
 import {
   PAGE_LIMIT,
+  hasSearchOptions,
+  isSearchActive,
   PROJECT_PREVIEW_LIMIT,
   elements,
   showError,
   sourceKindLabel,
   state,
 } from "./shared.js";
-import { loadSessions, loadStats } from "./data.js";
+import { loadSessions, refreshWorkspace } from "./data.js";
 import { renderWorkspaceStatus } from "./status.js";
 import { createIcon } from "./icons.js";
 
@@ -114,14 +116,14 @@ export async function setSourceKindFilter(sourceKind) {
   state.filters.source_kind = sourceKind;
   syncFilterControls();
   syncUrl();
-  await Promise.all([loadSessions(), loadStats()]);
+  await refreshWorkspace(["query", "stats"]);
 }
 
 export async function setCwdFilter(cwd) {
   state.filters.cwd = cwd;
   syncFilterControls();
   syncUrl();
-  await Promise.all([loadSessions(), loadStats()]);
+  await refreshWorkspace(["query", "stats"]);
 }
 
 export async function setActivityRange({ start = "", end = "" }) {
@@ -130,7 +132,7 @@ export async function setActivityRange({ start = "", end = "" }) {
   state.filters.activity_to = end;
   syncFilterControls();
   syncUrl();
-  await Promise.all([loadSessions(), loadStats()]);
+  await refreshWorkspace(["query", "stats"]);
 }
 // 组头提示优先取来源栏按钮的现有文案，避免依赖 facets 中可能缺失的来源显示名。
 function sourceFilterLabel(sourceKind) {
@@ -280,17 +282,30 @@ export function updateFacetFilters() {
 
 export function syncSessionRoot() {
   const roots = state.facets?.session_roots;
-  if (!roots || !roots.length) {
+  if (!roots) {
     elements.sessionRoot.textContent = t("loading");
     elements.sessionRoot.removeAttribute("title");
     return;
   }
-  elements.sessionRoot.textContent = t("localSourcesCount", {
-    n: roots.length,
-  });
+  const detected = Object.entries(state.facets?.source_counts || {}).filter(
+    ([, count]) => Number(count) > 0
+  );
+  elements.sessionRoot.textContent =
+    detected.length === 1
+      ? t("localDiscoverySummary", {
+          name: sourceKindLabel(detected[0][0]),
+          n: detected[0][1],
+        })
+      : t("localSourcesCount", { n: roots.length });
   elements.sessionRoot.title = roots.join("\n");
 }
 export function syncFilterControls() {
+  document
+    .querySelector("#search-results-toolbar")
+    ?.classList.toggle("hidden", !isSearchActive() && !hasSearchOptions());
+  document
+    .querySelector("#search-options-hint")
+    ?.classList.toggle("hidden", isSearchActive() || !hasSearchOptions());
   document
     .querySelector("#project-review-open")
     ?.classList.toggle("hidden", !state.filters.cwd);
@@ -403,6 +418,12 @@ export async function clearFilterChip(type) {
     state.filters[type] = "";
   } else if (type === "search") {
     state.searchQuery = "";
+  } else if (type === "searchRegex") {
+    state.searchRegex = false;
+  } else if (
+    ["searchRole", "searchTool", "searchFrom", "searchTo"].includes(type)
+  ) {
+    state[type] = "";
   } else if (type === "searchExactTool" || type === "searchCommand") {
     state[type] = "";
   } else if (type === "showArchived") {
@@ -423,12 +444,38 @@ export async function clearFilterChip(type) {
   if (type === "search") {
     await loadSessions();
   } else {
-    await Promise.all([loadSessions(), loadStats()]);
+    await refreshWorkspace(["query", "stats"]);
   }
 }
 
 export function activeFilterEntries() {
   const entries = [];
+  for (const [type, label] of [
+    ["searchRole", "searchRoleFilter"],
+    ["searchTool", "searchToolPlaceholder"],
+    ["searchFrom", "searchFromDate"],
+    ["searchTo", "searchToDate"],
+    ["searchRegex", "searchRegexToggle"],
+  ]) {
+    if (!state[type]) continue;
+    const roles = {
+      user: "searchRoleUser",
+      assistant: "searchRoleAssistant",
+      tool: "searchRoleTool",
+    };
+    entries.push({
+      type,
+      label: t(label),
+      value:
+        type === "searchRegex"
+          ? t("filterEnabled")
+          : type === "searchRole"
+            ? roles[state[type]]
+              ? t(roles[state[type]])
+              : state[type]
+            : state[type],
+    });
+  }
   if (state.filters.activity_from || state.filters.activity_to) {
     entries.push({
       type: "activityRange",
@@ -533,8 +580,7 @@ export function renderActiveFilters() {
   const entries = activeFilterEntries().filter(
     (entry) =>
       entry.type !== "source_kind" &&
-      (state.activeView !== "stats" ||
-        !["search", "searchExactTool", "searchCommand"].includes(entry.type))
+      (state.activeView !== "stats" || !entry.type.startsWith("search"))
   );
   elements.resetFilters?.classList.toggle(
     "hidden",

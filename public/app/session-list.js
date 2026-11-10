@@ -25,14 +25,35 @@ import {
   state,
   visibleSessions,
 } from "./shared.js";
-import { renderActiveFilters, syncUrl } from "./filters.js";
+import {
+  activeFilterEntries,
+  resetFilterState,
+  syncFilterControls,
+  renderActiveFilters,
+  syncUrl,
+} from "./filters.js";
 import { setDetailPlaceholder, setPropsPlaceholder } from "./detail-view.js";
-import { loadMoreSessions, loadSessionDetail } from "./data.js";
+import {
+  loadSessions,
+  loadStats,
+  loadMoreSessions,
+  loadSessionDetail,
+} from "./data.js";
+import { settingsController } from "./controllers.js";
 import { createEmptyState } from "../ui-components.js";
+import { changeSessionSelection } from "../workspace-state.js";
 
 export function updateBulkToolbar() {
   const count = state.selectedSessionKeys.size;
   const selecting = state.bulkSelectionMode || count > 0;
+  elements.sessionList?.querySelectorAll(".session-item").forEach((item) => {
+    if (selecting)
+      item.setAttribute(
+        "aria-checked",
+        String(state.selectedSessionKeys.has(item.dataset.sessionKey))
+      );
+    else item.removeAttribute("aria-checked");
+  });
   elements.sessionList?.classList.toggle("is-selecting", selecting);
   elements.bulkToolbar?.classList.toggle("hidden", !selecting);
   const toggle = document.querySelector("#bulk-select-toggle");
@@ -70,7 +91,13 @@ export function setSessionSelected(sessionKey, selected) {
 }
 export function updateSessionCount() {
   const visibleCount = visibleSessions().length;
-  const statsTotal = Number(state.stats?.total);
+  const statsTotal = isSearchActive()
+    ? Number(state.searchTotal)
+    : Number(state.sessionsTotal ?? state.stats?.total);
+  if (state.sessionsLoading || state.lastSessionError) {
+    elements.sessionCount.textContent = "—";
+    return;
+  }
   if (visibleCount === 0) {
     elements.sessionCount.textContent = "0";
     return;
@@ -107,6 +134,32 @@ export function appendSessionBatch(sessions, counts) {
 }
 
 export function renderSessionListFooter() {
+  const footer = elements.sessionListFooter;
+  footer?.querySelector(".session-query-status")?.remove();
+  if (state.lastSessionError || state.sessionsLoading) {
+    const status = createEmptyState({
+      title: t(state.sessionsLoading ? "loading" : "sessionResultsStale"),
+      description: state.lastSessionError ? t("sessionResultsRetryHint") : "",
+      compact: true,
+    });
+    status.classList.add("session-query-status");
+    if (state.lastSessionError) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "ghost-button";
+      retry.textContent = t("retry");
+      retry.addEventListener("click", async () => {
+        await loadSessions();
+        (
+          footer.querySelector("button") ||
+          elements.sessionList.querySelector('[tabindex="0"]') ||
+          elements.searchInput
+        )?.focus();
+      });
+      status.append(retry);
+    }
+    footer?.prepend(status);
+  }
   renderLoadMoreButton();
   updateSessionCount();
   updateBulkToolbar();
@@ -124,6 +177,12 @@ export function syncSessionRovingTabindex() {
   if (!active) active = items[0];
   items.forEach((item) => {
     item.tabIndex = item === active ? 0 : -1;
+    item
+      .closest(".session-row")
+      ?.querySelectorAll(".search-hit")
+      .forEach((hit) => {
+        hit.tabIndex = item === active ? 0 : -1;
+      });
   });
 }
 
@@ -312,8 +371,8 @@ export function appendSessionItems(sessions) {
         const link = document.createElement("button");
         link.type = "button";
         link.className = "search-hit";
-        // 命中列表是会话行的内联补充，不占用独立 Tab 停靠点。
-        link.tabIndex = -1;
+        // 只开放当前会话的命中，避免所有搜索结果都进入 Tab 序。
+        link.tabIndex = session._key === state.selectedSessionKey ? 0 : -1;
         const label = document.createElement("span");
         label.className = "search-hit-field";
         label.textContent = t(`searchField_${hit.field}`);
@@ -351,13 +410,8 @@ export function selectSession(
     state.sessions
       .find((session) => session._key === key)
       ?.search_hits?.find((item) => Number.isInteger(item.ordinal));
-  state.selectedSearchHit = selectedHit
-    ? { ...selectedHit, sessionKey: key }
-    : null;
-  state.selectedSessionKey = key;
-  state.currentDetail = null;
+  changeSessionSelection(state, key, selectedHit, detailRequestGate);
   setPropsPlaceholder(t("loading"));
-  detailRequestGate.cancel();
   elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
     el.classList.remove("active");
     el.setAttribute("aria-selected", "false");
@@ -388,7 +442,7 @@ export function renderLoadMoreButton() {
   let btn = footer.querySelector(".load-more-btn");
   if (btn) btn.remove();
 
-  if (!state.hasMore) return;
+  if (!state.hasMore || state.sessionsLoading || state.lastSessionError) return;
 
   btn = document.createElement("button");
   btn.className = "ghost-button load-more-btn";
@@ -406,6 +460,14 @@ export function renderLoadMoreButton() {
 }
 
 export function renderSessionList() {
+  const focused = document.activeElement?.closest?.(".session-row");
+  const focusedKey =
+    focused?.querySelector(".session-item")?.dataset.sessionKey;
+  const focusedHitIndex = focused
+    ? [...focused.querySelectorAll(".search-hit")].indexOf(
+        document.activeElement
+      )
+    : -1;
   elements.sessionList.innerHTML = "";
   if (elements.sessionListFooter) elements.sessionListFooter.innerHTML = "";
   renderedSessionCount = 0;
@@ -415,15 +477,44 @@ export function renderSessionList() {
   const visible = visibleSessions();
 
   if (!visible.length) {
+    const filtered = activeFilterEntries().length > 0;
     const empty = createEmptyState({
-      title: t(state.scanning ? "scanningSessions" : "noResults"),
-      // 来源与项目同时生效时说明空集原因，避免用户误以为索引缺失。
-      description:
-        !state.scanning && state.filters.source_kind && state.filters.cwd
-          ? t("noResultsCrossFilter")
-          : "",
+      title: t(
+        state.scanning
+          ? "scanningSessions"
+          : filtered
+            ? "noResults"
+            : "noSessionsDiscovered"
+      ),
+      description: state.scanning
+        ? ""
+        : filtered
+          ? t(
+              state.filters.source_kind && state.filters.cwd
+                ? "noResultsCrossFilter"
+                : "noResultsRecovery"
+            )
+          : t("noSessionsDiscoveredHint"),
       compact: true,
     });
+    if (!state.scanning) {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "ghost-button";
+      action.textContent = t(filtered ? "clear" : "openSettingsForRecovery");
+      action.addEventListener("click", async () => {
+        if (!filtered) {
+          void settingsController.open("sources");
+          return;
+        }
+        resetFilterState();
+        syncFilterControls();
+        syncUrl();
+        await Promise.all([loadSessions(), loadStats()]);
+        elements.searchInput?.focus();
+      });
+      empty.append(action);
+    }
     (elements.sessionListFooter || elements.sessionList).append(empty);
     renderSessionListFooter();
     return;
@@ -432,6 +523,18 @@ export function renderSessionList() {
   renderedSessionCount = visible.length;
   appendSessionBatch(visible, sessionGroupCounts(visible));
   renderSessionListFooter();
+  if (focusedKey) {
+    const item = elements.sessionList.querySelector(
+      `.session-item[data-session-key="${CSS.escape(focusedKey)}"]`
+    );
+    const hit =
+      focusedHitIndex >= 0
+        ? item?.closest(".session-row")?.querySelectorAll(".search-hit")[
+            focusedHitIndex
+          ]
+        : null;
+    (hit || item || elements.searchInput)?.focus({ preventScroll: true });
+  }
 }
 
 // 进行中徽标随时间自然过期：会话停写后不再有刷新事件，靠定时器原地摘除。

@@ -1,3 +1,8 @@
+import { createBoundedCache } from "./bounded-cache.js";
+import { recordMetric } from "./performance-metrics.js";
+const renderCache = createBoundedCache();
+let cacheDocument;
+
 function safeLinkHref(value) {
   const href = String(value || "").trim();
   if (/^(?:https?:|mailto:)/i.test(href) || href.startsWith("#")) {
@@ -177,6 +182,18 @@ function appendTable(parent, headerLine, delimiterLine, bodyLines) {
 }
 
 export function renderMarkdown(container, markdown) {
+  if (cacheDocument !== document) {
+    renderCache.clear();
+    cacheDocument = document;
+  }
+  const cacheKey = String(markdown || "");
+  const cached = renderCache.get(cacheKey);
+  if (cached) {
+    container.replaceChildren(cached.cloneNode(true));
+    recordMetric("markdown.cache_hit");
+    return;
+  }
+  const started = performance.now();
   const lines = String(markdown || "")
     .replace(/\r\n?/g, "\n")
     .split("\n");
@@ -295,7 +312,17 @@ export function renderMarkdown(container, markdown) {
     fragment.append(paragraph);
   }
 
+  if (typeof fragment.cloneNode === "function") {
+    // DOM 对象占用高于字符串；用节点数保守估算，并保留条目硬上限。
+    const nodes = fragment.querySelectorAll("*").length;
+    renderCache.set(
+      cacheKey,
+      fragment.cloneNode(true),
+      cacheKey.length * 4 + nodes * 512
+    );
+  }
   container.replaceChildren(fragment);
+  recordMetric("markdown.parse_ms", performance.now() - started);
 }
 
 export function markdownToPlainText(markdown) {

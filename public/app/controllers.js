@@ -10,55 +10,51 @@ import {
   showError,
   state,
 } from "./shared.js";
-import { openDeleteDialog, restoreRemovedMessage } from "./dialogs.js";
-import {
-  loadFacets,
-  loadSessions,
-  loadStats,
-  loadWorkspaceDiagnostics,
-} from "./data.js";
-import { rerenderLocalizedContent } from "../app.js";
-import { openReviewSession } from "./navigation.js";
+export let conversationView;
+export let settingsController;
+export let updateController;
+export let maintenanceController;
 
-export const conversationView = createConversationView({
-  state,
-  elements,
-  isMessageRemoved,
-  onSelectSession: (key) =>
-    openReviewSession(key).catch((error) => showError(error.message)),
-  onRequestDelete: (message) => openDeleteDialog({ kind: "message", message }),
-  onRestoreMessage: (message) => restoreRemovedMessage(message),
-  onHighlightError: showError,
-  onOpenLink: (url) =>
-    fetchJson("/api/links/open", { method: "POST", body: { url } }),
-  onLinkError: showError,
-  onLoadAttachment: (sessionKey, locator) =>
-    fetchJson("/api/sessions/attachment", {
-      method: "POST",
-      body: { sessionKey, locator },
-    }),
-});
-export const settingsController = createSettingsController({
-  elements,
-  onLanguageChanged: () => {
-    rerenderLocalizedContent();
-  },
-  onSaved: () => {
-    Promise.all([loadFacets(), loadWorkspaceDiagnostics()])
-      .then(() => Promise.all([loadSessions(), loadStats()]))
-      .catch((error) => showError(error.message));
-  },
-});
-export const updateController = createUpdateController({
-  requestJson: fetchJson,
-});
-export const maintenanceController = createMaintenanceController({
-  requestJson: fetchJson,
-  refreshData: async () => {
-    await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
-    await Promise.all([loadSessions(), loadStats()]);
-  },
-});
+// 入口注入跨视图行为，控制器不再反向导入装配、数据或导航模块。
+export function initializeControllers({
+  onSelectSession,
+  onRequestDelete,
+  onRestoreMessage,
+  onLanguageChanged,
+  refreshData,
+}) {
+  conversationView = createConversationView({
+    state,
+    elements,
+    isMessageRemoved,
+    onSelectSession,
+    onRequestDelete,
+    onRestoreMessage,
+    onHighlightError: showError,
+    onOpenLink: (url) =>
+      fetchJson("/api/links/open", { method: "POST", body: { url } }),
+    onLinkError: showError,
+    onLoadAttachment: (sessionKey, locator) =>
+      fetchJson("/api/sessions/attachment", {
+        method: "POST",
+        body: { sessionKey, locator },
+      }),
+  });
+  settingsController = createSettingsController({
+    elements,
+    onLanguageChanged,
+    onSaved: () => {
+      refreshData().catch((error) => showError(error.message));
+    },
+  });
+  updateController = createUpdateController({
+    requestJson: fetchJson,
+  });
+  maintenanceController = createMaintenanceController({
+    requestJson: fetchJson,
+    refreshData,
+  });
+}
 
 export async function bindTauriSettingsEvent() {
   const listen = window.__TAURI__?.event?.listen;

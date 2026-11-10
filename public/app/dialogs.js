@@ -23,7 +23,7 @@ import {
   syncSessionDeleteButton,
 } from "./detail-view.js";
 import { updateMessageWorkspace, updateSessionWorkspace } from "./workspace.js";
-import { loadFacets, loadSessions, loadStats } from "./data.js";
+import { loadFacets, refreshWorkspace } from "./data.js";
 
 let pendingDeletion = null;
 let pendingArchive = null;
@@ -50,7 +50,7 @@ export async function setSessionArchived(
 ) {
   await updateSessionWorkspace(sessionKey, { archived });
   syncSessionArchiveButton();
-  await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+  await refreshWorkspace(["query", "stats", "facets"]);
   announce(
     t(archived ? "sessionArchived" : "sessionUnarchived"),
     offerUndo
@@ -176,7 +176,7 @@ export async function applySessionRemoval(
     showSelectSessionPlaceholder();
     syncUrl();
   }
-  await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+  await refreshWorkspace(["query", "stats", "facets"]);
   refreshDeletionViews();
   announce(
     t(removed ? "contentRemoved" : "contentRestored"),
@@ -266,7 +266,7 @@ export async function confirmPermanentDeletion() {
       showSelectSessionPlaceholder();
     }
     await loadFacets();
-    await Promise.all([loadSessions(), loadStats()]);
+    await refreshWorkspace(["query", "stats"]);
     const backupPath = result?.backup?.path;
     const messageKey = backupPath
       ? target.kind === "session"

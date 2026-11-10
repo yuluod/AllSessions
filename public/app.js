@@ -4,6 +4,10 @@ import { initTheme, setScheme } from "./theme-manager.js";
 import { initPaneLayout, syncRailToggle } from "./pane-layout.js";
 import { initReadingToolbar } from "./reading-toolbar.js";
 import { bindPopoverMenus } from "./ui-components.js";
+import {
+  shouldConfirmResume,
+  setConfirmResume,
+} from "./interaction-preferences.js";
 import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
 import { bindTauriSessionEvents } from "./session-events.js";
@@ -65,6 +69,7 @@ import {
   confirmSessionArchive,
   openArchiveConfirmDialog,
   openDeleteDialog,
+  restoreRemovedMessage,
   setSessionArchived,
   showPermanentDeleteConfirmation,
 } from "./app/dialogs.js";
@@ -80,9 +85,9 @@ import {
   loadSessionDetail,
   loadSessions,
   loadStats,
-  refreshOpenDetailIfChanged,
   renderCurrentStats,
   loadWorkspaceDiagnostics,
+  refreshWorkspace,
 } from "./app/data.js";
 import {
   syncSchemeToggle,
@@ -96,15 +101,27 @@ import {
   isEditableShortcutTarget,
   moveSessionSelection,
   openFocusedSession,
+  openReviewSession,
   refreshSessions,
 } from "./app/navigation.js";
 import {
   bindTauriSettingsEvent,
+  initializeControllers,
   conversationView,
   maintenanceController,
   settingsController,
   updateController,
 } from "./app/controllers.js";
+
+initializeControllers({
+  onSelectSession: (key) =>
+    openReviewSession(key).catch((error) => showError(error.message)),
+  onRequestDelete: (message) => openDeleteDialog({ kind: "message", message }),
+  onRestoreMessage: restoreRemovedMessage,
+  onLanguageChanged: rerenderLocalizedContent,
+  refreshData: () =>
+    refreshWorkspace(["facets", "diagnostics", "sessions", "stats"]),
+});
 
 initTheme();
 initPaneLayout();
@@ -222,9 +239,7 @@ async function bindTauriSessionEventsOnce() {
     await bindTauriSessionEvents({
       refresh: async () => {
         void indexProgressPoller.refresh();
-        await Promise.all([loadFacets(), loadWorkspaceDiagnostics()]);
-        await Promise.all([loadSessions({ background: true }), loadStats()]);
-        await refreshOpenDetailIfChanged();
+        await refreshWorkspace(["facets", "diagnostics", "sessions", "stats"]);
       },
       onSessionAdded: (summary) => {
         const ariaLive = document.querySelector("#aria-live");
@@ -299,7 +314,7 @@ async function initialize() {
   document.addEventListener("allsessions:themechange", () => {
     syncSchemeToggle();
     // 图表色读 --src-* token：主题切换后重绘统计，扇区颜色才随主题更新。
-    if (state.activeView === "stats") void loadStats();
+    if (state.activeView === "stats" && state.stats) renderCurrentStats();
   });
   bindPopoverMenus();
   // 空态快捷操作：直达搜索与统计视图。
@@ -338,7 +353,7 @@ async function initialize() {
     resetFilterState();
     syncFilterControls();
     syncUrl();
-    void Promise.all([loadSessions(), loadStats()]).catch((error) => {
+    void refreshWorkspace(["query", "stats"]).catch((error) => {
       console.error(error);
       showError(`${t("loadListFailed")}: ${error.message}`);
     });
@@ -347,7 +362,7 @@ async function initialize() {
   elements.providerFilter?.addEventListener("change", async (event) => {
     state.filters.provider = event.target.value;
     syncUrl();
-    await Promise.all([loadSessions(), loadStats()]);
+    await refreshWorkspace(["query", "stats"]);
   });
 
   elements.dateFilter?.addEventListener("change", async (event) => {
@@ -358,14 +373,14 @@ async function initialize() {
   elements.workspaceTagFilter?.addEventListener("change", async (event) => {
     state.filters.tag = event.target.value;
     syncUrl();
-    await Promise.all([loadSessions(), loadStats()]);
+    await refreshWorkspace(["query", "stats"]);
   });
 
   elements.resetFilters?.addEventListener("click", async () => {
     resetFilterState();
     syncFilterControls();
     syncUrl();
-    await Promise.all([loadSessions(), loadStats()]);
+    await refreshWorkspace(["query", "stats"]);
   });
 
   elements.refreshBtn?.addEventListener("click", () => {
@@ -376,7 +391,7 @@ async function initialize() {
     elements.showArchivedToggle.addEventListener("change", async () => {
       state.showArchived = elements.showArchivedToggle.checked;
       syncUrl();
-      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+      await refreshWorkspace(["query", "stats", "facets"]);
     });
   }
 
@@ -384,7 +399,7 @@ async function initialize() {
     elements.showCodexArchivedToggle.addEventListener("change", async () => {
       state.showCodexArchived = elements.showCodexArchivedToggle.checked;
       syncUrl();
-      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+      await refreshWorkspace(["query", "stats", "facets"]);
     });
   }
 
@@ -392,7 +407,7 @@ async function initialize() {
     elements.showHiddenToggle.addEventListener("change", async () => {
       state.showHidden = elements.showHiddenToggle.checked;
       syncUrl();
-      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+      await refreshWorkspace(["query", "stats", "facets"]);
     });
   }
 
@@ -400,7 +415,7 @@ async function initialize() {
     elements.showRemovedToggle.addEventListener("change", async () => {
       state.showRemoved = elements.showRemovedToggle.checked;
       syncUrl();
-      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+      await refreshWorkspace(["query", "stats", "facets"]);
     });
   }
 
@@ -408,7 +423,7 @@ async function initialize() {
     state.favoriteOnly = !state.favoriteOnly;
     syncFilterControls();
     syncUrl();
-    await Promise.all([loadSessions(), loadStats()]);
+    await refreshWorkspace(["query", "stats"]);
   });
 
   document
@@ -442,7 +457,7 @@ async function initialize() {
     syncFilterControls();
     syncUrl();
     await activateWorkspaceView("list");
-    await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+    await refreshWorkspace(["query", "stats", "facets"]);
     elements.sidebarLeft?.scrollIntoView({ block: "start" });
   });
 
@@ -575,7 +590,7 @@ async function initialize() {
       syncSessionWorkspaceControls(state.currentDetail.summary);
       renderDetailTags(state.currentDetail.summary);
     }
-    await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+    await refreshWorkspace(["query", "stats", "facets"]);
     announce(
       t(favorite ? "sessionFavorited" : "sessionUnfavorited"),
       offerUndo
@@ -763,14 +778,20 @@ async function initialize() {
     const activeElement = document.activeElement;
     const action = resolveGlobalShortcut(event, {
       editableTarget: isEditableShortcutTarget(event.target),
+      bulkSelection:
+        state.bulkSelectionMode || state.selectedSessionKeys.size > 0,
+      focusedSession: Boolean(activeElement?.matches?.(".session-item")),
       dialogOpen: Boolean(document.querySelector("dialog[open]")),
+      settingsDialogActive:
+        activeElement?.closest?.("dialog[open]") === elements.settingsDialog,
       inspectorOpen: Boolean(
+        window.matchMedia(INSPECTOR_DRAWER_QUERY).matches &&
         elements.propsContent
           ?.closest(".props-panel")
           ?.classList.contains("is-open")
       ),
       arrowFromList:
-        elements.sessionList.contains(activeElement) ||
+        activeElement?.matches?.(".session-item") ||
         activeElement === document.body,
     });
     if (!action) return;
@@ -815,6 +836,22 @@ async function initialize() {
           console.error(error);
           showError(error.message);
         });
+        break;
+      case "toggle-selection": {
+        event.preventDefault();
+        const key = activeElement.dataset.sessionKey;
+        setSessionSelected(key, !state.selectedSessionKeys.has(key));
+        break;
+      }
+      case "move-message":
+        if (
+          state.activeView === "list" &&
+          state.activeTab === "conversation" &&
+          state.currentDetail
+        ) {
+          event.preventDefault();
+          conversationView.moveUserMessage(action.direction);
+        }
         break;
       case "move-selection":
         event.preventDefault();
@@ -883,9 +920,8 @@ async function initialize() {
 
   // 裸键 R 触发外部副作用（打开终端），后果比 f/a 重且不可撤销，
   // 先经轻量确认；勾选「不再提示」后持久化跳过。
-  const RESUME_SKIP_CONFIRM_KEY = "allsessions_resume_skip_confirm";
   function requestResumeWithConfirm() {
-    if (localStorage.getItem(RESUME_SKIP_CONFIRM_KEY) === "1") {
+    if (!shouldConfirmResume()) {
       elements.resumeSessionBtn?.click();
       return;
     }
@@ -898,7 +934,12 @@ async function initialize() {
   }
   elements.resumeConfirmAction?.addEventListener("click", () => {
     if (elements.resumeConfirmSkip?.checked) {
-      localStorage.setItem(RESUME_SKIP_CONFIRM_KEY, "1");
+      try {
+        setConfirmResume(false);
+      } catch {
+        // 偏好写入失败不阻止已明确确认的本次恢复，下次仍需确认。
+        showError(t("workspaceSaveFailed"));
+      }
     }
     elements.resumeConfirmDialog?.close();
     elements.resumeSessionBtn?.click();
@@ -993,6 +1034,15 @@ async function initialize() {
 
   // 会话内搜索的 Esc：有词先清空，空词退出焦点；都不冒泡到全局 Esc。
   elements.detailSearchInput?.addEventListener("keydown", (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      document
+        .querySelector(event.shiftKey ? "#search-previous" : "#search-next")
+        ?.click();
+      return;
+    }
     if (event.key !== "Escape") return;
     event.stopPropagation();
     if (elements.detailSearchInput.value) {

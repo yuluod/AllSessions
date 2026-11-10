@@ -1,3 +1,9 @@
+import { createReadScheduler, readLane } from "./read-scheduler.js";
+import { recordMetric } from "./performance-metrics.js";
+const scheduleRead = createReadScheduler();
+let requestSequence = 0;
+const requestPrefix = globalThis.crypto?.randomUUID?.() || String(Date.now());
+
 function abortError() {
   return new DOMException("请求已取消", "AbortError");
 }
@@ -27,6 +33,14 @@ export async function fetchJson(
   options = {},
   { formatError, translateCode } = {}
 ) {
+  return scheduleRead(
+    readLane(url, options.method || "GET"),
+    () => invokeJson(url, options, { formatError, translateCode }),
+    options.signal
+  );
+}
+
+async function invokeJson(url, options, { formatError, translateCode }) {
   if (options.signal?.aborted) throw abortError();
   const invoke = window.__TAURI__?.core?.invoke;
   if (typeof invoke !== "function") {
@@ -45,15 +59,29 @@ export async function fetchJson(
     body = options.body;
   }
   let result;
+  const requestId =
+    options.signal && readLane(url, options.method || "GET")
+      ? `${requestPrefix}:${++requestSequence}`
+      : undefined;
+  const cancel = () => {
+    if (requestId)
+      void invoke("cancel_read_request", { requestId }).catch(() => {});
+  };
+  options.signal?.addEventListener("abort", cancel, { once: true });
+  const started = performance.now();
+  recordMetric("ipc.started");
   try {
     result = await invoke("request_json", {
       request: {
         url,
         method: options.method || "GET",
         body,
+        ...(requestId ? { requestId } : {}),
       },
     });
   } catch (error) {
+    if (options.signal?.aborted || error?.code === "request_cancelled")
+      throw abortError();
     const code = errorCode(error);
     const raw = errorMessage(error);
     const translated = code && translateCode ? translateCode(code, raw) : null;
@@ -65,6 +93,9 @@ export async function fetchJson(
     if (code) wrapped.code = code;
     wrapped.backendMessage = raw;
     throw wrapped;
+  } finally {
+    options.signal?.removeEventListener("abort", cancel);
+    recordMetric("ipc.duration_ms", performance.now() - started);
   }
   if (options.signal?.aborted) throw abortError();
   return result;

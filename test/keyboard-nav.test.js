@@ -145,6 +145,39 @@ test("对话框打开时 Cmd 组合键仅保留设置/刷新/搜索，输入框�
   );
 });
 
+test("会话详情与列表操作提供裸键快捷键，? 打开快捷键图例", () => {
+  assert.deepEqual(resolveGlobalShortcut({ key: "/" }, idle), {
+    type: "focus-detail-search",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "?" }, idle), {
+    type: "shortcuts-help",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "f" }, idle), {
+    type: "toggle-favorite",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "a" }, idle), {
+    type: "toggle-archive",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "r" }, idle), {
+    type: "resume-session",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "l" }, idle), {
+    type: "load-more",
+  });
+  assert.deepEqual(resolveGlobalShortcut({ key: "F" }, idle), {
+    type: "toggle-favorite",
+  });
+});
+
+test("裸键快捷键在输入框与对话框中不触发", () => {
+  const editing = { ...idle, editableTarget: true };
+  const dialog = { ...idle, dialogOpen: true };
+  for (const key of ["/", "?", "f", "a", "r", "l"]) {
+    assert.equal(resolveGlobalShortcut({ key }, editing), null, key);
+    assert.equal(resolveGlobalShortcut({ key }, dialog), null, key);
+  }
+});
+
 test("Escape 优先关闭对话框，其次关闭属性面板，否则不处理", () => {
   assert.deepEqual(
     resolveGlobalShortcut(

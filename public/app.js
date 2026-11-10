@@ -65,6 +65,7 @@ import {
   confirmSessionArchive,
   openArchiveConfirmDialog,
   openDeleteDialog,
+  setSessionArchived,
   showPermanentDeleteConfirmation,
 } from "./app/dialogs.js";
 import {
@@ -228,9 +229,11 @@ async function bindTauriSessionEventsOnce() {
       onSessionAdded: (summary) => {
         const ariaLive = document.querySelector("#aria-live");
         if (!ariaLive) return;
-        ariaLive.textContent = `${t("newSessionAdded")}: ${summary.cwd || summary.id}`;
+        const message = `${t("newSessionAdded")}: ${summary.cwd || summary.id}`;
+        ariaLive.textContent = message;
+        // 只在内容未被后续通告覆盖时清空，避免截断排队中的下一条播报。
         setTimeout(() => {
-          ariaLive.textContent = "";
+          if (ariaLive.textContent === message) ariaLive.textContent = "";
         }, 3000);
       },
       onMalformed: (error) =>
@@ -293,7 +296,11 @@ async function initialize() {
     setLang(getLang() === "zh" ? "en" : "zh");
     rerenderLocalizedContent();
   });
-  document.addEventListener("allsessions:themechange", syncSchemeToggle);
+  document.addEventListener("allsessions:themechange", () => {
+    syncSchemeToggle();
+    // 图表色读 --src-* token：主题切换后重绘统计，扇区颜色才随主题更新。
+    if (state.activeView === "stats") void loadStats();
+  });
   bindPopoverMenus();
   // 空态快捷操作：直达搜索与统计视图。
   document
@@ -455,10 +462,7 @@ async function initialize() {
     }
     elements.sessionArchiveBtn.disabled = true;
     try {
-      await updateSessionWorkspace(key, { archived: false });
-      syncSessionArchiveButton();
-      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
-      announce(t("sessionUnarchived"));
+      await setSessionArchived(key, false);
     } catch (error) {
       showError(`${t("workspaceSaveFailed")}: ${error.message}`);
     } finally {
@@ -564,17 +568,35 @@ async function initialize() {
     });
   }
 
+  // 收藏/取消共用通路：完成后 toast 提供撤销，撤销不再重复给撤销。
+  async function setSessionFavorite(key, favorite, offerUndo = true) {
+    await updateSessionWorkspace(key, { favorite });
+    if (state.currentDetail?.summary?._key === key) {
+      syncSessionWorkspaceControls(state.currentDetail.summary);
+      renderDetailTags(state.currentDetail.summary);
+    }
+    await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+    announce(
+      t(favorite ? "sessionFavorited" : "sessionUnfavorited"),
+      offerUndo
+        ? {
+            actionLabel: t("toastUndo"),
+            onAction: () => {
+              void setSessionFavorite(key, !favorite, false).catch((error) =>
+                showError(`${t("workspaceSaveFailed")}: ${error.message}`)
+              );
+            },
+          }
+        : undefined
+    );
+  }
+
   elements.sessionFavoriteBtn?.addEventListener("click", async () => {
     const key = state.currentDetail?.summary?._key;
     if (!key) return;
     elements.sessionFavoriteBtn.disabled = true;
     try {
-      const favorite = sessionWorkspace(key).favorite !== true;
-      await updateSessionWorkspace(key, { favorite });
-      syncSessionWorkspaceControls(state.currentDetail.summary);
-      renderDetailTags(state.currentDetail.summary);
-      await Promise.all([loadSessions(), loadStats(), loadFacets()]);
-      announce(t(favorite ? "sessionFavorited" : "sessionUnfavorited"));
+      await setSessionFavorite(key, sessionWorkspace(key).favorite !== true);
     } catch (error) {
       showError(`${t("workspaceSaveFailed")}: ${error.message}`);
     } finally {
@@ -802,7 +824,104 @@ async function initialize() {
       case "open-focused":
         if (openFocusedSession()) event.preventDefault();
         break;
+      case "focus-detail-search":
+        event.preventDefault();
+        if (state.currentDetail && state.activeView === "list") {
+          if (state.activeTab !== "conversation") {
+            state.activeTab = "conversation";
+            updateTabs();
+          }
+          elements.detailSearchInput?.focus();
+          elements.detailSearchInput?.select();
+        } else {
+          if (state.activeView !== "list") void activateWorkspaceView("list");
+          elements.searchInput?.focus();
+          elements.searchInput?.select();
+        }
+        break;
+      case "shortcuts-help":
+        event.preventDefault();
+        if (!elements.shortcutsDialog?.open) {
+          elements.shortcutsDialog?.showModal();
+          elements.shortcutsDialogClose?.focus();
+        }
+        break;
+      case "toggle-favorite":
+        if (state.currentDetail && state.activeView === "list") {
+          event.preventDefault();
+          elements.sessionFavoriteBtn?.click();
+        }
+        break;
+      case "toggle-archive":
+        if (state.currentDetail && state.activeView === "list") {
+          event.preventDefault();
+          elements.sessionArchiveBtn?.click();
+        }
+        break;
+      case "resume-session":
+        if (
+          state.currentDetail &&
+          state.activeView === "list" &&
+          !elements.resumeSessionBtn?.disabled
+        ) {
+          event.preventDefault();
+          requestResumeWithConfirm();
+        }
+        break;
+      case "load-more": {
+        const loadMore = (
+          elements.sessionListFooter || elements.sessionList
+        )?.querySelector(".load-more-btn");
+        if (loadMore && !loadMore.disabled) {
+          event.preventDefault();
+          loadMore.click();
+        }
+        break;
+      }
     }
+  });
+
+  // 裸键 R 触发外部副作用（打开终端），后果比 f/a 重且不可撤销，
+  // 先经轻量确认；勾选「不再提示」后持久化跳过。
+  const RESUME_SKIP_CONFIRM_KEY = "allsessions_resume_skip_confirm";
+  function requestResumeWithConfirm() {
+    if (localStorage.getItem(RESUME_SKIP_CONFIRM_KEY) === "1") {
+      elements.resumeSessionBtn?.click();
+      return;
+    }
+    if (!elements.resumeConfirmDialog?.open) {
+      if (elements.resumeConfirmSkip)
+        elements.resumeConfirmSkip.checked = false;
+      elements.resumeConfirmDialog?.showModal();
+      elements.resumeConfirmAction?.focus();
+    }
+  }
+  elements.resumeConfirmAction?.addEventListener("click", () => {
+    if (elements.resumeConfirmSkip?.checked) {
+      localStorage.setItem(RESUME_SKIP_CONFIRM_KEY, "1");
+    }
+    elements.resumeConfirmDialog?.close();
+    elements.resumeSessionBtn?.click();
+  });
+  const closeResumeConfirm = () => elements.resumeConfirmDialog?.close();
+  elements.resumeConfirmCancel?.addEventListener("click", closeResumeConfirm);
+  elements.resumeConfirmClose?.addEventListener("click", closeResumeConfirm);
+  elements.resumeConfirmDialog?.addEventListener("click", (event) => {
+    if (event.target === elements.resumeConfirmDialog) closeResumeConfirm();
+  });
+
+  elements.shortcutsHelpBtn?.addEventListener("click", () => {
+    if (!elements.shortcutsDialog?.open) {
+      elements.shortcutsDialog?.showModal();
+      elements.shortcutsDialogClose?.focus();
+    }
+  });
+  elements.shortcutsDialogClose?.addEventListener("click", () =>
+    elements.shortcutsDialog?.close()
+  );
+  elements.shortcutsDialog?.addEventListener("click", (event) => {
+    if (event.target === elements.shortcutsDialog)
+      elements.shortcutsDialog.close();
   });
 
   elements.tabButtons.forEach((button) => {
@@ -872,6 +991,17 @@ async function initialize() {
     console.error("绑定托盘会话事件失败", error);
   });
 
+  // 会话内搜索的 Esc：有词先清空，空词退出焦点；都不冒泡到全局 Esc。
+  elements.detailSearchInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.stopPropagation();
+    if (elements.detailSearchInput.value) {
+      elements.detailSearchInput.value = "";
+      elements.detailSearchInput.dispatchEvent(new Event("input"));
+    } else {
+      elements.detailSearchInput.blur();
+    }
+  });
   elements.detailSearchInput?.addEventListener("input", (event) => {
     state.detailQuery = event.target.value.trim();
     if (state.currentDetail) {

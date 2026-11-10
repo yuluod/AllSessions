@@ -73,5 +73,12 @@ export function resolveGlobalShortcut(event, context) {
     return { type: "move-selection", direction: moveDown ? 1 : -1 };
   }
   if (key === "Enter") return { type: "open-focused" };
+  if (key === "/") return { type: "focus-detail-search" };
+  if (key === "?") return { type: "shortcuts-help" };
+  const bare = key.toLowerCase();
+  if (bare === "f") return { type: "toggle-favorite" };
+  if (bare === "a") return { type: "toggle-archive" };
+  if (bare === "r") return { type: "resume-session" };
+  if (bare === "l") return { type: "load-more" };
   return null;
 }

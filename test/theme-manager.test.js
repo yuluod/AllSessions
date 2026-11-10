@@ -12,6 +12,7 @@ const rootDir = path.resolve(
 const storage = new Map([
   ["allsessions_theme", "tui"],
   ["allsessions_scheme", "system"],
+  ["allsessions_density", "comfortable"],
 ]);
 let systemListener = null;
 const mediaQuery = {
@@ -20,7 +21,15 @@ const mediaQuery = {
     systemListener = listener;
   },
 };
-const root = { dataset: {}, style: {} };
+const rootStyleProps = new Map();
+const root = {
+  dataset: {},
+  style: {
+    setProperty(name, value) {
+      rootStyleProps.set(name, value);
+    },
+  },
+};
 
 globalThis.localStorage = {
   getItem(key) {
@@ -41,16 +50,18 @@ globalThis.document = {
 };
 
 const {
+  DENSITIES,
   SCHEMES,
   THEMES,
   getThemeState,
   initTheme,
+  setDensity,
   setScheme,
   setTheme,
   toggleScheme,
 } = await import("../public/theme-manager.js");
 
-test("主题管理器声明六套主题和三种明暗偏好", () => {
+test("主题管理器声明六套主题、三种明暗偏好和三档界面密度", () => {
   assert.deepEqual(THEMES, [
     "greenbar",
     "tui",
@@ -60,6 +71,7 @@ test("主题管理器声明六套主题和三种明暗偏好", () => {
     "pixel",
   ]);
   assert.deepEqual(SCHEMES, ["light", "dark", "system"]);
+  assert.deepEqual(DENSITIES, ["compact", "standard", "comfortable"]);
 });
 
 test("每套主题为浅色和深色完整实现 token 契约", async () => {
@@ -136,11 +148,13 @@ test("主题管理器恢复持久化偏好并解析系统明暗", () => {
   assert.deepEqual(state, {
     theme: "tui",
     scheme: "system",
+    density: "comfortable",
     resolvedScheme: "dark",
   });
   assert.equal(root.dataset.theme, "tui");
   assert.equal(root.dataset.scheme, "dark");
   assert.equal(root.style.colorScheme, "dark");
+  assert.equal(rootStyleProps.get("--density-scale"), "1.12");
   assert.equal(typeof systemListener, "function");
 });
 
@@ -155,11 +169,29 @@ test("主题和明暗切换立即生效并持久化", () => {
   assert.deepEqual(getThemeState(), {
     theme: "blind",
     scheme: "light",
+    density: "comfortable",
     resolvedScheme: "light",
   });
 
   assert.equal(toggleScheme().resolvedScheme, "dark");
   assert.equal(storage.get("allsessions_scheme"), "dark");
+});
+
+test("界面密度切换立即生效、持久化并映射到根字号缩放", () => {
+  setDensity("compact");
+
+  assert.equal(storage.get("allsessions_density"), "compact");
+  assert.equal(rootStyleProps.get("--density-scale"), "0.95");
+  assert.equal(getThemeState().density, "compact");
+
+  setDensity("comfortable");
+  assert.equal(rootStyleProps.get("--density-scale"), "1.12");
+
+  // 非法值不改动状态也不写入存储。
+  storage.delete("allsessions_density");
+  setDensity("giant");
+  assert.equal(getThemeState().density, "comfortable");
+  assert.equal(storage.get("allsessions_density"), undefined);
 });
 
 test("跟随系统时响应系统外观变化", () => {

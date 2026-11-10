@@ -197,6 +197,13 @@ html.settings-modal-open body {
   font-weight: 700;
 }
 
+.settings-density-hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
 .settings-theme-options {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -516,7 +523,7 @@ html.settings-modal-open body {
 }
 
 .settings-source-dialog .delete-dialog-header h2 .settings-origin {
-  font-size: 0.66rem;
+  font-size: 0.68rem;
 }
 
 .settings-source-dialog .settings-source-dialog-meta {
@@ -546,7 +553,7 @@ html.settings-modal-open body {
 .settings-origin {
   padding: 2px 7px;
   border-radius: var(--badge-radius);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: var(--muted);
   background: var(--surface-muted);
@@ -648,7 +655,7 @@ html.settings-modal-open body {
   padding: 2px 7px;
   border-radius: var(--badge-radius);
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-weight: 700;
   background: var(--surface-muted);
 }
@@ -682,7 +689,7 @@ html.settings-modal-open body {
   padding: 2px 7px;
   border-radius: var(--badge-radius);
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-weight: 700;
   background: var(--surface-muted);
 }

@@ -134,7 +134,7 @@
   padding: 3px 7px;
   color: var(--success);
   background: var(--success-soft);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
 }
 
 .tool-mode-badge[data-mode="maintenance"] {

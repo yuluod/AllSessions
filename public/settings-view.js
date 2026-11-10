@@ -3,7 +3,12 @@ import {
   DESKTOP_RUNTIME_REQUIRED,
   fetchJson as requestJson,
 } from "./api-client.js";
-import { getThemeState, setScheme, setTheme } from "./theme-manager.js";
+import {
+  getThemeState,
+  setDensity,
+  setScheme,
+  setTheme,
+} from "./theme-manager.js";
 import {
   ask as askDialog,
   open as openPathDialog,
@@ -207,6 +212,9 @@ export function createSettingsController({
     });
     elements.settingsSchemeInputs?.forEach((input) => {
       input.checked = input.value === state.scheme;
+    });
+    elements.settingsDensityInputs?.forEach((input) => {
+      input.checked = input.value === state.density;
     });
   }
 
@@ -1228,6 +1236,11 @@ export function createSettingsController({
     elements.settingsSchemeInputs?.forEach((input) => {
       input.addEventListener("change", (event) => {
         if (event.target.checked) setScheme(event.target.value);
+      });
+    });
+    elements.settingsDensityInputs?.forEach((input) => {
+      input.addEventListener("change", (event) => {
+        if (event.target.checked) setDensity(event.target.value);
       });
     });
     document.addEventListener("allsessions:themechange", syncAppearance);

@@ -46,6 +46,9 @@
   --header-h: 66px;
   --status-h: 40px;
   --density: 1;
+  /* 用户密度档（设置→界面密度）作用于根字号，让 rem 体系整体缩放；
+     --density 仍是各主题的排版基线，两者相乘。 */
+  --density-scale: 1;
   --z-sticky: 20;
   --z-toast: 60;
   /* 层叠标尺：1–2 为局部表面/粘性层，4–9 为阅读区内部层叠，
@@ -83,6 +86,7 @@
 html {
   min-height: 100%;
   color-scheme: light dark;
+  font-size: calc(16px * var(--density-scale));
   scroll-behavior: smooth;
   scrollbar-gutter: stable;
 }
@@ -94,7 +98,7 @@ body {
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-ui);
-  font-size: calc(14px * var(--density));
+  font-size: calc(14px * var(--density) * var(--density-scale));
   line-height: 1.45;
 }
 

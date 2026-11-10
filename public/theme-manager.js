@@ -7,14 +7,24 @@ export const THEMES = [
   "pixel",
 ];
 export const SCHEMES = ["light", "dark", "system"];
+export const DENSITIES = ["compact", "standard", "comfortable"];
 
 const THEME_KEY = "allsessions_theme";
 const SCHEME_KEY = "allsessions_scheme";
+const DENSITY_KEY = "allsessions_density";
 const DEFAULT_THEME = "standard";
 const DEFAULT_SCHEME = "system";
+const DEFAULT_DENSITY = "standard";
+// 密度作为 html 根字号的乘数：rem 体系整体随之缩放，不只放大正文。
+const DENSITY_SCALE = {
+  compact: "0.95",
+  standard: "1",
+  comfortable: "1.12",
+};
 
 let theme = DEFAULT_THEME;
 let scheme = DEFAULT_SCHEME;
+let density = DEFAULT_DENSITY;
 let systemSchemeQuery = null;
 let systemListenerBound = false;
 
@@ -62,6 +72,7 @@ function applyTheme() {
     root.dataset.theme = theme;
     root.dataset.scheme = actualScheme;
     root.style.colorScheme = actualScheme;
+    root.style.setProperty("--density-scale", DENSITY_SCALE[density]);
   }
   const state = getThemeState();
   notifyThemeChanged(state);
@@ -81,6 +92,7 @@ export function getThemeState() {
   return {
     theme,
     scheme,
+    density,
     resolvedScheme: resolvedScheme(),
   };
 }
@@ -88,6 +100,7 @@ export function getThemeState() {
 export function initTheme() {
   theme = readPreference(THEME_KEY, THEMES, DEFAULT_THEME);
   scheme = readPreference(SCHEME_KEY, SCHEMES, DEFAULT_SCHEME);
+  density = readPreference(DENSITY_KEY, DENSITIES, DEFAULT_DENSITY);
   bindSystemScheme();
   return applyTheme();
 }
@@ -109,4 +122,11 @@ export function setScheme(mode) {
 
 export function toggleScheme() {
   return setScheme(resolvedScheme() === "dark" ? "light" : "dark");
+}
+
+export function setDensity(name) {
+  if (!DENSITIES.includes(name)) return getThemeState();
+  density = name;
+  writePreference(DENSITY_KEY, density);
+  return applyTheme();
 }

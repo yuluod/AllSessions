@@ -112,6 +112,7 @@
                 d="M216,48H40A16,16,0,0,0,24,64V224a15.84,15.84,0,0,0,9.25,14.5A16.05,16.05,0,0,0,40,240a15.89,15.89,0,0,0,10.25-3.78l.09-.07L83,208H216a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48ZM160,152H96a8,8,0,0,1,0-16h64a8,8,0,0,1,0,16Zm0-32H96a8,8,0,0,1,0-16h64a8,8,0,0,1,0,16Z"
               />
             </svg>
+            <span class="sidebar-tab-label" data-i18n="sessionList">会话</span>
           </button>
           <button
             class="sidebar-tab"
@@ -139,6 +140,9 @@
                 d="M232,208a8,8,0,0,1-8,8H32a8,8,0,0,1,0-16h8V136a8,8,0,0,1,8-8H72a8,8,0,0,1,8,8v64H96V88a8,8,0,0,1,8-8h32a8,8,0,0,1,8,8V200h16V40a8,8,0,0,1,8-8h40a8,8,0,0,1,8,8V200h8A8,8,0,0,1,232,208Z"
               />
             </svg>
+            <span class="sidebar-tab-label" data-i18n="statsOverview"
+              >统计</span
+            >
           </button>
           <button
             class="sidebar-tab"
@@ -166,6 +170,7 @@
                 d="M120,56v48a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40h48A16,16,0,0,1,120,56Zm80-16H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm-96,96H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm96,0H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Z"
               />
             </svg>
+            <span class="sidebar-tab-label" data-i18n="tools">工具</span>
           </button>
         </nav>
         <div class="rail-scroll">
@@ -607,7 +612,7 @@
                     id="search-shortcut"
                     class="search-kbd"
                     aria-hidden="true"
-                    >Ctrl K</kbd
+                    >⌘/Ctrl K</kbd
                   >
                 </div>
               </div>
@@ -643,27 +648,55 @@
                     <summary data-i18n="visibility">显示范围</summary>
                     <div class="bar-menu-body list-filter-panel">
                       <div class="visibility-options">
-                        <label class="archive-toggle-label">
-                          <input id="show-archived-toggle" type="checkbox" />
-                          <span data-i18n="showArchived">显示已归档会话</span>
-                        </label>
-                        <label class="archive-toggle-label">
-                          <input
-                            id="show-codex-archived-toggle"
-                            type="checkbox"
-                          />
-                          <span data-i18n="showCodexArchived"
-                            >显示 Codex 归档会话</span
+                        <section class="visibility-group">
+                          <p
+                            class="visibility-group-title"
+                            data-i18n="visibilityArchiveGroup"
                           >
-                        </label>
-                        <label class="archive-toggle-label">
-                          <input id="show-hidden-toggle" type="checkbox" />
-                          <span data-i18n="showHidden">显示隐藏会话</span>
-                        </label>
-                        <label class="archive-toggle-label">
-                          <input id="show-removed-toggle" type="checkbox" />
-                          <span data-i18n="showRemoved">显示已移除内容</span>
-                        </label>
+                            归档会话
+                          </p>
+                          <p
+                            class="visibility-group-hint"
+                            data-i18n="visibilityArchiveHint"
+                          >
+                            归档只是默认不列出，原始数据仍在原处。
+                          </p>
+                          <label class="archive-toggle-label">
+                            <input id="show-archived-toggle" type="checkbox" />
+                            <span data-i18n="showArchived">显示已归档会话</span>
+                          </label>
+                          <label class="archive-toggle-label">
+                            <input
+                              id="show-codex-archived-toggle"
+                              type="checkbox"
+                            />
+                            <span data-i18n="showCodexArchived"
+                              >显示 Codex 归档会话</span
+                            >
+                          </label>
+                        </section>
+                        <section class="visibility-group">
+                          <p
+                            class="visibility-group-title"
+                            data-i18n="visibilityHiddenGroup"
+                          >
+                            列表排除项
+                          </p>
+                          <p
+                            class="visibility-group-hint"
+                            data-i18n="visibilityHiddenHint"
+                          >
+                            在 AllSessions 中标记，随时可恢复显示。
+                          </p>
+                          <label class="archive-toggle-label">
+                            <input id="show-hidden-toggle" type="checkbox" />
+                            <span data-i18n="showHidden">显示隐藏会话</span>
+                          </label>
+                          <label class="archive-toggle-label">
+                            <input id="show-removed-toggle" type="checkbox" />
+                            <span data-i18n="showRemoved">显示已移除内容</span>
+                          </label>
+                        </section>
                       </div>
                     </div>
                   </details>
@@ -700,6 +733,7 @@
                   data-i18n="noSessionsSelected"
                   >未选择会话</span
                 >
+                <span id="bulk-limit-hint" class="bulk-limit-hint"></span>
                 <div id="bulk-actions" class="bulk-actions hidden">
                   <select
                     id="bulk-export-format"
@@ -822,6 +856,9 @@
                 data-i18n="listAriaLabel"
                 data-i18n-attr="aria-label"
               ></div>
+              <!-- listbox 内只允许 option 子节点：加载更多与空态渲染在
+                   listbox 之外，roving tabindex 只作用于会话行。 -->
+              <div id="session-list-footer" class="session-list-footer"></div>
             </div>
           </section>
 
@@ -840,6 +877,7 @@
               class="detail-shell detail-pane"
               id="detail-panel"
               data-view-panel="list"
+              tabindex="0"
             >
               <div id="detail-empty" class="empty-state">
                 <h2 data-i18n="selectSession">选择一个会话</h2>
@@ -1358,6 +1396,7 @@
                             class="ghost-button message-outline-toggle"
                             type="button"
                             aria-expanded="true"
+                            data-i18n="messageOutlineCollapse"
                           >
                             收起目录
                           </button>
@@ -1961,7 +2000,6 @@
           <aside
             class="props-panel inspector-pane"
             id="props-panel"
-            aria-hidden="false"
             data-view-panel="list"
           >
             <div class="props-header">
@@ -2083,6 +2121,18 @@
             <span
               ><kbd>1/2/3</kbd> <span data-i18n="keyViews">切换视图</span></span
             >
+            <button
+              id="shortcuts-help-btn"
+              class="status-bar__keys-help"
+              type="button"
+              aria-label="键盘快捷键"
+              title="键盘快捷键"
+              data-i18n="keyboardShortcuts"
+              data-i18n-attr="aria-label"
+              data-i18n-title="keyboardShortcuts"
+            >
+              <kbd>?</kbd>
+            </button>
           </div>
           <button
             id="status-language"
@@ -2156,6 +2206,65 @@
           data-i18n="archiveConfirmAction"
         >
           确认归档
+        </button>
+      </div>
+    </dialog>
+
+    <dialog
+      id="resume-confirm-dialog"
+      class="delete-dialog resume-confirm-dialog"
+      aria-labelledby="resume-confirm-title"
+      aria-describedby="resume-confirm-desc"
+    >
+      <div class="delete-dialog-header">
+        <h2 id="resume-confirm-title" data-i18n="resumeConfirmTitle">
+          在终端恢复会话？
+        </h2>
+        <button
+          id="resume-confirm-close"
+          class="ghost-button delete-dialog-close-button"
+          type="button"
+          data-i18n="cancel"
+          data-i18n-attr="aria-label"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 256 256"
+            width="18"
+            height="18"
+            fill="currentColor"
+          >
+            <path
+              d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="delete-dialog-body">
+        <p id="resume-confirm-desc" data-i18n="resumeConfirmDesc">
+          将打开一个终端窗口并执行恢复命令。
+        </p>
+        <label class="archive-toggle-label resume-confirm-skip">
+          <input id="resume-confirm-skip" type="checkbox" />
+          <span data-i18n="resumeConfirmSkip">不再提示</span>
+        </label>
+      </div>
+      <div class="delete-dialog-actions">
+        <button
+          id="resume-confirm-cancel"
+          class="ghost-button"
+          type="button"
+          data-i18n="cancel"
+        >
+          取消
+        </button>
+        <button
+          id="resume-confirm-action"
+          class="ghost-button"
+          type="button"
+          data-i18n="resumeConfirmAction"
+        >
+          恢复会话
         </button>
       </div>
     </dialog>
@@ -2242,6 +2351,115 @@
         >
           确认永久删除
         </button>
+      </div>
+    </dialog>
+
+    <dialog
+      id="shortcuts-dialog"
+      class="delete-dialog shortcuts-dialog"
+      aria-labelledby="shortcuts-dialog-title"
+    >
+      <div class="delete-dialog-header">
+        <h2 id="shortcuts-dialog-title" data-i18n="keyboardShortcuts">
+          键盘快捷键
+        </h2>
+        <button
+          id="shortcuts-dialog-close"
+          class="ghost-button delete-dialog-close-button"
+          type="button"
+          data-i18n="closeSessionInspector"
+          data-i18n-attr="aria-label"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 256 256"
+            width="18"
+            height="18"
+            fill="currentColor"
+          >
+            <path
+              d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="delete-dialog-body shortcuts-dialog-body">
+        <div class="shortcuts-grid">
+          <section class="shortcut-group">
+            <h3 data-i18n="shortcutGroupGlobal">全局</h3>
+            <dl>
+              <div class="shortcut-row">
+                <dt><kbd>⌘/Ctrl K</kbd></dt>
+                <dd data-i18n="shortcutSearchAll">搜索全部会话</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>/</kbd></dt>
+                <dd data-i18n="shortcutSearchSession">搜索当前会话</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>⌘/Ctrl ,</kbd></dt>
+                <dd data-i18n="shortcutSettings">打开或关闭设置</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>⌘/Ctrl R</kbd></dt>
+                <dd data-i18n="shortcutRefresh">刷新会话</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>⌘/Ctrl I</kbd></dt>
+                <dd data-i18n="shortcutInspector">打开或关闭信息面板</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>1/2/3</kbd></dt>
+                <dd data-i18n="shortcutViews">切换工作区视图</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>?</kbd></dt>
+                <dd data-i18n="shortcutHelp">快捷键一览</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>Esc</kbd></dt>
+                <dd data-i18n="shortcutClose">关闭弹窗或面板</dd>
+              </div>
+            </dl>
+          </section>
+          <section class="shortcut-group">
+            <h3 data-i18n="shortcutGroupList">会话列表</h3>
+            <dl>
+              <div class="shortcut-row">
+                <dt><kbd>j/k</kbd> <kbd>↑/↓</kbd></dt>
+                <dd data-i18n="shortcutMove">移动选择</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>Enter</kbd></dt>
+                <dd data-i18n="shortcutOpen">打开会话</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>L</kbd></dt>
+                <dd data-i18n="shortcutLoadMore">加载更多会话</dd>
+              </div>
+            </dl>
+          </section>
+          <section class="shortcut-group">
+            <h3 data-i18n="shortcutGroupDetail">会话详情</h3>
+            <dl>
+              <div class="shortcut-row">
+                <dt><kbd>F</kbd></dt>
+                <dd data-i18n="shortcutFavorite">收藏 / 取消收藏</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>A</kbd></dt>
+                <dd data-i18n="shortcutArchive">归档 / 取消归档</dd>
+              </div>
+              <div class="shortcut-row">
+                <dt><kbd>R</kbd></dt>
+                <dd data-i18n="shortcutResume">在终端恢复</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+        <p class="shortcuts-hint" data-i18n="shortcutsHint">
+          输入框中仅 ⌘/Ctrl 组合键与 Escape 可用。
+        </p>
       </div>
     </dialog>
 
@@ -2579,6 +2797,38 @@
                     <span data-i18n="schemeSystem">跟随系统</span>
                   </label>
                 </div>
+              </fieldset>
+              <fieldset class="settings-appearance-fieldset">
+                <legend data-i18n="density">界面密度</legend>
+                <div class="settings-scheme-options">
+                  <label>
+                    <input
+                      type="radio"
+                      name="settings-density"
+                      value="compact"
+                    />
+                    <span data-i18n="densityCompact">紧凑</span>
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="settings-density"
+                      value="standard"
+                    />
+                    <span data-i18n="densityStandard">标准</span>
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="settings-density"
+                      value="comfortable"
+                    />
+                    <span data-i18n="densityComfortable">宽松</span>
+                  </label>
+                </div>
+                <p class="settings-density-hint" data-i18n="densityHint">
+                  整体缩放界面字号与元素尺寸，立即生效。
+                </p>
               </fieldset>
               <fieldset class="settings-appearance-fieldset">
                 <legend data-i18n="settingsAppIcon">应用图标</legend>
@@ -2973,10 +3223,14 @@
     <template id="session-item-template">
       <!-- session-main 是复选框的定位锚：搜索命中列表追加在 row 内时，
            复选框仍相对会话卡片本身垂直居中，而不是相对整行。 -->
-      <div class="session-row">
+      <div class="session-row" role="presentation">
         <div class="session-main">
           <label class="session-select-control">
-            <input class="session-select-checkbox" type="checkbox" />
+            <input
+              class="session-select-checkbox"
+              type="checkbox"
+              tabindex="-1"
+            />
             <span class="visually-hidden" data-i18n="selectSessionForBulk"
               >选择会话用于批量操作</span
             >

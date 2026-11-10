@@ -289,6 +289,25 @@ test("工作区切换使用普通导航语义并接入键盘导航模块", async
   assert.match(source, /wrapSelectionIndex\(/);
 });
 
+test("主视图标签、快捷键图例与界面密度偏好均接入界面", async () => {
+  const html = await readProjectFile("public/index.html");
+  const styles = await readProjectFile("public/styles.css");
+  const theme = await readProjectFile("public/theme-manager.js");
+  const settings = await readProjectFile("public/settings-view.js");
+
+  // 三个主入口在图标之外给出可读标签，收起态靠 CSS 退回纯图标。
+  assert.equal((html.match(/class="sidebar-tab-label"/g) || []).length, 3);
+  assert.match(styles, /\.rail-collapsed \.sidebar-tab-label/);
+  // 快捷键图例弹窗与状态栏入口。
+  assert.match(html, /id="shortcuts-dialog"/);
+  assert.match(html, /id="shortcuts-help-btn"/);
+  // 界面密度：设置项 → setDensity → --density-scale 根字号缩放。
+  assert.match(html, /name="settings-density"[\s\S]*value="comfortable"/);
+  assert.match(settings, /setDensity\(event\.target\.value\)/);
+  assert.match(theme, /root\.style\.setProperty\("--density-scale"/);
+  assert.match(styles, /font-size: calc\(16px \* var\(--density-scale\)\)/);
+});
+
 test("侧栏为纯导航结构，不再有可折叠筛选手风琴", async () => {
   const source = await readProjectFile("public/app.js");
   const html = await readProjectFile("public/index.html");
@@ -598,6 +617,66 @@ test("会话列表项使用卡片式堆叠信息层级", async () => {
   assert.match(source, /classList\.toggle\("is-selecting", selecting\)/);
 });
 
+test("会话列表只保留一个 Tab 停靠点，非 option 内容移出 listbox", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+  const css = await readProjectFile("public/styles.css");
+
+  // listbox 仅容纳 option：加载更多与空态渲染在独立的 footer 容器。
+  assert.match(
+    html,
+    /id="session-list"[\s\S]*?role="listbox"[\s\S]*?id="session-list-footer"/
+  );
+  assert.match(
+    source,
+    /sessionListFooter \|\| elements\.sessionList[\s\S]*\.load-more-btn/
+  );
+  // 行容器与辅助控件不抢 Tab 序：roving tabindex 只作用于 .session-item。
+  assert.match(html, /class="session-row" role="presentation"/);
+  assert.match(html, /class="session-select-checkbox"[^>]*tabindex="-1"/);
+  assert.match(source, /link\.tabIndex = -1/);
+  assert.match(source, /syncSessionRovingTabindex/);
+  assert.match(css, /\.session-list-footer:empty\s*\{\s*display: none/);
+});
+
+test("j/k 连续移动时延迟拉取详情，R 键恢复先经轻量确认", async () => {
+  const html = await readProjectFile("public/index.html");
+  const source = await readProjectFile("public/app.js");
+
+  assert.match(source, /deferDetail[\s\S]*?setTimeout\([\s\S]*?140/);
+  assert.match(
+    source,
+    /selectSession\(sessionKey, next, null, \{ deferDetail: true \}\)/
+  );
+  // 裸键 R 触发外部副作用（打开终端），先确认；「不再提示」持久化跳过。
+  assert.match(html, /id="resume-confirm-dialog"/);
+  assert.match(html, /id="resume-confirm-skip"/);
+  assert.match(source, /allsessions_resume_skip_confirm/);
+  assert.match(source, /requestResumeWithConfirm\(\)/);
+  for (const key of [
+    "resumeConfirmTitle",
+    "resumeConfirmDesc",
+    "resumeConfirmSkip",
+    "resumeConfirmAction",
+  ]) {
+    const i18n = await readProjectFile("public/i18n.js");
+    assert.equal((i18n.match(new RegExp(`${key}:`, "g")) || []).length, 2, key);
+  }
+});
+
+test("统计图表色跟随主题 token，toast 短堆叠不覆盖带动作提示", async () => {
+  const stats = await readProjectFile("public/stats-view.js");
+  const source = await readProjectFile("public/app.js");
+  const responsive = await readProjectFile("public/styles/responsive.css");
+
+  assert.match(stats, /AGENT_COLOR_TOKEN[\s\S]*--src-codex/);
+  assert.match(stats, /getComputedStyle\(document\.documentElement\)/);
+  assert.match(source, /const TOAST_LIMIT = 2/);
+  assert.match(source, /data\.sticky|dataset\.sticky/);
+  assert.match(source, /sticky: true/);
+  assert.match(responsive, /\.toast-stack\s*\{[\s\S]*position: fixed/);
+});
+
 test("工作台支持拖拽调整三栏宽度且窄栏摘要不换行", async () => {
   const html = await readProjectFile("public/index.html");
   const app = await readProjectFile("public/app.js");
@@ -849,7 +928,15 @@ test("详情页宽屏使用四栏工作台并在中等宽度回退为信息抽�
     html,
     /id="session-inspector-toggle"[\s\S]*aria-expanded="false"/
   );
-  assert.match(html, /id="props-panel"[\s\S]{0,120}aria-hidden="false"/);
+  // aria-hidden 由 setInspectorOpen 按抽屉模式与展开态动态写入，
+  // 标记层不再携带与初始 display 状态矛盾的静态值。
+  assert.doesNotMatch(html, /id="props-panel"[\s\S]{0,120}aria-hidden=/);
+  assert.match(
+    source,
+    /setAttribute\(\s*"aria-hidden",\s*!drawerLayout \|\| isOpen \? "false" : "true"/
+  );
+  // 阅读区可聚焦，键盘用户才能滚动会话内容。
+  assert.match(html, /class="detail-shell detail-pane"[\s\S]*tabindex="0"/);
   assert.match(source, /function setInspectorOpen\(open\)/);
   assert.match(
     source,
@@ -982,9 +1069,10 @@ test("本地归档不会被初始自动选中，空页仍可继续加载", async
   );
 });
 
-test("归档会话需要二次确认，取消归档保持直接恢复", async () => {
+test("归档会话需要二次确认，取消归档保持直接恢复并给出撤销", async () => {
   const html = await readProjectFile("public/index.html");
   const source = await readProjectFile("public/app.js");
+  const dialogs = await readProjectFile("public/app/dialogs.js");
   const i18n = await readProjectFile("public/i18n.js");
 
   assert.match(
@@ -999,11 +1087,16 @@ test("归档会话需要二次确认，取消归档保持直接恢复", async ()
   assert.match(i18n, /archiveConfirmAction: "确认归档"/);
   assert.match(
     source,
-    /sessionArchiveBtn\?\.addEventListener[\s\S]*sessionWorkspace\(key\)\.archived !== true[\s\S]*openArchiveConfirmDialog\(key\)[\s\S]*updateSessionWorkspace\(key, \{ archived: false \}\)/
+    /sessionArchiveBtn\?\.addEventListener[\s\S]*sessionWorkspace\(key\)\.archived !== true[\s\S]*openArchiveConfirmDialog\(key\)[\s\S]*setSessionArchived\(key, false\)/
+  );
+  // 归档写入收敛到 setSessionArchived：确认与取消共用通路并携带撤销动作。
+  assert.match(
+    dialogs,
+    /export async function setSessionArchived\([\s\S]*updateSessionWorkspace\(sessionKey, \{ archived \}\)[\s\S]*actionLabel: t\("toastUndo"\)/
   );
   assert.match(
-    source,
-    /async function confirmSessionArchive\(\)[\s\S]*updateSessionWorkspace\(sessionKey, \{ archived: true \}\)/
+    dialogs,
+    /confirmSessionArchive\(\)[\s\S]*await setSessionArchived\(sessionKey, true\)/
   );
 });
 
@@ -1064,7 +1157,9 @@ test("全局搜索按平台显示快捷键并从其他视图返回会话列表",
   const source = await readProjectFile("public/app.js");
   const css = await readProjectFile("public/styles.css");
 
-  assert.match(html, /id="search-shortcut"[\s\S]*>Ctrl K<\/kbd\s*>/);
+  // 静态占位用跨平台写法，避免启动瞬间在非 Windows 平台闪出 Ctrl K；
+  // 运行时由 syncShortcutHints 按平台改写为 ⌘ K 或 Ctrl K。
+  assert.match(html, /id="search-shortcut"[\s\S]*>⌘\/Ctrl K<\/kbd\s*>/);
   // Cmd/Ctrl+K 到 focus-search 的映射在 keyboard-nav.test.js 中按行为验证
   assert.match(source, /case "focus-search":/);
   assert.match(
@@ -1602,6 +1697,7 @@ test("个人工作台数据独立持久化并提供整理与可选脱敏导出",
     "workspace-tag-filter",
     "favorite-only-toggle",
     "bulk-toolbar",
+    "bulk-limit-hint",
     "bulk-redact-toggle",
     "session-favorite-btn",
     "session-tags-input",

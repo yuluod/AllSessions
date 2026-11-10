@@ -4,6 +4,8 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 
 ## 模块边界
 
+只读 IPC 的取消与详情锁外解析边界见 [性能约定](performance.md)；来源适配器仍负责原始格式解析，前端不接触原始文件。
+
 - `sessions.rs`：统一契约与核心类型（`Source`/`SourceFormat`/`StoredSession`/`SessionStore` 生命周期）；扫描、解析、查询、删除等实现按 `sessions/` 下子模块组织，并经 `sessions.rs` 再导出保持 `super::` 引用路径稳定。
 - `sessions/roots.rs`：来源根目录的配置/环境变量/默认值三级回退、路径发现与监听根计算。
 - `sessions/parse.rs`：通用摘要/详情分发、`ParseState` 归约、消息构造、首尾截断与详情缓存。

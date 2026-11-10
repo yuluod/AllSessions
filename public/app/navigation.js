@@ -137,7 +137,7 @@ export function moveSessionSelection(direction) {
   next.focus();
   next.scrollIntoView({ block: "nearest" });
   const sessionKey = next.dataset.sessionKey;
-  if (sessionKey) selectSession(sessionKey, next);
+  if (sessionKey) selectSession(sessionKey, next, null, { deferDetail: true });
 }
 
 let refreshing = false;

@@ -13,6 +13,7 @@ import {
   sessionTimestamp,
 } from "../session-format.js";
 import {
+  MAX_BULK_EXPORT_SESSIONS,
   compactSourceLabel,
   detailRequestGate,
   displaySourceLabel,
@@ -44,6 +45,12 @@ export function updateBulkToolbar() {
     elements.bulkSelectionCount.textContent = count
       ? t("selectedSessionsCount", { n: count })
       : t("noSessionsSelected");
+  }
+  if (elements.bulkLimitHint) {
+    // 上限在选择前可见，不再等到超量报错才出现。
+    elements.bulkLimitHint.textContent = t("bulkExportLimit", {
+      n: MAX_BULK_EXPORT_SESSIONS,
+    });
   }
   elements.bulkActions?.classList.toggle("hidden", !selecting);
 }
@@ -103,6 +110,21 @@ export function renderSessionListFooter() {
   renderLoadMoreButton();
   updateSessionCount();
   updateBulkToolbar();
+  syncSessionRovingTabindex();
+}
+
+// roving tabindex：listbox 只保留一个 Tab 停靠点，优先落在当前选中项，
+// 未选中时落到首项；j/k 移动选择时焦点与停靠点一起迁移。
+export function syncSessionRovingTabindex() {
+  const items = elements.sessionList?.querySelectorAll(".session-item");
+  if (!items?.length) return;
+  let active = elements.sessionList.querySelector(
+    `.session-item[data-session-key="${CSS.escape(state.selectedSessionKey || "")}"]`
+  );
+  if (!active) active = items[0];
+  items.forEach((item) => {
+    item.tabIndex = item === active ? 0 : -1;
+  });
 }
 
 export function appendLoadedSessions(added) {
@@ -175,6 +197,9 @@ export function appendSessionItems(sessions) {
       "aria-selected",
       session._key === state.selectedSessionKey ? "true" : "false"
     );
+    // roving tabindex：全部选项先移出 Tab 序，由 syncSessionRovingTabindex
+    // 统一把当前项（或首项）放回 tabindex=0。
+    button.tabIndex = -1;
     const title =
       displaySessionTitle(session) || cwdParts(session.cwd).main || session.id;
     const preview = session.search_snippet
@@ -287,6 +312,8 @@ export function appendSessionItems(sessions) {
         const link = document.createElement("button");
         link.type = "button";
         link.className = "search-hit";
+        // 命中列表是会话行的内联补充，不占用独立 Tab 停靠点。
+        link.tabIndex = -1;
         const label = document.createElement("span");
         label.className = "search-hit-field";
         label.textContent = t(`searchField_${hit.field}`);
@@ -309,7 +336,16 @@ export function appendSessionItems(sessions) {
   });
 }
 
-export function selectSession(key, buttonEl, hit = null) {
+let detailDebounce = null;
+
+// deferDetail 用于 j/k 快速浏览：连续移动时只在停留后才拉取详情，
+// 避免每一步都发起全量 IPC 并闪动详情区。
+export function selectSession(
+  key,
+  buttonEl,
+  hit = null,
+  { deferDetail = false } = {}
+) {
   const selectedHit =
     hit ||
     state.sessions
@@ -334,11 +370,22 @@ export function selectSession(key, buttonEl, hit = null) {
   elements.detailEmpty.classList.remove("hidden");
   setDetailPlaceholder(t("loading"));
   syncUrl();
-  loadSessionDetail(key);
+  clearTimeout(detailDebounce);
+  detailDebounce = null;
+  if (deferDetail) {
+    detailDebounce = setTimeout(() => {
+      detailDebounce = null;
+      loadSessionDetail(key);
+    }, 140);
+  } else {
+    loadSessionDetail(key);
+  }
+  syncSessionRovingTabindex();
 }
 
 export function renderLoadMoreButton() {
-  let btn = elements.sessionList.querySelector(".load-more-btn");
+  const footer = elements.sessionListFooter || elements.sessionList;
+  let btn = footer.querySelector(".load-more-btn");
   if (btn) btn.remove();
 
   if (!state.hasMore) return;
@@ -355,11 +402,12 @@ export function renderLoadMoreButton() {
       btn.disabled = false;
     }
   });
-  elements.sessionList.append(btn);
+  footer.append(btn);
 }
 
 export function renderSessionList() {
   elements.sessionList.innerHTML = "";
+  if (elements.sessionListFooter) elements.sessionListFooter.innerHTML = "";
   renderedSessionCount = 0;
   lastRenderedGroupKey = "";
   renderActiveFilters();
@@ -376,7 +424,7 @@ export function renderSessionList() {
           : "",
       compact: true,
     });
-    elements.sessionList.append(empty);
+    (elements.sessionListFooter || elements.sessionList).append(empty);
     renderSessionListFooter();
     return;
   }

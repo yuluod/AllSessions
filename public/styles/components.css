@@ -121,6 +121,10 @@
   gap: 8px;
 }
 
+.resume-confirm-skip {
+  margin-top: 10px;
+}
+
 .list-filter-panel .visibility-options {
   gap: 4px;
 }

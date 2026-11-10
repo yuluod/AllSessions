@@ -1,17 +1,97 @@
 /* 状态反馈 */
 .error-banner {
   position: fixed;
-  top: 18px;
   left: 50%;
   z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: min(560px, calc(100vw - 24px));
   padding: 10px 13px;
   transform: translateX(-50%);
-  border: 1px solid color-mix(in srgb, var(--signal) 42%, var(--surface));
   border-radius: var(--radius-small);
+  font-size: 0.79rem;
+}
+
+.error-banner {
+  top: 18px;
+  border: 1px solid color-mix(in srgb, var(--signal) 42%, var(--surface));
   color: var(--danger);
   background: var(--danger-soft);
+}
+
+/* 成功/信息提示与 error-banner 对偶：底部浮层堆叠，不遮挡顶部横幅；
+   带动作或 sticky 的提示不被后来的普通提示顶掉。 */
+.toast-stack {
+  position: fixed;
+  bottom: 52px;
+  left: 50%;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(560px, calc(100vw - 24px));
+  transform: translateX(-50%);
+}
+
+.app-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
   font-size: 0.79rem;
+}
+
+.error-banner-text,
+.app-toast-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-toast-action {
+  flex: none;
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid var(--line-accent);
+  border-radius: var(--radius-small);
+  color: var(--accent-strong);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.app-toast-action:hover {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.app-banner-dismiss {
+  display: inline-grid;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.65;
+}
+
+.app-banner-dismiss:hover {
+  opacity: 1;
+  background: var(--surface-subtle);
 }
 
 /* 宽屏：放宽会话阅读列，减少两侧空白 */

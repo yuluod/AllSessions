@@ -2,6 +2,7 @@
 import { t } from "../i18n.js";
 import { displaySessionTitle } from "../session-format.js";
 import { showDialogFromPopover } from "../ui-components.js";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   announce,
   elements,
@@ -41,6 +42,31 @@ export function openArchiveConfirmDialog(sessionKey) {
   elements.archiveDialogConfirm?.focus();
 }
 
+// 归档与恢复共用一条通路：成功后给出「撤销」toast，让可逆操作真的可逆。
+export async function setSessionArchived(
+  sessionKey,
+  archived,
+  offerUndo = true
+) {
+  await updateSessionWorkspace(sessionKey, { archived });
+  syncSessionArchiveButton();
+  await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+  announce(
+    t(archived ? "sessionArchived" : "sessionUnarchived"),
+    offerUndo
+      ? {
+          actionLabel: t("toastUndo"),
+          onAction: () => {
+            void setSessionArchived(sessionKey, !archived, false).catch(
+              (error) =>
+                showError(`${t("workspaceSaveFailed")}: ${error.message}`)
+            );
+          },
+        }
+      : undefined
+  );
+}
+
 export async function confirmSessionArchive() {
   if (!pendingArchive) return;
   const sessionKey = pendingArchive;
@@ -48,12 +74,9 @@ export async function confirmSessionArchive() {
   elements.archiveDialogClose.disabled = true;
   elements.archiveDialogCancel.disabled = true;
   try {
-    await updateSessionWorkspace(sessionKey, { archived: true });
-    syncSessionArchiveButton();
+    await setSessionArchived(sessionKey, true);
     pendingArchive = null;
     elements.archiveDialog.close();
-    await Promise.all([loadSessions(), loadStats(), loadFacets()]);
-    announce(t("sessionArchived"));
   } catch (error) {
     elements.archiveDialogStatus.textContent = `${t("workspaceSaveFailed")}: ${error.message}`;
   } finally {
@@ -124,13 +147,68 @@ export function refreshDeletionViews() {
   renderPropsPanel(state.currentDetail.summary);
 }
 
+function undoAction(redo) {
+  return {
+    actionLabel: t("toastUndo"),
+    onAction: () => {
+      void redo().catch((error) =>
+        showError(`${t("workspaceSaveFailed")}: ${error.message}`)
+      );
+    },
+  };
+}
+
+// 「从 AllSessions 移除」是可逆标记：成功后 toast 直接给撤销入口，
+// 不必先学会「显示已移除内容」这条恢复路径。
+export async function applySessionRemoval(
+  sessionKey,
+  removed,
+  offerUndo = true
+) {
+  await updateSessionWorkspace(sessionKey, { removed });
+  if (
+    removed &&
+    !state.showRemoved &&
+    state.selectedSessionKey === sessionKey
+  ) {
+    state.selectedSessionKey = null;
+    state.currentDetail = null;
+    showSelectSessionPlaceholder();
+    syncUrl();
+  }
+  await Promise.all([loadSessions(), loadStats(), loadFacets()]);
+  refreshDeletionViews();
+  announce(
+    t(removed ? "contentRemoved" : "contentRestored"),
+    offerUndo
+      ? undoAction(() => applySessionRemoval(sessionKey, !removed, false))
+      : undefined
+  );
+}
+
+export async function applyMessageRemoval(
+  sessionKey,
+  messageKey,
+  removed,
+  offerUndo = true
+) {
+  await updateMessageWorkspace(sessionKey, messageKey, removed);
+  refreshDeletionViews();
+  announce(
+    t(removed ? "contentRemoved" : "contentRestored"),
+    offerUndo
+      ? undoAction(() =>
+          applyMessageRemoval(sessionKey, messageKey, !removed, false)
+        )
+      : undefined
+  );
+}
+
 export async function restoreRemovedMessage(message) {
   const sessionKey = state.currentDetail?.summary?._key;
   if (!sessionKey || !message?._message_key) return;
   try {
-    await updateMessageWorkspace(sessionKey, message._message_key, false);
-    refreshDeletionViews();
-    announce(t("contentRestored"));
+    await applyMessageRemoval(sessionKey, message._message_key, false);
   } catch (error) {
     showError(`${t("workspaceSaveFailed")}: ${error.message}`);
   }
@@ -142,21 +220,12 @@ export async function applySoftDeletion() {
   elements.deleteSoftBtn.disabled = true;
   try {
     if (kind === "session") {
-      await updateSessionWorkspace(sessionKey, { removed: !removed });
-      if (!removed && !state.showRemoved) {
-        state.selectedSessionKey = null;
-        state.currentDetail = null;
-        showSelectSessionPlaceholder();
-        syncUrl();
-      }
+      await applySessionRemoval(sessionKey, !removed);
     } else if (messageKey) {
-      await updateMessageWorkspace(sessionKey, messageKey, !removed);
+      await applyMessageRemoval(sessionKey, messageKey, !removed);
     }
     pendingDeletion = null;
     elements.deleteDialog.close();
-    await Promise.all([loadSessions(), loadStats(), loadFacets()]);
-    refreshDeletionViews();
-    announce(t(removed ? "contentRestored" : "contentRemoved"));
   } catch (error) {
     elements.deleteDialogStatus.textContent = `${t("workspaceSaveFailed")}: ${error.message}`;
   } finally {
@@ -206,7 +275,22 @@ export async function confirmPermanentDeletion() {
       : target.kind === "session"
         ? "sessionDeletedPermanently"
         : "messageDeletedPermanently";
-    announce(t(messageKey, { path: backupPath || "" }));
+    // 备份路径是错过即不可找回的信息：sticky toast 携带「显示」动作，
+    // 不随定时器消失，供事后回查。
+    announce(
+      t(messageKey, { path: backupPath || "" }),
+      backupPath
+        ? {
+            actionLabel: t("toastShowInFolder"),
+            sticky: true,
+            onAction: () => {
+              void revealItemInDir(backupPath).catch((error) =>
+                showError(`${t("revealFailed")}: ${error.message || error}`)
+              );
+            },
+          }
+        : undefined
+    );
   } catch (error) {
     elements.deleteDialogStatus.textContent = `${t("deleteFailed")}: ${error.message}`;
   } finally {

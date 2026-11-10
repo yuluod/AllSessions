@@ -63,8 +63,9 @@
 .sidebar-tab {
   display: grid;
   place-items: center;
+  gap: 3px;
   min-height: 36px;
-  padding: 5px 4px;
+  padding: 6px 4px 5px;
   border: 1px solid transparent;
   border-radius: var(--radius-small);
   background: transparent;
@@ -77,6 +78,17 @@
     color 160ms var(--ease-out),
     background-color 160ms var(--ease-out),
     border-color 160ms var(--ease-out);
+}
+
+/* 主视图入口的可读标签；rail 收起时退回纯图标，可访问名仍由 aria-label 提供。 */
+.sidebar-tab-label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-tab:hover {
@@ -175,7 +187,7 @@
   padding: 2px 4px;
   border: 0;
   background: transparent;
-  font-size: 0.62rem;
+  font-size: 0.68rem;
 }
 .sidebar-brand-name {
   font-size: 0.95rem;
@@ -247,6 +259,10 @@
 .rail-collapsed .sidebar-view-tabs {
   grid-template-columns: 1fr;
   margin-inline: 8px;
+}
+
+.rail-collapsed .sidebar-tab-label {
+  display: none;
 }
 
 .rail-collapsed .rail__group {
@@ -825,7 +841,7 @@ body.is-resizing {
 .project-meta {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
@@ -859,6 +875,31 @@ body.is-resizing {
 .visibility-options {
   display: grid;
   gap: 8px;
+}
+
+/* 「显示范围」按排除机制分组：归档（来源/本地标记）与列表排除（隐藏/移除）语义不同。 */
+.visibility-group {
+  display: grid;
+  gap: 6px;
+}
+
+.visibility-group + .visibility-group {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.visibility-group-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.visibility-group-hint {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.45;
 }
 
 .archive-toggle-label,
@@ -906,6 +947,11 @@ body.is-resizing {
   flex: 0 0 auto;
   color: var(--accent-strong);
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.bulk-limit-hint {
+  flex: none;
   white-space: nowrap;
 }
 
@@ -1086,6 +1132,18 @@ body.is-resizing {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
+}
+
+/* 列表尾部的非 option 区域（加载更多、空态）：留在 listbox 之外。 */
+.session-list-footer {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.session-list-footer:empty {
+  display: none;
 }
 
 .session-group-header {
@@ -2660,7 +2718,7 @@ body.is-resizing {
   padding: 2px 6px;
   border-radius: 999px;
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.68rem;
   font-weight: 700;
 }
 
@@ -2677,7 +2735,7 @@ body.is-resizing {
 .tool-result-time {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2723,7 +2781,7 @@ body.is-resizing {
 
 .file-edit-create,
 .file-edit-truncated {
-  font-size: 0.64rem;
+  font-size: 0.68rem;
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--accent-soft);
@@ -2902,7 +2960,7 @@ body.is-resizing {
 .raw-event-line {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2913,7 +2971,7 @@ body.is-resizing {
   color: var(--accent-strong);
   background: var(--accent-soft);
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.68rem;
 }
 
 .message-tool {
@@ -2933,7 +2991,7 @@ body.is-resizing {
   color: var(--muted);
   background: var(--surface-raised);
   cursor: pointer;
-  font-size: 0.67rem;
+  font-size: 0.68rem;
 }
 
 .message-copy-btn[data-state="success"] {
@@ -2959,7 +3017,7 @@ body.is-resizing {
   color: var(--muted);
   background: transparent;
   cursor: pointer;
-  font-size: 0.67rem;
+  font-size: 0.68rem;
   opacity: 0;
   transition: opacity 120ms var(--ease-out, ease-out);
 }
@@ -3074,6 +3132,49 @@ body.is-resizing {
   padding: 16px;
   color: var(--text-secondary);
   line-height: 1.6;
+}
+
+.shortcuts-dialog {
+  width: min(640px, calc(100vw - 28px));
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.shortcut-group h3 {
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.shortcut-group dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shortcut-row dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  text-align: end;
+}
+
+.shortcuts-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
 }
 
 .data-boundary-note {
@@ -3551,7 +3652,7 @@ body.is-resizing {
 
 .props-section dt {
   color: var(--muted);
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   font-weight: 650;
 }
 
@@ -3591,7 +3692,7 @@ body.is-resizing {
   color: var(--muted);
   background: var(--surface-subtle);
   cursor: pointer;
-  font-size: 0.62rem;
+  font-size: 0.68rem;
 }
 
 .prop-copy:hover {
@@ -3624,7 +3725,7 @@ body.is-resizing {
 
 .message-nav-top {
   color: var(--muted);
-  font-size: 0.62rem;
+  font-size: 0.68rem;
   font-weight: 700;
 }
 
@@ -3658,7 +3759,7 @@ body.is-resizing {
 
 .rail__group-header span {
   color: var(--muted);
-  font-size: 0.65rem;
+  font-size: 0.68rem;
 }
 
 /* 侧栏滚动时分组标题吸顶，避免区块之间混在一起。 */
@@ -4025,7 +4126,7 @@ body.is-resizing {
   grid-template-columns: minmax(0, 1fr) auto;
   align-content: center;
   gap: 6px 8px;
-  min-height: calc(62px * var(--density));
+  min-height: calc(62px * var(--density) * var(--density-scale));
   padding: 7px 10px 7px 30px;
   border: 0;
   border-radius: var(--radius);
@@ -4107,8 +4208,10 @@ body.is-resizing {
   grid-row: 1;
 }
 
+/* 项目归属（工作目录尾段）恢复为可见元信息，让同名会话可直接区分。 */
 .session-directory-cell {
-  display: none;
+  display: flex;
+  grid-column: 1 / -1;
   align-items: baseline;
   gap: 6px;
 }
@@ -4125,6 +4228,13 @@ body.is-resizing {
 
 .session-preview {
   display: none;
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-tertiary {
@@ -4135,7 +4245,7 @@ body.is-resizing {
   overflow: hidden;
   flex-wrap: nowrap;
   color: var(--muted);
-  font-size: 0.62rem;
+  font-size: 0.68rem;
 }
 
 .session-provider,
@@ -4169,7 +4279,7 @@ body.is-resizing {
   border-radius: 999px;
   color: var(--muted);
   background: var(--surface-sunken);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -4199,7 +4309,7 @@ body.is-resizing {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-  font-size: 0.65rem;
+  font-size: 0.68rem;
 }
 
 .session-cwd-main {
@@ -4215,6 +4325,13 @@ body.is-resizing {
 
 .session-cwd-path bdi {
   unicode-bidi: plaintext;
+}
+
+/* 宽容器下恢复单行消息预览（搜索片段或首条消息），窄容器保持紧凑。 */
+@container session-pane (min-width: 560px) {
+  .session-preview {
+    display: block;
+  }
 }
 
 @container session-pane (max-width: 500px) {
@@ -4275,7 +4392,7 @@ body.is-resizing {
   background: var(--surface);
   box-shadow: none;
   font-family: var(--font-mono);
-  font-size: 0.67rem;
+  font-size: 0.68rem;
 }
 
 .status-bar__health {
@@ -4361,7 +4478,7 @@ body.is-resizing {
   color: var(--muted);
   background: transparent;
   cursor: pointer;
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   line-height: 1;
 }
 
@@ -4405,6 +4522,21 @@ body.is-resizing {
   white-space: nowrap;
 }
 
+/* 「?」入口与文本快捷键并列，hover 时交给通用幽灵态。 */
+.status-bar__keys-help {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.status-bar__keys-help:hover kbd {
+  border-color: var(--line-accent);
+  color: var(--accent-strong);
+}
+
 /* 状态栏内部统一为轻量无框风格：信息用纯文本，边框只属于 kbd。 */
 .status-bar .ghost-button {
   min-height: 24px;
@@ -4436,7 +4568,7 @@ body.is-resizing {
   border-radius: 3px;
   color: var(--text);
   background: var(--surface-sunken);
-  font-size: 0.62rem;
+  font-size: 0.68rem;
 }
 
 .status-bar__language {

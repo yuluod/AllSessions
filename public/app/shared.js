@@ -160,10 +160,12 @@ export const elements = {
   projectList: document.querySelector("#project-list"),
   activeFilterBar: document.querySelector("#active-filter-bar"),
   sessionList: document.querySelector("#session-list"),
+  sessionListFooter: document.querySelector("#session-list-footer"),
   bulkToolbar: document.querySelector("#bulk-toolbar"),
   selectVisibleBtn: document.querySelector("#select-visible-btn"),
   bulkSelectionCount: document.querySelector("#bulk-selection-count"),
   bulkActions: document.querySelector("#bulk-actions"),
+  bulkLimitHint: document.querySelector("#bulk-limit-hint"),
   bulkExportFormat: document.querySelector("#bulk-export-format"),
   bulkRedactToggle: document.querySelector("#bulk-redact-toggle"),
   bulkExportBtn: document.querySelector("#bulk-export-btn"),
@@ -216,6 +218,11 @@ export const elements = {
   revealSourceBtn: document.querySelector("#reveal-source-btn"),
   revealProjectBtn: document.querySelector("#reveal-project-btn"),
   resumeSessionBtn: document.querySelector("#resume-session-btn"),
+  resumeConfirmDialog: document.querySelector("#resume-confirm-dialog"),
+  resumeConfirmSkip: document.querySelector("#resume-confirm-skip"),
+  resumeConfirmCancel: document.querySelector("#resume-confirm-cancel"),
+  resumeConfirmAction: document.querySelector("#resume-confirm-action"),
+  resumeConfirmClose: document.querySelector("#resume-confirm-close"),
   statsDashboard: document.querySelector("#stats-dashboard"),
   statsRange: document.querySelector("#stats-range"),
   statsSessions: document.querySelector("#stats-sessions"),
@@ -243,6 +250,12 @@ export const elements = {
   settingsSchemeInputs: Array.from(
     document.querySelectorAll('[name="settings-scheme"]')
   ),
+  settingsDensityInputs: Array.from(
+    document.querySelectorAll('[name="settings-density"]')
+  ),
+  shortcutsDialog: document.querySelector("#shortcuts-dialog"),
+  shortcutsHelpBtn: document.querySelector("#shortcuts-help-btn"),
+  shortcutsDialogClose: document.querySelector("#shortcuts-dialog-close"),
   settingsKeepRunning: document.querySelector("#settings-keep-running"),
   settingsLaunchAtLogin: document.querySelector("#settings-launch-at-login"),
   settingsOpenExternalLinks: document.querySelector(
@@ -381,11 +394,89 @@ export async function fetchJson(url, options) {
 export function visibleSessions() {
   return state.sessions;
 }
-export function announce(message) {
+function buildDismissButton(onDismiss) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "app-banner-dismiss";
+  button.setAttribute("aria-label", t("dismissNotice"));
+  button.textContent = "×";
+  button.addEventListener("click", onDismiss);
+  return button;
+}
+
+const TOAST_LIMIT = 2;
+const toastTimers = new WeakMap();
+
+function toastStack() {
+  let stack = document.querySelector("#toast-stack");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "toast-stack";
+    stack.className = "toast-stack";
+    document.querySelector(".page-shell")?.append(stack);
+  }
+  return stack;
+}
+
+function dismissToast(toast) {
+  if (!toast) return;
+  clearTimeout(toastTimers.get(toast));
+  toastTimers.delete(toast);
+  toast.remove();
+}
+
+// 可见的操作结果提示：与 #aria-live 对偶，面向有视用户；
+// 可携带一个动作按钮（撤销、显示备份目录），带动作的提示驻留更久。
+// 多条提示短堆叠（最多 2 条）：带动作或 sticky 的提示不会被后来的普通
+// 提示顶掉；sticky 提示（如备份路径）只手动关闭，供事后回查。
+export function showToast(
+  message,
+  { actionLabel, onAction, duration, sticky = false } = {}
+) {
+  const stack = toastStack();
+  while (stack.children.length >= TOAST_LIMIT) {
+    const disposable = Array.from(stack.children).find(
+      (item) => !item.dataset.sticky && !item.dataset.action
+    );
+    dismissToast(disposable || stack.firstElementChild);
+  }
+  const toast = document.createElement("div");
+  toast.className = "app-toast";
+  const text = document.createElement("span");
+  text.className = "app-toast-text";
+  text.textContent = message;
+  toast.append(text);
+  if (actionLabel && typeof onAction === "function") {
+    toast.dataset.action = "1";
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "app-toast-action";
+    action.textContent = actionLabel;
+    action.addEventListener("click", () => {
+      dismissToast(toast);
+      onAction();
+    });
+    toast.append(action);
+  }
+  toast.append(buildDismissButton(() => dismissToast(toast)));
+  stack.append(toast);
+  if (sticky) {
+    toast.dataset.sticky = "1";
+    return;
+  }
+  toastTimers.set(
+    toast,
+    setTimeout(() => dismissToast(toast), duration ?? (onAction ? 12000 : 4500))
+  );
+}
+
+export function announce(message, options) {
   const ariaLive = document.querySelector("#aria-live");
   if (ariaLive) ariaLive.textContent = message;
+  showToast(message, options);
 }
-let errorTimer = null;
+
+// 错误横幅改为手动关闭：含恢复指引的错误若被定时器冲掉，用户会丢失下一步线索。
 export function showError(message) {
   let banner = document.querySelector("#error-banner");
   if (!banner) {
@@ -393,13 +484,14 @@ export function showError(message) {
     banner.id = "error-banner";
     banner.className = "error-banner";
     banner.setAttribute("role", "alert");
-    banner.setAttribute("aria-live", "assertive");
     document.querySelector(".page-shell").prepend(banner);
   }
-  banner.textContent = message;
+  const text = document.createElement("span");
+  text.className = "error-banner-text";
+  text.textContent = message;
+  banner.replaceChildren(
+    text,
+    buildDismissButton(() => banner.classList.add("hidden"))
+  );
   banner.classList.remove("hidden");
-  clearTimeout(errorTimer);
-  errorTimer = setTimeout(() => {
-    banner.classList.add("hidden");
-  }, 5000);
 }

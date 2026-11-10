@@ -219,6 +219,64 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 详情快照允许锁外解析且失效代次不可回填缓存() {
+    let (_directory, store) = structured_search_store();
+    let key = store.summaries[0]["_key"].as_str().unwrap().to_string();
+    let shared = std::sync::Arc::new(std::sync::Mutex::new(store));
+    let super::DetailRead::Pending(plan) = shared.lock().unwrap().prepare_detail(&key).unwrap()
+    else {
+        panic!("首次读取应未命中缓存");
+    };
+    let (detail, size) =
+        std::thread::spawn(move || plan.read().map(|(detail, size)| (plan, detail, size)))
+            .join()
+            .unwrap()
+            .map(|(plan, detail, size)| {
+                let mut store = shared.try_lock().expect("解析计划不持有会话锁");
+                assert!(store.cache_detail(&plan, &detail, size));
+                store.detail_cache.clear();
+                assert!(!store.cache_detail(&plan, &detail, size));
+                (detail, size)
+            })
+            .unwrap();
+    assert!(size > 0);
+    assert!(
+        !detail["conversation_messages"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(matches!(
+        shared.lock().unwrap().prepare_detail(&key).unwrap(),
+        super::DetailRead::Pending(_)
+    ));
+}
+
+#[test]
+fn 删除或修改记录后拒绝旧详情回填() {
+    let (_directory, mut store) = structured_search_store();
+    let key = store.summaries[0]["_key"].as_str().unwrap().to_string();
+    let super::DetailRead::Pending(plan) = store.prepare_detail(&key).unwrap() else {
+        panic!();
+    };
+    let (detail, size) = plan.read().unwrap();
+    store.records.get_mut(&key).unwrap().summary["title"] = json!("已改变");
+    assert!(!store.cache_detail(&plan, &detail, size));
+    store.records.remove(&key);
+    assert!(!store.cache_detail(&plan, &detail, size));
+}
+
+#[test]
+fn 列表返回筛选后总数而非当前分页长度() {
+    let (_directory, store) = structured_search_store();
+    let result = store.list(
+        &HashMap::from([("limit".into(), "1".into())]),
+        &crate::workspace::WorkspaceSnapshot::default(),
+    );
+    assert_eq!(result["total"], store.summaries.len());
+}
+
+#[test]
 fn 列表摘要附带文件最近写入时间且不写回缓存摘要() {
     let (_directory, store) = structured_search_store();
     let mtime = store.summaries[0]["file_mtime_ms"]

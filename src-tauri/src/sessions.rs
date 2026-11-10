@@ -27,6 +27,7 @@ mod parse;
 mod pi;
 mod pricing;
 mod query;
+pub(crate) use query::DetailRead;
 mod roots;
 mod scan;
 mod stats;

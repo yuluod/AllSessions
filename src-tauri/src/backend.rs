@@ -42,6 +42,7 @@ pub struct BackendState {
     search_indexing: Arc<AtomicBool>,
     search_index_error: Arc<Mutex<Option<String>>>,
     index_progress: Arc<Mutex<Value>>,
+    read_requests: Arc<Mutex<crate::request_control::ReadRequests>>,
 }
 
 impl BackendState {
@@ -73,6 +74,7 @@ impl BackendState {
             search_indexing: Arc::new(AtomicBool::new(true)),
             search_index_error: Arc::new(Mutex::new(None)),
             index_progress: Arc::new(Mutex::new(json!({"phase":"scanning"}))),
+            read_requests: Arc::default(),
         })
     }
 
@@ -319,6 +321,8 @@ pub struct FrontendRequest {
     method: String,
     #[serde(default)]
     body: Value,
+    #[serde(default)]
+    request_id: Option<String>,
 }
 
 fn default_method() -> String {
@@ -332,9 +336,59 @@ pub async fn request_json(
     request: FrontendRequest,
 ) -> Result<Value, ApiError> {
     let backend = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || route_request(app, backend, request))
-        .await
-        .map_err(|error| ApiError::from(format!("后端任务异常结束：{error}")))?
+    let path = request.url.split('?').next().unwrap_or_default();
+    let cancellable = request.method == "GET"
+        && (matches!(
+            path,
+            "/api/search" | "/api/sessions" | "/api/stats" | "/api/stats/sessions" | "/api/facets"
+        ) || path.starts_with("/api/sessions/"));
+    let registration = if cancellable {
+        request
+            .request_id
+            .as_ref()
+            .map(|id| {
+                let token = backend
+                    .read_requests
+                    .lock()
+                    .map_err(lock_error)?
+                    .register(id)?;
+                Ok::<_, ApiError>((id.clone(), token))
+            })
+            .transpose()?
+    } else {
+        None
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = registration.map(|(id, token)| {
+            crate::request_control::ReadGuard::enter(backend.read_requests.clone(), id, token)
+        });
+        if guard.as_ref().is_some_and(|guard| guard.cancelled()) {
+            return Err(crate::request_control::cancelled_error());
+        }
+        let started = Instant::now();
+        let result = route_request(app, backend, request);
+        crate::request_control::trace_duration("ipc.total", started);
+        if guard.as_ref().is_some_and(|guard| guard.cancelled()) {
+            Err(crate::request_control::cancelled_error())
+        } else {
+            result
+        }
+    })
+    .await
+    .map_err(|error| ApiError::from(format!("后端任务异常结束：{error}")))?
+}
+
+#[tauri::command]
+pub fn cancel_read_request(
+    state: State<'_, BackendState>,
+    request_id: String,
+) -> Result<(), ApiError> {
+    state
+        .read_requests
+        .lock()
+        .map_err(lock_error)?
+        .cancel(&request_id);
+    Ok(())
 }
 
 fn route_request(
@@ -755,22 +809,61 @@ fn route_request(
                 .decode_utf8()
                 .map_err(|_| ApiError::invalid("会话 ID 编码无效"))?;
             let workspace = state.workspace_snapshot()?;
-            let mut store = state.store.lock().map_err(lock_error)?;
             let mut detail = if let Some(around) = query.get("around") {
                 let ordinal = around
                     .parse::<i64>()
                     .map_err(|_| ApiError::invalid("消息位置无效"))?;
-                store.search_context(
+                state.store.lock().map_err(lock_error)?.search_context(
                     &key,
                     ordinal,
                     query.get("message").map(String::as_str),
                     query.get("term").map(String::as_str).unwrap_or_default(),
                 )?
             } else {
-                store.detail(&key)?
+                let mut result = None;
+                for _ in 0..2 {
+                    crate::request_control::check()?;
+                    let started = Instant::now();
+                    let mut store = state.store.lock().map_err(lock_error)?;
+                    crate::request_control::trace_duration("detail.lock_wait", started);
+                    let started = Instant::now();
+                    let plan = store.prepare_detail(&key)?;
+                    drop(store);
+                    crate::request_control::trace_duration("detail.snapshot", started);
+                    match plan {
+                        crate::sessions::DetailRead::Cached(detail) => {
+                            result = Some(detail);
+                            break;
+                        }
+                        crate::sessions::DetailRead::Pending(plan) => {
+                            // 文件读取、解析与体积估算均在会话锁外；仅回填时校验扫描代次。
+                            let started = Instant::now();
+                            let parsed = plan.read();
+                            crate::request_control::trace_duration("detail.parse", started);
+                            let (detail, size) = match parsed {
+                                Err(error) if error.code == "detail_changed" => continue,
+                                result => result?,
+                            };
+                            crate::request_control::check()?;
+                            if state
+                                .store
+                                .lock()
+                                .map_err(lock_error)?
+                                .cache_detail(&plan, &detail, size)
+                            {
+                                result = Some(detail);
+                                break;
+                            }
+                        }
+                    }
+                }
+                result.ok_or_else(|| ApiError::new("detail_changed", "会话正在更新，请重试"))?
             };
-            detail["related_sessions"] = store.related_sessions(&key, &workspace);
-            drop(store);
+            detail["related_sessions"] = state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .related_sessions(&key, &workspace);
             workspace.decorate_detail(&mut detail);
             Ok(detail)
         }

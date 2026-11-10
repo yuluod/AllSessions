@@ -69,10 +69,12 @@ impl SessionStore {
         query: &HashMap<String, String>,
         workspace: &crate::workspace::WorkspaceSnapshot,
     ) -> Value {
+        let sessions = self.filtered(query, workspace);
+        let total = sessions.len();
         paginate(
-            self.filtered(query, workspace),
+            sessions,
             query,
-            json!({ "session_roots": self.session_roots(), "scanning": self.scanning() }),
+            json!({ "session_roots": self.session_roots(), "scanning": self.scanning(), "total": total }),
         )
     }
 
@@ -136,48 +138,56 @@ impl SessionStore {
         )
     }
 
-    pub fn detail(&mut self, key: &str) -> Result<Value, crate::error::ApiError> {
+    pub fn prepare_detail(&mut self, key: &str) -> Result<DetailRead, crate::error::ApiError> {
         use crate::error::ApiError;
-        let missing = || ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在");
-        let resolved = self.resolve_record_key(key).ok_or_else(missing)?;
+        let resolved = self
+            .resolve_record_key(key)
+            .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
         if let Some(detail) = self.detail_cache.get(&resolved) {
-            return Ok(detail);
+            return Ok(DetailRead::Cached(detail));
         }
-        let record = self.records.get(&resolved).ok_or_else(missing)?;
-        let mut detail = if let Some(locator) = &record.detail_locator {
-            match locator {
-                DetailLocator::Gemini(locator) => gemini::parse_detail(&record.source, locator),
-                DetailLocator::OpenCode(locator) => opencode::parse_detail(&record.source, locator),
-                DetailLocator::ZCode(locator) => zcode::parse_detail(&record.source, locator),
-                DetailLocator::Cursor(locator) => {
-                    cursor::visit_detail(&record.source, locator, &mut |_| {})
-                }
-                DetailLocator::Devin(locator) => devin::parse_detail(&record.source, locator),
-                DetailLocator::Hermes(locator) => hermes::parse_detail(&record.source, locator),
-            }
-        } else {
-            parse_detail(&record.path, &record.source)
-        }
-        .map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))?;
-        // 与列表摘要一致的最近写入时间，供"进行中"标记与实时刷新判断。
-        if let Some(ms) = std::fs::metadata(&record.path)
-            .ok()
-            .and_then(|metadata| metadata.modified().ok())
-            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+        let record = self
+            .records
+            .get(&resolved)
+            .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
+        Ok(DetailRead::Pending(Box::new(DetailPlan {
+            key: resolved,
+            generation: self.detail_cache.generation,
+            record: super::StoredSession {
+                summary: record.summary.clone(),
+                search_text: String::new(),
+                source: record.source.clone(),
+                path: record.path.clone(),
+                detail_locator: record.detail_locator.clone(),
+            },
+        })))
+    }
+
+    pub fn cache_detail(&mut self, plan: &DetailPlan, detail: &Value, size: usize) -> bool {
+        if self.detail_cache.generation != plan.generation
+            || !self.records.get(&plan.key).is_some_and(|record| {
+                record.path == plan.record.path
+                    && record.source == plan.record.source
+                    && record.summary == plan.record.summary
+            })
         {
-            detail["summary"]["file_mtime_ms"] = json!(ms);
+            return false;
         }
-        if let Some(messages) = detail["conversation_messages"].as_array_mut() {
-            for message in messages {
-                super::annotate_activity(message);
+        self.detail_cache
+            .insert(plan.key.clone(), detail.clone(), size);
+        true
+    }
+
+    // 写操作保留锁内读取，以保持删除前校验与写回的原子边界。
+    pub fn detail(&mut self, key: &str) -> Result<Value, crate::error::ApiError> {
+        match self.prepare_detail(key)? {
+            DetailRead::Cached(detail) => Ok(detail),
+            DetailRead::Pending(plan) => {
+                let (detail, size) = plan.read()?;
+                self.cache_detail(&plan, &detail, size);
+                Ok(detail)
             }
         }
-        let size = serde_json::to_vec(&detail)
-            .map(|value| value.len())
-            .unwrap_or_default();
-        self.detail_cache.insert(resolved, detail.clone(), size);
-        Ok(detail)
     }
 
     /// 按详情里的定位信息回读单张内嵌图片；不重新解析整份会话。
@@ -378,5 +388,79 @@ impl SearchPlan {
         }
         Ok(page)
         })
+    }
+}
+
+pub(crate) enum DetailRead {
+    Cached(Value),
+    Pending(Box<DetailPlan>),
+}
+pub(crate) struct DetailPlan {
+    key: String,
+    generation: u64,
+    record: super::StoredSession,
+}
+
+fn detail_stamp(path: &std::path::Path) -> Vec<Option<(u64, std::time::SystemTime)>> {
+    [
+        path.to_path_buf(),
+        std::path::PathBuf::from(format!("{}-wal", path.display())),
+    ]
+    .iter()
+    .map(|path| {
+        let metadata = std::fs::metadata(path).ok()?;
+        Some((metadata.len(), metadata.modified().ok()?))
+    })
+    .collect()
+}
+impl DetailPlan {
+    pub fn read(&self) -> Result<(Value, usize), crate::error::ApiError> {
+        use crate::error::ApiError;
+        crate::request_control::check()?;
+        let before = detail_stamp(&self.record.path);
+        let mut detail = if let Some(locator) = &self.record.detail_locator {
+            match locator {
+                DetailLocator::Gemini(locator) => {
+                    gemini::parse_detail(&self.record.source, locator)
+                }
+                DetailLocator::OpenCode(locator) => {
+                    opencode::parse_detail(&self.record.source, locator)
+                }
+                DetailLocator::ZCode(locator) => zcode::parse_detail(&self.record.source, locator),
+                DetailLocator::Cursor(locator) => {
+                    cursor::visit_detail(&self.record.source, locator, &mut |_| {})
+                }
+                DetailLocator::Devin(locator) => devin::parse_detail(&self.record.source, locator),
+                DetailLocator::Hermes(locator) => {
+                    hermes::parse_detail(&self.record.source, locator)
+                }
+            }
+        } else {
+            parse_detail(&self.record.path, &self.record.source)
+        }
+        .map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))?;
+        // 与列表摘要一致的最近写入时间，供"进行中"标记与实时刷新判断。
+        if let Some(ms) = std::fs::metadata(&self.record.path)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+        {
+            detail["summary"]["file_mtime_ms"] = json!(ms);
+        }
+        if let Some(messages) = detail["conversation_messages"].as_array_mut() {
+            for message in messages {
+                super::annotate_activity(message);
+            }
+        }
+        let size = serde_json::to_vec(&detail)
+            .map(|value| value.len())
+            .unwrap_or_default();
+
+        crate::request_control::check()?;
+        if before != detail_stamp(&self.record.path) {
+            return Err(ApiError::new("detail_changed", "会话正在更新，请重试"));
+        }
+        Ok((detail, size))
     }
 }

@@ -174,7 +174,10 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   assert.match(cargo, /rusqlite/);
   assert.match(cargo, /notify =/);
   assert.match(rustSource, /TrayIconBuilder/);
-  assert.match(rustSource, /generate_handler!\[request_json\]/);
+  assert.match(
+    rustSource,
+    /generate_handler!\[request_json, cancel_read_request\]/
+  );
   assert.match(backend, /sessions-changed/);
   assert.doesNotMatch(
     rustSource,

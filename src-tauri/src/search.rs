@@ -373,6 +373,7 @@ fn backfill_short(db: &Connection, key: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let mut rows = read.query([key]).map_err(|e| e.to_string())?;
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        crate::request_control::check()?;
         let id: i64 = row.get(0).map_err(|e| e.to_string())?;
         let text: String = row.get(1).map_err(|e| e.to_string())?;
         for token in short_tokens(&text) {
@@ -449,6 +450,7 @@ impl SearchSnapshot<'_> {
                 .query(params_from_iter(bind_values))
                 .map_err(|e| e.to_string())?;
             while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                crate::request_control::check()?;
                 let key = row
                     .get_ref(0)
                     .map_err(|e| e.to_string())?
@@ -524,6 +526,7 @@ impl SearchSnapshot<'_> {
         let mut candidates: BTreeMap<String, Vec<Candidate>> = BTreeMap::new();
         let mut hits: BTreeMap<String, Vec<Value>> = BTreeMap::new();
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            crate::request_control::check()?;
             let key = row
                 .get_ref(0)
                 .map_err(|e| e.to_string())?

@@ -21,7 +21,8 @@ use tauri::{
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
 };
 
-use backend::{BackendState, request_json};
+use backend::{BackendState, cancel_read_request, request_json};
+mod request_control;
 
 /// 托盘图标资产由 v3 原图生成，来源 `icons/128x128.png`。
 /// 原图已经使用透明画布；近白背景清理仅作为旧资产兼容保护。
@@ -349,7 +350,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![request_json])
+        .invoke_handler(tauri::generate_handler![request_json, cancel_read_request])
         .setup(|app| {
             let backend = BackendState::load().map_err(|error| format!("加载会话失败：{error}"))?;
             app.manage(backend);

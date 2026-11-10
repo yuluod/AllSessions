@@ -465,6 +465,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
     }
     let mut state = ParseState::new(path);
     for line in BufReader::new(File::open(path).map_err(error_text)?).lines() {
+        crate::request_control::check()?;
         let line = line.map_err(error_text)?;
         if line.trim().is_empty() {
             continue;
@@ -632,6 +633,7 @@ impl<T> HeadTail<T> {
 }
 
 pub(crate) struct DetailCache {
+    pub(crate) generation: u64,
     max_bytes: usize,
     bytes: usize,
     order: VecDeque<String>,
@@ -641,6 +643,7 @@ impl DetailCache {
     pub(crate) fn new(max_bytes: usize) -> Self {
         Self {
             max_bytes,
+            generation: 0,
             bytes: 0,
             order: VecDeque::new(),
             values: HashMap::new(),
@@ -672,6 +675,7 @@ impl DetailCache {
         }
     }
     pub(crate) fn clear(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
         self.bytes = 0;
         self.order.clear();
         self.values.clear();

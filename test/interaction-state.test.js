@@ -380,6 +380,91 @@ test("搜索列表计数使用匹配数，失败时不继续展示旧总数", as
   assert.equal(elements.sessionCount.textContent, "—");
 });
 
+test("多选模式下 aria-selected 表示勾选态，退出后恢复当前会话态", async () => {
+  const makeItem = (key) => ({
+    dataset: { sessionKey: key },
+    attrs: {},
+    setAttribute(name, value) {
+      this.attrs[name] = value;
+    },
+  });
+  const makeRow = (key) => {
+    const item = makeItem(key);
+    const checkbox = {
+      attrs: {},
+      setAttribute(name, value) {
+        this.attrs[name] = value;
+      },
+    };
+    return {
+      item,
+      checkbox,
+      querySelector: (sel) =>
+        sel === ".session-item"
+          ? item
+          : sel === ".session-select-checkbox"
+            ? checkbox
+            : null,
+    };
+  };
+  const rows = [makeRow("a"), makeRow("b")];
+  const sessionList = {
+    attrs: { role: "listbox" },
+    classList: { toggle() {} },
+    getAttribute(name) {
+      return this.attrs[name];
+    },
+    setAttribute(name, value) {
+      this.attrs[name] = value;
+    },
+    querySelectorAll: (sel) => (sel === ".session-row" ? rows : []),
+  };
+  const toggle = { setAttribute() {} };
+  const hiddenNode = () => ({ classList: { toggle() {} } });
+  const state = {
+    bulkSelectionMode: false,
+    selectedSessionKeys: new Set(),
+    selectedSessionKey: "a",
+    sessions: [],
+  };
+  const elements = {
+    sessionList,
+    bulkToolbar: hiddenNode(),
+    bulkActions: hiddenNode(),
+    bulkExportBtn: { disabled: false },
+    selectVisibleBtn: { disabled: false },
+    bulkSelectionCount: { textContent: "" },
+    bulkLimitHint: { textContent: "" },
+  };
+  const app = await loadModule("app/session-list.js", {
+    state,
+    elements,
+    t: (key) => key,
+    document: { querySelector: () => toggle },
+    MAX_BULK_EXPORT_SESSIONS: 20,
+  });
+
+  app.updateBulkToolbar();
+  assert.equal(rows[0].item.attrs["aria-selected"], "true");
+  assert.equal(rows[1].item.attrs["aria-selected"], "false");
+  assert.equal(sessionList.attrs["aria-multiselectable"], "false");
+
+  state.bulkSelectionMode = true;
+  state.selectedSessionKeys.add("b");
+  app.updateBulkToolbar();
+  // a 仍是当前会话但未勾选；b 已勾选——语义已切到勾选态。
+  assert.equal(rows[0].item.attrs["aria-selected"], "false");
+  assert.equal(rows[1].item.attrs["aria-selected"], "true");
+  assert.equal(sessionList.attrs["aria-multiselectable"], "true");
+  assert.equal(rows[0].checkbox.attrs.tabindex, "0");
+
+  state.bulkSelectionMode = false;
+  state.selectedSessionKeys.clear();
+  app.updateBulkToolbar();
+  assert.equal(rows[0].item.attrs["aria-selected"], "true");
+  assert.equal(rows[0].checkbox.attrs.tabindex, "-1");
+});
+
 test("恢复确认偏好可重新开启，存储不可读时默认确认", () => {
   let value = null;
   globalThis.localStorage = {

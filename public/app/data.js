@@ -185,11 +185,30 @@ export async function loadSessionDetail(
       state.currentDetail = null;
       elements.detailView.classList.add("hidden");
       elements.detailEmpty.classList.remove("hidden");
-      setDetailPlaceholder(t("loadDetailFailed"), error.message);
+      // 与列表/统计等失败面一致：详情失败占位提供就地重试，
+      // 而不是只有错误文案。进入普通空态时按钮由占位渲染移除。
+      setDetailPlaceholder(t("loadDetailFailed"), error.message, true);
+      mountDetailRetryAction();
       setPropsPlaceholder(t("loadDetailFailed"));
     }
     return false;
   }
+}
+
+// 详情占位区的常驻重试按钮：按当前选中会话重载详情。
+function mountDetailRetryAction() {
+  const actions = elements.detailEmpty?.querySelector(".empty-state-actions");
+  if (!actions || actions.querySelector("#detail-retry-action")) return;
+  const retry = document.createElement("button");
+  retry.id = "detail-retry-action";
+  retry.type = "button";
+  retry.className = "ghost-button";
+  retry.textContent = t("retry");
+  retry.addEventListener("click", () => {
+    const key = state.selectedSessionKey;
+    if (key) void loadSessionDetail(key);
+  });
+  actions.prepend(retry);
 }
 
 // 会话仍被选中且源文件在刷新后有新内容时重载详情，保持滚动位置。

@@ -47,13 +47,15 @@ export function resolveGlobalShortcut(event, context) {
   }
   if (event.metaKey || event.ctrlKey) {
     if (context.dialogOpen) {
-      return key === "," && context.settingsDialogActive
+      // 与下方 ⌘, 一致地排除 Shift。
+      return key === "," && !event.shiftKey && context.settingsDialogActive
         ? { type: "toggle-settings" }
         : null;
     }
     const lower = key.toLowerCase();
     if (lower === "k" || lower === "f") return { type: "focus-search" };
-    if (key === ",") return { type: "toggle-settings" };
+    // ⌘, 排除 Shift：Shift 组合留给系统与输入法，避免边缘组合误开设置。
+    if (key === "," && !event.shiftKey) return { type: "toggle-settings" };
     if (lower === "r") return { type: "refresh" };
     if (VIEW_SHORTCUTS[key]) {
       return { type: "switch-view", view: VIEW_SHORTCUTS[key] };
@@ -66,13 +68,20 @@ export function resolveGlobalShortcut(event, context) {
   if (context.editableTarget || context.dialogOpen) return null;
 
   const view = VIEW_SHORTCUTS[key];
-  if (view && !event.metaKey && !event.ctrlKey && !event.altKey) {
+  // altKey 已在入口排除，此处不再重复检查。
+  if (view && !event.metaKey && !event.ctrlKey) {
     return { type: "switch-view", view };
   }
 
-  if (key === " " && context.bulkSelection && context.focusedSession)
+  // Space 排除 Shift：Shift+Space 无勾选语义，避免批量模式下的边缘误触。
+  if (
+    key === " " &&
+    !event.shiftKey &&
+    context.bulkSelection &&
+    context.focusedSession
+  )
     return { type: "toggle-selection" };
-  if (key.toLowerCase() === "n" && !event.altKey)
+  if (key.toLowerCase() === "n")
     return { type: "move-message", direction: event.shiftKey ? -1 : 1 };
   const moveDown = key === "j" || key === "ArrowDown";
   const moveUp = key === "k" || key === "ArrowUp";

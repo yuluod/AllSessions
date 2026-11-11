@@ -43,18 +43,37 @@ import { settingsController } from "./controllers.js";
 import { createEmptyState } from "../ui-components.js";
 import { changeSessionSelection } from "../workspace-state.js";
 
+function isBulkSelecting() {
+  return state.bulkSelectionMode || state.selectedSessionKeys.size > 0;
+}
+
+// role=option 不支持 aria-checked：多选模式下 aria-selected 表示勾选态
+// （aria-multiselectable 语义），平时仍表示当前打开详情的会话。
+function optionSelectedState(item) {
+  return isBulkSelecting()
+    ? state.selectedSessionKeys.has(item.dataset.sessionKey)
+    : item.dataset.sessionKey === state.selectedSessionKey;
+}
+
 export function updateBulkToolbar() {
   const count = state.selectedSessionKeys.size;
-  const selecting = state.bulkSelectionMode || count > 0;
-  elements.sessionList?.querySelectorAll(".session-item").forEach((item) => {
-    if (selecting)
-      item.setAttribute(
-        "aria-checked",
-        String(state.selectedSessionKeys.has(item.dataset.sessionKey))
-      );
-    else item.removeAttribute("aria-checked");
+  const selecting = isBulkSelecting();
+  // 选择模式下 checkbox 恢复 Tab 停靠、option 的 aria-selected 同步为
+  // 勾选态，键盘与读屏用户逐项浏览时都能感知勾选状态。
+  elements.sessionList?.querySelectorAll(".session-row").forEach((row) => {
+    row
+      .querySelector(".session-select-checkbox")
+      ?.setAttribute("tabindex", selecting ? "0" : "-1");
+    const item = row.querySelector(".session-item");
+    if (item)
+      item.setAttribute("aria-selected", String(optionSelectedState(item)));
   });
   elements.sessionList?.classList.toggle("is-selecting", selecting);
+  if (elements.sessionList?.getAttribute("role") === "listbox")
+    elements.sessionList.setAttribute(
+      "aria-multiselectable",
+      String(selecting)
+    );
   elements.bulkToolbar?.classList.toggle("hidden", !selecting);
   const toggle = document.querySelector("#bulk-select-toggle");
   toggle?.setAttribute("aria-pressed", String(selecting));
@@ -94,8 +113,14 @@ export function updateSessionCount() {
   const statsTotal = isSearchActive()
     ? Number(state.searchTotal)
     : Number(state.sessionsTotal ?? state.stats?.total);
-  if (state.sessionsLoading || state.lastSessionError) {
+  if (state.lastSessionError) {
     elements.sessionCount.textContent = "—";
+    return;
+  }
+  if (state.sessionsLoading) {
+    // 加载中保留旧计数避免每次刷新闪占位符；首屏无旧值时才补占位。
+    if (!elements.sessionCount.textContent)
+      elements.sessionCount.textContent = "—";
     return;
   }
   if (visibleCount === 0) {
@@ -252,10 +277,7 @@ export function appendSessionItems(sessions) {
       setSessionSelected(session._key, checkbox.checked);
     });
     button.setAttribute("role", "option");
-    button.setAttribute(
-      "aria-selected",
-      session._key === state.selectedSessionKey ? "true" : "false"
-    );
+    button.setAttribute("aria-selected", String(optionSelectedState(button)));
     // roving tabindex：全部选项先移出 Tab 序，由 syncSessionRovingTabindex
     // 统一把当前项（或首项）放回 tabindex=0。
     button.tabIndex = -1;
@@ -411,27 +433,30 @@ export function selectSession(
       .find((session) => session._key === key)
       ?.search_hits?.find((item) => Number.isInteger(item.ordinal));
   changeSessionSelection(state, key, selectedHit, detailRequestGate);
-  setPropsPlaceholder(t("loading"));
   elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
     el.classList.remove("active");
-    el.setAttribute("aria-selected", "false");
+    el.setAttribute("aria-selected", String(optionSelectedState(el)));
   });
-  if (buttonEl) {
-    buttonEl.classList.add("active");
-    buttonEl.setAttribute("aria-selected", "true");
-  }
-  elements.detailView.classList.add("hidden");
-  elements.detailEmpty.classList.remove("hidden");
-  setDetailPlaceholder(t("loading"));
+  buttonEl?.classList.add("active");
   syncUrl();
   clearTimeout(detailDebounce);
-  detailDebounce = null;
+  // j/k 快速移动时保留当前详情内容，占位等到防抖到期真正发请求时再切，
+  // 避免"加载中"逐键闪烁；点击等立即加载的路径照旧先给加载反馈。
+  const showLoadingPlaceholder = () => {
+    setPropsPlaceholder(t("loading"));
+    elements.detailView.classList.add("hidden");
+    elements.detailEmpty.classList.remove("hidden");
+    setDetailPlaceholder(t("loading"));
+  };
   if (deferDetail) {
     detailDebounce = setTimeout(() => {
       detailDebounce = null;
+      showLoadingPlaceholder();
       loadSessionDetail(key);
     }, 140);
   } else {
+    detailDebounce = null;
+    showLoadingPlaceholder();
     loadSessionDetail(key);
   }
   syncSessionRovingTabindex();
@@ -447,6 +472,7 @@ export function renderLoadMoreButton() {
   btn = document.createElement("button");
   btn.className = "ghost-button load-more-btn";
   btn.textContent = t("loadMore");
+  btn.title = t("loadMoreTitle");
   btn.addEventListener("click", async () => {
     btn.textContent = t("loadingMore");
     btn.disabled = true;
@@ -517,6 +543,13 @@ export function renderSessionList() {
     }
     (elements.sessionListFooter || elements.sessionList).append(empty);
     renderSessionListFooter();
+    // 原焦点在列表内时由空态接管，避免列表重建后焦点掉到 body；
+    // 优先落到空态操作按钮，键盘用户可直接 Enter 清筛选或打开设置。
+    if (focusedKey) {
+      (empty.querySelector("button") || elements.searchInput)?.focus({
+        preventScroll: true,
+      });
+    }
     return;
   }
 

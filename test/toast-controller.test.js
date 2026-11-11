@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
+import vm from "node:vm";
 import { createToastController } from "../public/toast-controller.js";
+import { createLatestRequestGate } from "../public/async-coordinator.js";
 
 function setup() {
   let time = 0;
@@ -11,6 +14,7 @@ function setup() {
     constructor() {
       this.children = [];
       this.events = {};
+      this.attributes = new Map();
       this.isConnected = true;
     }
     append(...children) {
@@ -29,7 +33,9 @@ function setup() {
         this.children.some((child) => child.contains(element))
       );
     }
-    setAttribute() {}
+    setAttribute(name, value) {
+      this.attributes.set(name, value);
+    }
     matches() {
       return false;
     }
@@ -44,12 +50,17 @@ function setup() {
     }
   }
   const shell = new Element();
+  const status = new Element();
   const origin = new Element();
   const fallback = new Element();
   document.activeElement = origin;
   document.createElement = () => new Element();
-  document.querySelector = (selector) =>
-    selector === ".page-shell" ? shell : fallback;
+  document.querySelector = (selector) => {
+    if (selector === ".page-shell") return shell;
+    if (selector === "#aria-live") return status;
+    return fallback;
+  };
+  document.querySelectorAll = () => [];
   const show = createToastController({
     document,
     dismissLabel: () => "关闭",
@@ -77,9 +88,44 @@ function setup() {
     fallback,
     advance,
     timers,
+    status,
+    stack: () => shell.children[0],
     toasts: () => shell.children[0].children,
   };
 }
+
+test("提示排队和合并时仍立即更新独立播报区域，出队时不重复播报", async () => {
+  const ui = setup();
+  const source = (
+    await readFile(new URL("../public/app/shared.js", import.meta.url), "utf8")
+  )
+    .replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm, "")
+    .replace(/^export \{[^}]*\} from "[^"]+";\s*/gm, "")
+    .replace(/^export /gm, "");
+  const app = vm.createContext({
+    document: ui.document,
+    createLatestRequestGate,
+    createToastController: () => ui.show,
+  });
+  vm.runInContext(source, app);
+  app.announce("备份一", { sticky: true });
+  app.announce("备份二", { sticky: true });
+  app.announce("已收藏");
+  assert.equal(ui.status.textContent, "已收藏");
+  app.announce("已保存备注");
+  assert.equal(ui.status.textContent, "已保存备注");
+  assert.deepEqual(
+    ui.toasts().map((toast) => toast.children[0].textContent),
+    ["备份一", "备份二"]
+  );
+  assert.equal(ui.stack().attributes.has("aria-live"), false);
+  ui.toasts()[0].children.at(-1).events.click();
+  assert.deepEqual(
+    ui.toasts().map((toast) => toast.children[0].textContent),
+    ["备份二", "已保存备注"]
+  );
+  assert.equal(ui.status.textContent, "已保存备注");
+});
 
 test("两条重要提示占满时普通提示等待，且只保留最新的普通提示", () => {
   const ui = setup();

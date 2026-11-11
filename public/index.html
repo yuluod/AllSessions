@@ -575,12 +575,12 @@
                   id="bulk-select-toggle"
                   class="ghost-button bulk-select-toggle"
                   type="button"
-                  aria-label="批量导出"
-                  title="批量导出"
+                  aria-label="批量选择"
+                  title="批量选择"
                   aria-pressed="false"
-                  data-i18n="batchExport"
+                  data-i18n="bulkSelectionMode"
                   data-i18n-attr="aria-label"
-                  data-i18n-title="batchExport"
+                  data-i18n-title="bulkSelectionMode"
                 >
                   <svg
                     viewBox="0 0 256 256"
@@ -605,7 +605,10 @@
                   <input
                     id="search-input"
                     type="search"
+                    aria-label="搜索会话"
                     placeholder="搜索会话内容 / 路径 / 关键词..."
+                    data-i18n="searchSessionsLabel"
+                    data-i18n-attr="aria-label"
                     data-i18n-placeholder="searchPlaceholder"
                   />
                   <kbd
@@ -890,13 +893,16 @@
               id="detail-panel"
               data-view-panel="list"
               tabindex="0"
+              aria-label="会话详情"
+              data-i18n="detailPanelLabel"
+              data-i18n-attr="aria-label"
             >
               <div id="detail-empty" class="empty-state">
                 <h2 data-i18n="selectSession">选择一个会话</h2>
                 <p data-i18n="selectSessionDesc">
                   左侧会显示所有已解析会话。选中后，详情和属性会在这里展示。
                 </p>
-                <div class="empty-state-hints" aria-hidden="true">
+                <div class="empty-state-hints">
                   <span class="empty-hint">
                     <kbd data-platform-shortcut="K">Ctrl K</kbd>
                     <span data-i18n="keySearch">搜索</span>
@@ -959,7 +965,7 @@
                       title="收藏"
                       data-i18n="favorite"
                       data-i18n-attr="aria-label"
-                      data-i18n-title="favorite"
+                      data-i18n-title="favoriteTitle"
                     >
                       <svg
                         aria-hidden="true"
@@ -1061,7 +1067,7 @@
                       type="button"
                       data-i18n="resumeSession"
                       data-i18n-attr="aria-label"
-                      data-i18n-title="resumeSession"
+                      data-i18n-title="resumeSessionTitle"
                     >
                       <span data-i18n="resumeSessionShort">终端恢复</span>
                     </button>
@@ -1144,6 +1150,7 @@
                             class="ghost-button button--quiet"
                             type="button"
                             data-i18n="archive"
+                            data-i18n-title="archiveTitle"
                           >
                             归档
                           </button>
@@ -1219,7 +1226,10 @@
                           <input
                             id="detail-search-input"
                             type="search"
+                            aria-label="在当前会话内搜索"
                             placeholder="搜索当前会话..."
+                            data-i18n="searchCurrentSessionLabel"
+                            data-i18n-attr="aria-label"
                             data-i18n-placeholder="detailSearchPlaceholder"
                           />
                           <span id="detail-search-count" role="status"></span>
@@ -2343,6 +2353,14 @@
         ></p>
       </div>
       <div class="delete-dialog-actions">
+        <button
+          id="delete-cancel-btn"
+          class="ghost-button"
+          type="button"
+          data-i18n="cancel"
+        >
+          取消
+        </button>
         <button
           id="delete-soft-btn"
           class="ghost-button"

@@ -20,6 +20,20 @@ function setup() {
         this === node || this.children.some((child) => child.contains(node))
       );
     }
+    // 生产代码按语义类名取空态标题，桩提供最小类名查找。
+    querySelector(selector) {
+      const className = selector.replace(/^\./, "");
+      const visit = (node) => {
+        for (const child of node.children) {
+          if (selector.startsWith(".") && child.className === className)
+            return child;
+          const found = visit(child);
+          if (found) return found;
+        }
+        return null;
+      };
+      return visit(this);
+    }
     setAttribute(key, value) {
       this.attributes[key] = value;
     }

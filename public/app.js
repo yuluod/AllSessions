@@ -504,6 +504,10 @@ async function initialize() {
     else clearPendingArchive();
   });
   elements.deleteDialogClose?.addEventListener("click", closeDeleteDialog);
+  // 最高风险弹窗的主行动区给显式取消出口，与右上角关闭一致走安全关闭。
+  document
+    .querySelector("#delete-cancel-btn")
+    ?.addEventListener("click", closeDeleteDialog);
   elements.deleteSoftBtn?.addEventListener("click", applySoftDeletion);
   elements.deletePermanentBtn?.addEventListener(
     "click",
@@ -677,8 +681,11 @@ async function initialize() {
       renderSessionList();
       await loadFacets();
       announce(t("workspaceSaved"));
-      if (elements.sessionOrganizeMenu)
+      if (elements.sessionOrganizeMenu) {
         elements.sessionOrganizeMenu.open = false;
+        // 保存入口在整理菜单内，关闭后焦点还给菜单开关，避免掉到 body。
+        elements.sessionOrganizeMenu.querySelector("summary")?.focus();
+      }
     } catch (error) {
       showError(`${t("workspaceSaveFailed")}: ${error.message}`);
     } finally {

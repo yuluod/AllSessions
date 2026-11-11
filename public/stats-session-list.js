@@ -157,7 +157,7 @@ export function renderStatsSessionList(
         : ""
       : "";
   view.empty.hidden = loading || Boolean(error) || !data || sessions.length > 0;
-  view.empty.children[0].textContent = t("noResults");
+  view.empty.querySelector(".ui-empty-title").textContent = t("noResults");
   view.failure.textContent = error
     ? t("statsSessionsFailed") + " · " + error.message
     : "";

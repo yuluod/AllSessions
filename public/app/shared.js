@@ -429,8 +429,17 @@ export const showToast = createToastController({
 });
 
 export function announce(message, options) {
+  // 播报独立于提示队列，避免常驻提示占满时延迟或丢失操作反馈。
+  // 带动作的提示（如撤销）把动作拼入播报文本：#aria-live 只写纯文本，
+  // 否则读屏用户不知道限时动作存在。
   const ariaLive = document.querySelector("#aria-live");
-  if (ariaLive) ariaLive.textContent = message;
+  if (ariaLive)
+    ariaLive.textContent = options?.actionLabel
+      ? t("toastActionAvailable", {
+          message,
+          action: options.actionLabel,
+        })
+      : message;
   showToast(message, options);
 }
 

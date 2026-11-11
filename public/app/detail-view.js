@@ -487,6 +487,8 @@ export function showSelectSessionPlaceholder() {
   detailRequestGate.cancel();
   elements.detailView.classList.add("hidden");
   elements.detailEmpty.classList.remove("hidden");
+  // 普通空态不保留失败场景注入的重试按钮。
+  elements.detailEmpty.querySelector("#detail-retry-action")?.remove();
   setDetailPlaceholder(t("selectSession"), t("selectSessionDesc"), true);
   setPropsPlaceholder(t("selectSession"));
 }

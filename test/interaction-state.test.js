@@ -66,7 +66,32 @@ test("后台刷新隐藏视图只标记失效，前台查询立即取消旧请�
   await app.refreshWorkspace(["sessions", "stats"]);
   assert.equal(state.sessionsDirty, true);
   assert.equal(state.statsDirty, true);
-  assert.equal(cancelled, 2);
+  // 3 次 = 隐藏视图标脏时取消在途列表请求 + loadStats 早退取消两个统计门闩。
+  assert.equal(cancelled, 3);
+});
+
+test("用户主动查询直接路径同样取消在途统计请求", async () => {
+  // 搜索、清筛选等直接 loadSessions 的路径若不取消在途 stats 请求，
+  // 旧响应完成后会写回旧数据并清掉 statsDirty，统计页长期展示过期结果。
+  const globals = dataEnvironment();
+  let statsCancelled = 0;
+  const gate = createLatestRequestGate();
+  globals.statsRequestGate = {
+    begin: gate.begin.bind(gate),
+    cancel: () => {
+      statsCancelled++;
+      gate.cancel();
+    },
+  };
+  globals.fetchJson = async () => ({
+    sessions: [{ _key: "one" }],
+    has_more: false,
+    next_cursor: null,
+  });
+  const app = await loadModule("app/data.js", globals);
+  await app.loadSessions();
+  assert.equal(statsCancelled, 1);
+  assert.equal(globals.state.statsDirty, true);
 });
 
 test("原始事件页在首次切换到该页时才创建节点", async () => {
@@ -236,6 +261,8 @@ function dataEnvironment() {
     MOBILE_LAYOUT_QUERY: "",
     detailRequestGate: createLatestRequestGate(),
     sessionRequestGate: createLatestRequestGate(),
+    statsRequestGate: createLatestRequestGate(),
+    statsSessionsRequestGate: createLatestRequestGate(),
     nextPaint: async () => {},
     isAbortError: () => false,
     isSearchActive: () => false,

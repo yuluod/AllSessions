@@ -209,7 +209,10 @@ export async function loadSessions({
   background = false,
 } = {}) {
   const request = sessionRequestGate.begin();
-  if (!background) invalidateQuery(state);
+  // 与 refreshWorkspace 的 query 分支同口径：失效查询时取消在途统计请求，
+  // 否则旧 stats 响应完成后会写回旧数据并清掉 statsDirty，统计页长期陈旧。
+  if (!background)
+    invalidateQuery(state, [statsRequestGate, statsSessionsRequestGate]);
   if (!background) detailRequestGate.cancel();
   state.lastSessionError = null;
   state.sessionsLoading = true;
@@ -515,9 +518,12 @@ const queueWorkspaceRefresh = createRefreshCoordinator(async (scopes) => {
   const metadataResults = await Promise.allSettled(metadata);
   const work = [];
   if (scopes.has("sessions") || scopes.has("query")) {
-    if (!scopes.has("query") && state.activeView !== "list")
+    if (!scopes.has("query") && state.activeView !== "list") {
+      // 非列表视图只标脏；同时取消在途列表请求，否则旧响应完成后会
+      // 写回旧页并清掉脏标记，回到列表页不再重载（丢更新）。
       state.sessionsDirty = true;
-    else work.push(loadSessions({ background: !scopes.has("query") }));
+      sessionRequestGate.cancel();
+    } else work.push(loadSessions({ background: !scopes.has("query") }));
   }
   if (scopes.has("stats")) work.push(loadStats());
   const results = await Promise.allSettled(work);

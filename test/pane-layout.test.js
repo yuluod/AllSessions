@@ -117,3 +117,71 @@ test("侧栏收起状态持久化并同步无障碍标签", () => {
   assert.equal(attributes.get("aria-expanded"), "false");
   assert.equal(storage.get("allsessions_source_rail_collapsed"), "true");
 });
+
+test("双击分隔条清除拖拽偏好并回落 CSS 默认宽度", () => {
+  // 真实浏览器中 removeProperty 会同步反映到 getBoundingClientRect
+  // （强制布局刷新），重置取到的是 :root 默认宽度而非刚拖拽的内联值。
+  // 桩在 removeProperty 时回落默认宽度，锁定该取值时序。
+  const defaults = { rail: 260, list: 500 };
+  const paneWidths = { ...defaults };
+  const originalQuerySelector = globalThis.document.querySelector;
+  const originalQuerySelectorAll = globalThis.document.querySelectorAll;
+  const originalStyle = globalThis.document.documentElement.style;
+  const values = new Map();
+  const panes = {
+    "#source-rail": {
+      getBoundingClientRect: () => ({ width: paneWidths.rail }),
+    },
+    ".session-pane": {
+      getBoundingClientRect: () => ({ width: paneWidths.list }),
+    },
+  };
+  const handles = new Map();
+  globalThis.document.querySelector = (selector) =>
+    panes[selector] ?? originalQuerySelector(selector);
+  globalThis.document.querySelectorAll = (selector) => {
+    if (selector !== "[data-pane-resizer]")
+      return originalQuerySelectorAll(selector);
+    return ["rail", "list"].map((pane) => {
+      if (!handles.has(pane)) {
+        handles.set(pane, {
+          dataset: { paneResizer: pane },
+          handlers: new Map(),
+          setAttribute() {},
+          addEventListener(event, handler) {
+            this.handlers.set(event, handler);
+          },
+        });
+      }
+      return handles.get(pane);
+    });
+  };
+  globalThis.document.documentElement.style = {
+    setProperty: (key, value) => values.set(key, value),
+    removeProperty: (key) => {
+      values.delete(key);
+      if (key === "--rail-w") paneWidths.rail = defaults.rail;
+      if (key === "--list-w") paneWidths.list = defaults.list;
+    },
+  };
+  try {
+    storage.set(
+      "allsessions_pane_widths",
+      JSON.stringify({ rail: 350, list: 700 })
+    );
+    storage.set("allsessions_source_rail_collapsed", "false");
+    globalThis.window.innerWidth = 2000;
+    initPaneLayout();
+    assert.equal(values.get("--rail-w"), "350px");
+    handles.get("rail").handlers.get("dblclick")();
+    assert.equal(values.get("--rail-w"), "260px");
+    assert.equal(values.get("--list-w"), "700px");
+    assert.deepEqual(JSON.parse(storage.get("allsessions_pane_widths")), {
+      list: 700,
+    });
+  } finally {
+    globalThis.document.querySelector = originalQuerySelector;
+    globalThis.document.querySelectorAll = originalQuerySelectorAll;
+    globalThis.document.documentElement.style = originalStyle;
+  }
+});

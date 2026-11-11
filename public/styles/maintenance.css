@@ -50,7 +50,7 @@
 
 .tools-sidebar-heading span {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 .tools-nav {
@@ -134,7 +134,7 @@
   padding: 3px 7px;
   color: var(--success);
   background: var(--success-soft);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 .tool-mode-badge[data-mode="maintenance"] {
@@ -350,7 +350,7 @@
 .migration-provider-section h3,
 .migration-diagnostics span {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 650;
 }
 

@@ -200,7 +200,7 @@ html.settings-modal-open body {
 .settings-density-hint {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   line-height: 1.5;
 }
 
@@ -305,7 +305,7 @@ html.settings-modal-open body {
 .settings-theme-card strong {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   line-height: 1.25;
   -webkit-box-orient: vertical;
@@ -456,7 +456,7 @@ html.settings-modal-open body {
   grid-column: 2 / -1;
   gap: 4px 10px;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 .settings-card-health {
@@ -523,7 +523,7 @@ html.settings-modal-open body {
 }
 
 .settings-source-dialog .delete-dialog-header h2 .settings-origin {
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 .settings-source-dialog .settings-source-dialog-meta {
@@ -553,7 +553,7 @@ html.settings-modal-open body {
 .settings-origin {
   padding: 2px 7px;
   border-radius: var(--badge-radius);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   color: var(--muted);
   background: var(--surface-muted);
@@ -655,7 +655,7 @@ html.settings-modal-open body {
   padding: 2px 7px;
   border-radius: var(--badge-radius);
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   background: var(--surface-muted);
 }
@@ -689,7 +689,7 @@ html.settings-modal-open body {
   padding: 2px 7px;
   border-radius: var(--badge-radius);
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   background: var(--surface-muted);
 }
@@ -730,7 +730,7 @@ html.settings-modal-open body {
 .settings-entries-hint {
   margin: 4px 0 2px;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 .settings-source-entries ul {
@@ -748,7 +748,7 @@ html.settings-modal-open body {
   min-width: 0;
   align-items: baseline;
   gap: 8px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 .settings-entry-path {
@@ -1145,7 +1145,7 @@ html.settings-modal-open body {
 }
 
 .settings-icon-card strong {
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   line-height: 1.25;
 }

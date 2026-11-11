@@ -228,6 +228,8 @@ fn visit_messages(
         .next()
         .map_err(|error| format!("无法读取 Devin 消息：{error}"))?
     {
+        // 详情请求（IPC 读线程）逐行响应取消；扫描线程无取消令牌，此处恒通过。
+        crate::request_control::check()?;
         visitor(&MessageRow::new(row));
     }
     Ok(())

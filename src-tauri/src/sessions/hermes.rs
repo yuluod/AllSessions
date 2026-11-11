@@ -833,6 +833,8 @@ pub(super) fn visit_detail(
     let mut tool_names = HashMap::new();
     let mut last_activity = 0.0_f64;
     for message in &messages {
+        // 详情请求（IPC 读线程）逐条响应取消；扫描线程无取消令牌，此处恒通过。
+        crate::request_control::check()?;
         last_activity = last_activity.max(message.timestamp);
         state.event_count += 1;
         for mut value in hermes_messages(message, &mut tool_names)

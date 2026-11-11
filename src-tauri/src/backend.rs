@@ -821,7 +821,7 @@ fn route_request(
                 )?
             } else {
                 let mut result = None;
-                for _ in 0..2 {
+                for attempt in 0..2 {
                     crate::request_control::check()?;
                     let started = Instant::now();
                     let mut store = state.store.lock().map_err(lock_error)?;
@@ -838,19 +838,21 @@ fn route_request(
                         crate::sessions::DetailRead::Pending(plan) => {
                             // 文件读取、解析与体积估算均在会话锁外；仅回填时校验扫描代次。
                             let started = Instant::now();
-                            let parsed = plan.read();
+                            // changed = 解析窗口内文件仍在追加（持续写入的活跃会话）。
+                            let (detail, size, changed) = plan.read_with_change_flag()?;
                             crate::request_control::trace_duration("detail.parse", started);
-                            let (detail, size) = match parsed {
-                                Err(error) if error.code == "detail_changed" => continue,
-                                result => result?,
-                            };
                             crate::request_control::check()?;
-                            if state
-                                .store
-                                .lock()
-                                .map_err(lock_error)?
-                                .cache_detail(&plan, &detail, size)
-                            {
+                            // 首试不稳定（文件追加或缓存槽被扫描更新占用）时按最新快照
+                            // 重试一次；末次接受结果：活跃会话的详情宁可短暂落后，
+                            // 不能让查看详情一直报错。changed 时不回填缓存：略旧内容
+                            // 会占据仍与旧记录匹配的缓存槽，直到下次扫描才被剔除。
+                            let stable = !changed
+                                && state
+                                    .store
+                                    .lock()
+                                    .map_err(lock_error)?
+                                    .cache_detail(&plan, &detail, size);
+                            if stable || attempt > 0 {
                                 result = Some(detail);
                                 break;
                             }

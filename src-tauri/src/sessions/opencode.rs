@@ -168,6 +168,8 @@ fn visit_parts(
         .next()
         .map_err(|error| format!("无法读取 OpenCode 消息片段：{error}"))?
     {
+        // 详情请求（IPC 读线程）逐行响应取消；扫描线程无取消令牌，此处恒通过。
+        crate::request_control::check()?;
         let id = row
             .get::<_, String>(0)
             .map_err(|error| format!("无法读取 OpenCode 片段 ID：{error}"))?;

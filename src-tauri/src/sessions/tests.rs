@@ -267,6 +267,62 @@ fn 删除或修改记录后拒绝旧详情回填() {
 }
 
 #[test]
+fn 活跃会话解析窗口内追加时透出changed且不阻断读取() {
+    // 持续写入的活跃会话：解析期间文件仍被追加。详情读取必须透出
+    // changed 标志并返回已解析内容，由读取方决定接受略旧结果而非报错。
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("active.jsonl");
+    let mut lines = vec![json!({"type":"session_meta","payload":{"id":"active","cwd":"/project"},"timestamp":"2026-02-01T00:00:00Z"}).to_string()];
+    for index in 0..60_000 {
+        lines.push(
+            json!({"type":"event_msg","payload":{"type":"user_message","message":format!("消息 {index}")},"timestamp":"2026-02-01T00:00:01Z"}).to_string(),
+        );
+    }
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let key = store.summaries[0]["_key"].as_str().unwrap().to_string();
+    // 行数保证解析耗时远超追加间隔；万一窗口未覆盖到追加则重试。
+    for _ in 0..3 {
+        let super::DetailRead::Pending(plan) = store.prepare_detail(&key).unwrap() else {
+            panic!("未命中缓存时应返回解析计划");
+        };
+        let appender = {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let line = json!({"type":"event_msg","payload":{"type":"user_message","message":"追加"},"timestamp":"2026-02-01T00:00:02Z"}).to_string();
+                for _ in 0..200 {
+                    if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&path) {
+                        let _ = writeln!(file, "{line}");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            })
+        };
+        let (detail, _size, changed) = plan.read_with_change_flag().unwrap();
+        appender.join().unwrap();
+        if changed {
+            assert!(
+                !detail["conversation_messages"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+            return;
+        }
+    }
+    panic!("持续追加期间解析应检测到文件变化");
+}
+
+#[test]
 fn 列表返回筛选后总数而非当前分页长度() {
     let (_directory, store) = structured_search_store();
     let result = store.list(

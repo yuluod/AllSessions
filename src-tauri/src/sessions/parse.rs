@@ -465,7 +465,6 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
     }
     let mut state = ParseState::new(path);
     for line in BufReader::new(File::open(path).map_err(error_text)?).lines() {
-        crate::request_control::check()?;
         let line = line.map_err(error_text)?;
         if line.trim().is_empty() {
             continue;
@@ -543,6 +542,9 @@ pub(crate) fn visit_detail(
         .lines()
         .enumerate()
     {
+        // 详情请求在 IPC 读线程运行（ReadGuard 已注册）：
+        // 大文件逐行解析期间及时响应取消，避免被废弃的请求占满解析时间。
+        crate::request_control::check()?;
         let line = line.map_err(error_text)?;
         if line.trim().is_empty() {
             continue;

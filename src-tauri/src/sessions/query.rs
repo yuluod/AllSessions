@@ -416,6 +416,18 @@ fn detail_stamp(path: &std::path::Path) -> Vec<Option<(u64, std::time::SystemTim
 impl DetailPlan {
     pub fn read(&self) -> Result<(Value, usize), crate::error::ApiError> {
         use crate::error::ApiError;
+        let (detail, size, changed) = self.read_with_change_flag()?;
+        if changed {
+            return Err(ApiError::new("detail_changed", "会话正在更新，请重试"));
+        }
+        Ok((detail, size))
+    }
+
+    /// 与 read 相同，但解析窗口内文件又变化时不报错，以 changed 标志
+    /// 交还调用方：详情读取对持续写入的活跃会话可在末次尝试接受
+    /// 略旧结果，而不是反复报错。
+    pub fn read_with_change_flag(&self) -> Result<(Value, usize, bool), crate::error::ApiError> {
+        use crate::error::ApiError;
         crate::request_control::check()?;
         let before = detail_stamp(&self.record.path);
         let mut detail = if let Some(locator) = &self.record.detail_locator {
@@ -458,9 +470,7 @@ impl DetailPlan {
             .unwrap_or_default();
 
         crate::request_control::check()?;
-        if before != detail_stamp(&self.record.path) {
-            return Err(ApiError::new("detail_changed", "会话正在更新，请重试"));
-        }
-        Ok((detail, size))
+        let changed = before != detail_stamp(&self.record.path);
+        Ok((detail, size, changed))
     }
 }

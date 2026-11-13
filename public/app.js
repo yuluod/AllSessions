@@ -109,6 +109,7 @@ import {
   bindTauriSettingsEvent,
   initializeControllers,
   conversationView,
+  handoffController,
   maintenanceController,
   settingsController,
   updateController,
@@ -163,6 +164,7 @@ export function rerenderLocalizedContent() {
   syncShortcutHints();
   maintenanceController.renderLocalized();
   updateController.renderLocalized();
+  handoffController?.onLanguageChanged();
 }
 function isDesktopRuntimeUnavailable(error) {
   return error instanceof Error && error.code === DESKTOP_RUNTIME_REQUIRED;

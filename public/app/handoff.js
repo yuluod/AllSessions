@@ -320,9 +320,7 @@ export function createHandoffController({
   }
 
   function jumpToSource(key) {
-    // 卡片锚点 id 用 _origIdx 编号，与消息数组下标可能不同（工具消息合并）。
-    const message = messages().find((entry) => entry._message_key === key);
-    if (!message || !Number.isInteger(message._origIdx)) {
+    if (!messages().some((entry) => entry._message_key === key)) {
       showError(t("handoffJumpMissing"));
       return;
     }
@@ -331,9 +329,15 @@ export function createHandoffController({
       return;
     }
     viewSource();
-    conversationView()?.scrollToMessage?.(message._origIdx);
+    // 卡片锚点 id 用 _origIdx 编号；它只存在于过滤装饰副本上，
+    // 原始消息没有该字段，定位交给对话视图按消息键完成。
+    const origIdx = conversationView()?.scrollToMessageKey?.(key);
+    if (!Number.isInteger(origIdx)) {
+      showError(t("handoffJumpMissing"));
+      return;
+    }
     document
-      .querySelector(`#message-${message._origIdx + 1}`)
+      .querySelector(`#message-${origIdx + 1}`)
       ?.closest(".message-card")
       ?.querySelector(".message-toggle")
       ?.focus({ preventScroll: true });
@@ -459,6 +463,7 @@ export function createHandoffController({
     toggle,
     syncEntryButton,
     confirmLeave,
+    jumpToSource,
     onDetailChanged,
     onLanguageChanged: () => {
       syncEntryButton();

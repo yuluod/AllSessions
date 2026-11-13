@@ -427,6 +427,17 @@ export function createConversationView({
     card.scrollIntoView({ block: "center" });
   }
 
+  // 按消息键定位当前渲染的卡片并滚动；返回锚点 _origIdx，找不到返回 null。
+  // _origIdx 由 filtered() 装饰时按原始数组下标赋值，原始消息对象上没有它。
+  function scrollToMessageKey(key) {
+    const message = filtered(
+      state.currentDetail?.conversation_messages || []
+    ).find((entry) => entry._message_key === key);
+    if (!message || !Number.isInteger(message._origIdx)) return null;
+    scrollToMessage(message._origIdx);
+    return message._origIdx;
+  }
+
   // 交接选择开关与复制/删除同级；选中状态不打进卡片签名，由 syncHandoffMarks 增量刷新。
   function createHandoffToggle(message) {
     const toggle = document.createElement("button");
@@ -731,6 +742,7 @@ export function createConversationView({
     renderConversation,
     moveUserMessage,
     scrollToMessage,
+    scrollToMessageKey,
     syncHandoffMarks,
     visibleMessageKeys,
   };

@@ -57,6 +57,8 @@ export function createHandoffDraft({ sessionKey, uiLang }) {
   return {
     sessionKey,
     lang: handoffLang(uiLang),
+    // 当前内容版本的固定生成时间：复制判定依赖文本一致，不能每次重建都漂移。
+    generatedAt: new Date().toISOString(),
     // message_key → { text, sourceTruncated }
     selections: new Map(),
     nextStep: "",
@@ -241,7 +243,7 @@ export function buildHandoffMarkdown({
       "",
       "- handoff_format: 1",
       `- template_language: ${draft.lang}`,
-      `- ${tpl.generatedAt}：${fmt(new Date().toISOString())}`,
+      `- ${tpl.generatedAt}：${fmt(draft.generatedAt ?? new Date().toISOString())}`,
       `- ${tpl.sourceAgent}：${sourceLabel || tpl.unknown}`,
       `- ${tpl.sessionRef}：${tpl.sessionRefValue}`,
       `- ${tpl.workspaceArchived}：${workspace?.archived === true ? tpl.yes : tpl.no}`,

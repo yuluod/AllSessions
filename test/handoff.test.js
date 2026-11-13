@@ -205,6 +205,21 @@ test("固定部分超预算时拒绝生成并要求缩短输入", () => {
   assert.equal(result.text, "");
 });
 
+test("生成时间固定在草稿创建时刻，重复构建输出逐字节一致", () => {
+  const draft = draftFor("s", [["k1", "正文"]]);
+  const args = {
+    draft,
+    messages: [msg("k1", "正文")],
+    summary: {},
+    formatTimestamp: fmt,
+  };
+  const first = buildHandoffMarkdown(args);
+  const second = buildHandoffMarkdown(args);
+  assert.equal(first.text, second.text);
+  // 复制判定按文本一致比较：时间漂移会让已复制状态误失效。
+  assert.ok(first.text.includes(draft.generatedAt));
+});
+
 test("英文模板使用固定键与 en 语言标记", () => {
   const draft = draftFor("s", [["k1", "hello"]], "en");
   const result = buildHandoffMarkdown({

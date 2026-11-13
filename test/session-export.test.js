@@ -148,3 +148,49 @@ test("脱敏会完整隐藏包含空格的本地路径", () => {
   assert.equal(prepared.summary.title, "打开 [local path]");
   assert.equal(prepared.conversation_messages[0].text, "检查 [local path]");
 });
+
+test("后端完整导出的 export_info 不被前端推算覆盖", () => {
+  const detail = detailFixture();
+  detail.export_info = {
+    scope: "full_session",
+    partial: false,
+    message_count: 1,
+    total_messages: 3,
+    omitted_messages: 0,
+    removed_messages: 2,
+    export_limited: false,
+    changed_during_read: false,
+    parse_errors: 0,
+    raw_events_omitted: 0,
+    generated_at: "2026-11-13T00:00:00Z",
+  };
+  // 完整导出没有截断标记，若按已加载口径推算会把 partial 算成 false、
+  // total_messages 算成 1，覆盖后端给的真实完整性口径。
+  const prepared = prepareExportDetail(detail);
+
+  assert.equal(prepared.export_info.scope, "full_session");
+  assert.equal(prepared.export_info.total_messages, 3);
+  assert.equal(prepared.export_info.removed_messages, 2);
+  assert.match(sessionMarkdown(prepared), /完整会话导出：包含 1 条消息/);
+});
+
+test("完整导出的不完整标记使用对应文案", () => {
+  const detail = detailFixture();
+  detail.export_info = {
+    scope: "full_session",
+    partial: true,
+    message_count: 1,
+    total_messages: 4,
+    omitted_messages: 3,
+    removed_messages: 0,
+    export_limited: true,
+    changed_during_read: false,
+    parse_errors: 0,
+    raw_events_omitted: 0,
+    generated_at: "2026-11-13T00:00:00Z",
+  };
+  assert.match(
+    sessionMarkdown(prepareExportDetail(detail)),
+    /完整导出（不完整）：包含 1 条消息/
+  );
+});

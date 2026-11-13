@@ -1982,12 +1982,17 @@ body.is-resizing {
   font-weight: var(--control-weight);
 }
 
-.session-more-management {
+.session-more-management,
+.export-full-group {
   display: grid;
   gap: 4px;
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--line);
+}
+
+.export-full-group {
+  gap: 5px;
 }
 
 .inspector-toggle[aria-expanded="true"] {

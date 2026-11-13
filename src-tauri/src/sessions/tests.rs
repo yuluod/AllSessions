@@ -56,6 +56,28 @@ use super::{
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
+fn claude_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
+    let mut config = codex_roots_config(&[]);
+    config.claude = Some(
+        roots
+            .iter()
+            .map(|root| root.to_string_lossy().into_owned())
+            .collect(),
+    );
+    config
+}
+
+fn deepseek_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
+    let mut config = codex_roots_config(&[]);
+    config.deepseek = Some(
+        roots
+            .iter()
+            .map(|root| root.to_string_lossy().into_owned())
+            .collect(),
+    );
+    config
+}
+
 fn codex_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
     crate::config::SourceRoots {
         codex: Some(
@@ -216,6 +238,363 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
     };
     store.refresh().unwrap();
     (directory, store)
+}
+
+#[test]
+fn 全量导出覆盖展示截断的消息与全文并注明完整性() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("export.jsonl");
+    let mut lines = vec![
+        json!({"type":"session_meta","payload":{"id":"export","cwd":"/project"},"timestamp":"2026-01-01T00:00:00Z"}).to_string(),
+    ];
+    for i in 0..900 {
+        let text = if i == 450 {
+            "中".repeat(30_000)
+        } else {
+            format!("消息 {i}")
+        };
+        lines.push(
+            json!({"type":"event_msg","payload":{"type":"user_message","message":text},"timestamp":format!("2026-01-01T00:{:02}:{:02}Z", i / 60, i % 60)})
+                .to_string(),
+        );
+    }
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+
+    let detail = store.detail("codex:export").unwrap();
+    let shown = detail["conversation_messages"].as_array().unwrap();
+    assert!(shown.len() <= DETAIL_MESSAGE_LIMIT + 1);
+    // 有界详情中 30k 字符的消息要么被头尾丢弃、要么正文被截断，
+    // 不会以全文出现；全量导出则保留原文。
+    assert!(
+        shown
+            .iter()
+            .all(|m| m["text"].as_str().map_or(0, |s| s.chars().count()) < 30_000)
+    );
+
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let export = store
+        .prepare_export("codex:export")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    let messages = export["conversation_messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 900);
+    assert!(
+        messages
+            .iter()
+            .any(|m| m["text"].as_str().unwrap().chars().count() == 30_000)
+    );
+    assert_eq!(export["export_info"]["scope"], "full_session");
+    assert_eq!(export["export_info"]["message_count"], 900);
+    assert_eq!(export["export_info"]["total_messages"], 900);
+    assert_eq!(export["export_info"]["omitted_messages"], 0);
+    assert_eq!(export["export_info"]["partial"], false);
+    assert!(export["summary"]["detail_truncated"].is_null());
+}
+
+#[test]
+fn 全量导出不输出已软移除的消息() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("export-removed.jsonl");
+    let lines = [
+        json!({"type":"session_meta","payload":{"id":"export-removed","cwd":"/project"},"timestamp":"2026-01-01T00:00:00Z"}),
+        json!({"type":"event_msg","payload":{"type":"user_message","message":"保留这条"},"timestamp":"2026-01-01T00:00:01Z"}),
+        json!({"type":"event_msg","payload":{"type":"agent_message","message":"这条会被移除"},"timestamp":"2026-01-01T00:00:02Z"}),
+    ];
+    std::fs::write(
+        &path,
+        lines
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("codex:export-removed").unwrap();
+    let removed_key = detail["conversation_messages"][1]["_message_key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let workspace_store =
+        crate::workspace::WorkspaceStore::open_at(&directory.path().join("ws.sqlite")).unwrap();
+    workspace_store
+        .update_message(&json!({
+            "sessionKey": "codex:export-removed",
+            "messageKey": removed_key,
+            "removed": true,
+        }))
+        .unwrap();
+    let workspace = workspace_store.snapshot().unwrap();
+
+    let export = store
+        .prepare_export("codex:export-removed")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    let messages = export["conversation_messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["text"].as_str().unwrap(), "保留这条");
+    assert_eq!(export["export_info"]["message_count"], 1);
+    assert_eq!(export["export_info"]["total_messages"], 2);
+    assert_eq!(export["export_info"]["removed_messages"], 1);
+    assert_eq!(export["export_info"]["partial"], false);
+}
+
+#[test]
+fn 全量导出覆盖旧版_claude_展示截断的消息与全文() {
+    // 旧版 .json 详情走展示窗口；导出的 visitor 必须接收截断前的原始消息。
+    let directory = tempdir().unwrap();
+    let claude_root = directory.path().join(".claude");
+    let sessions_root = claude_root.join("sessions");
+    std::fs::create_dir_all(&sessions_root).unwrap();
+    let entries = (0..900)
+        .map(|index| {
+            json!({
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{
+                        "type": "text",
+                        "text": if index == 450 { "中".repeat(30_000) } else { format!("消息 {index}") }
+                    }]
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    std::fs::write(
+        sessions_root.join("legacy-export.json"),
+        json!({"sessionId": "legacy-export", "entries": entries}).to_string(),
+    )
+    .unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: claude_roots_config(&[claude_root]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+
+    let detail = store.detail("claude_code:legacy-export").unwrap();
+    let shown = detail["conversation_messages"].as_array().unwrap();
+    assert!(shown.len() <= DETAIL_MESSAGE_LIMIT + 1);
+    assert!(
+        shown
+            .iter()
+            .any(|message| message["is_truncation_marker"] == true)
+    );
+
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let export = store
+        .prepare_export("claude_code:legacy-export")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    let messages = export["conversation_messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 900);
+    // 展示占位与截断标记不得进入导出流；超长正文保留原文。
+    assert!(
+        messages
+            .iter()
+            .all(|message| message["is_truncation_marker"] != true)
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m["text"].as_str().unwrap().chars().count() == 30_000)
+    );
+    assert_eq!(export["export_info"]["message_count"], 900);
+    assert_eq!(export["export_info"]["total_messages"], 900);
+    assert_eq!(export["export_info"]["omitted_messages"], 0);
+    assert_eq!(export["export_info"]["partial"], false);
+}
+
+#[test]
+fn 全量导出统计被事件窗口省略的解析错误() {
+    // raw_events 只保留首尾窗口；中段的 parse_error 仍须计入 export_info。
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("export-errors.jsonl");
+    let mut lines = vec![
+        json!({"type":"session_meta","payload":{"id":"export-errors","cwd":"/project"},"timestamp":"2026-01-01T00:00:00Z"}).to_string(),
+    ];
+    for i in 0..1600 {
+        lines.push(
+            json!({"type":"event_msg","payload":{"type":"user_message","message":format!("消息 {i}")},"timestamp":format!("2026-01-01T00:{:02}:{:02}Z", i / 60, i % 60)})
+                .to_string(),
+        );
+        if i == 800 {
+            lines.push("{corrupted".to_string());
+        }
+    }
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+
+    // 事件窗口确有省略，损坏行落在不可见的中段。
+    let detail = store.detail("codex:export-errors").unwrap();
+    assert!(
+        detail["truncation"]["raw_events"]["omitted"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(
+        !detail["raw_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"].as_str() == Some("parse_error"))
+    );
+
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let export = store
+        .prepare_export("codex:export-errors")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    assert_eq!(export["export_info"]["parse_errors"], 1);
+    assert_eq!(export["export_info"]["partial"], true);
+    assert_eq!(export["export_info"]["message_count"], 1600);
+}
+
+#[test]
+fn 全量导出把中段读取中断计入不完整状态() {
+    // DeepSeek 在中段遇到非 UTF-8 字节时保留已解码前缀并中断遍历；
+    // read_error 与 parse_error 分别统计，导出必须标 partial。
+    let directory = tempdir().unwrap();
+    let session = directory.path().join("sessions/work/session-torn");
+    std::fs::create_dir_all(&session).unwrap();
+    let path = session.join("session.v4.jsonl");
+    let mut file = std::fs::File::create(&path).unwrap();
+    for record in [
+        json!({"type":"session","version":4,"id":"session-torn","createdAt":1792377434881_i64,"cwd":"/work/repo"}),
+        json!({"type":"user/message","seq":8,"time":1792377447184_i64,"data":{"content":[{"type":"text","text":"分析当前项目"}],"source":{"kind":"user"},"role":"user","id":"u1"}}),
+    ] {
+        writeln!(file, "{record}").unwrap();
+    }
+    file.write_all(b"\xff\xfe\x00\n").unwrap();
+    drop(file);
+
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: deepseek_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("deepseek:session-torn").unwrap();
+    assert!(
+        detail["raw_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"].as_str() == Some("read_error"))
+    );
+
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let export = store
+        .prepare_export("deepseek:session-torn")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    assert_eq!(export["export_info"]["read_errors"], 1);
+    assert_eq!(export["export_info"]["partial"], true);
+    assert_eq!(export["export_info"]["message_count"], 1);
+}
+
+#[test]
+fn 全量导出把撕裂压缩尾帧计入不完整状态() {
+    // zstd 尾帧撕裂同样走 read_error 路径：解码中断后的前缀不能标完整。
+    let directory = tempdir().unwrap();
+    let session = directory.path().join("sessions/work/session-zstd");
+    std::fs::create_dir_all(&session).unwrap();
+    let path = session.join("session.v4.jsonl.zstd");
+    // 末行必须带换行：解码中断时未终止的行随缓冲一起丢弃，消息数会少一。
+    let records = [
+        json!({"type":"session","version":4,"id":"session-zstd","createdAt":1792377434881_i64,"cwd":"/work/repo"}),
+        json!({"type":"user/message","seq":8,"time":1792377447184_i64,"data":{"content":[{"type":"text","text":"分析"}],"source":{"kind":"user"},"role":"user","id":"u1"}}),
+    ]
+    .iter()
+    .map(Value::to_string)
+    .collect::<Vec<_>>()
+    .join("\n")
+        + "\n";
+    // 与 deepseek 测试同构：完整帧 + 空帧，末尾拼接截断的帧头碎片。
+    let mut body = Vec::new();
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 0).unwrap();
+    encoder.write_all(records.as_bytes()).unwrap();
+    body.extend_from_slice(&encoder.finish().unwrap());
+    body.extend_from_slice(
+        &zstd::stream::Encoder::new(Vec::new(), 0)
+            .unwrap()
+            .finish()
+            .unwrap(),
+    );
+    body.extend_from_slice(&[0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x58, 0x1F]);
+    std::fs::write(&path, body).unwrap();
+
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: deepseek_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("deepseek:session-zstd").unwrap();
+    assert!(
+        detail["raw_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"].as_str() == Some("read_error"))
+    );
+
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let export = store
+        .prepare_export("deepseek:session-zstd")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    assert_eq!(export["export_info"]["read_errors"], 1);
+    assert_eq!(export["export_info"]["partial"], true);
+    assert_eq!(export["export_info"]["message_count"], 1);
 }
 
 #[test]
@@ -3195,7 +3574,9 @@ fn 旧版_claude_详情截断但索引保留完整消息() {
         archived: false,
     };
 
-    let detail = super::claude_legacy::parse_legacy_claude_detail(&path, &source, value).unwrap();
+    let detail =
+        super::claude_legacy::visit_legacy_claude_detail(&path, &source, value, &mut |_| {})
+            .unwrap();
     let messages = detail["conversation_messages"].as_array().unwrap();
     assert!(messages.len() <= DETAIL_MESSAGE_LIMIT + 1);
     assert!(

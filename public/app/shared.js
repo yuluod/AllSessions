@@ -222,6 +222,18 @@ export const elements = {
   exportMdBtn: document.querySelector("#export-md-btn"),
   exportJsonBtn: document.querySelector("#export-json-btn"),
   exportRedactToggle: document.querySelector("#export-redact-toggle"),
+  exportFullMdBtn: document.querySelector("#export-full-md-btn"),
+  exportFullJsonBtn: document.querySelector("#export-full-json-btn"),
+  exportFullDialog: document.querySelector("#export-full-dialog"),
+  exportFullDialogDesc: document.querySelector(
+    "#export-full-dialog-description"
+  ),
+  exportFullDialogStatus: document.querySelector("#export-full-dialog-status"),
+  exportFullDialogClose: document.querySelector("#export-full-dialog-close"),
+  exportFullDialogCancel: document.querySelector("#export-full-dialog-cancel"),
+  exportFullDialogConfirm: document.querySelector(
+    "#export-full-dialog-confirm"
+  ),
   sessionArchiveBtn: document.querySelector("#session-archive-btn"),
   sessionFavoriteBtn: document.querySelector("#session-favorite-btn"),
   sessionOrganizeMenu: document.querySelector("#session-organize-menu"),

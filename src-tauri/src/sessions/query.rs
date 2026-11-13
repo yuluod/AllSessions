@@ -577,15 +577,22 @@ impl ExportPlan {
             removed += usize::from(dropped);
             !dropped
         });
-        let parse_errors = detail["raw_events"]
-            .as_array()
-            .map(|events| {
-                events
-                    .iter()
-                    .filter(|event| event["type"].as_str() == Some("parse_error"))
-                    .count()
-            })
-            .unwrap_or_default();
+        // raw_events 只保留首尾展示窗口，中段 parse_error 不可见；各解析路径在
+        // 完整遍历中独立累计并写入 truncation.parse_errors，缺失时退回窗口计数。
+        let parse_errors = detail["truncation"]["parse_errors"]
+            .as_u64()
+            .map(|value| value as usize)
+            .unwrap_or_else(|| {
+                detail["raw_events"]
+                    .as_array()
+                    .map(|events| {
+                        events
+                            .iter()
+                            .filter(|event| event["type"].as_str() == Some("parse_error"))
+                            .count()
+                    })
+                    .unwrap_or_default()
+            });
         let changed = before != detail_stamp(&self.record.path);
         if let Some(summary) = detail["summary"].as_object_mut() {
             // detail_truncated 描述的是「详情展示被截断」；完整导出的完整性

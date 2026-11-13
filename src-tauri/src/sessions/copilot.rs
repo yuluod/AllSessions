@@ -374,7 +374,7 @@ pub(super) fn visit_detail(
     visitor: &mut dyn FnMut(&Value),
 ) -> Result<Value, String> {
     let meta = workspace_meta(path);
-    let state = build_state(path, &meta)?;
+    let mut state = build_state(path, &meta)?;
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
     let mut events = HeadTail::new(DETAIL_EVENT_LIMIT);
     let mut tool_names = HashMap::new();
@@ -424,12 +424,15 @@ pub(super) fn visit_detail(
                     "payload": payload,
                 }));
             }
-            Err(error) => events.push(json!({
-                "line_number": index + 1,
-                "timestamp": Value::Null,
-                "type": "parse_error",
-                "payload": { "message": error.to_string() },
-            })),
+            Err(error) => {
+                state.parse_errors += 1;
+                events.push(json!({
+                    "line_number": index + 1,
+                    "timestamp": Value::Null,
+                    "type": "parse_error",
+                    "payload": { "message": error.to_string() },
+                }));
+            }
         }
     }
 
@@ -474,6 +477,7 @@ pub(super) fn visit_detail(
             "truncated": omitted_messages + omitted_events > 0,
             "messages": { "total": total_messages, "omitted": omitted_messages },
             "raw_events": { "total": total_events, "omitted": omitted_events },
+            "parse_errors": state.parse_errors,
         },
     }))
 }

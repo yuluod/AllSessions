@@ -447,6 +447,7 @@ fn parse(
             Err(error) if index == 0 => return Err(error_text(&error)),
             Err(error) => {
                 state.event_count += 1;
+                state.read_errors += 1;
                 if let Some(events) = events.as_mut() {
                     events.push(json!({
                         "line_number": index + 1,
@@ -636,6 +637,7 @@ fn parse(
             "messages": { "total": total_messages, "omitted": omitted_messages },
             "raw_events": { "total": total_events, "omitted": omitted_events },
             "parse_errors": state.parse_errors,
+            "read_errors": state.read_errors,
         },
     }))
 }

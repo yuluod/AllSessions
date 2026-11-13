@@ -67,6 +67,17 @@ fn claude_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
     config
 }
 
+fn deepseek_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
+    let mut config = codex_roots_config(&[]);
+    config.deepseek = Some(
+        roots
+            .iter()
+            .map(|root| root.to_string_lossy().into_owned())
+            .collect(),
+    );
+    config
+}
+
 fn codex_roots_config(roots: &[PathBuf]) -> crate::config::SourceRoots {
     crate::config::SourceRoots {
         codex: Some(
@@ -475,6 +486,115 @@ fn 全量导出统计被事件窗口省略的解析错误() {
     assert_eq!(export["export_info"]["parse_errors"], 1);
     assert_eq!(export["export_info"]["partial"], true);
     assert_eq!(export["export_info"]["message_count"], 1600);
+}
+
+#[test]
+fn 全量导出把中段读取中断计入不完整状态() {
+    // DeepSeek 在中段遇到非 UTF-8 字节时保留已解码前缀并中断遍历；
+    // read_error 与 parse_error 分别统计，导出必须标 partial。
+    let directory = tempdir().unwrap();
+    let session = directory.path().join("sessions/work/session-torn");
+    std::fs::create_dir_all(&session).unwrap();
+    let path = session.join("session.v4.jsonl");
+    let mut file = std::fs::File::create(&path).unwrap();
+    for record in [
+        json!({"type":"session","version":4,"id":"session-torn","createdAt":1792377434881_i64,"cwd":"/work/repo"}),
+        json!({"type":"user/message","seq":8,"time":1792377447184_i64,"data":{"content":[{"type":"text","text":"分析当前项目"}],"source":{"kind":"user"},"role":"user","id":"u1"}}),
+    ] {
+        writeln!(file, "{record}").unwrap();
+    }
+    file.write_all(b"\xff\xfe\x00\n").unwrap();
+    drop(file);
+
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: deepseek_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("deepseek:session-torn").unwrap();
+    assert!(
+        detail["raw_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"].as_str() == Some("read_error"))
+    );
+
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let export = store
+        .prepare_export("deepseek:session-torn")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    assert_eq!(export["export_info"]["read_errors"], 1);
+    assert_eq!(export["export_info"]["partial"], true);
+    assert_eq!(export["export_info"]["message_count"], 1);
+}
+
+#[test]
+fn 全量导出把撕裂压缩尾帧计入不完整状态() {
+    // zstd 尾帧撕裂同样走 read_error 路径：解码中断后的前缀不能标完整。
+    let directory = tempdir().unwrap();
+    let session = directory.path().join("sessions/work/session-zstd");
+    std::fs::create_dir_all(&session).unwrap();
+    let path = session.join("session.v4.jsonl.zstd");
+    // 末行必须带换行：解码中断时未终止的行随缓冲一起丢弃，消息数会少一。
+    let records = [
+        json!({"type":"session","version":4,"id":"session-zstd","createdAt":1792377434881_i64,"cwd":"/work/repo"}),
+        json!({"type":"user/message","seq":8,"time":1792377447184_i64,"data":{"content":[{"type":"text","text":"分析"}],"source":{"kind":"user"},"role":"user","id":"u1"}}),
+    ]
+    .iter()
+    .map(Value::to_string)
+    .collect::<Vec<_>>()
+    .join("\n")
+        + "\n";
+    // 与 deepseek 测试同构：完整帧 + 空帧，末尾拼接截断的帧头碎片。
+    let mut body = Vec::new();
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 0).unwrap();
+    encoder.write_all(records.as_bytes()).unwrap();
+    body.extend_from_slice(&encoder.finish().unwrap());
+    body.extend_from_slice(
+        &zstd::stream::Encoder::new(Vec::new(), 0)
+            .unwrap()
+            .finish()
+            .unwrap(),
+    );
+    body.extend_from_slice(&[0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x58, 0x1F]);
+    std::fs::write(&path, body).unwrap();
+
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: deepseek_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("deepseek:session-zstd").unwrap();
+    assert!(
+        detail["raw_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"].as_str() == Some("read_error"))
+    );
+
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let export = store
+        .prepare_export("deepseek:session-zstd")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    assert_eq!(export["export_info"]["read_errors"], 1);
+    assert_eq!(export["export_info"]["partial"], true);
+    assert_eq!(export["export_info"]["message_count"], 1);
 }
 
 #[test]

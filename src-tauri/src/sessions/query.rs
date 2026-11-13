@@ -577,22 +577,27 @@ impl ExportPlan {
             removed += usize::from(dropped);
             !dropped
         });
-        // raw_events 只保留首尾展示窗口，中段 parse_error 不可见；各解析路径在
-        // 完整遍历中独立累计并写入 truncation.parse_errors，缺失时退回窗口计数。
+        // raw_events 只保留首尾展示窗口，中段 parse_error/read_error 不可见；
+        // 各解析路径在完整遍历中独立累计写入 truncation，缺失时退回窗口计数。
+        let window_errors = |kind: &str| {
+            detail["raw_events"]
+                .as_array()
+                .map(|events| {
+                    events
+                        .iter()
+                        .filter(|event| event["type"].as_str() == Some(kind))
+                        .count()
+                })
+                .unwrap_or_default()
+        };
         let parse_errors = detail["truncation"]["parse_errors"]
             .as_u64()
             .map(|value| value as usize)
-            .unwrap_or_else(|| {
-                detail["raw_events"]
-                    .as_array()
-                    .map(|events| {
-                        events
-                            .iter()
-                            .filter(|event| event["type"].as_str() == Some("parse_error"))
-                            .count()
-                    })
-                    .unwrap_or_default()
-            });
+            .unwrap_or_else(|| window_errors("parse_error"));
+        let read_errors = detail["truncation"]["read_errors"]
+            .as_u64()
+            .map(|value| value as usize)
+            .unwrap_or_else(|| window_errors("read_error"));
         let changed = before != detail_stamp(&self.record.path);
         if let Some(summary) = detail["summary"].as_object_mut() {
             // detail_truncated 描述的是「详情展示被截断」；完整导出的完整性
@@ -617,7 +622,7 @@ impl ExportPlan {
             // partial 只描述「导出内容不完整」：达到导出硬上限、原始记录
             // 解析失败或读取窗口内来源仍在写入。软移除是刻意排除，不算缺失；
             // 原始事件只提供有界视图，条数单列不算不完整。
-            "partial": export_limited || changed || parse_errors > 0,
+            "partial": export_limited || changed || parse_errors + read_errors > 0,
             "message_count": exported,
             "total_messages": visited,
             "omitted_messages": omitted,
@@ -625,6 +630,7 @@ impl ExportPlan {
             "export_limited": export_limited,
             "changed_during_read": changed,
             "parse_errors": parse_errors,
+            "read_errors": read_errors,
             "raw_events_omitted": detail["truncation"]["raw_events"]["omitted"]
                 .as_u64()
                 .unwrap_or_default(),

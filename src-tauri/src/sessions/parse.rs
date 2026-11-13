@@ -38,6 +38,9 @@ pub(crate) struct ParseState {
     pub(crate) event_count: usize,
     /// 完整遍历中累计的解析失败数；raw_events 有界窗口不能反推它。
     pub(crate) parse_errors: usize,
+    /// 已解码前缀之后的读取中断数（撕裂尾帧、非 UTF-8 行等），
+    /// 与 parse_errors 分别统计，同样不能从有界窗口反推。
+    pub(crate) read_errors: usize,
     pub(crate) message_count: u64,
     pub(crate) context_count: u64,
     pub(crate) input_tokens: u64,
@@ -93,6 +96,7 @@ impl ParseState {
             agent_id: String::new(),
             event_count: 0,
             parse_errors: 0,
+            read_errors: 0,
             message_count: 0,
             context_count: 0,
             input_tokens: 0,

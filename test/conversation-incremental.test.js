@@ -134,6 +134,8 @@ async function environment() {
     bindMatchNavigation() {},
     messageNavSpyUpdate: null,
     layoutMessageOutlineRail() {},
+    handoff: null,
+    syncHandoffMarks() {},
     CSS: { escape: (value) => value },
   };
   const source = await readFile(
@@ -141,10 +143,7 @@ async function environment() {
     "utf8"
   );
   const start = source.indexOf("  async function renderConversation(messages)");
-  const end = source.indexOf(
-    "  return { renderConversation, moveUserMessage }",
-    start
-  );
+  const end = source.indexOf("\n  return {", start);
   assert.ok(start > 0 && end > start);
   const context = vm.createContext(globals);
   vm.runInContext(source.slice(start, end), context);

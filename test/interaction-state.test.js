@@ -30,6 +30,7 @@ async function loadModule(file, globals) {
     invalidateQuery,
     changeSessionSelection,
     recordMetric() {},
+    handoffController: null,
     ...globals,
   });
   vm.runInContext(source, context);
@@ -130,11 +131,16 @@ test("控制器通过入口注入跨视图行为，不在内部重新装配导�
     createSettingsController: factory("settings"),
     createUpdateController: factory("update"),
     createMaintenanceController: factory("maintenance"),
+    createHandoffController: () => ({ bind() {} }),
+    handoffSelectable: () => false,
     elements: {},
     state: {},
     isMessageRemoved() {},
     fetchJson() {},
     showError() {},
+    sessionWorkspace() {},
+    displaySourceLabel: (v) => v,
+    announce() {},
   });
   const callbacks = {
     onSelectSession() {},

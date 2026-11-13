@@ -4593,3 +4593,206 @@ body.is-resizing {
      不属于 --shadow-* 的语义范围，保留字面量。 */
   box-shadow: 0 8px 12px -12px var(--text-secondary);
 }
+
+/* ── 交接预览（P1）────────────────────────────────────────────── */
+/* 卡片上的选择开关沿用 message-copy-btn 尺寸，选中态走 accent 语义色。 */
+.handoff-select-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--muted);
+  background: var(--surface-raised);
+  cursor: pointer;
+  font-size: 0.6875rem;
+}
+
+.handoff-select-btn:hover {
+  border-color: var(--line-accent);
+  color: var(--accent-strong);
+}
+
+.handoff-select-btn[aria-pressed="true"] {
+  border-color: var(--line-accent);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.message-card.handoff-selected,
+.tool-result.handoff-selected {
+  border-color: var(--line-accent);
+}
+
+/* 交接入口选中态：工具栏按钮提示存在草稿。 */
+#handoff-btn[data-active] {
+  color: var(--accent-strong);
+}
+
+.handoff-dialog {
+  width: min(880px, calc(100vw - 28px));
+}
+
+.handoff-dialog-body {
+  gap: 14px;
+}
+
+.handoff-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.handoff-warning {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  border-radius: var(--radius-small);
+  color: var(--warning);
+  background: var(--warning-soft);
+  font-size: 0.78rem;
+  white-space: pre-line;
+}
+
+.handoff-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.handoff-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.handoff-field textarea,
+.handoff-excerpt-text {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  background: var(--surface-subtle);
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.handoff-field textarea:focus,
+.handoff-excerpt-text:focus {
+  border-color: var(--line-accent);
+  background: var(--surface);
+  outline: none;
+}
+
+.handoff-section-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.handoff-excerpts {
+  display: grid;
+  gap: 10px;
+}
+
+.handoff-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.handoff-excerpt {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+}
+
+.handoff-excerpt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.handoff-excerpt-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handoff-excerpt-jump,
+.handoff-excerpt-remove {
+  flex: none;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+
+.handoff-excerpt-jump:hover {
+  border-color: var(--line-accent);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.handoff-excerpt-remove:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+  background: var(--signal-soft);
+}
+
+.handoff-excerpt-note {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.72rem;
+}
+
+.handoff-output {
+  min-height: 120px;
+  max-height: 260px;
+  margin: 0;
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 「结束交接」居左，复制与查看原文居右，已复制状态放中间余量。 */
+.handoff-actions {
+  justify-content: flex-end;
+}
+
+.handoff-actions #handoff-end-btn {
+  margin-right: auto;
+}
+
+.handoff-copied {
+  color: var(--success);
+  font-size: 0.76rem;
+}

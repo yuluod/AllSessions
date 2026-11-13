@@ -72,6 +72,7 @@ export function createConversationView({
   onLinkError,
   onLoadAttachment,
   onSelectSession,
+  handoff,
 }) {
   let highlightController = null;
   let renderedSessionKey = null;
@@ -358,6 +359,9 @@ export function createConversationView({
     time.textContent = formatListTimestamp(result.timestamp);
     time.title = formatTimestamp(result.timestamp);
     head.append(time);
+    if (handoff?.isActive?.() && handoff?.isSelectable?.(result)) {
+      head.append(createHandoffToggle(result));
+    }
     if (result._message_key && result._removed) {
       const restoreButton = document.createElement("button");
       restoreButton.type = "button";
@@ -423,6 +427,43 @@ export function createConversationView({
     card.scrollIntoView({ block: "center" });
   }
 
+  // 交接选择开关与复制/删除同级；选中状态不打进卡片签名，由 syncHandoffMarks 增量刷新。
+  function createHandoffToggle(message) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "handoff-select-btn";
+    toggle.dataset.messageKey = message._message_key;
+    const selected = handoff?.isSelected?.(message._message_key) === true;
+    toggle.setAttribute("aria-pressed", selected ? "true" : "false");
+    toggle.textContent = t(selected ? "handoffSelected" : "handoffSelect");
+    toggle.title = t("handoffSelectHint");
+    toggle.addEventListener("click", () => handoff?.onToggle?.(message));
+    return toggle;
+  }
+
+  function syncHandoffMarks() {
+    const active = handoff?.isActive?.() === true;
+    elements.conversationList
+      ?.querySelectorAll(".handoff-select-btn")
+      .forEach((toggle) => {
+        const selected =
+          active && handoff?.isSelected?.(toggle.dataset.messageKey) === true;
+        toggle.setAttribute("aria-pressed", selected ? "true" : "false");
+        toggle.textContent = t(selected ? "handoffSelected" : "handoffSelect");
+        toggle
+          .closest(".message-card, .tool-result")
+          ?.classList.toggle("handoff-selected", selected);
+      });
+  }
+
+  function visibleMessageKeys() {
+    return new Set(
+      filtered(state.currentDetail?.conversation_messages || [])
+        .map((message) => message._message_key)
+        .filter(Boolean)
+    );
+  }
+
   async function renderConversation(messages) {
     const started = performance.now();
     const sessionKey = state.currentDetail?.summary?._key;
@@ -481,6 +522,8 @@ export function createConversationView({
       lang: getLang(),
       query: state.detailQuery,
       regex: state.searchRegex,
+      // 交接模式进出会改变卡片操作区构成，签名必须区分以触发重建。
+      handoff: handoff?.isActive?.() === true,
     });
     let built = 0;
     let reused = 0;
@@ -596,6 +639,9 @@ export function createConversationView({
           .catch(() => setCopyFeedback(copyButton, "failed"));
       });
       const header = fragment.querySelector(".message-card header");
+      if (handoff?.isActive?.() && handoff?.isSelectable?.(message)) {
+        header.append(createHandoffToggle(message));
+      }
       header.append(copyButton);
       if (message._message_key) {
         if (message._removed) {
@@ -669,6 +715,7 @@ export function createConversationView({
         });
     }
     // 卡片就位后：校准导航高亮，并把进度轨圆点对齐到真实内容位置。
+    syncHandoffMarks();
     messageNavSpyUpdate?.();
     layoutMessageOutlineRail(visibleGroups);
     recordMetric("conversation.render_ms", performance.now() - started);
@@ -680,5 +727,11 @@ export function createConversationView({
     );
   }
 
-  return { renderConversation, moveUserMessage };
+  return {
+    renderConversation,
+    moveUserMessage,
+    scrollToMessage,
+    syncHandoffMarks,
+    visibleMessageKeys,
+  };
 }

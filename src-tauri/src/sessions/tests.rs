@@ -219,6 +219,127 @@ fn structured_search_store() -> (tempfile::TempDir, SessionStore) {
 }
 
 #[test]
+fn 全量导出覆盖展示截断的消息与全文并注明完整性() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("export.jsonl");
+    let mut lines = vec![
+        json!({"type":"session_meta","payload":{"id":"export","cwd":"/project"},"timestamp":"2026-01-01T00:00:00Z"}).to_string(),
+    ];
+    for i in 0..900 {
+        let text = if i == 450 {
+            "中".repeat(30_000)
+        } else {
+            format!("消息 {i}")
+        };
+        lines.push(
+            json!({"type":"event_msg","payload":{"type":"user_message","message":text},"timestamp":format!("2026-01-01T00:{:02}:{:02}Z", i / 60, i % 60)})
+                .to_string(),
+        );
+    }
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+
+    let detail = store.detail("codex:export").unwrap();
+    let shown = detail["conversation_messages"].as_array().unwrap();
+    assert!(shown.len() <= DETAIL_MESSAGE_LIMIT + 1);
+    // 有界详情中 30k 字符的消息要么被头尾丢弃、要么正文被截断，
+    // 不会以全文出现；全量导出则保留原文。
+    assert!(
+        shown
+            .iter()
+            .all(|m| m["text"].as_str().map_or(0, |s| s.chars().count()) < 30_000)
+    );
+
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let export = store
+        .prepare_export("codex:export")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    let messages = export["conversation_messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 900);
+    assert!(
+        messages
+            .iter()
+            .any(|m| m["text"].as_str().unwrap().chars().count() == 30_000)
+    );
+    assert_eq!(export["export_info"]["scope"], "full_session");
+    assert_eq!(export["export_info"]["message_count"], 900);
+    assert_eq!(export["export_info"]["total_messages"], 900);
+    assert_eq!(export["export_info"]["omitted_messages"], 0);
+    assert_eq!(export["export_info"]["partial"], false);
+    assert!(export["summary"]["detail_truncated"].is_null());
+}
+
+#[test]
+fn 全量导出不输出已软移除的消息() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("export-removed.jsonl");
+    let lines = [
+        json!({"type":"session_meta","payload":{"id":"export-removed","cwd":"/project"},"timestamp":"2026-01-01T00:00:00Z"}),
+        json!({"type":"event_msg","payload":{"type":"user_message","message":"保留这条"},"timestamp":"2026-01-01T00:00:01Z"}),
+        json!({"type":"event_msg","payload":{"type":"agent_message","message":"这条会被移除"},"timestamp":"2026-01-01T00:00:02Z"}),
+    ];
+    std::fs::write(
+        &path,
+        lines
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("codex:export-removed").unwrap();
+    let removed_key = detail["conversation_messages"][1]["_message_key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let workspace_store =
+        crate::workspace::WorkspaceStore::open_at(&directory.path().join("ws.sqlite")).unwrap();
+    workspace_store
+        .update_message(&json!({
+            "sessionKey": "codex:export-removed",
+            "messageKey": removed_key,
+            "removed": true,
+        }))
+        .unwrap();
+    let workspace = workspace_store.snapshot().unwrap();
+
+    let export = store
+        .prepare_export("codex:export-removed")
+        .unwrap()
+        .read(&workspace)
+        .unwrap();
+    let messages = export["conversation_messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["text"].as_str().unwrap(), "保留这条");
+    assert_eq!(export["export_info"]["message_count"], 1);
+    assert_eq!(export["export_info"]["total_messages"], 2);
+    assert_eq!(export["export_info"]["removed_messages"], 1);
+    assert_eq!(export["export_info"]["partial"], false);
+}
+
+#[test]
 fn 详情快照允许锁外解析且失效代次不可回填缓存() {
     let (_directory, store) = structured_search_store();
     let key = store.summaries[0]["_key"].as_str().unwrap().to_string();

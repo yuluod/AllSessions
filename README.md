@@ -67,7 +67,7 @@ Full-text search uses a per-message SQLite index. The index lives entirely on yo
 
 Long sessions keep bounded head/tail detail windows and a 64 MB LRU cache; matched messages load on demand beyond the overview window.
 
-Exports contain the loaded session overview, not a complete backup of the original session. Long sessions may omit middle messages or truncate text and raw events. JSON includes `export_info` with the scope, message count, and partial status; Markdown also labels partial exports. Bulk exports follow the same rules. Return from a search context to the session overview before exporting.
+Exports come in two scopes: overview exports contain the loaded session overview, so long sessions may omit middle messages or truncate text and raw events; full exports re-parse the raw session on the backend and include every message (excluding removed ones), while raw events stay bounded. JSON includes `export_info` with the scope, message count, and partial status; Markdown also labels partial exports. Bulk exports use the overview scope. Return from a search context to the session overview before exporting.
 
 ### Organize and statistics
 
@@ -81,6 +81,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 - Token usage statistics (input / output / cached); only sources that record usage are covered (Codex, Claude Code, ZCode, Pi, Oh My Pi, DeepSeek Harness, JetBrains Air, WorkBuddy, and Gemini CLI chats sessions)
 - Estimated USD cost from a built-in price table: a cost card and cost heatmap in statistics, cost sorting for related sessions; usage on unrecognized models counts as unpriced
 - Batch-select loaded sessions and export as JSON or Markdown
+- Full exports re-parse the raw session on the backend, producing every message with integrity metadata
 - Optional export redaction, off by default
 
 ### Desktop integration

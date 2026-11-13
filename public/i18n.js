@@ -447,6 +447,19 @@ const DICT = {
     exportPartialNotice:
       "部分内容导出：包含 {n} 条已加载消息；消息、正文或原始事件存在省略，不是完整会话备份。",
     exportLoadedNotice: "已加载内容导出：包含 {n} 条消息。",
+    exportFull: "完整导出",
+    exportFullHint: "重新解析原始会话并导出全部消息；已移除内容不会导出。",
+    exportFullMd: "重新解析原始会话并导出完整 Markdown",
+    exportFullJson: "重新解析原始会话并导出完整 JSON",
+    exportFullNotice: "完整会话导出：包含 {n} 条消息。",
+    exportFullPartialNotice:
+      "完整导出（不完整）：包含 {n} 条消息；仍有内容被省略或来源读取中发生变化，详见 export_info。",
+    exportFullConfirmTitle: "导出完整会话？",
+    exportFullConfirmDesc:
+      "该会话包含 {n} 条原始事件，完整导出需要重新解析全部内容，可能耗时较长并生成较大的文件。",
+    exportFullConfirmAction: "继续导出",
+    exportFullInProgress: "正在重新解析原始会话…",
+    exportFullFailed: "完整导出失败",
     backendError_detail_changed: "会话正在更新，请稍后重试。",
     backendError_session_read_failed:
       "无法读取会话详情，请重试或在来源设置中检查诊断信息",
@@ -1258,6 +1271,20 @@ const DICT = {
     exportPartialNotice:
       "Partial export: {n} loaded messages. Messages, text, or raw events are omitted; this is not a complete session backup.",
     exportLoadedNotice: "Loaded content export: {n} messages.",
+    exportFull: "Full export",
+    exportFullHint:
+      "Re-parses the raw session and exports every message; removed content is excluded.",
+    exportFullMd: "Re-parse the raw session and export full Markdown",
+    exportFullJson: "Re-parse the raw session and export full JSON",
+    exportFullNotice: "Full session export: {n} messages.",
+    exportFullPartialNotice:
+      "Full export (incomplete): {n} messages. Content was omitted or the source changed while reading; see export_info.",
+    exportFullConfirmTitle: "Export full session?",
+    exportFullConfirmDesc:
+      "This session has {n} raw events. A full export re-parses everything, which may take a while and produce a large file.",
+    exportFullConfirmAction: "Export anyway",
+    exportFullInProgress: "Re-parsing the raw session…",
+    exportFullFailed: "Full export failed",
     backendError_detail_changed:
       "This session is changing. Please try again shortly.",
     backendError_session_read_failed:

@@ -47,16 +47,22 @@ export function prepareExportDetail(detail, { redact = false } = {}) {
       (message) => message.is_truncation_marker || message.text_truncated
     )
   );
-  const exportInfo = {
-    scope: "loaded_content",
-    partial,
-    message_count: loaded.length,
-    total_messages: detail.search_context
-      ? null
-      : (detail.truncation?.messages?.total ??
-        (partial ? null : loaded.length)),
-    text_truncated: loaded.some((message) => message.text_truncated === true),
-  };
+  // 后端全量导出已给出权威完整性口径，概览导出才按已加载内容推算。
+  const exportInfo =
+    detail.export_info?.scope === "full_session"
+      ? { ...detail.export_info }
+      : {
+          scope: "loaded_content",
+          partial,
+          message_count: loaded.length,
+          total_messages: detail.search_context
+            ? null
+            : (detail.truncation?.messages?.total ??
+              (partial ? null : loaded.length)),
+          text_truncated: loaded.some(
+            (message) => message.text_truncated === true
+          ),
+        };
   return JSON.parse(
     JSON.stringify({ ...detail, export_info: exportInfo }, (key, value) => {
       if (INTERNAL_FIELDS.has(key)) return undefined;
@@ -70,11 +76,11 @@ export function prepareExportDetail(detail, { redact = false } = {}) {
   );
 }
 
-function exportFilename(detail, extension, redact) {
+function exportFilename(detail, extension, redact, full = false) {
   const suffix = redact
     ? new Date().toISOString().replace(/[:.]/g, "-")
     : String(detail.summary.id).slice(0, 12);
-  return `session-${suffix}.${extension}`;
+  return `session-${full ? "full-" : ""}${suffix}.${extension}`;
 }
 
 export function displayMessageText(message) {
@@ -99,17 +105,16 @@ export function sessionMarkdown(detail) {
     `- **${t("sessionId")}**: ${summary.id}`,
   ];
   if (detail.export_info) {
-    lines.push(
-      "",
-      `> ${t(
-        detail.export_info.partial
+    const info = detail.export_info;
+    const noticeKey =
+      info.scope === "full_session"
+        ? info.partial
+          ? "exportFullPartialNotice"
+          : "exportFullNotice"
+        : info.partial
           ? "exportPartialNotice"
-          : "exportLoadedNotice",
-        {
-          n: detail.export_info.message_count,
-        }
-      )}`
-    );
+          : "exportLoadedNotice";
+    lines.push("", `> ${t(noticeKey, { n: info.message_count })}`);
   }
   if (workspace.favorite === true) {
     lines.push(`- **${t("favorite")}**: ✓`);
@@ -131,7 +136,12 @@ export function exportSessionMarkdown(detail, options = {}) {
   const prepared = prepareExportDetail(detail, options);
   downloadBlob(
     sessionMarkdown(prepared),
-    exportFilename(detail, "md", options.redact === true),
+    exportFilename(
+      detail,
+      "md",
+      options.redact === true,
+      options.full === true
+    ),
     "text/markdown; charset=utf-8"
   );
 }
@@ -139,7 +149,12 @@ export function exportSessionMarkdown(detail, options = {}) {
 export function exportSessionJson(detail, options = {}) {
   downloadBlob(
     JSON.stringify(prepareExportDetail(detail, options), null, 2),
-    exportFilename(detail, "json", options.redact === true),
+    exportFilename(
+      detail,
+      "json",
+      options.redact === true,
+      options.full === true
+    ),
     "application/json; charset=utf-8"
   );
 }

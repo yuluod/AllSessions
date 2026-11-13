@@ -153,7 +153,7 @@ impl WorkspaceStore {
         Self::open_at(&path)
     }
 
-    fn open_at(path: &Path) -> Result<Self, String> {
+    pub(crate) fn open_at(path: &Path) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(error_text)?;
         }

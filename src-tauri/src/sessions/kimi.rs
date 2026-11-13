@@ -521,6 +521,7 @@ fn parse_wire(
                 }
             }
             Err(error) => {
+                collector.state.parse_errors += 1;
                 if let Some(events) = events.as_mut() {
                     events.push(json!({
                         "line_number": index + 1,
@@ -621,6 +622,7 @@ pub(super) fn visit_detail(
             "truncated": omitted_messages + omitted_events > 0,
             "messages": { "total": total_messages, "omitted": omitted_messages },
             "raw_events": { "total": total_events, "omitted": omitted_events },
+            "parse_errors": state.parse_errors,
         },
     }))
 }

@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use super::activity::ActivityLedger;
 use super::usage::{TokenUsage, UsageLedger};
 
-use super::claude_legacy::{parse_legacy_claude_detail, parse_legacy_claude_summary};
+use super::claude_legacy::{parse_legacy_claude_summary, visit_legacy_claude_detail};
 use super::helpers::{
     compact, compact_title, error_text, is_synthetic_context, nullable_string, string_at,
 };
@@ -36,6 +36,11 @@ pub(crate) struct ParseState {
     pub(crate) parent_session_id: String,
     pub(crate) agent_id: String,
     pub(crate) event_count: usize,
+    /// 完整遍历中累计的解析失败数；raw_events 有界窗口不能反推它。
+    pub(crate) parse_errors: usize,
+    /// 已解码前缀之后的读取中断数（撕裂尾帧、非 UTF-8 行等），
+    /// 与 parse_errors 分别统计，同样不能从有界窗口反推。
+    pub(crate) read_errors: usize,
     pub(crate) message_count: u64,
     pub(crate) context_count: u64,
     pub(crate) input_tokens: u64,
@@ -90,6 +95,8 @@ impl ParseState {
             parent_session_id: String::new(),
             agent_id: String::new(),
             event_count: 0,
+            parse_errors: 0,
+            read_errors: 0,
             message_count: 0,
             context_count: 0,
             input_tokens: 0,
@@ -524,16 +531,10 @@ pub(crate) fn visit_detail(
     if path.extension().and_then(|value| value.to_str()) == Some("json") {
         let value: Value =
             serde_json::from_reader(File::open(path).map_err(error_text)?).map_err(error_text)?;
-        let detail = parse_legacy_claude_detail(path, source, value)
-            .ok_or_else(|| "旧版 Claude 会话缺少 ID".to_string())?;
-        for message in detail["conversation_messages"]
-            .as_array()
-            .into_iter()
-            .flatten()
-        {
-            visitor(message);
-        }
-        return Ok(detail);
+        // 详情骨架按展示限制返回；visitor 在解析器内部接收截断前的原始消息，
+        // 展示占位（is_truncation_marker 等）不会进入 visitor。
+        return visit_legacy_claude_detail(path, source, value, visitor)
+            .ok_or_else(|| "旧版 Claude 会话缺少 ID".to_string());
     }
     let mut state = ParseState::new(path);
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
@@ -579,6 +580,7 @@ pub(crate) fn visit_detail(
             }
             Err(error) => {
                 state.event_count += 1;
+                state.parse_errors += 1;
                 events.push(json!({ "line_number": index + 1, "timestamp": Value::Null, "type": "parse_error", "payload": { "message": error.to_string() } }));
             }
         }
@@ -597,7 +599,7 @@ pub(crate) fn visit_detail(
         summary["detail_truncated"] = Value::Bool(true);
     }
     Ok(
-        json!({ "summary": summary, "usage_events": state.usage.events, "usage_event_count": state.usage.event_count, "conversation_messages": message_values, "raw_events": event_values, "truncation": { "truncated": omitted_messages + omitted_events > 0, "messages": { "total": total_messages, "omitted": omitted_messages }, "raw_events": { "total": total_events, "omitted": omitted_events } } }),
+        json!({ "summary": summary, "usage_events": state.usage.events, "usage_event_count": state.usage.event_count, "conversation_messages": message_values, "raw_events": event_values, "truncation": { "truncated": omitted_messages + omitted_events > 0, "messages": { "total": total_messages, "omitted": omitted_messages }, "raw_events": { "total": total_events, "omitted": omitted_events }, "parse_errors": state.parse_errors } }),
     )
 }
 

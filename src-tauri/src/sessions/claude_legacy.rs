@@ -20,16 +20,19 @@ pub(crate) fn parse_legacy_claude_summary(
     let value: Value =
         serde_json::from_reader(File::open(path).map_err(error_text)?).map_err(error_text)?;
     // 摘要与搜索索引使用完整消息，详情截断不能反向影响索引。
-    let detail = parse_legacy_claude_detail_with_limit(path, source, value, false)
+    let detail = parse_legacy_claude_detail_with_limit(path, source, value, false, &mut |_| {})
         .ok_or_else(|| "旧版 Claude 会话缺少 ID".to_string())?;
     Ok((detail["summary"].clone(), search_text_from_detail(&detail)))
 }
-pub(crate) fn parse_legacy_claude_detail(
+/// 返回的详情骨架保持展示限制；visitor 在 HeadTail 与正文截断之前
+/// 看到每条原始消息（全量导出依赖这一约定）。
+pub(crate) fn visit_legacy_claude_detail(
     path: &Path,
     source: &Source,
     value: Value,
+    visitor: &mut dyn FnMut(&Value),
 ) -> Option<Value> {
-    parse_legacy_claude_detail_with_limit(path, source, value, true)
+    parse_legacy_claude_detail_with_limit(path, source, value, true, visitor)
 }
 
 fn parse_legacy_claude_detail_with_limit(
@@ -37,6 +40,7 @@ fn parse_legacy_claude_detail_with_limit(
     source: &Source,
     value: Value,
     limit: bool,
+    visitor: &mut dyn FnMut(&Value),
 ) -> Option<Value> {
     let id = string_at(&value, &["sessionId"]).or_else(|| string_at(&value, &["id"]))?;
     let timestamp = legacy_timestamp(&value, &["startedAt", "createdAt", "timestamp"]);
@@ -70,6 +74,7 @@ fn parse_legacy_claude_detail_with_limit(
                     "record_fingerprint": json_fingerprint(record),
                 }),
             );
+            visitor(&message);
             messages.push(message);
         }
     }
@@ -94,6 +99,7 @@ fn parse_legacy_claude_detail_with_limit(
                     "record_fingerprint": json_fingerprint(&Value::String(text.clone())),
                 }),
             );
+            visitor(&message);
             messages.push(message);
         }
         raw_events.push(json!({
@@ -115,6 +121,7 @@ fn parse_legacy_claude_detail_with_limit(
                     let line = match line {
                         Ok(line) => line,
                         Err(error) => {
+                            state.parse_errors += 1;
                             raw_events.push(json!({
                                 "line_number": index + 1,
                                 "timestamp": Value::Null,
@@ -127,6 +134,7 @@ fn parse_legacy_claude_detail_with_limit(
                     let record: Value = match serde_json::from_str(&line) {
                         Ok(record) => record,
                         Err(error) => {
+                            state.parse_errors += 1;
                             raw_events.push(json!({
                                 "line_number": index + 1,
                                 "timestamp": Value::Null,
@@ -180,6 +188,7 @@ fn parse_legacy_claude_detail_with_limit(
                                 "record_fingerprint": json_fingerprint(&record),
                             }),
                         );
+                        visitor(&message);
                         messages.push(message);
                     }
                 }
@@ -245,7 +254,8 @@ fn parse_legacy_claude_detail_with_limit(
         "truncation": {
             "truncated": omitted_messages + omitted_events > 0,
             "messages": { "total": total_messages, "omitted": omitted_messages },
-            "raw_events": { "total": total_events, "omitted": omitted_events }
+            "raw_events": { "total": total_events, "omitted": omitted_events },
+            "parse_errors": state.parse_errors
         }
     }))
 }

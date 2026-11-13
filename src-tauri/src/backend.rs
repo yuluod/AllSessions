@@ -804,6 +804,30 @@ fn route_request(
             state.refresh_and_emit(&app)?;
             Ok(json!({ "ok": true }))
         }
+        ("GET", path) if path.starts_with("/api/sessions/") && path.ends_with("/export") => {
+            let raw = path
+                .strip_prefix("/api/sessions/")
+                .and_then(|value| value.strip_suffix("/export"))
+                .unwrap_or_default();
+            let key = percent_decode_str(raw)
+                .decode_utf8()
+                .map_err(|_| ApiError::invalid("会话 ID 编码无效"))?;
+            let workspace = state.workspace_snapshot()?;
+            let plan = state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .prepare_export(&key)?;
+            // 与详情一致：记录在锁内快照，遍历解析与导出组装在锁外执行。
+            let mut detail = plan.read(&workspace)?;
+            detail["related_sessions"] = state
+                .store
+                .lock()
+                .map_err(lock_error)?
+                .related_sessions(&key, &workspace);
+            workspace.decorate_detail(&mut detail);
+            Ok(detail)
+        }
         ("GET", path) if path.starts_with("/api/sessions/") => {
             let key = percent_decode_str(path.trim_start_matches("/api/sessions/"))
                 .decode_utf8()

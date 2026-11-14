@@ -295,6 +295,37 @@
 .scheme-control button {
   width: 30px;
   padding: 4px;
+  transition:
+    width 0.2s var(--ease-out),
+    padding 0.2s var(--ease-out),
+    margin 0.2s var(--ease-out),
+    border-width 0.2s var(--ease-out),
+    opacity 0.16s var(--ease-out);
+}
+
+/* 外观切换默认收拢为当前项一枚芯片；悬停或键盘焦点时其余选项原地展开。
+   焦点判定用 :has(button:focus-visible)：鼠标点击产生的焦点不算展开，
+   避免 Chromium / WebKitGTK 上点击后整组一直保持展开。非选中项不用
+   visibility 隐藏，保留在 Tab 顺序与辅助技术树里。 */
+.scheme-control button:not([aria-pressed="true"]) {
+  width: 0;
+  min-width: 0;
+  padding: 4px 0;
+  /* 抵消自身占用的 2px gap，收拢后当前项在容器内保持居中。 */
+  margin-inline-end: -2px;
+  border-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.scheme-control:hover button:not([aria-pressed="true"]),
+.scheme-control:has(button:focus-visible) button:not([aria-pressed="true"]) {
+  width: 30px;
+  padding: 4px;
+  margin-inline-end: 0;
+  border-width: 1px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .settings-scheme-options label {
@@ -318,6 +349,21 @@
   color: var(--accent-strong);
   background: var(--surface);
   box-shadow: none;
+}
+
+/* 收拢态芯片读作一体：当前项不自带底色描边，避免分组边框内再套白框，
+   并经 order 固定在末位（视觉右侧）。展开后恢复选中样式与 DOM 顺序，
+   避免点击后选中项被搬到最右、指针下的选项换人。必须排在其后才能覆盖。 */
+.scheme-control button[aria-pressed="true"] {
+  order: 1;
+  border-color: transparent;
+  background: transparent;
+}
+.scheme-control:hover button[aria-pressed="true"],
+.scheme-control:has(button:focus-visible) button[aria-pressed="true"] {
+  order: 0;
+  border-color: var(--line);
+  background: var(--surface);
 }
 
 .settings-scheme-options input:focus-visible + span {

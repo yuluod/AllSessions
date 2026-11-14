@@ -156,10 +156,7 @@ pub(crate) fn matches_filters(summary: &Value, query: &HashMap<String, String>) 
             return false;
         }
     }
-    if summary["hidden"] == true && !bool_query(query, "show_hidden") {
-        return false;
-    }
-    true
+    !(summary["hidden"] == true && !bool_query(query, "show_hidden"))
 }
 /// 来源栏把归档 Codex 与 VS Code Copilot Chat 归入对应分组，
 /// 筛选沿用同一口径，避免徽章计数与列表结果不一致。

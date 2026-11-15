@@ -723,3 +723,13 @@ button.token-heatmap-cell:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* 统计导出菜单锚定自身入口，面板宽度不随入口文字收缩。 */
+.stats-export-menu {
+  position: relative;
+}
+
+.stats-export-menu .export-actions {
+  width: 280px;
+  max-width: calc(100vw - 32px);
+}

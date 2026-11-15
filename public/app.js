@@ -10,6 +10,7 @@ import {
 } from "./interaction-preferences.js";
 import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
+import { exportStats } from "./stats-export.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import { DESKTOP_RUNTIME_REQUIRED } from "./api-client.js";
 import {
@@ -587,6 +588,14 @@ async function initialize() {
           redact: elements.exportRedactToggle?.checked === true,
         });
       }
+    });
+  }
+
+  for (const button of elements.statsExportButtons || []) {
+    button.addEventListener("click", () => {
+      exportStats(state.stats, button.dataset.statsExport, {
+        redact: elements.statsExportRedactToggle?.checked !== false,
+      });
     });
   }
 

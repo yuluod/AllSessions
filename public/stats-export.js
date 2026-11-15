@@ -34,24 +34,33 @@ const TOTAL_FIELDS = [
   "active_days",
 ];
 
+// 工作目录本身就是路径，不能依赖路径模式匹配（挂载盘、UNC 等会漏掉），整体替换并保留序号区分。
+function redactLabel(field, label, index) {
+  if (field === "by_cwd") return label ? `[local path ${index + 1}]` : label;
+  return redactText(label);
+}
+
 function breakdownRows(stats, redact) {
   const rows = [];
   for (const field of BREAKDOWN_FIELDS) {
-    for (const item of stats[field] || []) {
+    (stats[field] || []).forEach((item, index) => {
       const label = String(item.label ?? "");
       rows.push({
         dimension: field,
-        label: redact ? redactText(label) : label,
+        label: redact ? redactLabel(field, label, index) : label,
         count: item.count ?? null,
       });
-    }
+    });
   }
   return rows;
 }
 
 // 未计价时成本为 null，不能写成 0，避免把“未知”误读为“免费”。
+// 后端按日只累加已计价成本：当天有 token 而成本为 0，说明全部未计价。
 function dailyCost(stats, day) {
-  return stats.total_cost == null ? null : (day.cost ?? null);
+  if (stats.total_cost == null || day.cost == null) return null;
+  if (day.cost === 0 && Number(day.tokens) > 0) return null;
+  return day.cost;
 }
 
 export function statsExportData(stats, { redact = false } = {}) {

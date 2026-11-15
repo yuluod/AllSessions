@@ -158,6 +158,8 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 >
 > - **macOS**：安装包仅为 ad-hoc 签名，首次打开会被 Gatekeeper 拦截。把应用拷贝到「应用程序」后，在「系统设置」→「隐私与安全性」中选择「仍要打开」，或在终端执行 `xattr -dr com.apple.quarantine /Applications/AllSessions.app`，再正常打开。
 > - **Windows**：SmartScreen 可能提示“无法识别的应用”，选择「更多信息」→「仍要运行」即可。
+>
+> 每个 Release 附带 `SHA256SUMS`，可在安装前核对下载文件：在下载目录执行 `shasum -a 256 -c SHA256SUMS --ignore-missing`（macOS）、`sha256sum -c SHA256SUMS --ignore-missing`（Linux），或在 PowerShell 中用 `Get-FileHash <文件名> -Algorithm SHA256` 与清单比对（Windows）。已安装的应用通过 minisign 签名的更新通道升级，不受上述提示影响。
 
 ## 配置
 

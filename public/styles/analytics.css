@@ -256,6 +256,10 @@
   white-space: pre-wrap;
 }
 
+.project-review-more {
+  margin-top: 12px;
+}
+
 .metric-card {
   min-width: 0;
   padding: 13px 17px 12px;

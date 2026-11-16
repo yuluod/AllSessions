@@ -1,7 +1,7 @@
 import { t } from "./i18n.js";
 import { formatTimestamp, providerLabel } from "./session-format.js";
 
-function downloadBlob(content, filename, type) {
+export function downloadBlob(content, filename, type) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -28,7 +28,7 @@ const REDACTED_FIELDS = new Set([
   "file_path",
 ]);
 
-function redactText(value) {
+export function redactText(value) {
   return value
     .replace(/(?:\/Users|\/home)\/[^\n\r\t"'`]+/g, "[local path]")
     .replace(/[A-Za-z]:\\[^\n\r\t"'`]+/g, "[local path]")

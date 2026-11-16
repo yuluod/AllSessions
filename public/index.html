@@ -1542,6 +1542,57 @@
                   </p>
                 </div>
                 <div id="stats-range" class="stats-range"></div>
+                <details class="export-menu stats-export-menu" data-popover>
+                  <summary class="button--quiet" data-i18n="statsExport">
+                    导出
+                  </summary>
+                  <div class="export-actions">
+                    <span
+                      class="export-redact-hint"
+                      data-i18n="statsExportHint"
+                    >
+                      导出当前时间范围和筛选下的统计，不含会话正文。
+                    </span>
+                    <label class="export-redact-option">
+                      <input
+                        id="stats-export-redact-toggle"
+                        type="checkbox"
+                        checked
+                      />
+                      <span data-i18n="redactExport">脱敏导出</span>
+                    </label>
+                    <span
+                      class="export-redact-hint"
+                      data-i18n="statsExportRedactHint"
+                    >
+                      隐藏工作目录和命令中的本地路径
+                    </span>
+                    <button
+                      class="ghost-button button--quiet"
+                      type="button"
+                      data-stats-export="daily-csv"
+                      data-i18n="statsExportDailyCsv"
+                    >
+                      每日数据 CSV
+                    </button>
+                    <button
+                      class="ghost-button button--quiet"
+                      type="button"
+                      data-stats-export="breakdown-csv"
+                      data-i18n="statsExportBreakdownCsv"
+                    >
+                      分布数据 CSV
+                    </button>
+                    <button
+                      class="ghost-button button--quiet"
+                      type="button"
+                      data-stats-export="json"
+                      data-i18n="statsExportJson"
+                    >
+                      汇总 JSON
+                    </button>
+                  </div>
+                </details>
               </header>
               <div id="stats-filter-slot"></div>
               <div class="stats-surface">

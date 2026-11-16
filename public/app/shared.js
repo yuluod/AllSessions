@@ -254,6 +254,10 @@ export const elements = {
   resumeConfirmClose: document.querySelector("#resume-confirm-close"),
   statsDashboard: document.querySelector("#stats-dashboard"),
   statsRange: document.querySelector("#stats-range"),
+  statsExportRedactToggle: document.querySelector(
+    "#stats-export-redact-toggle"
+  ),
+  statsExportButtons: [...document.querySelectorAll("[data-stats-export]")],
   statsSessions: document.querySelector("#stats-sessions"),
   statsMetrics: document.querySelector("#stats-metrics"),
   statsGrid: document.querySelector("#stats-grid"),

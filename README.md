@@ -162,6 +162,13 @@ Windows, macOS, and Linux share the same Tauri 2 app shell, system tray, and sig
 >   in Terminal, then open it normally.
 > - **Windows**: SmartScreen may flag the setup as unrecognized. Choose
 >   **More info** → **Run anyway**.
+>
+> Each release ships a `SHA256SUMS` file for verifying downloads before installing. In the
+> download folder, run `shasum -a 256 -c SHA256SUMS --ignore-missing` (macOS),
+> `sha256sum -c SHA256SUMS --ignore-missing` (Linux), or compare
+> `Get-FileHash <file> -Algorithm SHA256` against the list in PowerShell (Windows).
+> Installed apps upgrade through the minisign-signed update channel and are not affected by
+> these prompts.
 
 ## Configuration
 

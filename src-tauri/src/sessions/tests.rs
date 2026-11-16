@@ -941,11 +941,15 @@ fn 父子会话遵守来源边界并排除本地移除记录() {
 fn 项目回顾保留用户整理并限制条数且遵守可见性() {
     let (_directory, mut store) = structured_search_store();
     let base = store.summaries[0].clone();
-    store.summaries = (0..12)
+    store.summaries = (0..60)
         .map(|index| {
             let mut summary = base.clone();
             summary["_key"] = json!(format!("codex:review-{index}"));
-            summary["last_timestamp"] = json!(format!("2026-02-{:02}T00:00:00Z", index + 1));
+            summary["last_timestamp"] = json!(format!(
+                "2026-02-{:02}T{:02}:00:00Z",
+                index / 24 + 1,
+                index % 24
+            ));
             summary["hidden"] = json!(index == 9);
             if index == 11 {
                 summary["cwd"] = json!("/other");
@@ -974,10 +978,10 @@ fn 项目回顾保留用户整理并限制条数且遵守可见性() {
         &HashMap::from([("cwd".into(), "/project".into())]),
         &workspace,
     );
-    assert_eq!(stats["total"], 9);
+    assert_eq!(stats["total"], 57);
     let review = &stats["project_review"];
-    assert_eq!(review["recent"].as_array().unwrap().len(), 8);
-    assert_eq!(review["recent"][0]["key"], "codex:review-8");
+    assert_eq!(review["recent"].as_array().unwrap().len(), 50);
+    assert_eq!(review["recent"][0]["key"], "codex:review-59");
     assert_eq!(review["saved"][0]["key"], "codex:review-0");
     assert_eq!(review["saved"][0]["note"], "用户确认的解决方法");
     assert_eq!(review["saved"][0]["tags"], json!(["已验证"]));

@@ -28,11 +28,33 @@ const REDACTED_FIELDS = new Set([
   "file_path",
 ]);
 
+// 带 scheme 的 URL 其 path 不是本地路径，先整体占位保护、脱敏后原样还原；
+// file: 除外，其中的路径仍需脱敏。
+const URL_PATTERN = /\b(?!file:)[a-z][a-z\d+.-]*:\/\/[^\n\r\s"'`]+/gi;
+// \\?\ 扩展长度路径与 UNC（\\主机\共享\…）；需先于盘符规则，避免留下 \\?\ 残段。
+const UNC_EXTENDED_PATTERN = /\\\\\?\\[^\n\r\t"'`]+/g;
+const UNC_PATTERN = /\\\\[^\s"'`\\]+(?:\\[^\n\r\t"'`\\]+)+/g;
+// 多段 Unix 绝对路径兜底（含 //server/share 形式）；单段只认常见系统根目录，
+// 避免把「输入/输出」「cmd /c」这类正文与命令开关误当路径。
+const POSIX_ABSOLUTE_PATTERN = /(?<![\w.])\/{1,2}(?=[^\s"'`]*\/)[^\n\r\t"'`]+/g;
+const POSIX_BARE_ROOT_PATTERN =
+  /\/(?:bin|boot|data|dev|etc|lib|lib64|media|mnt|opt|private|proc|root|run|sbin|srv|sys|tmp|usr|var|volumes|applications|library)(?![\w./\\-])/g;
+
 export function redactText(value) {
+  const urls = [];
   return value
+    .replace(URL_PATTERN, (url) => {
+      urls.push(url);
+      return `\uE000${urls.length - 1}\uE000`;
+    })
     .replace(/(?:\/Users|\/home)\/[^\n\r\t"'`]+/g, "[local path]")
+    .replace(UNC_EXTENDED_PATTERN, "[local path]")
+    .replace(UNC_PATTERN, "[local path]")
     .replace(/[A-Za-z]:\\[^\n\r\t"'`]+/g, "[local path]")
-    .replace(/~\/[^\n\r\t"'`]+/g, "[local path]");
+    .replace(/~\/[^\n\r\t"'`]+/g, "[local path]")
+    .replace(POSIX_ABSOLUTE_PATTERN, "[local path]")
+    .replace(POSIX_BARE_ROOT_PATTERN, "[local path]")
+    .replace(/\uE000(\d+)\uE000/g, (_, index) => urls[Number(index)]);
 }
 
 export function prepareExportDetail(detail, { redact = false } = {}) {

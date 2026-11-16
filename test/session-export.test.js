@@ -6,7 +6,7 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { prepareExportDetail, sessionMarkdown } =
+const { prepareExportDetail, redactText, sessionMarkdown } =
   await import("../public/session-export.js");
 const { translateBackendError } = await import("../public/i18n.js");
 
@@ -147,6 +147,33 @@ test("脱敏会完整隐藏包含空格的本地路径", () => {
 
   assert.equal(prepared.summary.title, "打开 [local path]");
   assert.equal(prepared.conversation_messages[0].text, "检查 [local path]");
+});
+
+test("脱敏覆盖 UNC、扩展路径与更多 Unix 绝对路径", () => {
+  assert.equal(redactText("tail /var/log/syslog"), "tail [local path]");
+  assert.equal(
+    redactText("打开 //server/share/client/main.rs"),
+    "打开 [local path]"
+  );
+  assert.equal(
+    redactText("拷贝 \\\\?\\C:\\Users\\alice\\c.toml"),
+    "拷贝 [local path]"
+  );
+  assert.equal(
+    redactText("查看 \\\\nas-01\\docs\\报告.md"),
+    "查看 [local path]"
+  );
+  assert.equal(redactText("cd /tmp && ls"), "cd [local path] && ls");
+  assert.equal(redactText("/etc/hosts"), "[local path]");
+});
+
+test("脱敏不误伤 URL 与普通文本", () => {
+  const url = "curl https://example.com/api/v1/list?id=7";
+  assert.equal(redactText(url), url);
+  assert.equal(redactText("对比 输入/输出 差异"), "对比 输入/输出 差异");
+  assert.equal(redactText('cmd /c "calc"'), 'cmd /c "calc"');
+  assert.equal(redactText("和 / 或"), "和 / 或");
+  assert.equal(redactText("file:///var/tmp/x.txt"), "file:[local path]");
 });
 
 test("后端完整导出的 export_info 不被前端推算覆盖", () => {

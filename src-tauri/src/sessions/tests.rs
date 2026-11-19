@@ -1937,6 +1937,11 @@ fn codex压缩rollout可被发现解析且优先未压缩副本() {
     );
     let detail = store.detail("codex:codex-zst").unwrap();
     assert_eq!(detail["conversation_messages"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        detail["summary"]["message_permanent_delete_supported"],
+        false
+    );
+    assert!(detail["conversation_messages"][0]["_message_key"].is_string());
     let source = Source {
         kind: "codex",
         display_name: "Codex",

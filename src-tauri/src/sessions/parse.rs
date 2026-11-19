@@ -683,6 +683,9 @@ pub(crate) fn visit_detail(
     }
     let (event_values, omitted_events, total_events) = events.finish(json!({ "line_number": Value::Null, "timestamp": Value::Null, "type": "viewer_truncation", "payload": { "omitted_events": 0 } }));
     let mut summary = state.summary(path, source);
+    if matches!(source.format, SourceFormat::Codex) && is_compressed_codex_rollout(path) {
+        summary["message_permanent_delete_supported"] = Value::Bool(false);
+    }
     if omitted_messages + omitted_events > 0 {
         summary["detail_truncated"] = Value::Bool(true);
     }

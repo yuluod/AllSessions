@@ -25,13 +25,21 @@ test("进行中标记以文件写入窗口为准并自然过期", () => {
   assert.equal(isSessionRunning(undefined, now), false);
 });
 
-test("实时重载只在消息数、写入时间或最后时间变化时触发", () => {
+test("实时重载识别源文件切换、消息数和时间变化", () => {
   const current = {
+    file_path: "/tmp/rollout.jsonl",
     message_count: 10,
     file_mtime_ms: 1000,
     last_timestamp: "2024-01-01T00:00:10Z",
   };
   assert.equal(sessionNeedsLiveReload({ ...current }, current), false);
+  assert.equal(
+    sessionNeedsLiveReload(
+      { ...current, file_path: "/tmp/rollout.jsonl.zst" },
+      current
+    ),
+    true
+  );
   assert.equal(
     sessionNeedsLiveReload({ ...current, message_count: 11 }, current),
     true

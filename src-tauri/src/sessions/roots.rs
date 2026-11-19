@@ -739,10 +739,28 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
         .into_iter()
         .collect()
 }
+
+pub(crate) fn is_compressed_codex_rollout(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|name| name.ends_with(".jsonl.zst"))
+}
+
 fn is_codex_rollout(path: &Path) -> bool {
     path.file_name()
         .and_then(|value| value.to_str())
         .is_some_and(|name| name.ends_with(".jsonl") || name.ends_with(".jsonl.zst"))
+}
+
+pub(crate) fn codex_rollout_counterpart(path: &Path) -> Option<PathBuf> {
+    if !is_codex_rollout(path) {
+        return None;
+    }
+    Some(if is_compressed_codex_rollout(path) {
+        path.with_extension("")
+    } else {
+        path.with_added_extension("zst")
+    })
 }
 
 /// Codex 会把历史 rollout 压缩为 `.jsonl.zst`；同一会话并存时优先未压缩文件。
@@ -756,14 +774,9 @@ fn discover_codex_files(root: &Path) -> Vec<PathBuf> {
         .filter(|entry| entry.file_type().is_file() && is_codex_rollout(entry.path()))
     {
         let path = entry.into_path();
-        let compressed = path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .is_some_and(|name| name.ends_with(".zst"));
+        let compressed = is_compressed_codex_rollout(&path);
         let key = if compressed {
-            let mut key = path.clone();
-            key.set_extension("");
-            key
+            path.with_extension("")
         } else {
             path.clone()
         };

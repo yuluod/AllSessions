@@ -1831,6 +1831,80 @@ fn codex_summary_and_detail_are_streamed() {
 }
 
 #[test]
+fn codex压缩rollout可被发现解析且优先未压缩副本() {
+    let directory = tempdir().unwrap();
+    let compressed = directory.path().join("rollout-compressed.jsonl.zst");
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 0).unwrap();
+    for record in [
+        json!({ "timestamp": "2026-01-01T00:00:00Z", "type": "session_meta", "payload": { "id": "codex-zst", "cwd": "/tmp/zst" } }),
+        json!({ "timestamp": "2026-01-01T00:00:01Z", "type": "event_msg", "payload": { "type": "user_message", "message": "压缩会话" } }),
+    ] {
+        writeln!(encoder, "{}", record).unwrap();
+    }
+    std::fs::write(&compressed, encoder.finish().unwrap()).unwrap();
+
+    let plain = directory.path().join("rollout-both.jsonl");
+    let duplicate = directory.path().join("rollout-both.jsonl.zst");
+    std::fs::write(
+        &plain,
+        json!({ "type": "session_meta", "payload": { "id": "codex-plain" } }).to_string(),
+    )
+    .unwrap();
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 0).unwrap();
+    writeln!(
+        encoder,
+        "{}",
+        json!({ "type": "session_meta", "payload": { "id": "codex-duplicate" } })
+    )
+    .unwrap();
+    std::fs::write(&duplicate, encoder.finish().unwrap()).unwrap();
+
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    assert_eq!(store.summaries.len(), 2);
+    let compressed_summary = store
+        .summaries
+        .iter()
+        .find(|summary| summary["id"] == "codex-zst")
+        .unwrap();
+    assert_eq!(
+        compressed_summary["file_path"].as_str(),
+        Some(compressed.to_string_lossy().as_ref())
+    );
+    let plain_summary = store
+        .summaries
+        .iter()
+        .find(|summary| summary["id"] == "codex-plain")
+        .unwrap();
+    assert_eq!(
+        plain_summary["file_path"].as_str(),
+        Some(plain.to_string_lossy().as_ref())
+    );
+    let detail = store.detail("codex:codex-zst").unwrap();
+    assert_eq!(detail["conversation_messages"].as_array().unwrap().len(), 1);
+    let source = Source {
+        kind: "codex",
+        display_name: "Codex",
+        root: directory.path().into(),
+        format: SourceFormat::Codex,
+        archived: false,
+    };
+    assert!(super::roots::source_matches_path(&source, &compressed));
+    assert!(!super::roots::source_matches_path(
+        &source,
+        &directory.path().join("notes.txt")
+    ));
+}
+
+#[test]
 fn 永久删除单条消息只移除对应原始记录() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("session.jsonl");
@@ -3035,6 +3109,47 @@ fn 图片附件只保留定位信息并按需读取() {
             .unwrap_err()
             .contains("上限")
     );
+}
+
+#[test]
+fn codex压缩会话图片可按需回读() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("image.jsonl.zst");
+    let png = "QUJD";
+    let content = [
+        json!({"type":"session_meta","payload":{"id":"zst-image"}}).to_string(),
+        json!({"type":"user","message":{"role":"user","content":[
+            {"type":"text","text":"看这张图"},
+            {"type":"image","source":{"type":"base64","media_type":"image/png","data":png}}
+        ]}})
+        .to_string(),
+    ]
+    .join("\n");
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 0).unwrap();
+    encoder.write_all(content.as_bytes()).unwrap();
+    std::fs::write(&path, encoder.finish().unwrap()).unwrap();
+
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("codex:zst-image").unwrap();
+    let image = detail["conversation_messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["text"] == "[image]")
+        .unwrap();
+    let result = store
+        .read_attachment("codex:zst-image", &image["attachments"][0]["locator"])
+        .unwrap();
+    assert_eq!(result["data_url"], format!("data:image/png;base64,{png}"));
 }
 
 #[test]

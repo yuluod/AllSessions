@@ -131,6 +131,11 @@ impl SessionStore {
 
     pub fn delete_message(&mut self, key: &str, message_key: &str) -> Result<Value, ApiError> {
         let (resolved, record) = self.resolve_writable_record(key)?;
+        if record.path.extension().and_then(|value| value.to_str()) == Some("zst") {
+            return Err(
+                "压缩的 Codex 会话暂不支持删除单条消息；请删除整个会话或在 Codex 中操作".into(),
+            );
+        }
         if matches!(
             record.source.format,
             SourceFormat::Pi

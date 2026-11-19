@@ -64,12 +64,27 @@ pub(crate) struct ParseState {
     pub(crate) current_model: String,
 }
 
+/// 打开 JSONL 会话文件；Codex 的历史 rollout 以 `.jsonl.zst` 保存，
+/// 按扩展名流式解压，避免把完整会话读入内存。
+pub(crate) fn open_jsonl_reader(path: &Path) -> Result<Box<dyn BufRead>, String> {
+    let reader = BufReader::new(File::open(path).map_err(error_text)?);
+    if path.extension().and_then(|value| value.to_str()) == Some("zst") {
+        return Ok(Box::new(BufReader::new(
+            zstd::stream::Decoder::new(reader).map_err(error_text)?,
+        )));
+    }
+    Ok(Box::new(reader))
+}
+
 impl ParseState {
     pub(crate) fn new(path: &Path) -> Self {
         let fallback_id = path
             .file_stem()
             .and_then(|value| value.to_str())
-            .unwrap_or("unknown")
+            .unwrap_or("unknown");
+        let fallback_id = fallback_id
+            .strip_suffix(".jsonl")
+            .unwrap_or(fallback_id)
             .to_string();
         let force_sidechain = path
             .components()
@@ -464,7 +479,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
         return parse_legacy_claude_summary(path, source);
     }
     let mut state = ParseState::new(path);
-    for line in BufReader::new(File::open(path).map_err(error_text)?).lines() {
+    for line in open_jsonl_reader(path)?.lines() {
         let line = line.map_err(error_text)?;
         if line.trim().is_empty() {
             continue;
@@ -538,10 +553,7 @@ pub(crate) fn visit_detail(
     let mut state = ParseState::new(path);
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
     let mut events = HeadTail::new(DETAIL_EVENT_LIMIT);
-    for (index, line) in BufReader::new(File::open(path).map_err(error_text)?)
-        .lines()
-        .enumerate()
-    {
+    for (index, line) in open_jsonl_reader(path)?.lines().enumerate() {
         // 详情请求在 IPC 读线程运行（ReadGuard 已注册）：
         // 大文件逐行解析期间及时响应取消，避免被废弃的请求占满解析时间。
         crate::request_control::check()?;

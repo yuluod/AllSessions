@@ -1,5 +1,5 @@
 //! 来源根目录解析(配置/环境变量/默认值三级回退)、路径发现与监听根计算。
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
@@ -739,7 +739,52 @@ pub(crate) fn watch_roots_for(config: &crate::config::SourceRoots) -> Vec<PathBu
         .into_iter()
         .collect()
 }
+fn is_codex_rollout(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|name| name.ends_with(".jsonl") || name.ends_with(".jsonl.zst"))
+}
+
+/// Codex 会把历史 rollout 压缩为 `.jsonl.zst`；同一会话并存时优先未压缩文件。
+fn discover_codex_files(root: &Path) -> Vec<PathBuf> {
+    let mut best: BTreeMap<PathBuf, (bool, PathBuf)> = BTreeMap::new();
+    for entry in WalkDir::new(root)
+        .max_depth(16)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file() && is_codex_rollout(entry.path()))
+    {
+        let path = entry.into_path();
+        let compressed = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.ends_with(".zst"));
+        let key = if compressed {
+            let mut key = path.clone();
+            key.set_extension("");
+            key
+        } else {
+            path.clone()
+        };
+        let candidate = (compressed, path);
+        best.entry(key)
+            .and_modify(|current| {
+                if current.0 && !candidate.0 {
+                    *current = candidate.clone();
+                }
+            })
+            .or_insert(candidate);
+    }
+    let mut files = best.into_values().map(|(_, path)| path).collect::<Vec<_>>();
+    files.sort();
+    files
+}
+
 pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
+    if matches!(source.format, SourceFormat::Codex) {
+        return discover_codex_files(&source.root);
+    }
     if source.format == SourceFormat::ClaudeCowork {
         return claude_cowork::discover_files(source);
     }
@@ -799,6 +844,9 @@ pub(crate) fn discover_files(source: &Source) -> Vec<PathBuf> {
 }
 
 pub(crate) fn source_matches_path(source: &Source, path: &Path) -> bool {
+    if matches!(source.format, SourceFormat::Codex) {
+        return is_codex_rollout(path);
+    }
     if source.format == SourceFormat::ClaudeCowork {
         return claude_cowork::matches_path(&source.root, path);
     }

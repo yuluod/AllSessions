@@ -805,6 +805,13 @@ impl SessionStore {
                 _ => session_backup_paths(&record.path),
             };
             let mut stamps = Vec::new();
+            if matches!(
+                record.source.format,
+                SourceFormat::Codex | SourceFormat::Claude | SourceFormat::ClaudeCowork
+            ) {
+                // 摘要文本可能未变，但归一化消息和结构化工具索引仍需重新生成。
+                stamps.push("codex-claude-parser:1".into());
+            }
             for path in paths
                 .into_iter()
                 .chain((content_fingerprint.is_none()).then(|| record.path.clone()))

@@ -38,6 +38,53 @@ fn 数据库来源保留四元素内容指纹() {
     );
 }
 
+#[test]
+fn codex工具事件升级会重建摘要未变的旧搜索索引() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("rollout-search.jsonl");
+    let mut file = std::fs::File::create(&path).unwrap();
+    for record in [
+        json!({"type":"session_meta","payload":{"id":"search-upgrade"}}),
+        json!({"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","call_id":"c","input":"tools.exec_command({cmd:\"git status\"})"}}),
+    ] {
+        writeln!(file, "{record}").unwrap();
+    }
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh_metadata().unwrap();
+    let key = "codex:search-upgrade";
+    let record = &store.records[key];
+    let metadata = std::fs::metadata(&record.path).unwrap();
+    let mut wal = record.path.as_os_str().to_os_string();
+    wal.push("-wal");
+    let file_stamp = format!(
+        "{:?}:{:?}",
+        record.path,
+        Some((metadata.len(), metadata.modified().ok()))
+    );
+    let wal_stamp = format!("{wal:?}:None");
+    let stamps = vec![file_stamp.clone(), wal_stamp.clone(), file_stamp, wal_stamp];
+    let old = super::search_fingerprint(&record.summary, &record.search_text, &stamps, None);
+    store
+        .index_cache
+        .search
+        .refresh(key, &old, |_| Ok(()))
+        .unwrap();
+
+    let query = HashMap::from([("command".into(), "git".into())]);
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    assert_eq!(store.search(&query, &workspace).unwrap()["total"], 0);
+    store.rebuild_search_index().unwrap();
+    assert_eq!(store.search(&query, &workspace).unwrap()["total"], 1);
+}
+
 use serde_json::{Value, json};
 use tempfile::tempdir;
 

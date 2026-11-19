@@ -53,7 +53,7 @@ AllSessions 的运行时实现位于 `src-tauri/src`。前端只消费统一 JSO
 
 `GET /api/stats/sessions` 使用相同的来源／项目／活动范围及工作区可见性条件，按 `sort=recent`、`sort=tokens` 或 `sort=cost` 排序，复用列表的 `limit`／`cursor` 分页。每条仅返回会话标识、项目、来源、最近活动、范围内用量、估算成本及用户整理摘要；未知用量与无法计价的会话保留 null 并排在排序末尾。前端在进入统计页时按需读取，范围变更取消旧请求，分页失败保留已加载结果并提供重试。
 
-摘要的 `usage` 保存已知用量、缓存读取／写入、逐日小计、未分配日期的用量，以及 `by_model` 按模型拆分（总量 + 逐日）；成本由查询侧的内置价格表按模型估算，缓存不存美元金额。Codex 累计快照按差值归属事件日期，累计值回退时保留最新总量并将无法还原的历史归入未分配用量。Claude 按响应 ID 去重；DeepSeek、Pi／Oh My Pi 与 Gemini chats 使用各自用量事件。ZCode 的轮次聚合保留缓存读写，当前未取得日期的部分归入未分配用量。
+摘要的 `usage` 保存已知用量、缓存读取／写入、逐日小计、未分配日期的用量，以及 `by_model` 按模型拆分（总量 + 逐日）；成本由查询侧的内置价格表按模型估算，缓存不存美元金额。Codex 累计快照按差值归属事件日期，累计值回退时保留最新总量并将无法还原的历史归入未分配用量。Claude 按响应 ID 去重；DeepSeek、Pi／Oh My Pi、OpenCode／Kilo 与 Gemini chats 使用各自用量事件。ZCode 的轮次聚合保留缓存读写，当前未取得日期的部分归入未分配用量。
 
 日期桶最多 4096 个，超过上限仍保留总量，增加部分归入未分配用量。未知用量不参与缓存命中率分母。列表／搜索响应省略账本，统计接口按需聚合，账本随派生索引版本升级重建。
 
@@ -84,7 +84,7 @@ Kimi 官方迁移副本有明确的旧会话 ID，沿用 `kimi:<旧 id>` 工作�
 
 Gemini 的会话可能跨多个 `tmp/*/logs.json`，因此按 `sessionId` 聚合。每个日志文件只缓存有界摘要贡献，完整消息和原始事件在用户打开会话时重新流式读取，并应用与其他来源相同的首尾窗口。Kimi 以 `wire.jsonl` 作为会话事件流，但工作目录和标题分别来自根目录 `kimi.json` 与相邻 `state.json`；这两个元数据文件变化时必须重新解析摘要，不能只依赖 `wire.jsonl` 指纹缓存。OpenCode 的一份 `opencode.db` 包含多条会话，摘要通过批量查询聚合，详情按会话 ID 查询；`opencode.db`、`-wal` 或 `-shm` 变化时均全量刷新该聚合来源。
 
-Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo 和 ZCode 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness、JetBrains Air 与 WorkBuddy 同为只读来源。
+Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Grok Build 与 Claude Cowork 当前按只读来源接入。它们支持 AllSessions 工作区内的收藏、标签、备注、归档和软移除，但不生成 `_delete_ref`，后端也拒绝永久删除其原始会话或消息。Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness、JetBrains Air 与 WorkBuddy 同为只读来源。
 
 Devin 来源同时覆盖桌面版与 CLI 两种布局：桌面版按会话拆分 `acp-messages/<uuid>.db` 消息库，摘要逐库聚合，标题与时间戳优先取 `globalStorage/state.vscdb` 索引；CLI 的 `sessions.db` 是单库聚合，`sessions` 表提供元数据，`message_nodes` 的消息森林按 `main_chain_id` 所在链重建。桌面版镜像的 CLI 会话（`acp/devin-cli/<slug>`）与 CLI 库记录按 slug 去重，`devin:<slug>` 键冲突时保留 CLI 记录。任一消息库、索引库或 `sessions.db` 变化时全量刷新该聚合来源。详细边界见 [Devin 来源说明](./sources/devin.md)。
 
@@ -114,6 +114,7 @@ Cursor、GitHub Copilot、VS Code Copilot、Claude Cowork 的本机数据已检�
 
 各来源的数据布局与边界详见：
 
+- [Codex](./sources/codex.md)
 - [Claude Code](./sources/claude-code.md)
 - [Claude Cowork](./sources/claude-cowork.md)
 - [Gemini CLI](./sources/gemini-cli.md)
@@ -133,7 +134,9 @@ Cursor、GitHub Copilot、VS Code Copilot、Claude Cowork 的本机数据已检�
 - [JetBrains Air](./sources/jetbrains-air.md)
 - [WorkBuddy](./sources/workbuddy.md)
 
-Codex 作为内置参考来源没有单独文档，其维护能力见 README 的 Codex Provider 章节。
+Codex 的压缩 rollout、归档和删除边界见 [Codex 来源说明](./sources/codex.md)；Codex Provider 维护能力见 README 的 Codex Provider 章节。
+
+历史兼容性快照见 [2026-10 来源兼容性核对](./source-compatibility-2026-10.md)，其中只覆盖当时已接入的来源。
 
 ## 增加新来源
 

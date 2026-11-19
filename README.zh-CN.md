@@ -78,7 +78,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 - 保存常用筛选
 - 管理本地归档 / 移除状态
 - 按 Agent 对比会话、消息、工具、活跃度、Provider 和工作目录统计
-- 统计 Token 用量（输入 / 输出 / 缓存）；仅覆盖会记录用量的来源（Codex、Claude Code、ZCode、Pi、Oh My Pi、DeepSeek Harness、JetBrains Air、WorkBuddy、Gemini CLI 的 chats 会话）
+- 统计 Token 用量（输入 / 输出 / 缓存）；仅覆盖会记录用量的来源（Codex、Claude Code、ZCode、Pi、Oh My Pi、OpenCode、Kilo、DeepSeek Harness、JetBrains Air、WorkBuddy、Gemini CLI 的 chats 会话）
 - 按内置价格表估算美元成本：统计页展示估算成本卡片与成本热力图，相关会话支持按成本排序；未识别模型的用量计为未计价
 - 批量选择当前已加载的会话并导出为 JSON 或 Markdown
 - 导出时可选择启用脱敏，默认关闭
@@ -111,8 +111,8 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 
 | 来源                     | 默认本地路径                                                                    | 支持范围                                                                                                                                                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Codex**                | `~/.codex/sessions`                                                             | 元数据、消息、工具调用、原始事件、搜索、实时刷新                                                                                                                                                                                   |
-| **Codex 归档**           | `~/.codex/archived_sessions`                                                    | 浏览、搜索、永久删除归档会话；不移动文件或恢复归档状态                                                                                                                                                                             |
+| **Codex**                | `~/.codex/sessions`                                                             | 元数据、消息、工具调用、原始事件、搜索、实时刷新；支持 `.jsonl` 与 `.jsonl.zst`；[边界说明](./docs/sources/codex.md)                                                                                                               |
+| **Codex 归档**           | `~/.codex/archived_sessions`                                                    | 浏览、搜索、永久删除归档会话；不移动文件或恢复归档状态；[边界说明](./docs/sources/codex.md)                                                                                                                                        |
 | **Claude Code**          | `~/.claude/{projects,sessions}`                                                 | `projects/**/*.jsonl` 与旧版 `sessions/*.json`；对话、Thinking、工具调用/结果、搜索、实时刷新，并在可用时从 `history.jsonl` 补充旧版详情                                                                                           |
 | **Claude Cowork**        | `~/Library/Application Support/Claude{,-3p}/local-agent-mode-sessions`（macOS） | 本地任务转录、Thinking、工具、任务标题与主机目录、搜索及刷新；来源只读；[边界说明](./docs/sources/claude-cowork.md)                                                                                                                |
 | **Gemini CLI**           | `~/.gemini/tmp/*`                                                               | `logs.json` 与 v0.61+ `chats/session-*.json[l]` 完整会话（JSONL 回放、`$set`/`$rewindTo`/消息更新，chats 优先去重）；消息、Thinking、工具、Token 用量（chats）、原始事件、搜索、实时刷新；[边界说明](./docs/sources/gemini-cli.md) |

@@ -50,6 +50,9 @@ pub(crate) struct ParseState {
     pub(crate) command_counts: BTreeMap<String, u64>,
     pub(crate) tool_last_used: BTreeMap<String, String>,
     pub(crate) command_last_used: BTreeMap<String, String>,
+    /// Claude Code 的显式标题事件：用户重命名优先于 AI 生成标题。
+    pub(crate) custom_title: String,
+    pub(crate) ai_title: String,
     pub(crate) first_user: String,
     pub(crate) first_assistant: String,
     pub(crate) first_message: String,
@@ -117,6 +120,8 @@ impl ParseState {
             command_counts: BTreeMap::new(),
             tool_last_used: BTreeMap::new(),
             command_last_used: BTreeMap::new(),
+            custom_title: String::new(),
+            ai_title: String::new(),
             first_user: String::new(),
             first_assistant: String::new(),
             first_message: String::new(),
@@ -135,6 +140,23 @@ impl ParseState {
         }
         if !stamp.is_empty() {
             self.last_timestamp = stamp.clone();
+        }
+        match record.get("type").and_then(Value::as_str) {
+            Some("custom-title") => {
+                if let Some(value) =
+                    string_at(record, &["customTitle"]).filter(|value| !value.trim().is_empty())
+                {
+                    self.custom_title = value.trim().to_string();
+                }
+            }
+            Some("ai-title") => {
+                if let Some(value) =
+                    string_at(record, &["aiTitle"]).filter(|value| !value.trim().is_empty())
+                {
+                    self.ai_title = value.trim().to_string();
+                }
+            }
+            _ => {}
         }
         if record.get("type").and_then(Value::as_str) == Some("session_meta") {
             let payload = &record["payload"];
@@ -378,7 +400,11 @@ impl ParseState {
         } else {
             &self.hidden_reason
         };
-        let title = if !self.first_user.is_empty() {
+        let title = if !self.custom_title.is_empty() {
+            compact_title(&self.custom_title, 90)
+        } else if !self.ai_title.is_empty() {
+            compact_title(&self.ai_title, 90)
+        } else if !self.first_user.is_empty() {
             self.first_user.clone()
         } else {
             Path::new(&self.cwd)

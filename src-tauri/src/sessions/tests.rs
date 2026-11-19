@@ -2011,6 +2011,54 @@ fn claude_tool_blocks_keep_tool_semantics() {
 }
 
 #[test]
+fn claude标题事件优先自定义再ai并回退首条用户消息() {
+    let directory = tempdir().unwrap();
+    let source = Source {
+        kind: "claude_code",
+        display_name: "Claude Code",
+        root: directory.path().into(),
+        format: SourceFormat::Claude,
+        archived: false,
+    };
+    let custom = directory.path().join("custom.jsonl");
+    std::fs::write(
+        &custom,
+        [
+            json!({"type":"ai-title","aiTitle":"AI 标题","sessionId":"custom"}).to_string(),
+            json!({"type":"custom-title","customTitle":"自定义标题","sessionId":"custom"}).to_string(),
+            json!({"type":"user","message":{"role":"user","content":"首条消息"},"sessionId":"custom"}).to_string(),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let (summary, _) = parse_summary(&custom, &source).unwrap();
+    assert_eq!(summary["title"], "自定义标题");
+
+    let ai = directory.path().join("ai.jsonl");
+    std::fs::write(
+        &ai,
+        [
+            json!({"type":"ai-title","aiTitle":"AI 标题","sessionId":"ai"}).to_string(),
+            json!({"type":"user","message":{"role":"user","content":"首条消息"},"sessionId":"ai"})
+                .to_string(),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let (summary, _) = parse_summary(&ai, &source).unwrap();
+    assert_eq!(summary["title"], "AI 标题");
+
+    let fallback = directory.path().join("fallback.jsonl");
+    std::fs::write(
+        &fallback,
+        json!({"type":"user","message":{"role":"user","content":"首条消息"},"sessionId":"fallback"}).to_string(),
+    )
+    .unwrap();
+    let (summary, _) = parse_summary(&fallback, &source).unwrap();
+    assert_eq!(summary["title"], "首条消息");
+}
+
+#[test]
 fn 删除混合记录中的文本时同步移除关联工具结果() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("claude.jsonl");

@@ -1,7 +1,7 @@
 //! 通用会话解析:摘要/详情分发、ParseState 归约、消息构造与长会话截断。
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Read};
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -14,6 +14,7 @@ use super::claude_legacy::{parse_legacy_claude_detail, parse_legacy_claude_summa
 use super::helpers::{
     compact, compact_title, error_text, is_synthetic_context, nullable_string, string_at,
 };
+use super::roots::is_compressed_codex_rollout;
 use super::{
     DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT, Source,
     SourceFormat, claude_cowork, copilot, deepseek, grok, jetbrains_air, kimi, pi, vscode_copilot,
@@ -67,16 +68,51 @@ pub(crate) struct ParseState {
     pub(crate) current_model: String,
 }
 
-/// 打开 JSONL 会话文件；Codex 的历史 rollout 以 `.jsonl.zst` 保存，
-/// 按扩展名流式解压，避免把完整会话读入内存。
-pub(crate) fn open_jsonl_reader(path: &Path) -> Result<Box<dyn BufRead>, String> {
+/// 解压后单行最多 32 MiB，为内嵌图片的 Base64 编码预留空间。
+const MAX_COMPRESSED_LINE_BYTES: u64 = 32 * 1024 * 1024;
+
+pub(crate) fn jsonl_lines(
+    path: &Path,
+) -> Result<Box<dyn Iterator<Item = io::Result<String>>>, String> {
     let reader = BufReader::new(File::open(path).map_err(error_text)?);
-    if path.extension().and_then(|value| value.to_str()) == Some("zst") {
-        return Ok(Box::new(BufReader::new(
-            zstd::stream::Decoder::new(reader).map_err(error_text)?,
-        )));
+    if !is_compressed_codex_rollout(path) {
+        return Ok(Box::new(reader.lines()));
     }
-    Ok(Box::new(reader))
+    let mut reader =
+        BufReader::new(zstd::stream::Decoder::with_buffer(reader).map_err(error_text)?);
+    let mut finished = false;
+    Ok(Box::new(std::iter::from_fn(move || {
+        if finished {
+            return None;
+        }
+        let mut line = Vec::new();
+        let result = (&mut reader)
+            .take(MAX_COMPRESSED_LINE_BYTES + 1)
+            .read_until(b'\n', &mut line);
+        let line = match result {
+            Ok(0) => {
+                finished = true;
+                return None;
+            }
+            Ok(bytes) if bytes as u64 <= MAX_COMPRESSED_LINE_BYTES => {
+                if line.last() == Some(&b'\n') {
+                    line.pop();
+                    if line.last() == Some(&b'\r') {
+                        line.pop();
+                    }
+                }
+                String::from_utf8(line)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+            }
+            Ok(_) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "压缩会话解压后的单行超过 32 MiB",
+            )),
+            Err(error) => Err(error),
+        };
+        finished = line.is_err();
+        Some(line)
+    })))
 }
 
 impl ParseState {
@@ -505,7 +541,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
         return parse_legacy_claude_summary(path, source);
     }
     let mut state = ParseState::new(path);
-    for line in open_jsonl_reader(path)?.lines() {
+    for line in jsonl_lines(path)? {
         let line = line.map_err(error_text)?;
         if line.trim().is_empty() {
             continue;
@@ -579,7 +615,7 @@ pub(crate) fn visit_detail(
     let mut state = ParseState::new(path);
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
     let mut events = HeadTail::new(DETAIL_EVENT_LIMIT);
-    for (index, line) in open_jsonl_reader(path)?.lines().enumerate() {
+    for (index, line) in jsonl_lines(path)?.enumerate() {
         // 详情请求在 IPC 读线程运行（ReadGuard 已注册）：
         // 大文件逐行解析期间及时响应取消，避免被废弃的请求占满解析时间。
         crate::request_control::check()?;

@@ -1990,6 +1990,54 @@ fn codex压缩与解压的分批事件会切换副本() {
 }
 
 #[test]
+fn codex压缩rollout拒绝超长解压行() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("rollout-large.jsonl.zst");
+    let mut encoder = zstd::stream::Encoder::new(std::fs::File::create(&path).unwrap(), 0).unwrap();
+    for _ in 0..33 {
+        encoder.write_all(&vec![b' '; 1024 * 1024]).unwrap();
+    }
+    encoder.finish().unwrap();
+    let source = Source {
+        kind: "codex",
+        display_name: "Codex",
+        root: directory.path().into(),
+        format: SourceFormat::Codex,
+        archived: false,
+    };
+    assert!(
+        parse_summary(&path, &source)
+            .unwrap_err()
+            .contains("32 MiB")
+    );
+    assert!(parse_detail(&path, &source).unwrap_err().contains("32 MiB"));
+    std::fs::write(
+        directory.path().join("rollout-healthy.jsonl"),
+        json!({"type":"session_meta","payload":{"id":"healthy"}}).to_string(),
+    )
+    .unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    assert!(store.records.contains_key("codex:healthy"));
+    let diagnostics = store.diagnostics();
+    assert_eq!(diagnostics["sources"]["codex"]["error_count"], 1);
+    assert!(
+        diagnostics["sources"]["codex"]["last_error"]
+            .as_str()
+            .unwrap()
+            .contains("32 MiB")
+    );
+}
+
+#[test]
 fn codex_custom_tool_call归一化为工具调用与结果() {
     let mut tool_names = HashMap::new();
     let call = json!({

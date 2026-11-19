@@ -1,6 +1,5 @@
 //! 按需读取会话内嵌图片：详情只带定位信息，这里校验后单独返回 data URL。
 use std::fs;
-use std::io::BufRead;
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -230,9 +229,10 @@ fn parse_path(value: &Value) -> Result<Vec<Segment>, String> {
 }
 
 fn read_line(path: &Path, line_number: u64) -> Result<String, String> {
-    for (index, line) in super::parse::open_jsonl_reader(path)?.lines().enumerate() {
+    for (index, line) in super::parse::jsonl_lines(path)?.enumerate() {
+        let line = line.map_err(|error| format!("读取会话记录失败：{error}"))?;
         if index as u64 + 1 == line_number {
-            return line.map_err(|error| format!("读取会话记录失败：{error}"));
+            return Ok(line);
         }
     }
     Err("图片所在记录已不存在，请刷新会话".into())

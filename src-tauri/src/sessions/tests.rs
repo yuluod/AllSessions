@@ -2038,6 +2038,69 @@ fn codex压缩rollout拒绝超长解压行() {
 }
 
 #[test]
+fn codex整会话删除会备份两个匹配副本并保留其他会话() {
+    let directory = tempdir().unwrap();
+    let sources = directory.path().join("sources");
+    std::fs::create_dir(&sources).unwrap();
+    for (name, compressed_id) in [("same", "same"), ("different", "other"), ("unverified", "")] {
+        let plain = sources.join(format!("rollout-{name}.jsonl"));
+        let compressed = plain.with_extension("jsonl.zst");
+        let contents = json!({"type":"session_meta","payload":{"id":name}}).to_string();
+        std::fs::write(&plain, contents).unwrap();
+        let contents = json!({"type":"session_meta","payload":{"id":compressed_id}}).to_string();
+        std::fs::write(
+            &compressed,
+            zstd::stream::encode_all(contents.as_bytes(), 0).unwrap(),
+        )
+        .unwrap();
+    }
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(std::slice::from_ref(&sources)),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let backup_root = directory.path().join("backups");
+    let backup = |kind: &str, id: &str, paths: &[PathBuf]| {
+        crate::deletion_backup::create_at(&backup_root, "delete_session", kind, id, paths)
+    };
+    let error = store
+        .delete_session_with_backup("codex:unverified", |_, _, _| {
+            panic!("副本 ID 缺失时不应开始备份")
+        })
+        .unwrap_err();
+    assert!(error.message.contains("ID"));
+    assert!(sources.join("rollout-unverified.jsonl").exists());
+    let error = store
+        .delete_session_with_backup("codex:same", |_, _, _| Ok(json!({"copied_files":1})))
+        .unwrap_err();
+    assert_eq!(error.code, crate::error::ApiError::FILE_CHANGED);
+    assert!(sources.join("rollout-same.jsonl").exists());
+    assert!(sources.join("rollout-same.jsonl.zst").exists());
+
+    let result = store
+        .delete_session_with_backup("codex:same", backup)
+        .unwrap();
+    assert_eq!(result["deleted_files"], 2);
+    assert_eq!(result["backup"]["copied_files"], 2);
+    assert!(!sources.join("rollout-same.jsonl").exists());
+    assert!(!sources.join("rollout-same.jsonl.zst").exists());
+
+    let result = store
+        .delete_session_with_backup("codex:different", backup)
+        .unwrap();
+    assert_eq!(result["deleted_files"], 1);
+    assert!(sources.join("rollout-different.jsonl.zst").exists());
+    store.refresh().unwrap();
+    assert!(store.records.contains_key("codex:other"));
+    assert!(!store.records.contains_key("codex:same"));
+}
+
+#[test]
 fn codex_custom_tool_call归一化为工具调用与结果() {
     let mut tool_names = HashMap::new();
     let call = json!({

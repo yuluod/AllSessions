@@ -115,6 +115,22 @@ pub(crate) fn jsonl_lines(
     })))
 }
 
+pub(crate) fn codex_rollout_session_id(path: &Path) -> Result<String, String> {
+    let mut session_id = None;
+    for line in jsonl_lines(path)? {
+        if let Ok(record) = serde_json::from_str::<Value>(&line.map_err(error_text)?)
+            && record["type"] == "session_meta"
+            && let Some(id) = string_at(&record, &["payload", "id"])
+        {
+            if id.is_empty() || session_id.as_ref().is_some_and(|previous| previous != &id) {
+                return Err(format!("会话副本的 ID 缺失或冲突（{}）", path.display()));
+            }
+            session_id = Some(id);
+        }
+    }
+    session_id.ok_or_else(|| format!("无法确认会话副本的 ID（{}）", path.display()))
+}
+
 impl ParseState {
     pub(crate) fn new(path: &Path) -> Self {
         let fallback_id = path

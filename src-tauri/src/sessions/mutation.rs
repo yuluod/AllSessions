@@ -10,11 +10,22 @@ use uuid::Uuid;
 use crate::error::ApiError;
 
 use super::helpers::{error_text, read_only_source_error};
-use super::parse::{ParseState, json_fingerprint, parse_summary};
+use super::parse::{ParseState, codex_rollout_session_id, json_fingerprint, parse_summary};
+use super::roots::{codex_rollout_counterpart, is_compressed_codex_rollout};
 use super::{DetailLocator, SessionStore, SourceFormat, StoredSession, gemini};
 
 impl SessionStore {
     pub fn delete_session(&mut self, key: &str) -> Result<Value, ApiError> {
+        self.delete_session_with_backup(key, |kind, id, paths| {
+            crate::deletion_backup::create("delete_session", kind, id, paths)
+        })
+    }
+
+    pub(super) fn delete_session_with_backup(
+        &mut self,
+        key: &str,
+        backup: impl FnOnce(&str, &str, &[PathBuf]) -> Result<Value, String>,
+    ) -> Result<Value, ApiError> {
         let (resolved, record) = self.resolve_writable_record(key)?;
         let current_summary = if record.detail_locator.is_none() {
             let (summary, _) = parse_summary(&record.path, &record.source)?;
@@ -40,15 +51,44 @@ impl SessionStore {
                 | DetailLocator::Hermes(_) => return Err(read_only_source_error()),
             }
         } else {
-            session_backup_paths(&record.path)
+            let mut paths = session_backup_paths(&record.path);
+            if record.source.format == SourceFormat::Codex
+                && let Some(counterpart) = codex_rollout_counterpart(&record.path)
+            {
+                match fs::symlink_metadata(&counterpart) {
+                    Ok(metadata) if metadata.is_file() => {
+                        let id = codex_rollout_session_id(&counterpart)?;
+                        if current_summary
+                            .as_ref()
+                            .and_then(|summary| summary["id"].as_str())
+                            == Some(id.as_str())
+                        {
+                            paths.push(counterpart);
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(format!(
+                            "无法检查会话副本（{}）：{error}",
+                            counterpart.display()
+                        )
+                        .into());
+                    }
+                }
+            }
+            paths
         };
         let session_id = record.summary["id"].as_str().unwrap_or_default();
-        let backup = crate::deletion_backup::create(
-            "delete_session",
-            record.source.kind,
-            session_id,
-            &backup_paths,
-        )?;
+        let backup = backup(record.source.kind, session_id, &backup_paths)?;
+        if record.source.format == SourceFormat::Codex
+            && backup["copied_files"].as_u64() != Some(backup_paths.len() as u64)
+        {
+            return Err(ApiError::new(
+                ApiError::FILE_CHANGED,
+                "会话文件在备份期间发生变化；请刷新列表后重试",
+            ));
+        }
         let deleted_files = if let Some(locator) = &record.detail_locator {
             match locator {
                 DetailLocator::Gemini(locator) => gemini::delete_session(&record.source, locator)?,
@@ -68,10 +108,17 @@ impl SessionStore {
                         .unwrap_or_default(),
                 )?
             } else {
-                fs::remove_file(&record.path).map_err(|error| {
-                    format!("无法删除会话文件（{}）：{error}", record.path.display())
-                })?;
-                1
+                // 先移除隐藏副本。若此步失败，当前显示的原始文件仍可访问。
+                for path in backup_paths.iter().rev() {
+                    fs::remove_file(path).map_err(|error| {
+                        let backup_path = backup["path"].as_str().unwrap_or_default();
+                        format!(
+                            "无法删除会话文件（{}）：{error}；备份位于 {backup_path}",
+                            path.display()
+                        )
+                    })?;
+                }
+                backup_paths.len()
             }
         };
         self.index_cache.remove(&record.path);
@@ -131,7 +178,8 @@ impl SessionStore {
 
     pub fn delete_message(&mut self, key: &str, message_key: &str) -> Result<Value, ApiError> {
         let (resolved, record) = self.resolve_writable_record(key)?;
-        if record.path.extension().and_then(|value| value.to_str()) == Some("zst") {
+        if record.source.format == SourceFormat::Codex && is_compressed_codex_rollout(&record.path)
+        {
             return Err(
                 "压缩的 Codex 会话暂不支持删除单条消息；请删除整个会话或在 Codex 中操作".into(),
             );

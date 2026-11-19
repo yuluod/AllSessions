@@ -875,6 +875,35 @@ const COMMAND_TOOL_NAMES: [&str; 12] = [
     "functions.exec_command",
 ];
 
+/// Codex 的 `custom_tool_call` 以 JavaScript 代码传参，例如
+/// `tools.exec_command({cmd:"git status"})`；按常见字段提取引号内的命令。
+fn command_from_codex_input(text: &str) -> Option<String> {
+    for key in ["cmd:", "command:"] {
+        let Some(start) = text.find(key) else {
+            continue;
+        };
+        let rest = text[start + key.len()..].trim_start();
+        let Some(quote) = rest.chars().next().filter(|ch| matches!(ch, '"' | '\'')) else {
+            continue;
+        };
+        let mut value = String::new();
+        let mut escaped = false;
+        for ch in rest[1..].chars() {
+            if escaped {
+                value.push(ch);
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                return Some(value);
+            } else {
+                value.push(ch);
+            }
+        }
+    }
+    None
+}
+
 /// 从 shell 类工具调用的展示文本提取命令首词（如 `adb`、`python`）。
 /// 文本多为 `[bash] {"command": "..."}` 或纯 JSON 参数字符串；
 /// 提取不到时返回 None，该调用不进入命令排行。
@@ -882,14 +911,20 @@ fn command_from_tool_call(name: &str, text: &str) -> Option<String> {
     if !COMMAND_TOOL_NAMES.contains(&name.to_lowercase().as_str()) {
         return None;
     }
-    let args: Value = serde_json::from_str(text.get(text.find('{')?..)?).ok()?;
-    let command = ["command", "cmd", "input", "script", "code"]
-        .iter()
-        .find_map(|key| {
-            args[*key]
-                .as_str()
-                .or_else(|| args[*key].as_array()?.first()?.as_str())
-        })?;
+    let command = text
+        .find('{')
+        .and_then(|start| serde_json::from_str::<Value>(&text[start..]).ok())
+        .and_then(|args| {
+            ["command", "cmd", "input", "script", "code"]
+                .iter()
+                .find_map(|key| {
+                    args[*key]
+                        .as_str()
+                        .or_else(|| args[*key].as_array()?.first()?.as_str())
+                        .map(str::to_string)
+                })
+        })
+        .or_else(|| command_from_codex_input(text))?;
     let command = command.trim_start();
     let first = if let Some(quote) = command.chars().next().filter(|ch| matches!(ch, '"' | '\'')) {
         command.get(1..)?.split(quote).next()?
@@ -1153,7 +1188,9 @@ pub(crate) fn generic_conversation_message(
                 | "tool_result"
                 | "tool_call"
                 | "function_call"
-                | "function_call_output" => "tool",
+                | "function_call_output"
+                | "custom_tool_call"
+                | "custom_tool_call_output" => "tool",
                 "error" | "result" => "system",
                 _ => "unknown",
             }
@@ -1164,8 +1201,10 @@ pub(crate) fn generic_conversation_message(
     let tool_name = string_at(payload, &["name"])
         .or_else(|| string_at(payload, &["tool_name"]))
         .or_else(|| call_id.as_ref().and_then(|id| tool_names.get(id).cloned()));
-    if matches!(subtype, "function_call" | "tool_call" | "tool_use")
-        && let (Some(id), Some(name)) = (&call_id, &tool_name)
+    if matches!(
+        subtype,
+        "function_call" | "tool_call" | "tool_use" | "custom_tool_call"
+    ) && let (Some(id), Some(name)) = (&call_id, &tool_name)
     {
         tool_names.insert(id.clone(), name.clone());
     }
@@ -1174,6 +1213,8 @@ pub(crate) fn generic_conversation_message(
         .or_else(|| string_at(payload, &["message"]))
         .or_else(|| string_at(payload, &["output"]))
         .or_else(|| string_at(payload, &["arguments"]))
+        .or_else(|| string_at(payload, &["input"]))
+        .or_else(|| string_at(record, &["input"]))
         .or_else(|| extract_text(record.get("result").unwrap_or(&Value::Null)))
         .or_else(|| extract_text(record.get("error").unwrap_or(&Value::Null)))?;
     if text.trim().is_empty() {
@@ -1188,7 +1229,14 @@ pub(crate) fn generic_conversation_message(
         value["tool_call_id"] = Value::String(id);
     }
     if role == "tool" {
-        value["tool_kind"] = Value::String(subtype.into());
+        value["tool_kind"] = Value::String(
+            match subtype {
+                "custom_tool_call" => "tool_call",
+                "custom_tool_call_output" => "tool_result",
+                other => other,
+            }
+            .into(),
+        );
     }
     if subtype == "error"
         || record.get("is_error").and_then(Value::as_bool) == Some(true)

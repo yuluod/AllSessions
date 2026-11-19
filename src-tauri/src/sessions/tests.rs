@@ -1905,6 +1905,54 @@ fn codex压缩rollout可被发现解析且优先未压缩副本() {
 }
 
 #[test]
+fn codex_custom_tool_call归一化为工具调用与结果() {
+    let mut tool_names = HashMap::new();
+    let call = json!({
+        "type": "response_item",
+        "timestamp": "2026-01-01T00:00:01Z",
+        "payload": {
+            "type": "custom_tool_call",
+            "name": "exec",
+            "call_id": "call-1",
+            "input": "const r=await Promise.allSettled([tools.exec_command({cmd:\"git status --short\"})])"
+        }
+    });
+    let messages =
+        super::parse::conversation_messages(&call, "2026-01-01T00:00:01Z", &mut tool_names);
+    assert_eq!(messages.len(), 1);
+    let mut message = messages[0].clone();
+    assert_eq!(message["role"], "tool");
+    assert_eq!(message["tool_kind"], "tool_call");
+    assert_eq!(message["tool_name"], "exec");
+    assert_eq!(message["tool_call_id"], "call-1");
+    assert!(
+        message["text"]
+            .as_str()
+            .unwrap()
+            .contains("git status --short")
+    );
+    super::parse::annotate_activity(&mut message);
+    assert_eq!(message["command_name"], "git");
+
+    let output = json!({
+        "type": "response_item",
+        "timestamp": "2026-01-01T00:00:02Z",
+        "payload": {
+            "type": "custom_tool_call_output",
+            "call_id": "call-1",
+            "output": "工作区干净"
+        }
+    });
+    let messages =
+        super::parse::conversation_messages(&output, "2026-01-01T00:00:02Z", &mut tool_names);
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["role"], "tool");
+    assert_eq!(messages[0]["tool_kind"], "tool_result");
+    assert_eq!(messages[0]["tool_name"], "exec");
+    assert_eq!(messages[0]["text"], "工作区干净");
+}
+
+#[test]
 fn 永久删除单条消息只移除对应原始记录() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("session.jsonl");

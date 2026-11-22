@@ -2,6 +2,13 @@
 
 本文件记录 AllSessions 各版本面向用户的主要变化。
 
+## [Unreleased]
+
+### 待合并
+
+- 完整会话导出：支持重新读取原始会话并导出 Markdown 或 JSON，突破概览展示窗口限制；排除已移除消息，并注明导出上限、解析失败及读取中断等完整性信息。（[#19](https://github.com/yuluod/AllSessions/pull/19)）
+- 会话交接：选择历史消息、填写下一步与补充说明，预览并复制交接文本给下一个 Agent；支持返回原文定位，并保留草稿与复制状态。（[#20](https://github.com/yuluod/AllSessions/pull/20)）
+
 ## [0.4.0] - 2026-11-09
 
 ### 新增

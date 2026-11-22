@@ -89,10 +89,11 @@ export function isSessionRunning(session, now = Date.now()) {
   return mtime > 0 && now - mtime < RUNNING_WINDOW_MS;
 }
 
-// 列表摘要与已打开详情对比：消息数、文件写入时间或最后消息时间变化即需重载。
+// 列表摘要与已打开详情对比：源文件切换、消息数或时间变化时重载。
 export function sessionNeedsLiveReload(fresh, current) {
   if (!fresh || !current) return false;
   return (
+    (fresh.file_path || "") !== (current.file_path || "") ||
     Number(fresh.message_count || 0) !== Number(current.message_count || 0) ||
     Number(fresh.file_mtime_ms || 0) !== Number(current.file_mtime_ms || 0) ||
     (fresh.last_timestamp || "") !== (current.last_timestamp || "")

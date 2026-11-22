@@ -26,7 +26,8 @@ use serde_json::Value;
 /// 版本 13：用量账本新增 by_model 拆分，供按模型估算成本。
 /// 版本 15：OpenCode/Kilo 摘要新增用量账本，旧缓存缺少 usage 需重建。
 /// 版本 16：Devin 摘要补充事件计数，旧缓存的事件数为 0 需重建。
-const CACHE_VERSION: i32 = 16;
+/// 版本 17：重建 Claude 标题和 Codex 工具事件摘要。
+const CACHE_VERSION: i32 = 17;
 
 pub struct IndexCache {
     /// Arc 共享的全文索引：搜索在会话锁之外克隆句柄执行查询。
@@ -621,6 +622,7 @@ mod tests {
                      insert into source_cache_v1 values('hermes', '/old', 'stamp', '{}');",
                 )
                 .unwrap();
+            connection.pragma_update(None, "user_version", 16).unwrap();
         }
         let connection = open_database(&db_path).unwrap();
         let count: i64 = connection

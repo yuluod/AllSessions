@@ -38,7 +38,7 @@ fn backup_root() -> Option<PathBuf> {
     dirs::data_local_dir().map(|root| root.join("AllSessions").join("backups").join("deletions"))
 }
 
-fn create_at(
+pub(crate) fn create_at(
     root: &Path,
     operation: &str,
     source_kind: &str,

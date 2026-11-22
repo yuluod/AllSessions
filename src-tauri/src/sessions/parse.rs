@@ -1,7 +1,7 @@
 //! 通用会话解析:摘要/详情分发、ParseState 归约、消息构造与长会话截断。
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Read};
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -14,6 +14,7 @@ use super::claude_legacy::{parse_legacy_claude_summary, visit_legacy_claude_deta
 use super::helpers::{
     compact, compact_title, error_text, is_synthetic_context, nullable_string, string_at,
 };
+use super::roots::is_compressed_codex_rollout;
 use super::{
     DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DETAIL_TEXT_LIMIT, SEARCH_TEXT_LIMIT, Source,
     SourceFormat, claude_cowork, copilot, deepseek, grok, jetbrains_air, kimi, pi, vscode_copilot,
@@ -55,6 +56,9 @@ pub(crate) struct ParseState {
     pub(crate) command_counts: BTreeMap<String, u64>,
     pub(crate) tool_last_used: BTreeMap<String, String>,
     pub(crate) command_last_used: BTreeMap<String, String>,
+    /// Claude Code 的显式标题事件：用户重命名优先于 AI 生成标题。
+    pub(crate) custom_title: String,
+    pub(crate) ai_title: String,
     pub(crate) first_user: String,
     pub(crate) first_assistant: String,
     pub(crate) first_message: String,
@@ -69,12 +73,78 @@ pub(crate) struct ParseState {
     pub(crate) current_model: String,
 }
 
+/// 解压后单行最多 32 MiB，为内嵌图片的 Base64 编码预留空间。
+const MAX_COMPRESSED_LINE_BYTES: u64 = 32 * 1024 * 1024;
+
+pub(crate) fn jsonl_lines(
+    path: &Path,
+) -> Result<Box<dyn Iterator<Item = io::Result<String>>>, String> {
+    let reader = BufReader::new(File::open(path).map_err(error_text)?);
+    if !is_compressed_codex_rollout(path) {
+        return Ok(Box::new(reader.lines()));
+    }
+    let mut reader =
+        BufReader::new(zstd::stream::Decoder::with_buffer(reader).map_err(error_text)?);
+    let mut finished = false;
+    Ok(Box::new(std::iter::from_fn(move || {
+        if finished {
+            return None;
+        }
+        let mut line = Vec::new();
+        let result = (&mut reader)
+            .take(MAX_COMPRESSED_LINE_BYTES + 1)
+            .read_until(b'\n', &mut line);
+        let line = match result {
+            Ok(0) => {
+                finished = true;
+                return None;
+            }
+            Ok(bytes) if bytes as u64 <= MAX_COMPRESSED_LINE_BYTES => {
+                if line.last() == Some(&b'\n') {
+                    line.pop();
+                    if line.last() == Some(&b'\r') {
+                        line.pop();
+                    }
+                }
+                String::from_utf8(line)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+            }
+            Ok(_) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "压缩会话解压后的单行超过 32 MiB",
+            )),
+            Err(error) => Err(error),
+        };
+        finished = line.is_err();
+        Some(line)
+    })))
+}
+
+pub(crate) fn codex_rollout_session_id(path: &Path) -> Result<String, String> {
+    let mut session_id = None;
+    for line in jsonl_lines(path)? {
+        if let Ok(record) = serde_json::from_str::<Value>(&line.map_err(error_text)?)
+            && record["type"] == "session_meta"
+            && let Some(id) = string_at(&record, &["payload", "id"])
+        {
+            if id.is_empty() || session_id.as_ref().is_some_and(|previous| previous != &id) {
+                return Err(format!("会话副本的 ID 缺失或冲突（{}）", path.display()));
+            }
+            session_id = Some(id);
+        }
+    }
+    session_id.ok_or_else(|| format!("无法确认会话副本的 ID（{}）", path.display()))
+}
+
 impl ParseState {
     pub(crate) fn new(path: &Path) -> Self {
         let fallback_id = path
             .file_stem()
             .and_then(|value| value.to_str())
-            .unwrap_or("unknown")
+            .unwrap_or("unknown");
+        let fallback_id = fallback_id
+            .strip_suffix(".jsonl")
+            .unwrap_or(fallback_id)
             .to_string();
         let force_sidechain = path
             .components()
@@ -109,6 +179,8 @@ impl ParseState {
             command_counts: BTreeMap::new(),
             tool_last_used: BTreeMap::new(),
             command_last_used: BTreeMap::new(),
+            custom_title: String::new(),
+            ai_title: String::new(),
             first_user: String::new(),
             first_assistant: String::new(),
             first_message: String::new(),
@@ -127,6 +199,23 @@ impl ParseState {
         }
         if !stamp.is_empty() {
             self.last_timestamp = stamp.clone();
+        }
+        match record.get("type").and_then(Value::as_str) {
+            Some("custom-title") => {
+                if let Some(value) =
+                    string_at(record, &["customTitle"]).filter(|value| !value.trim().is_empty())
+                {
+                    self.custom_title = value.trim().to_string();
+                }
+            }
+            Some("ai-title") => {
+                if let Some(value) =
+                    string_at(record, &["aiTitle"]).filter(|value| !value.trim().is_empty())
+                {
+                    self.ai_title = value.trim().to_string();
+                }
+            }
+            _ => {}
         }
         if record.get("type").and_then(Value::as_str) == Some("session_meta") {
             let payload = &record["payload"];
@@ -370,7 +459,11 @@ impl ParseState {
         } else {
             &self.hidden_reason
         };
-        let title = if !self.first_user.is_empty() {
+        let title = if !self.custom_title.is_empty() {
+            compact_title(&self.custom_title, 90)
+        } else if !self.ai_title.is_empty() {
+            compact_title(&self.ai_title, 90)
+        } else if !self.first_user.is_empty() {
             self.first_user.clone()
         } else {
             Path::new(&self.cwd)
@@ -471,7 +564,7 @@ pub(crate) fn parse_summary(path: &Path, source: &Source) -> Result<(Value, Stri
         return parse_legacy_claude_summary(path, source);
     }
     let mut state = ParseState::new(path);
-    for line in BufReader::new(File::open(path).map_err(error_text)?).lines() {
+    for line in jsonl_lines(path)? {
         let line = line.map_err(error_text)?;
         if line.trim().is_empty() {
             continue;
@@ -539,10 +632,7 @@ pub(crate) fn visit_detail(
     let mut state = ParseState::new(path);
     let mut messages = HeadTail::new(DETAIL_MESSAGE_LIMIT);
     let mut events = HeadTail::new(DETAIL_EVENT_LIMIT);
-    for (index, line) in BufReader::new(File::open(path).map_err(error_text)?)
-        .lines()
-        .enumerate()
-    {
+    for (index, line) in jsonl_lines(path)?.enumerate() {
         // 详情请求在 IPC 读线程运行（ReadGuard 已注册）：
         // 大文件逐行解析期间及时响应取消，避免被废弃的请求占满解析时间。
         crate::request_control::check()?;
@@ -595,6 +685,9 @@ pub(crate) fn visit_detail(
     }
     let (event_values, omitted_events, total_events) = events.finish(json!({ "line_number": Value::Null, "timestamp": Value::Null, "type": "viewer_truncation", "payload": { "omitted_events": 0 } }));
     let mut summary = state.summary(path, source);
+    if matches!(source.format, SourceFormat::Codex) && is_compressed_codex_rollout(path) {
+        summary["message_permanent_delete_supported"] = Value::Bool(false);
+    }
     if omitted_messages + omitted_events > 0 {
         summary["detail_truncated"] = Value::Bool(true);
     }
@@ -839,6 +932,35 @@ const COMMAND_TOOL_NAMES: [&str; 12] = [
     "functions.exec_command",
 ];
 
+/// Codex 的 `custom_tool_call` 以 JavaScript 代码传参，例如
+/// `tools.exec_command({cmd:"git status"})`；按常见字段提取引号内的命令。
+fn command_from_codex_input(text: &str) -> Option<String> {
+    for key in ["cmd:", "command:"] {
+        let Some(start) = text.find(key) else {
+            continue;
+        };
+        let rest = text[start + key.len()..].trim_start();
+        let Some(quote) = rest.chars().next().filter(|ch| matches!(ch, '"' | '\'')) else {
+            continue;
+        };
+        let mut value = String::new();
+        let mut escaped = false;
+        for ch in rest[1..].chars() {
+            if escaped {
+                value.push(ch);
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                return Some(value);
+            } else {
+                value.push(ch);
+            }
+        }
+    }
+    None
+}
+
 /// 从 shell 类工具调用的展示文本提取命令首词（如 `adb`、`python`）。
 /// 文本多为 `[bash] {"command": "..."}` 或纯 JSON 参数字符串；
 /// 提取不到时返回 None，该调用不进入命令排行。
@@ -846,14 +968,20 @@ fn command_from_tool_call(name: &str, text: &str) -> Option<String> {
     if !COMMAND_TOOL_NAMES.contains(&name.to_lowercase().as_str()) {
         return None;
     }
-    let args: Value = serde_json::from_str(text.get(text.find('{')?..)?).ok()?;
-    let command = ["command", "cmd", "input", "script", "code"]
-        .iter()
-        .find_map(|key| {
-            args[*key]
-                .as_str()
-                .or_else(|| args[*key].as_array()?.first()?.as_str())
-        })?;
+    let command = text
+        .find('{')
+        .and_then(|start| serde_json::from_str::<Value>(&text[start..]).ok())
+        .and_then(|args| {
+            ["command", "cmd", "input", "script", "code"]
+                .iter()
+                .find_map(|key| {
+                    args[*key]
+                        .as_str()
+                        .or_else(|| args[*key].as_array()?.first()?.as_str())
+                        .map(str::to_string)
+                })
+        })
+        .or_else(|| command_from_codex_input(text))?;
     let command = command.trim_start();
     let first = if let Some(quote) = command.chars().next().filter(|ch| matches!(ch, '"' | '\'')) {
         command.get(1..)?.split(quote).next()?
@@ -1117,7 +1245,9 @@ pub(crate) fn generic_conversation_message(
                 | "tool_result"
                 | "tool_call"
                 | "function_call"
-                | "function_call_output" => "tool",
+                | "function_call_output"
+                | "custom_tool_call"
+                | "custom_tool_call_output" => "tool",
                 "error" | "result" => "system",
                 _ => "unknown",
             }
@@ -1128,8 +1258,10 @@ pub(crate) fn generic_conversation_message(
     let tool_name = string_at(payload, &["name"])
         .or_else(|| string_at(payload, &["tool_name"]))
         .or_else(|| call_id.as_ref().and_then(|id| tool_names.get(id).cloned()));
-    if matches!(subtype, "function_call" | "tool_call" | "tool_use")
-        && let (Some(id), Some(name)) = (&call_id, &tool_name)
+    if matches!(
+        subtype,
+        "function_call" | "tool_call" | "tool_use" | "custom_tool_call"
+    ) && let (Some(id), Some(name)) = (&call_id, &tool_name)
     {
         tool_names.insert(id.clone(), name.clone());
     }
@@ -1138,6 +1270,8 @@ pub(crate) fn generic_conversation_message(
         .or_else(|| string_at(payload, &["message"]))
         .or_else(|| string_at(payload, &["output"]))
         .or_else(|| string_at(payload, &["arguments"]))
+        .or_else(|| string_at(payload, &["input"]))
+        .or_else(|| string_at(record, &["input"]))
         .or_else(|| extract_text(record.get("result").unwrap_or(&Value::Null)))
         .or_else(|| extract_text(record.get("error").unwrap_or(&Value::Null)))?;
     if text.trim().is_empty() {
@@ -1152,7 +1286,14 @@ pub(crate) fn generic_conversation_message(
         value["tool_call_id"] = Value::String(id);
     }
     if role == "tool" {
-        value["tool_kind"] = Value::String(subtype.into());
+        value["tool_kind"] = Value::String(
+            match subtype {
+                "custom_tool_call" => "tool_call",
+                "custom_tool_call_output" => "tool_result",
+                other => other,
+            }
+            .into(),
+        );
     }
     if subtype == "error"
         || record.get("is_error").and_then(Value::as_bool) == Some(true)

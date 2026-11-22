@@ -11,7 +11,8 @@ use super::helpers::{
 use super::mutation::session_backup_paths;
 use super::parse::{parse_summary, visit_detail};
 use super::roots::{
-    configured_sources, discover_files, opencode_event_matches, path_identity, source_matches_path,
+    codex_rollout_counterpart, configured_sources, discover_files, is_compressed_codex_rollout,
+    opencode_event_matches, path_identity, source_matches_path,
 };
 use super::{
     DetailLocator, ScanDiagnostics, SessionStore, SourceFormat, StoredSession, copilot, cursor,
@@ -376,6 +377,7 @@ impl SessionStore {
             return Ok(true);
         }
         // Gemini 会话可能跨文件，Claude 新旧布局也可能包含相同会话 ID。
+        // Codex 同名压缩副本的创建和原件删除可能分两批到达。
         // 单路径更新无法可靠重建聚合结果或来源优先级，因此复用缓存全量刷新。
         if paths.iter().any(|path| {
             self.sources.iter().any(|source| {
@@ -406,10 +408,13 @@ impl SessionStore {
                         | SourceFormat::Cursor
                         | SourceFormat::Devin
                         | SourceFormat::Hermes
-                ) || matches!(source.format, SourceFormat::Grok)
-                    && (path.file_name().and_then(|value| value.to_str()) == Some("summary.json")
-                        || path.is_dir()
-                        || !path.exists() && path.extension().is_none())
+                ) || matches!(source.format, SourceFormat::Codex)
+                    && codex_rollout_counterpart(path).is_some_and(|other| other.is_file())
+                    || matches!(source.format, SourceFormat::Grok)
+                        && (path.file_name().and_then(|value| value.to_str())
+                            == Some("summary.json")
+                            || path.is_dir()
+                            || !path.exists() && path.extension().is_none())
                     || matches!(source.format, SourceFormat::JetBrainsAir)
                         && (matches!(
                             path.file_name().and_then(|value| value.to_str()),
@@ -598,6 +603,14 @@ impl SessionStore {
             };
             // 上次运行后已删除的文件不进热列表，避免出现幽灵会话。
             if !path.is_file() {
+                continue;
+            }
+            if matches!(source.format, SourceFormat::Codex)
+                && is_compressed_codex_rollout(&path)
+                && codex_rollout_counterpart(&path).is_some_and(|plain| {
+                    fs::symlink_metadata(plain).is_ok_and(|metadata| metadata.is_file())
+                })
+            {
                 continue;
             }
             if is_placeholder_session(source, &summary) {
@@ -805,6 +818,13 @@ impl SessionStore {
                 _ => session_backup_paths(&record.path),
             };
             let mut stamps = Vec::new();
+            if matches!(
+                record.source.format,
+                SourceFormat::Codex | SourceFormat::Claude | SourceFormat::ClaudeCowork
+            ) {
+                // 摘要文本可能未变，但归一化消息和结构化工具索引仍需重新生成。
+                stamps.push("codex-claude-parser:1".into());
+            }
             for path in paths
                 .into_iter()
                 .chain((content_fingerprint.is_none()).then(|| record.path.clone()))

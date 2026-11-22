@@ -38,6 +38,53 @@ fn 数据库来源保留四元素内容指纹() {
     );
 }
 
+#[test]
+fn codex工具事件升级会重建摘要未变的旧搜索索引() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("rollout-search.jsonl");
+    let mut file = std::fs::File::create(&path).unwrap();
+    for record in [
+        json!({"type":"session_meta","payload":{"id":"search-upgrade"}}),
+        json!({"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","call_id":"c","input":"tools.exec_command({cmd:\"git status\"})"}}),
+    ] {
+        writeln!(file, "{record}").unwrap();
+    }
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh_metadata().unwrap();
+    let key = "codex:search-upgrade";
+    let record = &store.records[key];
+    let metadata = std::fs::metadata(&record.path).unwrap();
+    let mut wal = record.path.as_os_str().to_os_string();
+    wal.push("-wal");
+    let file_stamp = format!(
+        "{:?}:{:?}",
+        record.path,
+        Some((metadata.len(), metadata.modified().ok()))
+    );
+    let wal_stamp = format!("{wal:?}:None");
+    let stamps = vec![file_stamp.clone(), wal_stamp.clone(), file_stamp, wal_stamp];
+    let old = super::search_fingerprint(&record.summary, &record.search_text, &stamps, None);
+    store
+        .index_cache
+        .search
+        .refresh(key, &old, |_| Ok(()))
+        .unwrap();
+
+    let query = HashMap::from([("command".into(), "git".into())]);
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    assert_eq!(store.search(&query, &workspace).unwrap()["total"], 0);
+    store.rebuild_search_index().unwrap();
+    assert_eq!(store.search(&query, &workspace).unwrap()["total"], 1);
+}
+
 use serde_json::{Value, json};
 use tempfile::tempdir;
 
@@ -2215,6 +2262,282 @@ fn codex_summary_and_detail_are_streamed() {
 }
 
 #[test]
+fn codex压缩rollout可被发现解析且优先未压缩副本() {
+    let directory = tempdir().unwrap();
+    let compressed = directory.path().join("rollout-compressed.jsonl.zst");
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 0).unwrap();
+    for record in [
+        json!({ "timestamp": "2026-01-01T00:00:00Z", "type": "session_meta", "payload": { "id": "codex-zst", "cwd": "/tmp/zst" } }),
+        json!({ "timestamp": "2026-01-01T00:00:01Z", "type": "event_msg", "payload": { "type": "user_message", "message": "压缩会话" } }),
+    ] {
+        writeln!(encoder, "{}", record).unwrap();
+    }
+    std::fs::write(&compressed, encoder.finish().unwrap()).unwrap();
+
+    let plain = directory.path().join("rollout-both.jsonl");
+    let duplicate = directory.path().join("rollout-both.jsonl.zst");
+    std::fs::write(
+        &plain,
+        json!({ "type": "session_meta", "payload": { "id": "codex-plain" } }).to_string(),
+    )
+    .unwrap();
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 0).unwrap();
+    writeln!(
+        encoder,
+        "{}",
+        json!({ "type": "session_meta", "payload": { "id": "codex-duplicate" } })
+    )
+    .unwrap();
+    std::fs::write(&duplicate, encoder.finish().unwrap()).unwrap();
+
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    assert_eq!(store.summaries.len(), 2);
+    let compressed_summary = store
+        .summaries
+        .iter()
+        .find(|summary| summary["id"] == "codex-zst")
+        .unwrap();
+    assert_eq!(
+        compressed_summary["file_path"].as_str(),
+        Some(compressed.to_string_lossy().as_ref())
+    );
+    let plain_summary = store
+        .summaries
+        .iter()
+        .find(|summary| summary["id"] == "codex-plain")
+        .unwrap();
+    assert_eq!(
+        plain_summary["file_path"].as_str(),
+        Some(plain.to_string_lossy().as_ref())
+    );
+    let detail = store.detail("codex:codex-zst").unwrap();
+    assert_eq!(detail["conversation_messages"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        detail["summary"]["message_permanent_delete_supported"],
+        false
+    );
+    assert!(detail["conversation_messages"][0]["_message_key"].is_string());
+    let source = Source {
+        kind: "codex",
+        display_name: "Codex",
+        root: directory.path().into(),
+        format: SourceFormat::Codex,
+        archived: false,
+    };
+    assert!(super::roots::source_matches_path(&source, &compressed));
+    assert!(!super::roots::source_matches_path(
+        &source,
+        &directory.path().join("notes.txt")
+    ));
+}
+
+#[test]
+fn codex压缩与解压的分批事件会切换副本() {
+    let directory = tempdir().unwrap();
+    let plain = directory.path().join("rollout-switch.jsonl");
+    let compressed = directory.path().join("rollout-switch.jsonl.zst");
+    let contents = json!({"type":"session_meta","payload":{"id":"switch"}}).to_string();
+    std::fs::write(&plain, &contents).unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    std::fs::write(
+        &compressed,
+        zstd::stream::encode_all(contents.as_bytes(), 0).unwrap(),
+    )
+    .unwrap();
+    store
+        .refresh_paths(&BTreeSet::from([compressed.clone()]))
+        .unwrap();
+    assert_eq!(store.records["codex:switch"].path, plain);
+    std::fs::remove_file(&plain).unwrap();
+    store
+        .refresh_paths(&BTreeSet::from([plain.clone()]))
+        .unwrap();
+    assert_eq!(store.records["codex:switch"].path, compressed);
+    std::fs::write(&plain, contents).unwrap();
+    store
+        .refresh_paths(&BTreeSet::from([plain.clone()]))
+        .unwrap();
+    assert_eq!(store.records["codex:switch"].path, plain);
+}
+
+#[test]
+fn codex压缩rollout拒绝超长解压行() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("rollout-large.jsonl.zst");
+    let mut encoder = zstd::stream::Encoder::new(std::fs::File::create(&path).unwrap(), 0).unwrap();
+    for _ in 0..33 {
+        encoder.write_all(&vec![b' '; 1024 * 1024]).unwrap();
+    }
+    encoder.finish().unwrap();
+    let source = Source {
+        kind: "codex",
+        display_name: "Codex",
+        root: directory.path().into(),
+        format: SourceFormat::Codex,
+        archived: false,
+    };
+    assert!(
+        parse_summary(&path, &source)
+            .unwrap_err()
+            .contains("32 MiB")
+    );
+    assert!(parse_detail(&path, &source).unwrap_err().contains("32 MiB"));
+    std::fs::write(
+        directory.path().join("rollout-healthy.jsonl"),
+        json!({"type":"session_meta","payload":{"id":"healthy"}}).to_string(),
+    )
+    .unwrap();
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    assert!(store.records.contains_key("codex:healthy"));
+    let diagnostics = store.diagnostics();
+    assert_eq!(diagnostics["sources"]["codex"]["error_count"], 1);
+    assert!(
+        diagnostics["sources"]["codex"]["last_error"]
+            .as_str()
+            .unwrap()
+            .contains("32 MiB")
+    );
+}
+
+#[test]
+fn codex整会话删除会备份两个匹配副本并保留其他会话() {
+    let directory = tempdir().unwrap();
+    let sources = directory.path().join("sources");
+    std::fs::create_dir(&sources).unwrap();
+    for (name, compressed_id) in [("same", "same"), ("different", "other"), ("unverified", "")] {
+        let plain = sources.join(format!("rollout-{name}.jsonl"));
+        let compressed = plain.with_extension("jsonl.zst");
+        let contents = json!({"type":"session_meta","payload":{"id":name}}).to_string();
+        std::fs::write(&plain, contents).unwrap();
+        let contents = json!({"type":"session_meta","payload":{"id":compressed_id}}).to_string();
+        std::fs::write(
+            &compressed,
+            zstd::stream::encode_all(contents.as_bytes(), 0).unwrap(),
+        )
+        .unwrap();
+    }
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(std::slice::from_ref(&sources)),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let backup_root = directory.path().join("backups");
+    let backup = |kind: &str, id: &str, paths: &[PathBuf]| {
+        crate::deletion_backup::create_at(&backup_root, "delete_session", kind, id, paths)
+    };
+    let error = store
+        .delete_session_with_backup("codex:unverified", |_, _, _| {
+            panic!("副本 ID 缺失时不应开始备份")
+        })
+        .unwrap_err();
+    assert!(error.message.contains("ID"));
+    assert!(sources.join("rollout-unverified.jsonl").exists());
+    let error = store
+        .delete_session_with_backup("codex:same", |_, _, _| Ok(json!({"copied_files":1})))
+        .unwrap_err();
+    assert_eq!(error.code, crate::error::ApiError::FILE_CHANGED);
+    assert!(sources.join("rollout-same.jsonl").exists());
+    assert!(sources.join("rollout-same.jsonl.zst").exists());
+
+    let result = store
+        .delete_session_with_backup("codex:same", backup)
+        .unwrap();
+    assert_eq!(result["deleted_files"], 2);
+    assert_eq!(result["backup"]["copied_files"], 2);
+    assert!(!sources.join("rollout-same.jsonl").exists());
+    assert!(!sources.join("rollout-same.jsonl.zst").exists());
+
+    let result = store
+        .delete_session_with_backup("codex:different", backup)
+        .unwrap();
+    assert_eq!(result["deleted_files"], 1);
+    assert!(sources.join("rollout-different.jsonl.zst").exists());
+    store.refresh().unwrap();
+    assert!(store.records.contains_key("codex:other"));
+    assert!(!store.records.contains_key("codex:same"));
+}
+
+#[test]
+fn codex_custom_tool_call归一化为工具调用与结果() {
+    let mut tool_names = HashMap::new();
+    let call = json!({
+        "type": "response_item",
+        "timestamp": "2026-01-01T00:00:01Z",
+        "payload": {
+            "type": "custom_tool_call",
+            "name": "exec",
+            "call_id": "call-1",
+            "input": "const r=await Promise.allSettled([tools.exec_command({cmd:\"git status --short\"})])"
+        }
+    });
+    let messages =
+        super::parse::conversation_messages(&call, "2026-01-01T00:00:01Z", &mut tool_names);
+    assert_eq!(messages.len(), 1);
+    let mut message = messages[0].clone();
+    assert_eq!(message["role"], "tool");
+    assert_eq!(message["tool_kind"], "tool_call");
+    assert_eq!(message["tool_name"], "exec");
+    assert_eq!(message["tool_call_id"], "call-1");
+    assert!(
+        message["text"]
+            .as_str()
+            .unwrap()
+            .contains("git status --short")
+    );
+    super::parse::annotate_activity(&mut message);
+    assert_eq!(message["command_name"], "git");
+
+    let output = json!({
+        "type": "response_item",
+        "timestamp": "2026-01-01T00:00:02Z",
+        "payload": {
+            "type": "custom_tool_call_output",
+            "call_id": "call-1",
+            "output": "工作区干净"
+        }
+    });
+    let messages =
+        super::parse::conversation_messages(&output, "2026-01-01T00:00:02Z", &mut tool_names);
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["role"], "tool");
+    assert_eq!(messages[0]["tool_kind"], "tool_result");
+    assert_eq!(messages[0]["tool_name"], "exec");
+    assert_eq!(messages[0]["text"], "工作区干净");
+}
+
+#[test]
 fn 永久删除单条消息只移除对应原始记录() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("session.jsonl");
@@ -2318,6 +2641,54 @@ fn claude_tool_blocks_keep_tool_semantics() {
         detail["conversation_messages"][0]["synthetic_context"],
         true
     );
+}
+
+#[test]
+fn claude标题事件优先自定义再ai并回退首条用户消息() {
+    let directory = tempdir().unwrap();
+    let source = Source {
+        kind: "claude_code",
+        display_name: "Claude Code",
+        root: directory.path().into(),
+        format: SourceFormat::Claude,
+        archived: false,
+    };
+    let custom = directory.path().join("custom.jsonl");
+    std::fs::write(
+        &custom,
+        [
+            json!({"type":"ai-title","aiTitle":"AI 标题","sessionId":"custom"}).to_string(),
+            json!({"type":"custom-title","customTitle":"自定义标题","sessionId":"custom"}).to_string(),
+            json!({"type":"user","message":{"role":"user","content":"首条消息"},"sessionId":"custom"}).to_string(),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let (summary, _) = parse_summary(&custom, &source).unwrap();
+    assert_eq!(summary["title"], "自定义标题");
+
+    let ai = directory.path().join("ai.jsonl");
+    std::fs::write(
+        &ai,
+        [
+            json!({"type":"ai-title","aiTitle":"AI 标题","sessionId":"ai"}).to_string(),
+            json!({"type":"user","message":{"role":"user","content":"首条消息"},"sessionId":"ai"})
+                .to_string(),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let (summary, _) = parse_summary(&ai, &source).unwrap();
+    assert_eq!(summary["title"], "AI 标题");
+
+    let fallback = directory.path().join("fallback.jsonl");
+    std::fs::write(
+        &fallback,
+        json!({"type":"user","message":{"role":"user","content":"首条消息"},"sessionId":"fallback"}).to_string(),
+    )
+    .unwrap();
+    let (summary, _) = parse_summary(&fallback, &source).unwrap();
+    assert_eq!(summary["title"], "首条消息");
 }
 
 #[test]
@@ -3419,6 +3790,47 @@ fn 图片附件只保留定位信息并按需读取() {
             .unwrap_err()
             .contains("上限")
     );
+}
+
+#[test]
+fn codex压缩会话图片可按需回读() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("image.jsonl.zst");
+    let png = "QUJD";
+    let content = [
+        json!({"type":"session_meta","payload":{"id":"zst-image"}}).to_string(),
+        json!({"type":"user","message":{"role":"user","content":[
+            {"type":"text","text":"看这张图"},
+            {"type":"image","source":{"type":"base64","media_type":"image/png","data":png}}
+        ]}})
+        .to_string(),
+    ]
+    .join("\n");
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 0).unwrap();
+    encoder.write_all(content.as_bytes()).unwrap();
+    std::fs::write(&path, encoder.finish().unwrap()).unwrap();
+
+    let mut store = SessionStore {
+        summaries: Vec::new(),
+        records: HashMap::new(),
+        sources: Vec::new(),
+        sources_config: codex_roots_config(&[directory.path().to_path_buf()]),
+        index_cache: crate::cache::IndexCache::disabled(),
+        detail_cache: DetailCache::new(DETAIL_CACHE_BYTES),
+        scan_diagnostics: ScanDiagnostics::default(),
+    };
+    store.refresh().unwrap();
+    let detail = store.detail("codex:zst-image").unwrap();
+    let image = detail["conversation_messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["text"] == "[image]")
+        .unwrap();
+    let result = store
+        .read_attachment("codex:zst-image", &image["attachments"][0]["locator"])
+        .unwrap();
+    assert_eq!(result["data_url"], format!("data:image/png;base64,{png}"));
 }
 
 #[test]

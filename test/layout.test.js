@@ -1654,6 +1654,61 @@ test("新增来源路径同时支持手动输入和系统选择器", async () =>
   assert.match(capability, /"dialog:allow-open"/);
 });
 
+test("压缩会话的单条消息保留本地移除，整会话保留永久删除", async () => {
+  const source = await readProjectFile("public/app/dialogs.js");
+  const definition = source
+    .match(/export function openDeleteDialog\([^]*?\n\}/)[0]
+    .replace("export ", "");
+  const createButton = () => ({
+    classList: {
+      add(name) {
+        this.toggle(name, true);
+      },
+      remove(name) {
+        this.toggle(name, false);
+      },
+      toggle(name, hidden) {
+        this[name] = hidden;
+      },
+    },
+    focus() {},
+  });
+  const elements = {
+    deleteDialog: {},
+    deleteDialogTitle: {},
+    deleteDialogDescription: {},
+    deleteDialogStatus: {},
+    deleteDialogWarning: createButton(),
+    deleteConfirmBtn: createButton(),
+    deletePermanentBtn: createButton(),
+    deleteSoftBtn: createButton(),
+  };
+  const summary = {
+    _key: "codex:compressed",
+    title: "压缩会话",
+    message_permanent_delete_supported: false,
+  };
+  const context = vm.createContext({
+    elements,
+    pendingDeletion: null,
+    state: { currentDetail: { summary } },
+    sessionWorkspace: () => ({}),
+    displaySessionTitle: (session) => session.title,
+    isMessageRemoved: () => false,
+    showDialogFromPopover: () => {},
+    t: (key) => key,
+  });
+  vm.runInContext(definition, context);
+  vm.runInContext('openDeleteDialog({ kind: "message" })', context);
+  assert.equal(elements.deletePermanentBtn.classList.hidden, true);
+  assert.equal(elements.deleteSoftBtn.classList.hidden, false);
+  vm.runInContext('openDeleteDialog({ kind: "session" })', context);
+  assert.equal(elements.deletePermanentBtn.classList.hidden, false);
+  delete summary.message_permanent_delete_supported;
+  vm.runInContext('openDeleteDialog({ kind: "message" })', context);
+  assert.equal(elements.deletePermanentBtn.classList.hidden, false);
+});
+
 test("会话和消息同时支持可恢复移除与二次确认的永久删除", async () => {
   const html = await readProjectFile("public/index.html");
   const app = await readProjectFile("public/app.js");

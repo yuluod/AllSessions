@@ -126,7 +126,10 @@ export function openDeleteDialog({ kind, message = null }) {
   elements.deletePermanentBtn.classList.toggle(
     "hidden",
     state.currentDetail?.summary?.source_read_only === true ||
-      (kind === "message" && state.currentDetail?.search_context === true)
+      (kind === "message" &&
+        (state.currentDetail?.search_context === true ||
+          state.currentDetail?.summary?.message_permanent_delete_supported ===
+            false))
   );
   elements.deleteSoftBtn.classList.remove("hidden");
   elements.deleteSoftBtn.textContent = t(

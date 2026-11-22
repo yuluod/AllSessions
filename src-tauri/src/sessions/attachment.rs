@@ -1,6 +1,5 @@
 //! 按需读取会话内嵌图片：详情只带定位信息，这里校验后单独返回 data URL。
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::fs;
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -31,7 +30,10 @@ pub(crate) fn read_image_with_limit(
     if record.detail_locator.is_some() {
         return Err("当前来源暂不支持图片预览".into());
     }
-    if record.path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
+    if !matches!(
+        record.path.extension().and_then(|value| value.to_str()),
+        Some("jsonl" | "zst")
+    ) {
         return Err("当前来源暂不支持图片预览".into());
     }
     let line_number = locator["line_number"]
@@ -227,10 +229,10 @@ fn parse_path(value: &Value) -> Result<Vec<Segment>, String> {
 }
 
 fn read_line(path: &Path, line_number: u64) -> Result<String, String> {
-    let file = File::open(path).map_err(|error| format!("读取会话文件失败：{error}"))?;
-    for (index, line) in BufReader::new(file).lines().enumerate() {
+    for (index, line) in super::parse::jsonl_lines(path)?.enumerate() {
+        let line = line.map_err(|error| format!("读取会话记录失败：{error}"))?;
         if index as u64 + 1 == line_number {
-            return line.map_err(|error| format!("读取会话记录失败：{error}"));
+            return Ok(line);
         }
     }
     Err("图片所在记录已不存在，请刷新会话".into())

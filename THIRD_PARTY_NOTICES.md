@@ -161,7 +161,6 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | gtk-sys | 0.18.2 | MIT |
 | gtk3-macros | 0.18.2 | MIT |
 | hashbrown | 0.12.3 | MIT OR Apache-2.0 |
-| hashbrown | 0.16.1 | MIT OR Apache-2.0 |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 |
 | hashlink | 0.12.2 | MIT OR Apache-2.0 |
 | heck | 0.4.1 | MIT OR Apache-2.0 |
@@ -231,7 +230,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | libdbus-sys | 0.2.7 | Apache-2.0/MIT |
 | libloading | 0.7.4 | ISC |
 | libredox | 0.1.25 | MIT |
-| libsqlite3-sys | 0.39.1 | MIT |
+| libsqlite3-sys | 0.40.0 | MIT |
 | linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | litemap | 0.8.3 | Unicode-3.0 |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |
@@ -331,8 +330,8 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | reqwest | 0.13.5 | MIT OR Apache-2.0 |
 | rfd | 0.17.2 | MIT |
 | ring | 0.17.14 | Apache-2.0 AND ISC |
-| rsqlite-vfs | 0.1.1 | MIT |
-| rusqlite | 0.41.1 | MIT |
+| rsqlite-vfs | 0.2.0 | MIT |
+| rusqlite | 0.42.0 | MIT |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |
 | rustix | 1.1.6 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
@@ -383,7 +382,7 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | softbuffer | 0.4.8 | MIT OR Apache-2.0 |
 | soup3 | 0.5.0 | MIT |
 | soup3-sys | 0.5.0 | MIT |
-| sqlite-wasm-rs | 0.5.5 | MIT |
+| sqlite-wasm-rs | 0.6.3 | MIT |
 | stable_deref_trait | 1.2.1 | MIT OR Apache-2.0 |
 | static_vcruntime | 3.0.0 | MIT OR Apache-2.0 OR Zlib |
 | string_cache | 0.9.0 | MIT OR Apache-2.0 |

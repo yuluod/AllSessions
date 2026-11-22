@@ -210,16 +210,49 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 32px;
-  min-height: 32px;
-  padding: 6px;
-  border: 0;
+  width: 38px;
+  /* 与相邻 .scheme-control 同高：分段按钮高度（段高，但至少容下 15px 图标
+     + 4px 内边距×2 + 1px 边框×2）再加分组容器的 3px 内边距×2 + 1px 边框×2。 */
+  height: calc(max(var(--segment-height-compact), 25px) + 8px);
+  min-height: calc(max(var(--segment-height-compact), 25px) + 8px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
   box-shadow: none;
-  background: transparent;
+  background: var(--surface-sunken);
   color: var(--text-secondary);
 }
 .sidebar-footer .sidebar-settings-button:hover {
-  background: var(--surface-raised);
+  border-color: var(--line-strong);
+  background: var(--surface-sunken);
+  color: var(--accent-strong);
+}
+/* 键盘焦点环画在芯片内侧，避免被滚动视口的 overflow 裁掉。 */
+.sidebar-footer .sidebar-settings-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+/* 双图标滚筒：视窗只露出一枚 15px 图标，两枚图标紧邻，悬停/聚焦时
+   整条上滚一格，滚动过程不会出现空白或半截图标。 */
+.sidebar-settings-button .roll-window {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  overflow: hidden;
+}
+.sidebar-settings-button .roll-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 auto;
+  transition: transform 0.25s var(--ease-out);
+}
+.sidebar-settings-button:hover .roll-track,
+.sidebar-settings-button:focus-visible .roll-track {
+  transform: translateY(-15px);
 }
 .scheme-control svg {
   width: 15px;
@@ -306,6 +339,21 @@
 
 .rail-collapsed .scheme-control {
   flex-direction: column;
+}
+/* 收起的图标条没有 hover 展开空间（贴窗口左缘），三枚选项直接竖排可见。 */
+.rail-collapsed .scheme-control button:not([aria-pressed="true"]) {
+  width: 30px;
+  padding: 4px;
+  margin-inline-end: 0;
+  border-width: 1px;
+  opacity: 1;
+  pointer-events: auto;
+}
+/* 常显状态下选中项保留选中样式，不能沿用收拢态的透明芯片。 */
+.rail-collapsed .scheme-control button[aria-pressed="true"] {
+  order: 0;
+  border-color: var(--line);
+  background: var(--surface);
 }
 
 .meta-chip {

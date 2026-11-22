@@ -2,7 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
-use chrono::{SecondsFormat, Utc};
+use jiff::{Timestamp, tz::TimeZone};
 use serde_json::{Value, json};
 
 use crate::error::ApiError;
@@ -97,12 +97,13 @@ pub(crate) fn timestamp_of(summary: &Value) -> &str {
 /// 避免带 Z/偏移的 UTC 时间戳在非 UTC 时区被拆到错误的日期。
 /// 无法按 RFC3339 解析时回退到字符串前 10 位。
 pub(crate) fn local_date_key(timestamp: &str) -> Option<String> {
-    chrono::DateTime::parse_from_rfc3339(timestamp)
+    timestamp
+        .parse::<Timestamp>()
         .ok()
         .map(|parsed| {
             parsed
-                .with_timezone(&chrono::Local)
-                .format("%Y-%m-%d")
+                .to_zoned_datetime(TimeZone::system())
+                .strftime("%Y-%m-%d")
                 .to_string()
         })
         .or_else(|| timestamp.get(..10).map(ToOwned::to_owned))
@@ -293,7 +294,9 @@ pub(crate) fn mixed_stamp(paths: &[std::path::PathBuf]) -> (i64, i64) {
 }
 
 pub(crate) fn scan_timestamp() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+    Timestamp::now()
+        .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
 }
 pub(crate) fn read_only_source_error() -> ApiError {
     ApiError::new(

@@ -203,10 +203,15 @@ AllSessions 的桌面安装包包含以下 Rust 第三方依赖。此清单由
 | javascriptcore-rs | 1.1.2 | MIT |
 | javascriptcore-rs-sys | 1.1.1 | MIT |
 | jiff | 0.2.38 | Unlicense OR MIT |
+| jiff | 1.0.0 | Unlicense OR MIT |
 | jiff-core | 0.1.1 | Unlicense OR MIT |
+| jiff-core | 1.0.1 | Unlicense OR MIT |
 | jiff-static | 0.2.38 | Unlicense OR MIT |
+| jiff-static | 1.0.0 | Unlicense OR MIT |
 | jiff-tzdb | 0.1.9 | Unlicense OR MIT |
+| jiff-tzdb | 1.0.0 | Unlicense OR MIT |
 | jiff-tzdb-platform | 0.1.3 | Unlicense OR MIT |
+| jiff-tzdb-platform | 1.0.0 | Unlicense OR MIT |
 | jni | 0.21.1 | MIT/Apache-2.0 |
 | jni | 0.22.4 | MIT OR Apache-2.0 |
 | jni-macros | 0.22.4 | MIT OR Apache-2.0 |

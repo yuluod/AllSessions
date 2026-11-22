@@ -295,8 +295,8 @@ fn apply_remove(doc: &mut Value, entry: &Value) {
 }
 
 fn millis_to_iso(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+    jiff::Timestamp::from_millisecond(ms)
+        .map(|value| value.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
         .unwrap_or_default()
 }
 

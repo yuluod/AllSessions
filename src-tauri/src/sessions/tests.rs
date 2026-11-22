@@ -2049,10 +2049,11 @@ fn local_date_key_converts_to_local_timezone() {
         "2026-08-20T23:30:00+08:00",
         "2026-08-19T18:00:00Z",
     ] {
-        let expected = chrono::DateTime::parse_from_rfc3339(timestamp)
+        let expected = timestamp
+            .parse::<jiff::Timestamp>()
             .unwrap()
-            .with_timezone(&chrono::Local)
-            .format("%Y-%m-%d")
+            .to_zoned_datetime(jiff::tz::TimeZone::system())
+            .strftime("%Y-%m-%d")
             .to_string();
         assert_eq!(
             local_date_key(timestamp).as_deref(),

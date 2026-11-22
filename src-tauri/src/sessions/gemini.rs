@@ -123,10 +123,10 @@ fn user_prefix(text: &str) -> String {
 
 fn compare_timestamps(left: &str, right: &str) -> Ordering {
     match (
-        chrono::DateTime::parse_from_rfc3339(left).ok(),
-        chrono::DateTime::parse_from_rfc3339(right).ok(),
+        left.parse::<jiff::Timestamp>(),
+        right.parse::<jiff::Timestamp>(),
     ) {
-        (Some(left), Some(right)) => left.cmp(&right),
+        (Ok(left), Ok(right)) => left.cmp(&right),
         _ => left.cmp(right),
     }
 }

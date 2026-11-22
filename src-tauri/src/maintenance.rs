@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::Utc;
+use jiff::Timestamp;
 use rusqlite::{Connection, OpenFlags, backup::Backup, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -540,7 +540,7 @@ fn assignment_from_line(line: &[u8], line_number: usize) -> Option<ProviderAssig
 fn create_backup(plan: &MigrationPlan, plan_id: &str) -> Result<(PathBuf, BackupMetadata), String> {
     let name = format!(
         "{}-{}",
-        Utc::now().format("%Y-%m-%dT%H-%M-%SZ"),
+        Timestamp::now().strftime("%Y-%m-%dT%H-%M-%SZ"),
         Uuid::new_v4().simple()
     );
     let backup_dir = plan.backup_root.join(MIGRATION_NAME).join(name);
@@ -586,7 +586,7 @@ fn create_backup(plan: &MigrationPlan, plan_id: &str) -> Result<(PathBuf, Backup
         migration: MIGRATION_NAME.into(),
         version: 4,
         status: "prepared".into(),
-        created_at: Utc::now().to_rfc3339(),
+        created_at: Timestamp::now().to_string(),
         codex_home: plan.codex_home.clone(),
         target_provider: plan
             .target_provider

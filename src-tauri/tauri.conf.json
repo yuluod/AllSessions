@@ -52,7 +52,7 @@
       }
     },
     "macOS": {
-      "bundleVersion": "4000",
+      "bundleVersion": "4001",
       "signingIdentity": "-"
     }
   },

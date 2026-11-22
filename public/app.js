@@ -11,6 +11,7 @@ import {
 import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
 import { exportStats } from "./stats-export.js";
+import { expireProjectReviewActivity } from "./project-review.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import { DESKTOP_RUNTIME_REQUIRED } from "./api-client.js";
 import {
@@ -1211,8 +1212,11 @@ async function initialize() {
     });
   });
 
-  // 进行中徽标依赖 mtime 新鲜度，会话停写后靠定时摘除，无需整表重渲。
-  setInterval(() => syncRunningBadges(), 30_000);
+  // 原地更新会过期的活动提示，保留列表和时间线里的焦点。
+  setInterval(() => {
+    syncRunningBadges();
+    expireProjectReviewActivity(elements.projectReview);
+  }, 30_000);
   await loadInitialWorkspace();
 }
 

@@ -72,7 +72,7 @@ Exports come in two scopes: overview exports contain the loaded session overview
 ### Organize and statistics
 
 - Favorite sessions, attach tags and notes, and rename sessions with a custom display name shown across lists and details (the original title stays as fallback)
-- Select a project and open Project review to revisit recent sessions, favorites, tags and notes. Each group shows 8 sessions by default within the current filters and can expand to up to 50.
+- Select a project and open Project review for a cross-agent timeline ordered by last recorded activity. Use the source rail to filter, and open sessions directly from the timeline. Entries show their source, favorites, tags, and notes. Each group shows 8 sessions by default and can expand to 50.
 - Statistics share an activity date range. Switch the heatmap between sessions and tokens, select a day to filter, and browse related sessions by recent activity or in-range usage with pagination and detail links.
 - Export the stats for the current range and filters as daily CSV, breakdown CSV, or summary JSON. Exports exclude session content, redact local paths by default, and leave unpriced cost empty.
 - View cache hit rate and rankings of frequently used tools and commands; click a ranking entry to find the corresponding calls

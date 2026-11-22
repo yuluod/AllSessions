@@ -449,6 +449,9 @@ struct ActivityCount {
     last_timestamp: String,
 }
 
+/// 项目回顾每组返回的上限；前端默认展示前若干条，按需展开。
+const PROJECT_REVIEW_LIMIT: usize = 50;
+
 fn project_review(summaries: &[Value], cwd: &str) -> Value {
     let mut recent = summaries.iter().collect::<Vec<_>>();
     recent.sort_by(|a, b| {
@@ -477,10 +480,10 @@ fn project_review(summaries: &[Value], cwd: &str) -> Value {
                     .as_array()
                     .is_some_and(|tags| !tags.is_empty())
         })
-        .take(8)
+        .take(PROJECT_REVIEW_LIMIT)
         .map(|summary| entry(&summary))
         .collect::<Vec<_>>();
-    json!({ "cwd": cwd, "recent": recent.iter().take(8).map(entry).collect::<Vec<_>>(), "saved": saved })
+    json!({ "cwd": cwd, "recent": recent.iter().take(PROJECT_REVIEW_LIMIT).map(entry).collect::<Vec<_>>(), "saved": saved })
 }
 
 fn activity_values(counts: HashMap<String, ActivityCount>, limit: usize) -> Vec<Value> {

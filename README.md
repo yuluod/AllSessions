@@ -67,13 +67,14 @@ Full-text search uses a per-message SQLite index. The index lives entirely on yo
 
 Long sessions keep bounded head/tail detail windows and a 64 MB LRU cache; matched messages load on demand beyond the overview window.
 
-Exports contain the loaded session overview, not a complete backup of the original session. Long sessions may omit middle messages or truncate text and raw events. JSON includes `export_info` with the scope, message count, and partial status; Markdown also labels partial exports. Bulk exports follow the same rules. Return from a search context to the session overview before exporting.
+Exports come in two scopes: overview exports contain the loaded session overview, so long sessions may omit middle messages or truncate text and raw events; full exports re-parse the raw session on the backend and include every message (excluding removed ones), while raw events stay bounded. JSON includes `export_info` with the scope, message count, and partial status; Markdown also labels partial exports. Bulk exports use the overview scope. Return from a search context to the session overview before exporting.
 
 ### Organize and statistics
 
 - Favorite sessions, attach tags and notes, and rename sessions with a custom display name shown across lists and details (the original title stays as fallback)
-- Select a project and open Project review to revisit recent sessions, favorites, tags and notes. Each group shows up to 8 sessions within the current filters.
+- Select a project and open Project review to revisit recent sessions, favorites, tags and notes. Each group shows 8 sessions by default within the current filters and can expand to up to 50.
 - Statistics share an activity date range. Switch the heatmap between sessions and tokens, select a day to filter, and browse related sessions by recent activity or in-range usage with pagination and detail links.
+- Export the stats for the current range and filters as daily CSV, breakdown CSV, or summary JSON. Exports exclude session content, redact local paths by default, and leave unpriced cost empty.
 - View cache hit rate and rankings of frequently used tools and commands; click a ranking entry to find the corresponding calls
 - Save reusable filters
 - Manage local archive/removal state
@@ -81,6 +82,7 @@ Exports contain the loaded session overview, not a complete backup of the origin
 - Token usage statistics (input / output / cached); only sources that record usage are covered (Codex, Claude Code, ZCode, Pi, Oh My Pi, OpenCode, Kilo, DeepSeek Harness, JetBrains Air, WorkBuddy, and Gemini CLI chats sessions)
 - Estimated USD cost from a built-in price table: a cost card and cost heatmap in statistics, cost sorting for related sessions; usage on unrecognized models counts as unpriced
 - Batch-select loaded sessions and export as JSON or Markdown
+- Full exports re-parse the raw session on the backend, producing every message with integrity metadata
 - Optional export redaction, off by default
 
 ### Desktop integration
@@ -161,6 +163,13 @@ Windows, macOS, and Linux share the same Tauri 2 app shell, system tray, and sig
 >   in Terminal, then open it normally.
 > - **Windows**: SmartScreen may flag the setup as unrecognized. Choose
 >   **More info** → **Run anyway**.
+>
+> Each release ships a `SHA256SUMS` file for verifying downloads before installing. In the
+> download folder, run `shasum -a 256 -c SHA256SUMS --ignore-missing` (macOS),
+> `sha256sum -c SHA256SUMS --ignore-missing` (Linux), or compare
+> `Get-FileHash <file> -Algorithm SHA256` against the list in PowerShell (Windows).
+> Installed apps upgrade through the minisign-signed update channel and are not affected by
+> these prompts.
 
 ## Configuration
 

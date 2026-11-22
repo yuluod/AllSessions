@@ -28,6 +28,7 @@ import {
   visibilityLabel,
 } from "./shared.js";
 import { createIcon } from "./icons.js";
+import { handoffController } from "./controllers.js";
 
 export function parseWorkspaceTags(value) {
   return Array.from(
@@ -485,6 +486,7 @@ export function setDetailPlaceholder(
 }
 export function showSelectSessionPlaceholder() {
   detailRequestGate.cancel();
+  handoffController?.onDetailChanged();
   elements.detailView.classList.add("hidden");
   elements.detailEmpty.classList.remove("hidden");
   // 普通空态不保留失败场景注入的重试按钮。

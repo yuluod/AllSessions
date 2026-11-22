@@ -1,6 +1,9 @@
 import { t } from "./i18n.js";
 import { displaySessionTitle, formatListTimestamp } from "./session-format.js";
 
+// 每组默认展示条数；后端最多返回 50 条，其余按步长展开。
+export const PROJECT_REVIEW_PAGE_SIZE = 8;
+
 export function renderProjectReview(review, container, onSelectSession) {
   if (!container) return;
   container.replaceChildren();
@@ -33,7 +36,7 @@ export function renderProjectReview(review, container, onSelectSession) {
     }
     const list = document.createElement("ul");
     list.className = "project-review-list";
-    for (const session of sessions) {
+    const renderItem = (session) => {
       const item = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
@@ -59,8 +62,32 @@ export function renderProjectReview(review, container, onSelectSession) {
         item.append(note);
       }
       list.append(item);
-    }
+    };
+    let shown = Math.min(PROJECT_REVIEW_PAGE_SIZE, sessions.length);
+    sessions.slice(0, shown).forEach(renderItem);
     section.append(list);
+    if (sessions.length > shown) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "stats-activity-link project-review-more";
+      const updateLabel = () => {
+        more.textContent = t("projectReviewShowMore", {
+          n: sessions.length - shown,
+        });
+      };
+      updateLabel();
+      more.addEventListener("click", () => {
+        const next = Math.min(
+          shown + PROJECT_REVIEW_PAGE_SIZE,
+          sessions.length
+        );
+        sessions.slice(shown, next).forEach(renderItem);
+        shown = next;
+        if (shown >= sessions.length) more.remove();
+        else updateLabel();
+      });
+      section.append(more);
+    }
     columns.append(section);
   }
   container.append(columns);

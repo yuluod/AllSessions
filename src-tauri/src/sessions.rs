@@ -82,6 +82,11 @@ const DETAIL_MESSAGE_LIMIT: usize = 800;
 const DETAIL_EVENT_LIMIT: usize = 1_200;
 const DETAIL_TEXT_LIMIT: usize = 20_000;
 const DETAIL_CACHE_BYTES: usize = 64 * 1024 * 1024;
+// 全量导出的硬上限：导出重新遍历来源、不受展示截断约束，
+// 但不能因此放弃内存边界；命中上限的导出在 export_info 里标记。
+const EXPORT_MESSAGE_LIMIT: usize = 50_000;
+const EXPORT_TOTAL_LIMIT: usize = 64 * 1024 * 1024;
+const EXPORT_MESSAGE_OVERHEAD: usize = 512;
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct Source {

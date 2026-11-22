@@ -44,7 +44,11 @@ import {
   updateSessionCount,
   renderSessionListFooter,
 } from "./session-list.js";
-import { conversationView, maintenanceController } from "./controllers.js";
+import {
+  conversationView,
+  handoffController,
+  maintenanceController,
+} from "./controllers.js";
 import {
   renderDetailTags,
   renderPropsPanel,
@@ -165,6 +169,8 @@ export async function loadSessionDetail(
     }
     renderRawEvents(detail.raw_events);
     updateTabs();
+    // 兜底绑定：任何详情替换路径都不能留下跨会话的交接草稿。
+    handoffController?.onDetailChanged();
     // 初始化恢复的首条详情不滚动：此时 _initialized 已置 true，
     // 但移动端首屏应停留在列表，只有用户后续的详情切换才滚过去。
     if (
@@ -183,6 +189,7 @@ export async function loadSessionDetail(
     showError(`${t("loadDetailFailed")}: ${error.message}`);
     if (state.selectedSessionKey === id) {
       state.currentDetail = null;
+      handoffController?.onDetailChanged();
       elements.detailView.classList.add("hidden");
       elements.detailEmpty.classList.remove("hidden");
       // 与列表/统计等失败面一致：详情失败占位提供就地重试，

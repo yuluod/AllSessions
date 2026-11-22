@@ -15,6 +15,15 @@ import {
   shouldConfirmResume,
   setConfirmResume,
 } from "../public/interaction-preferences.js";
+import {
+  HANDOFF_LIMITS,
+  buildHandoffMarkdown,
+  createHandoffDraft,
+  handoffSelectable,
+  orderedSelectionMessages,
+  takeChars,
+  validateSelections,
+} from "../public/handoff.js";
 
 // 隔离应用装配和真实 IPC，直接执行生产函数，验证状态变化而非源码形状。
 async function loadModule(file, globals) {
@@ -30,6 +39,7 @@ async function loadModule(file, globals) {
     invalidateQuery,
     changeSessionSelection,
     recordMetric() {},
+    handoffController: null,
     ...globals,
   });
   vm.runInContext(source, context);
@@ -130,11 +140,16 @@ test("控制器通过入口注入跨视图行为，不在内部重新装配导�
     createSettingsController: factory("settings"),
     createUpdateController: factory("update"),
     createMaintenanceController: factory("maintenance"),
+    createHandoffController: () => ({ bind() {} }),
+    handoffSelectable: () => false,
     elements: {},
     state: {},
     isMessageRemoved() {},
     fetchJson() {},
     showError() {},
+    sessionWorkspace() {},
+    displaySourceLabel: (v) => v,
+    announce() {},
   });
   const callbacks = {
     onSelectSession() {},
@@ -511,4 +526,118 @@ test("后台更新等待下一帧期间用户滚动时，不恢复旧阅读位�
   scroller.scrollTop = 360;
   frame();
   assert.equal(scroller.scrollTop, 360);
+});
+
+test("交接复制后离开不弹确认，摘录回跳按消息键委托视图定位", async () => {
+  const clicks = {};
+  const stub = (name) => ({
+    addEventListener(event, fn) {
+      if (event === "click") clicks[name] = fn;
+    },
+    classList: { add() {}, remove() {}, toggle() {} },
+    dataset: {},
+    value: "",
+    textContent: "",
+    title: "",
+    disabled: false,
+    replaceChildren() {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    focus() {},
+  });
+  const modalLog = [];
+  const elements = new Proxy(
+    {
+      handoffDialog: {
+        open: false,
+        showModal() {
+          this.open = true;
+        },
+        close() {
+          this.open = false;
+        },
+        contains: () => false,
+        addEventListener() {},
+      },
+      handoffDiscardDialog: {
+        open: false,
+        showModal() {
+          this.open = true;
+          modalLog.push("discard");
+        },
+        close() {
+          this.open = false;
+        },
+        addEventListener() {},
+      },
+    },
+    { get: (target, key) => target[key] ?? (target[key] = stub(key)) }
+  );
+  const msgs = [
+    { _message_key: "k1", role: "user", timestamp: "t", text: "第一条" },
+    { _message_key: "k2", role: "assistant", timestamp: "t", text: "第二条" },
+  ];
+  const state = {
+    currentDetail: { summary: { _key: "s" }, conversation_messages: msgs },
+  };
+  const jumps = [];
+  const errors = [];
+  const copied = [];
+  const view = {
+    renderConversation() {},
+    syncHandoffMarks() {},
+    visibleMessageKeys: () => new Set(["k1"]),
+    scrollToMessageKey: (key) => {
+      jumps.push(key);
+      return key === "k1" ? 0 : null;
+    },
+  };
+  const context = await loadModule("app/handoff.js", {
+    t: (key) => key,
+    getLang: () => "zh",
+    formatTimestamp: (value) => String(value ?? ""),
+    HANDOFF_LIMITS,
+    buildHandoffMarkdown,
+    createHandoffDraft,
+    handoffSelectable,
+    orderedSelectionMessages,
+    takeChars,
+    validateSelections,
+    document: {
+      activeElement: null,
+      querySelector: () => ({ closest: () => null }),
+      createElement: () => stub("dom"),
+    },
+    navigator: {
+      clipboard: { writeText: async (text) => copied.push(text) },
+    },
+  });
+  const controller = context.createHandoffController({
+    state,
+    elements,
+    sessionWorkspace: () => ({}),
+    displaySourceLabel: () => "Claude Code",
+    announce() {},
+    showError: (error) => errors.push(error),
+    getConversationView: () => view,
+  });
+  controller.bind();
+
+  clicks.handoffBtn(); // 进入交接模式
+  assert.equal(controller.isActive(), true);
+  controller.onToggle(msgs[0]);
+  await clicks.handoffCopyBtn();
+  assert.equal(copied.length, 1);
+
+  // 跨过时间边界后离开：输出与已复制版本一致时不应弹放弃确认。
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(await controller.confirmLeave({ key: "other" }), true);
+  assert.deepEqual(modalLog, []);
+
+  // 回跳委托给视图按消息键定位；缺失与被筛选的键给出对应错误。
+  controller.jumpToSource("k1");
+  assert.deepEqual(jumps, ["k1"]);
+  controller.jumpToSource("missing");
+  controller.jumpToSource("k2");
+  assert.deepEqual(errors, ["handoffJumpMissing", "handoffJumpFiltered"]);
 });

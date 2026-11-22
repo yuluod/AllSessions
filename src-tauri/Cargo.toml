@@ -16,8 +16,8 @@ crate-type = ["rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-chrono = { version = "0.4", features = ["serde"] }
 dirs = "7"
+jiff = "1.0"
 md5 = "0.8.1"
 notify = "8"
 percent-encoding = "2"

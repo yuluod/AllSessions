@@ -39,7 +39,7 @@ import {
   loadMoreSessions,
   loadSessionDetail,
 } from "./data.js";
-import { settingsController } from "./controllers.js";
+import { handoffController, settingsController } from "./controllers.js";
 import { createEmptyState } from "../ui-components.js";
 import { changeSessionSelection } from "../workspace-state.js";
 
@@ -432,34 +432,48 @@ export function selectSession(
     state.sessions
       .find((session) => session._key === key)
       ?.search_hits?.find((item) => Number.isInteger(item.ordinal));
-  changeSessionSelection(state, key, selectedHit, detailRequestGate);
-  elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
-    el.classList.remove("active");
-    el.setAttribute("aria-selected", String(optionSelectedState(el)));
-  });
-  buttonEl?.classList.add("active");
-  syncUrl();
-  clearTimeout(detailDebounce);
-  // j/k 快速移动时保留当前详情内容，占位等到防抖到期真正发请求时再切，
-  // 避免"加载中"逐键闪烁；点击等立即加载的路径照旧先给加载反馈。
-  const showLoadingPlaceholder = () => {
-    setPropsPlaceholder(t("loading"));
-    elements.detailView.classList.add("hidden");
-    elements.detailEmpty.classList.remove("hidden");
-    setDetailPlaceholder(t("loading"));
-  };
-  if (deferDetail) {
-    detailDebounce = setTimeout(() => {
+  // 交接草稿有未复制内容时，切换会话/搜索命中先经放弃确认。
+  const handoff = handoffController;
+  if (handoff) {
+    void handoff
+      .confirmLeave({ key, hit: Boolean(selectedHit) })
+      .then((allowed) => {
+        if (allowed) applySelection();
+      });
+    return;
+  }
+  applySelection();
+
+  function applySelection() {
+    changeSessionSelection(state, key, selectedHit, detailRequestGate);
+    elements.sessionList.querySelectorAll(".session-item").forEach((el) => {
+      el.classList.remove("active");
+      el.setAttribute("aria-selected", String(optionSelectedState(el)));
+    });
+    buttonEl?.classList.add("active");
+    syncUrl();
+    clearTimeout(detailDebounce);
+    // j/k 快速移动时保留当前详情内容，占位等到防抖到期真正发请求时再切，
+    // 避免"加载中"逐键闪烁；点击等立即加载的路径照旧先给加载反馈。
+    const showLoadingPlaceholder = () => {
+      setPropsPlaceholder(t("loading"));
+      elements.detailView.classList.add("hidden");
+      elements.detailEmpty.classList.remove("hidden");
+      setDetailPlaceholder(t("loading"));
+    };
+    if (deferDetail) {
+      detailDebounce = setTimeout(() => {
+        detailDebounce = null;
+        showLoadingPlaceholder();
+        loadSessionDetail(key);
+      }, 140);
+    } else {
       detailDebounce = null;
       showLoadingPlaceholder();
       loadSessionDetail(key);
-    }, 140);
-  } else {
-    detailDebounce = null;
-    showLoadingPlaceholder();
-    loadSessionDetail(key);
+    }
+    syncSessionRovingTabindex();
   }
-  syncSessionRovingTabindex();
 }
 
 export function renderLoadMoreButton() {

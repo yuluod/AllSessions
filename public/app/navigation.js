@@ -34,8 +34,16 @@ import {
 } from "./data.js";
 import { selectSession } from "./session-list.js";
 import { renderWorkspaceStatus } from "./status.js";
+import { handoffController } from "./controllers.js";
 
 export async function returnHome() {
+  // 返回首页会卸载当前详情，同样先过交接草稿检查。
+  if (
+    handoffController &&
+    !(await handoffController.confirmLeave({ key: null }))
+  ) {
+    return;
+  }
   detailRequestGate.cancel();
   resetFilterState();
   state.selectedSessionKey = null;

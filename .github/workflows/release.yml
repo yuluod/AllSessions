@@ -240,7 +240,9 @@ jobs:
             echo "::error::没有找到可发布的安装包。"
             exit 1
           fi
-          gh release upload "$RELEASE_TAG" "${RELEASE_FILES[@]}" --repo "$GITHUB_REPOSITORY"
+          # 校验清单只覆盖安装包本身，供用户下载后核对完整性。
+          (cd release-assets && sha256sum "${RELEASE_FILES[@]#release-assets/}") | sort -k2 > SHA256SUMS
+          gh release upload "$RELEASE_TAG" "${RELEASE_FILES[@]}" SHA256SUMS --repo "$GITHUB_REPOSITORY"
 
       - name: 生成并上传完整更新清单
         shell: bash

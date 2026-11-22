@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{SecondsFormat, Utc};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -56,7 +56,11 @@ pub(crate) fn create_at(
     fs::create_dir_all(root)
         .map_err(|error| format!("无法创建删除备份目录（{}）：{error}", root.display()))?;
     lock_down_directory(root)?;
-    let name = format!("{}-{}", Utc::now().format("%Y%m%dT%H%M%SZ"), Uuid::new_v4());
+    let name = format!(
+        "{}-{}",
+        Timestamp::now().strftime("%Y%m%dT%H%M%SZ"),
+        Uuid::new_v4()
+    );
     let backup_dir = root.join(name);
     let staging_dir = root.join(format!(".{}.tmp", Uuid::new_v4()));
     let result = (|| -> Result<Value, String> {
@@ -80,7 +84,9 @@ pub(crate) fn create_at(
                 "backup": relative.to_string_lossy(),
             }));
         }
-        let created_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+        let created_at = Timestamp::now()
+            .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
         let manifest = json!({
             "version": 1,
             "created_at": created_at,

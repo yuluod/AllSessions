@@ -6,7 +6,7 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { prepareExportDetail, sessionMarkdown } =
+const { prepareExportDetail, redactText, sessionMarkdown } =
   await import("../public/session-export.js");
 const { translateBackendError } = await import("../public/i18n.js");
 
@@ -147,4 +147,88 @@ test("脱敏会完整隐藏包含空格的本地路径", () => {
 
   assert.equal(prepared.summary.title, "打开 [local path]");
   assert.equal(prepared.conversation_messages[0].text, "检查 [local path]");
+});
+
+test("脱敏覆盖 UNC、扩展路径与更多 Unix 绝对路径", () => {
+  assert.equal(redactText("tail /var/log/syslog"), "tail [local path]");
+  assert.equal(
+    redactText("打开 //server/share/client/main.rs"),
+    "打开 [local path]"
+  );
+  assert.equal(
+    redactText("拷贝 \\\\?\\C:\\Users\\alice\\c.toml"),
+    "拷贝 [local path]"
+  );
+  assert.equal(
+    redactText("查看 \\\\nas-01\\docs\\报告.md"),
+    "查看 [local path]"
+  );
+  assert.equal(redactText("cd /tmp && ls"), "cd [local path] && ls");
+  assert.equal(redactText("/etc/hosts"), "[local path]");
+});
+
+test("脱敏覆盖含空格 UNC 与单段系统根目录", () => {
+  assert.equal(
+    redactText("查看 \\\\nas-01\\My Share\\报告.md"),
+    "查看 [local path]"
+  );
+  assert.equal(redactText("打开 /Applications"), "打开 [local path]");
+  assert.equal(redactText("打开 /Library"), "打开 [local path]");
+  assert.equal(redactText("打开 /home"), "打开 [local path]");
+  assert.equal(redactText("打开 /Users"), "打开 [local path]");
+});
+
+test("脱敏不误伤 URL 与普通文本", () => {
+  const url = "curl https://example.com/api/v1/list?id=7";
+  assert.equal(redactText(url), url);
+  assert.equal(redactText("对比 输入/输出 差异"), "对比 输入/输出 差异");
+  assert.equal(redactText('cmd /c "calc"'), 'cmd /c "calc"');
+  assert.equal(redactText("和 / 或"), "和 / 或");
+  assert.equal(redactText("file:///var/tmp/x.txt"), "file:[local path]");
+});
+
+test("后端完整导出的 export_info 不被前端推算覆盖", () => {
+  const detail = detailFixture();
+  detail.export_info = {
+    scope: "full_session",
+    partial: false,
+    message_count: 1,
+    total_messages: 3,
+    omitted_messages: 0,
+    removed_messages: 2,
+    export_limited: false,
+    changed_during_read: false,
+    parse_errors: 0,
+    raw_events_omitted: 0,
+    generated_at: "2026-11-13T00:00:00Z",
+  };
+  // 完整导出没有截断标记，若按已加载口径推算会把 partial 算成 false、
+  // total_messages 算成 1，覆盖后端给的真实完整性口径。
+  const prepared = prepareExportDetail(detail);
+
+  assert.equal(prepared.export_info.scope, "full_session");
+  assert.equal(prepared.export_info.total_messages, 3);
+  assert.equal(prepared.export_info.removed_messages, 2);
+  assert.match(sessionMarkdown(prepared), /完整会话导出：包含 1 条消息/);
+});
+
+test("完整导出的不完整标记使用对应文案", () => {
+  const detail = detailFixture();
+  detail.export_info = {
+    scope: "full_session",
+    partial: true,
+    message_count: 1,
+    total_messages: 4,
+    omitted_messages: 3,
+    removed_messages: 0,
+    export_limited: true,
+    changed_during_read: false,
+    parse_errors: 0,
+    raw_events_omitted: 0,
+    generated_at: "2026-11-13T00:00:00Z",
+  };
+  assert.match(
+    sessionMarkdown(prepareExportDetail(detail)),
+    /完整导出（不完整）：包含 1 条消息/
+  );
 });

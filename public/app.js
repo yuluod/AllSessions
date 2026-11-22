@@ -3,13 +3,14 @@ import { t, getLang, setLang, updateStaticI18n } from "./i18n.js";
 import { initTheme, setScheme } from "./theme-manager.js";
 import { initPaneLayout, syncRailToggle } from "./pane-layout.js";
 import { initReadingToolbar } from "./reading-toolbar.js";
-import { bindPopoverMenus } from "./ui-components.js";
+import { bindPopoverMenus, showDialogFromPopover } from "./ui-components.js";
 import {
   shouldConfirmResume,
   setConfirmResume,
 } from "./interaction-preferences.js";
 import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
+import { exportStats } from "./stats-export.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import { DESKTOP_RUNTIME_REQUIRED } from "./api-client.js";
 import {
@@ -18,6 +19,7 @@ import {
   announce,
   detailRequestGate,
   elements,
+  fetchJson,
   scrollToWorkspaceSection,
   sessionRequestGate,
   sessionWorkspace,
@@ -108,6 +110,7 @@ import {
   bindTauriSettingsEvent,
   initializeControllers,
   conversationView,
+  handoffController,
   maintenanceController,
   settingsController,
   updateController,
@@ -162,6 +165,7 @@ export function rerenderLocalizedContent() {
   syncShortcutHints();
   maintenanceController.renderLocalized();
   updateController.renderLocalized();
+  handoffController?.onLanguageChanged();
 }
 function isDesktopRuntimeUnavailable(error) {
   return error instanceof Error && error.code === DESKTOP_RUNTIME_REQUIRED;
@@ -586,6 +590,106 @@ async function initialize() {
       }
     });
   }
+
+  for (const button of elements.statsExportButtons || []) {
+    button.addEventListener("click", () => {
+      exportStats(state.stats, button.dataset.statsExport, {
+        redact: elements.statsExportRedactToggle?.checked !== false,
+      });
+    });
+  }
+
+  // 完整导出走后端重新遍历原始会话，导出不受已加载窗口约束；
+  // 原始事件量巨大的会话先给出规模提示并确认后再解析。
+  const FULL_EXPORT_CONFIRM_EVENTS = 20_000;
+  let pendingFullExport = null;
+
+  async function runFullExport() {
+    const pending = pendingFullExport;
+    const key = state.currentDetail?.summary?._key;
+    if (!pending || !key) return;
+    const buttons = [
+      elements.exportMdBtn,
+      elements.exportJsonBtn,
+      elements.exportFullMdBtn,
+      elements.exportFullJsonBtn,
+    ].filter(Boolean);
+    buttons.forEach((button) => (button.disabled = true));
+    elements.exportFullDialogStatus.textContent = t("exportFullInProgress");
+    try {
+      const detail = await fetchJson(
+        `/api/sessions/${encodeURIComponent(key)}/export`
+      );
+      pendingFullExport = null;
+      elements.exportFullDialog?.close();
+      const options = { redact: pending.redact, full: true };
+      if (pending.format === "json") {
+        exportSessionJson(detail, options);
+      } else {
+        exportSessionMarkdown(detail, options);
+      }
+    } catch (error) {
+      const message = `${t("exportFullFailed")}: ${error.message}`;
+      if (elements.exportFullDialog?.open) {
+        elements.exportFullDialogStatus.textContent = message;
+      } else {
+        showError(message);
+      }
+    } finally {
+      buttons.forEach((button) => (button.disabled = false));
+    }
+  }
+
+  function requestFullExport(format) {
+    const summary = state.currentDetail?.summary;
+    if (!summary?._key) return;
+    pendingFullExport = {
+      format,
+      redact: elements.exportRedactToggle?.checked === true,
+    };
+    const events = Number(summary.event_count) || 0;
+    if (events > FULL_EXPORT_CONFIRM_EVENTS && elements.exportFullDialog) {
+      elements.exportFullDialogDesc.textContent = t("exportFullConfirmDesc", {
+        n: events,
+      });
+      elements.exportFullDialogStatus.textContent = "";
+      showDialogFromPopover(elements.exportFullDialog);
+      elements.exportFullDialogConfirm?.focus();
+      return;
+    }
+    void runFullExport();
+  }
+
+  function closeFullExportDialog() {
+    if (elements.exportFullDialogConfirm?.disabled) return;
+    elements.exportFullDialog?.close();
+    pendingFullExport = null;
+  }
+
+  elements.exportFullMdBtn?.addEventListener("click", () => {
+    requestFullExport("markdown");
+  });
+  elements.exportFullJsonBtn?.addEventListener("click", () => {
+    requestFullExport("json");
+  });
+  elements.exportFullDialogConfirm?.addEventListener("click", () => {
+    void runFullExport();
+  });
+  elements.exportFullDialogClose?.addEventListener(
+    "click",
+    closeFullExportDialog
+  );
+  elements.exportFullDialogCancel?.addEventListener(
+    "click",
+    closeFullExportDialog
+  );
+  elements.exportFullDialog?.addEventListener("click", (event) => {
+    if (event.target === elements.exportFullDialog) closeFullExportDialog();
+  });
+  elements.exportFullDialog?.addEventListener("cancel", (event) => {
+    if (elements.exportFullDialogConfirm?.disabled) event.preventDefault();
+    else pendingFullExport = null;
+  });
 
   // 收藏/取消共用通路：完成后 toast 提供撤销，撤销不再重复给撤销。
   async function setSessionFavorite(key, favorite, offerUndo = true) {

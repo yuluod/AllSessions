@@ -125,15 +125,18 @@ fn tray_session_label(summary: &Value) -> String {
         .as_str()
         .or_else(|| summary["timestamp"].as_str())
         .and_then(|timestamp| {
-            let parsed = chrono::DateTime::parse_from_rfc3339(timestamp).ok()?;
-            let local = parsed.with_timezone(&chrono::Local);
-            let today = chrono::Local::now().date_naive();
-            Some(if local.date_naive() == today {
-                local.format("%H:%M").to_string()
-            } else if Some(local.date_naive()) == today.pred_opt() {
+            let parsed = timestamp.parse::<jiff::Timestamp>().ok()?;
+            let local = parsed.to_zoned_datetime(jiff::tz::TimeZone::system());
+            let today = jiff::ZonedDateTime::now().date();
+            Some(if local.date() == today {
+                local.strftime("%H:%M").to_string()
+            } else if today
+                .yesterday()
+                .is_ok_and(|yesterday| local.date() == yesterday)
+            {
                 "昨天".to_string()
             } else {
-                local.format("%m-%d").to_string()
+                local.strftime("%m-%d").to_string()
             })
         });
     let source = summary["display_source"]
@@ -460,7 +463,6 @@ mod tests {
 
     #[test]
     fn 托盘会话标签带时间前缀() {
-        use chrono::TimeZone;
         // 固定过去日期一律显示 MM-DD，与运行机器时区无关。
         let label = tray_session_label(&json!({
             "title": "排查构建失败",
@@ -472,16 +474,13 @@ mod tests {
         assert_eq!(title, "排查构建失败");
 
         // 当天会话显示本地 HH:MM；取本地正午构造时间戳避免跨日界抖动。
-        let noon = chrono::Local
-            .from_local_datetime(
-                &chrono::Local::now()
-                    .date_naive()
-                    .and_hms_opt(12, 0, 0)
-                    .expect("正午时间有效"),
-            )
-            .single()
+        let noon = jiff::ZonedDateTime::now()
+            .date()
+            .at(12, 0, 0, 0)
+            .to_zoned_datetime(jiff::tz::TimeZone::system())
             .expect("本地正午可解析")
-            .to_rfc3339();
+            .timestamp()
+            .to_string();
         let label = tray_session_label(&json!({
             "title": "今天的会话",
             "last_timestamp": noon,

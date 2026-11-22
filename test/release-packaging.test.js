@@ -326,6 +326,11 @@ test("macOS 构建号独立于显示版本且发布会汇总更新清单", async
       /- name: 上传全部安装包到草稿[\s\S]*?- name: 生成并上传完整更新清单/
     )?.[0] ?? "";
   assert.doesNotMatch(uploadStep, /\.sig/);
+  assert.match(uploadStep, /sha256sum[^\n]*> SHA256SUMS/);
+  assert.match(
+    uploadStep,
+    /gh release upload "\$RELEASE_TAG" "\$\{RELEASE_FILES\[@\]\}" SHA256SUMS/
+  );
   assert.match(
     workflow,
     /build-updater-manifest\.mjs release-metadata\.json release-assets latest\.json/

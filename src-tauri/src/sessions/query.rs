@@ -3,11 +3,12 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde_json::{Value, json};
 
-use super::helpers::{bool_query, paginate, timestamp_of};
+use super::helpers::{bool_query, paginate, scan_timestamp, timestamp_of};
 use super::parse::parse_detail;
 use super::{
-    DetailLocator, SessionStore, SourceFormat, cursor, deepseek, devin, gemini, hermes,
-    jetbrains_air, opencode, workbuddy, zcode,
+    DetailLocator, EXPORT_MESSAGE_LIMIT, EXPORT_MESSAGE_OVERHEAD, EXPORT_TOTAL_LIMIT, SessionStore,
+    SourceFormat, cursor, deepseek, devin, gemini, hermes, jetbrains_air, opencode, workbuddy,
+    zcode,
 };
 
 impl SessionStore {
@@ -161,6 +162,27 @@ impl SessionStore {
                 detail_locator: record.detail_locator.clone(),
             },
         })))
+    }
+
+    /// 全量导出不走详情缓存：记录快照在锁内取，解析在锁外进行。
+    pub fn prepare_export(&mut self, key: &str) -> Result<ExportPlan, crate::error::ApiError> {
+        use crate::error::ApiError;
+        let resolved = self
+            .resolve_record_key(key)
+            .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
+        let record = self
+            .records
+            .get(&resolved)
+            .ok_or_else(|| ApiError::new(ApiError::SESSION_NOT_FOUND, "会话不存在"))?;
+        Ok(ExportPlan {
+            record: super::StoredSession {
+                summary: record.summary.clone(),
+                search_text: String::new(),
+                source: record.source.clone(),
+                path: record.path.clone(),
+                detail_locator: record.detail_locator.clone(),
+            },
+        })
     }
 
     pub fn cache_detail(&mut self, plan: &DetailPlan, detail: &Value, size: usize) -> bool {
@@ -472,5 +494,148 @@ impl DetailPlan {
         crate::request_control::check()?;
         let changed = before != detail_stamp(&self.record.path);
         Ok((detail, size, changed))
+    }
+}
+
+/// 全量导出的解析计划；与 DetailPlan 相同持有记录快照，但产出不受
+/// 展示截断（条数、正文长度、头尾保留）约束的完整消息流。
+pub(crate) struct ExportPlan {
+    record: super::StoredSession,
+}
+
+impl ExportPlan {
+    /// 重新遍历来源生成完整导出：visitor 看到的是截断与头尾丢弃之前的
+    /// 完整消息，导出只受 EXPORT_* 硬上限约束；已软移除的消息不进入导出。
+    pub fn read(
+        &self,
+        workspace: &crate::workspace::WorkspaceSnapshot,
+    ) -> Result<Value, crate::error::ApiError> {
+        use crate::error::ApiError;
+        crate::request_control::check()?;
+        let before = detail_stamp(&self.record.path);
+        let mut collected: Vec<Value> = Vec::new();
+        let mut visited = 0_usize;
+        let mut collected_bytes = 0_usize;
+        let mut export_limited = false;
+        let mut detail = {
+            let visitor = &mut |message: &Value| {
+                visited += 1;
+                if export_limited {
+                    return;
+                }
+                let cost = message["text"]
+                    .as_str()
+                    .map_or(0, str::len)
+                    .saturating_add(EXPORT_MESSAGE_OVERHEAD);
+                if collected.len() >= EXPORT_MESSAGE_LIMIT
+                    || collected_bytes.saturating_add(cost) > EXPORT_TOTAL_LIMIT
+                {
+                    export_limited = true;
+                    return;
+                }
+                collected_bytes += cost;
+                collected.push(message.clone());
+            };
+            match &self.record.detail_locator {
+                Some(DetailLocator::Gemini(locator)) => {
+                    // Gemini 的 visit_detail 只回放消息、不产出详情骨架，
+                    // 需要 parse_detail 补齐 summary 与原始事件。
+                    gemini::visit_detail(&self.record.source, locator, visitor)
+                        .and_then(|_| gemini::parse_detail(&self.record.source, locator))
+                }
+                Some(DetailLocator::OpenCode(locator)) => {
+                    opencode::visit_detail(&self.record.source, locator, visitor)
+                }
+                Some(DetailLocator::ZCode(locator)) => {
+                    zcode::visit_detail(&self.record.source, locator, visitor)
+                }
+                Some(DetailLocator::Cursor(locator)) => {
+                    cursor::visit_detail(&self.record.source, locator, visitor)
+                }
+                Some(DetailLocator::Devin(locator)) => {
+                    devin::visit_detail(&self.record.source, locator, visitor)
+                }
+                Some(DetailLocator::Hermes(locator)) => {
+                    hermes::visit_detail(&self.record.source, locator, visitor)
+                }
+                None => super::parse::visit_detail(&self.record.path, &self.record.source, visitor),
+            }
+        }
+        .map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))?;
+        crate::request_control::check()?;
+
+        let session_key = detail["summary"]["_key"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let omitted = visited - collected.len();
+        let mut removed = 0_usize;
+        collected.retain(|message| {
+            let dropped = message["_message_key"]
+                .as_str()
+                .is_some_and(|key| workspace.message_removed(&session_key, key));
+            removed += usize::from(dropped);
+            !dropped
+        });
+        // raw_events 只保留首尾展示窗口，中段 parse_error/read_error 不可见；
+        // 各解析路径在完整遍历中独立累计写入 truncation，缺失时退回窗口计数。
+        let window_errors = |kind: &str| {
+            detail["raw_events"]
+                .as_array()
+                .map(|events| {
+                    events
+                        .iter()
+                        .filter(|event| event["type"].as_str() == Some(kind))
+                        .count()
+                })
+                .unwrap_or_default()
+        };
+        let parse_errors = detail["truncation"]["parse_errors"]
+            .as_u64()
+            .map(|value| value as usize)
+            .unwrap_or_else(|| window_errors("parse_error"));
+        let read_errors = detail["truncation"]["read_errors"]
+            .as_u64()
+            .map(|value| value as usize)
+            .unwrap_or_else(|| window_errors("read_error"));
+        let changed = before != detail_stamp(&self.record.path);
+        if let Some(summary) = detail["summary"].as_object_mut() {
+            // detail_truncated 描述的是「详情展示被截断」；完整导出的完整性
+            // 以 export_info 为准，不继承该标记。
+            summary.remove("detail_truncated");
+            if let Ok(metadata) = std::fs::metadata(&self.record.path) {
+                summary.insert("file_size_bytes".into(), json!(metadata.len()));
+                if let Some(ms) = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+                {
+                    summary.insert("file_mtime_ms".into(), json!(ms));
+                }
+            }
+        }
+        let exported = collected.len();
+        detail["conversation_messages"] = json!(collected);
+        detail["export_info"] = json!({
+            "scope": "full_session",
+            // partial 只描述「导出内容不完整」：达到导出硬上限、原始记录
+            // 解析失败或读取窗口内来源仍在写入。软移除是刻意排除，不算缺失；
+            // 原始事件只提供有界视图，条数单列不算不完整。
+            "partial": export_limited || changed || parse_errors + read_errors > 0,
+            "message_count": exported,
+            "total_messages": visited,
+            "omitted_messages": omitted,
+            "removed_messages": removed,
+            "export_limited": export_limited,
+            "changed_during_read": changed,
+            "parse_errors": parse_errors,
+            "read_errors": read_errors,
+            "raw_events_omitted": detail["truncation"]["raw_events"]["omitted"]
+                .as_u64()
+                .unwrap_or_default(),
+            "generated_at": scan_timestamp(),
+        });
+        Ok(detail)
     }
 }

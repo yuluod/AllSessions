@@ -7,7 +7,7 @@ use std::{
 #[cfg(unix)]
 use std::{ffi::OsString, os::unix::fs::PermissionsExt};
 
-use chrono::{SecondsFormat, Utc};
+use jiff::Timestamp;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
@@ -153,7 +153,7 @@ impl WorkspaceStore {
         Self::open_at(&path)
     }
 
-    fn open_at(path: &Path) -> Result<Self, String> {
+    pub(crate) fn open_at(path: &Path) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(error_text)?;
         }
@@ -691,7 +691,9 @@ fn string_array(value: Option<&Value>, max_chars: usize) -> Result<Vec<String>, 
 }
 
 fn now() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+    Timestamp::now()
+        .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
 }
 
 #[cfg(unix)]

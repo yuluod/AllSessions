@@ -162,8 +162,8 @@ impl UsageLedger {
     pub fn record(&mut self, timestamp: &str, usage: TokenUsage, model: &str) {
         self.known = true;
         self.totals.add(usage);
-        let date = local_date_key(timestamp)
-            .filter(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok());
+        let date =
+            local_date_key(timestamp).filter(|value| value.parse::<jiff::civil::Date>().is_ok());
         if date.is_some()
             && timestamp.len() <= 64
             && [

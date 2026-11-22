@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use chrono::{SecondsFormat, TimeZone, Utc};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use super::helpers::{error_text, nullable_string, string_at};
@@ -274,7 +274,7 @@ pub(crate) fn legacy_timestamp(value: &Value, keys: &[&str]) -> Option<String> {
 }
 
 pub(crate) fn timestamp_from_millis(milliseconds: i64) -> Option<String> {
-    Utc.timestamp_millis_opt(milliseconds)
-        .single()
-        .map(|value| value.to_rfc3339_opts(SecondsFormat::Millis, true))
+    Timestamp::from_millisecond(milliseconds)
+        .ok()
+        .map(|value| value.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
 }

@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{SecondsFormat, TimeZone, Utc};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use walkdir::WalkDir;
 
@@ -199,9 +199,8 @@ fn wire_timestamp(value: &Value) -> String {
     let nanos = ((seconds - whole as f64) * 1_000_000_000.0)
         .round()
         .clamp(0.0, 999_999_999.0) as u32;
-    Utc.timestamp_opt(whole, nanos)
-        .single()
-        .map(|value| value.to_rfc3339_opts(SecondsFormat::Millis, true))
+    Timestamp::new(whole, nanos as i32)
+        .map(|value| value.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
         .unwrap_or_default()
 }
 

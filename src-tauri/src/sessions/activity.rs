@@ -52,7 +52,7 @@ impl ActivityLedger {
     pub fn record(&mut self, message: &Value) {
         let timestamp = message["timestamp"].as_str().unwrap_or_default();
         let day = if let Some(date) = local_date_key(timestamp)
-            && chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_ok()
+            && date.parse::<jiff::civil::Date>().is_ok()
             && (self.by_date.len() < MAX_ACTIVITY_DAYS || self.by_date.contains_key(&date))
         {
             self.by_date.entry(date).or_default()
@@ -113,7 +113,7 @@ pub(crate) fn in_range(date: &str, query: &HashMap<String, String>) -> bool {
 pub(crate) fn validate_range(query: &HashMap<String, String>) -> Result<(), String> {
     for field in ["activity_from", "activity_to"] {
         if let Some(value) = query.get(field).filter(|value| !value.is_empty())
-            && (value.len() != 10 || chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_err())
+            && (value.len() != 10 || value.parse::<jiff::civil::Date>().is_err())
         {
             return Err("活动日期范围无效".into());
         }

@@ -21,11 +21,15 @@ const stats = {
     { label: "2026-02-03", count: 1, tokens: 200, cost: 0 },
   ],
   by_model_tokens: [{ label: "gpt-5", count: 1000 }],
+  by_tool: [{ label: "bash /opt/tools/deploy.sh", count: 4 }],
   by_cwd: [
     { label: "/home/alice/project", count: 2 },
     { label: "//server/share/client", count: 1 },
   ],
-  by_command: [{ label: '=cmd|"/c calc"', count: 1 }],
+  by_command: [
+    { label: '=cmd|"/c calc"', count: 1 },
+    { label: "tail //nas/share/app.log", count: 2 },
+  ],
   project_review: { cwd: "/home/alice/project", recent: [{ title: "私密" }] },
 };
 
@@ -36,6 +40,8 @@ test("统计导出 JSON 保留未知值并排除项目回顾正文", () => {
   assert.equal(data.by_date[1].tokens, null);
   assert.equal(data.by_cwd[0].label, "[local path 1]");
   assert.equal(data.by_cwd[1].label, "[local path 2]");
+  assert.equal(data.by_tool[0].label, "bash [local path]");
+  assert.equal(data.by_command[1].label, "tail [local path]");
   assert.equal(data.by_date[1].cost, 0);
   assert.equal(data.by_date[2].cost, null);
   assert.equal(data.project_review, undefined);
@@ -62,4 +68,6 @@ test("统计 CSV 转义特殊字符并阻止公式注入", () => {
   assert.match(breakdown, /by_model_tokens,gpt-5,1000/);
   assert.match(breakdown, /by_cwd,\[local path 1\],2/);
   assert.match(breakdown, /by_command,"'=cmd\|""\/c calc""",1/);
+  assert.match(breakdown, /by_tool,bash \[local path\],4/);
+  assert.match(breakdown, /by_command,tail \[local path\],2/);
 });

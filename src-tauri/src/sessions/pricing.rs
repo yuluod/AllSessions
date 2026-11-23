@@ -140,7 +140,7 @@ fn normalize_model(model: &str) -> String {
 
 /// 命中最长前缀；`claude-sonnet-4-5-20250929` 这类带日期后缀的名字也能归到
 /// `claude-sonnet-4-5`，未知名称返回 None（对应用量记为未计价）。
-fn price_for<'a>(model: &str, custom: &'a ModelPrices) -> Option<&'a ModelPrice> {
+pub(super) fn price_for<'a>(model: &str, custom: &'a ModelPrices) -> Option<&'a ModelPrice> {
     let normalized = normalize_model(model);
     let matches = |prefix: &str| {
         normalized == prefix
@@ -166,6 +166,12 @@ fn price_for<'a>(model: &str, custom: &'a ModelPrices) -> Option<&'a ModelPrice>
 impl ModelPrices {
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub(crate) fn with_price(&self, model: &str, price: ModelPrice) -> Result<Self, String> {
+        let mut entries = self.0.clone();
+        entries.insert(normalize_model(model), price);
+        Self::try_from(entries)
     }
 }
 

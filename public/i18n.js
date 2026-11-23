@@ -442,6 +442,18 @@ const DICT = {
     export: "导出",
     exportMd: "将已加载内容导出为 Markdown 文件",
     exportJson: "将已加载内容导出为 JSON 文件",
+    exportSessionFailed: "会话导出失败",
+    exportCredentialTitle: "导出文件中可能含有凭据",
+    exportCredentialWarning:
+      "发现 {n} 处疑似凭据。继续会按当前设置下载，请在分享前核对文件中的这些行。",
+    exportCredentialLocation: "第 {line} 行 · {kind}（{count} 处）",
+    exportCredentialMore: "另有 {n} 处未列出。",
+    exportCredentialContinue: "仍然下载",
+    exportCredentialOpenAI: "OpenAI API 密钥",
+    exportCredentialGitHub: "GitHub 令牌",
+    exportCredentialAws: "AWS 访问密钥 ID",
+    exportCredentialBearer: "Bearer 令牌",
+    exportCredentialPrivateKey: "私钥块",
     exportScopeHint:
       "导出已加载内容；长会话可能省略中间消息或截断正文，文件中会注明。",
     exportPartialNotice:
@@ -1317,6 +1329,18 @@ const DICT = {
     export: "Export",
     exportMd: "Export loaded content as Markdown",
     exportJson: "Export loaded content as JSON",
+    exportSessionFailed: "Session export failed",
+    exportCredentialTitle: "Export may contain credentials",
+    exportCredentialWarning:
+      "Found {n} potential credential matches. Continuing downloads the file with your current settings. Review these lines before sharing.",
+    exportCredentialLocation: "Line {line} · {kind} ({count})",
+    exportCredentialMore: "{n} more matches.",
+    exportCredentialContinue: "Download anyway",
+    exportCredentialOpenAI: "OpenAI API key",
+    exportCredentialGitHub: "GitHub token",
+    exportCredentialAws: "AWS access key ID",
+    exportCredentialBearer: "Bearer token",
+    exportCredentialPrivateKey: "Private key block",
     exportScopeHint:
       "Exports loaded content. Long sessions may omit messages or truncate text; the file records these limits.",
     exportPartialNotice:

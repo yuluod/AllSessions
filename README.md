@@ -288,6 +288,8 @@ Export redaction is off by default.
 
 When enabled, AllSessions removes known session identifiers and common local-path patterns — but automatic redaction cannot cover every kind of sensitive information.
 
+Before downloading a session as JSON or Markdown, AllSessions checks the generated file locally for common credential patterns. If it finds a match, it shows the type and line number and asks whether to download with the current settings. Review the file before sharing.
+
 > [!WARNING]
 >
 > - Review and sanitize export files, logs, screenshots, and issues before sharing.

@@ -687,7 +687,16 @@ fn route_request(
                     .ok_or_else(|| ApiError::invalid("缺少工作台文件内容"))?,
             )
             .map_err(ApiError::invalid)?;
-            let known = {
+            let choices = request
+                .body
+                .get("choices")
+                .map(|value| {
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| ApiError::invalid("会话匹配选项无效"))
+                })
+                .transpose()?
+                .unwrap_or_default();
+            let matches = {
                 let store = state.store.lock().map_err(lock_error)?;
                 if store.scanning() && transfer.session_keys().next().is_some() {
                     return Err(ApiError::new(
@@ -695,18 +704,20 @@ fn route_request(
                         "请完成会话扫描后再导入工作台数据",
                     ));
                 }
-                transfer
-                    .session_keys()
-                    .filter(|key| store.contains_session_key(key))
-                    .collect::<BTreeSet<_>>()
+                store
+                    .workspace_matches(transfer.session_keys(), &choices)
+                    .map_err(ApiError::invalid)?
             };
-            let known_session = |key: &str| known.contains(key);
+            let target_session = |key: &str| matches.targets.get(key).cloned();
             if path.ends_with("/preview") {
-                return Ok(state
+                let mut preview = state
                     .workspace
                     .lock()
                     .map_err(lock_error)?
-                    .preview_transfer(&transfer, known_session)?);
+                    .preview_transfer(&transfer, target_session)?;
+                preview["ambiguous"] = json!(matches.ambiguous);
+                preview["omitted_candidates"] = json!(matches.omitted_candidates);
+                return Ok(preview);
             }
             let token = request.body["token"]
                 .as_str()
@@ -716,7 +727,7 @@ fn route_request(
                 .workspace
                 .lock()
                 .map_err(lock_error)?
-                .import_transfer(&transfer, known_session, token)?;
+                .import_transfer(&transfer, target_session, token)?;
             if result.get("backup_path").is_some()
                 && let Err(error) = state.refresh_tray(&app, None)
             {

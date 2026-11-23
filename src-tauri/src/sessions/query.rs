@@ -1,5 +1,5 @@
 //! 会话查询:列表、搜索计划(锁外全文查询)、搜索上下文与详情读取。
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde_json::{Value, json};
 
@@ -255,8 +255,19 @@ impl SessionStore {
         Some(self.records.get(&resolved)?.summary.clone())
     }
 
-    pub(crate) fn contains_session_key(&self, key: &str) -> bool {
-        self.records.contains_key(key)
+    pub(crate) fn workspace_matches<'a>(
+        &self,
+        keys: impl Iterator<Item = &'a str>,
+        choices: &BTreeMap<String, String>,
+    ) -> Result<WorkspaceMatches, String> {
+        let keys = keys.collect::<BTreeSet<_>>();
+        let candidates = self.records.keys().filter_map(|key| {
+            let record = &self.records[key];
+            portable_workspace_id(key).map(|id| (id, key, &record.summary))
+        });
+        match_workspace_keys(keys, candidates, choices, |key| {
+            self.records.contains_key(key)
+        })
     }
 
     pub(crate) fn resolve_record_key(&self, key: &str) -> Option<String> {
@@ -271,6 +282,105 @@ impl SessionStore {
             .collect::<Vec<_>>();
         (matches.len() == 1).then(|| matches[0].clone())
     }
+}
+
+#[derive(Default)]
+pub(crate) struct WorkspaceMatches {
+    pub targets: BTreeMap<String, String>,
+    pub ambiguous: BTreeMap<String, Vec<Value>>,
+    pub omitted_candidates: usize,
+}
+
+fn portable_workspace_id(key: &str) -> Option<(&str, &str)> {
+    let (source, id) = key.split_once(':')?;
+    match source {
+        "codex" | "codex_archived" if uuid::Uuid::parse_str(id).is_ok() => Some(("codex", id)),
+        // Air 在会话键前加项目目录哈希，线程 ID 来自原始线程目录。
+        "jetbrains_air" => {
+            let (_, thread) = id.split_once('/')?;
+            let token = thread.strip_prefix("acp:").unwrap_or(thread);
+            (uuid::Uuid::parse_str(token).is_ok()
+                || (token.len() >= 8 && token.bytes().all(|byte| byte.is_ascii_hexdigit())))
+            .then_some((source, thread))
+        }
+        _ => None,
+    }
+}
+
+fn match_workspace_keys<'a>(
+    keys: BTreeSet<&str>,
+    candidates: impl Iterator<Item = ((&'a str, &'a str), &'a String, &'a Value)>,
+    choices: &BTreeMap<String, String>,
+    exact: impl Fn(&str) -> bool,
+) -> Result<WorkspaceMatches, String> {
+    const MAX_REVIEW_OPTIONS: usize = 2000;
+
+    let mut result = WorkspaceMatches::default();
+    let wanted: BTreeSet<_> = keys
+        .iter()
+        .filter(|key| !exact(key))
+        .filter_map(|key| portable_workspace_id(key))
+        .collect();
+    let mut by_id = BTreeMap::<_, Vec<_>>::new();
+    for (id, key, summary) in candidates {
+        if wanted.contains(&id) && !keys.contains(key.as_str()) {
+            by_id.entry(id).or_default().push((key, summary));
+        }
+    }
+    let mut proposals = BTreeMap::new();
+    let mut claims = BTreeMap::<_, usize>::new();
+    for key in keys {
+        if exact(key) {
+            result.targets.insert(key.to_string(), key.to_string());
+        } else if let Some(id) = portable_workspace_id(key).filter(|id| by_id.contains_key(id)) {
+            proposals.insert(key, id);
+            *claims.entry(id).or_default() += 1;
+        }
+    }
+    for entries in by_id.values_mut() {
+        entries.sort_unstable_by_key(|(key, _)| *key);
+    }
+    let mut chosen = BTreeSet::new();
+    let mut remaining_options = MAX_REVIEW_OPTIONS;
+    for (key, id) in proposals {
+        let entries = &by_id[&id];
+        // Air 的短线程 ID 可能在不同项目中重复，始终交由用户核对。
+        let stable = uuid::Uuid::parse_str(id.1.strip_prefix("acp:").unwrap_or(id.1)).is_ok();
+        if stable && entries.len() == 1 && claims[&id] == 1 {
+            result.targets.insert(key.to_string(), entries[0].0.clone());
+            continue;
+        }
+        if entries.len() + 1 > remaining_options {
+            result.omitted_candidates += 1;
+            continue;
+        }
+        remaining_options -= entries.len() + 1;
+        if let Some(choice) = choices.get(key) {
+            if !entries.iter().any(|(target, _)| *target == choice) || !chosen.insert(choice) {
+                return Err("候选会话已变化或被重复选择，请重新检查匹配".into());
+            }
+            result.targets.insert(key.to_string(), choice.clone());
+        }
+        let options = entries
+            .iter()
+            .map(|(target, summary)| {
+                let shortened = |field: &str| {
+                    summary[field]
+                        .as_str()
+                        .unwrap_or_default()
+                        .chars()
+                        .take(240)
+                        .collect::<String>()
+                };
+                json!({"key": target, "title": shortened("title"), "cwd": shortened("cwd")})
+            })
+            .collect::<Vec<_>>();
+        result.ambiguous.insert(key.to_string(), options);
+    }
+    if chosen.len() != choices.len() {
+        return Err("候选会话已变化，请重新选择文件".into());
+    }
+    Ok(result)
 }
 
 /// 从会话锁内取出的搜索输入；耗时的全文查询可在会话锁外执行。
@@ -642,5 +752,76 @@ impl ExportPlan {
             "generated_at": scan_timestamp(),
         });
         Ok(detail)
+    }
+}
+
+#[cfg(test)]
+mod workspace_match_tests {
+    use super::*;
+
+    #[test]
+    fn 完整键优先且唯一原始标识可跨键匹配() {
+        let archived = "codex_archived:00000000-0000-4000-8000-000000000001";
+        let active = "codex:00000000-0000-4000-8000-000000000001".to_owned();
+        let air = "jetbrains_air:new/acp:00000000-0000-4000-8000-000000000002".to_owned();
+        let previous_air = "jetbrains_air:old/acp:00000000-0000-4000-8000-000000000002";
+        let summary = json!({});
+        let select = |keys| {
+            match_workspace_keys(
+                keys,
+                [&active, &air]
+                    .into_iter()
+                    .map(|key| (portable_workspace_id(key).unwrap(), key, &summary)),
+                &BTreeMap::new(),
+                |key| key == active || key == air,
+            )
+            .unwrap()
+        };
+        let portable = select(BTreeSet::from([
+            archived,
+            previous_air,
+            "other:00000000-0000-4000-8000-000000000001",
+        ]));
+        assert_eq!(portable.targets.len(), 2);
+        assert_eq!(portable.targets[archived], active);
+        assert_eq!(portable.targets[previous_air], air);
+        let exact = select(BTreeSet::from([archived, active.as_str()]));
+        assert_eq!(exact.targets, BTreeMap::from([(active.clone(), active)]));
+    }
+
+    #[test]
+    fn 候选需要确认且不能重复选择同一目标() {
+        let first = "jetbrains_air:old1/acp:e841b4e3";
+        let second = "jetbrains_air:old2/acp:e841b4e3";
+        let target = "jetbrains_air:new1/acp:e841b4e3".to_owned();
+        let alternate = "jetbrains_air:new2/acp:e841b4e3".to_owned();
+        let summary = json!({"title": "合成会话"});
+        let select = |choices: BTreeMap<String, String>| {
+            match_workspace_keys(
+                BTreeSet::from([first, second]),
+                [&target, &alternate]
+                    .into_iter()
+                    .map(|key| (portable_workspace_id(key).unwrap(), key, &summary)),
+                &choices,
+                |_| false,
+            )
+        };
+        let preview = select(BTreeMap::new()).unwrap();
+        assert!(preview.targets.is_empty());
+        assert_eq!(preview.ambiguous[first].len(), 2);
+        assert_eq!(preview.ambiguous[first][0]["key"], target);
+        assert_eq!(
+            select(BTreeMap::from([(second.into(), alternate.clone())]))
+                .unwrap()
+                .targets[second],
+            alternate
+        );
+        assert!(
+            select(BTreeMap::from([
+                (first.into(), target.clone()),
+                (second.into(), target.clone()),
+            ]))
+            .is_err()
+        );
     }
 }

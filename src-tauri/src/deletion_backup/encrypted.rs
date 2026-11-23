@@ -114,13 +114,13 @@ pub(super) fn entry(
         return Ok(None);
     }
     let Ok(created_at) = jiff::civil::DateTime::strptime("%Y%m%dT%H%M%SZ", &name[..16])
-        .and_then(|time| time.to_zoned(jiff::tz::TimeZone::UTC))
+        .and_then(|time| jiff::tz::Offset::UTC.to_timestamp(time))
     else {
         return Ok(None);
     };
     Ok(Some(BackupEntry {
         name: name.to_string(),
-        created_at: created_at.timestamp(),
+        created_at,
         bytes: metadata.len(),
         encrypted: true,
     }))

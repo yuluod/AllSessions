@@ -369,6 +369,11 @@ impl SessionStore {
             "by_source_kind": count_values(by_source_kind, usize::MAX),
             "by_provider": count_values(by_provider, usize::MAX),
             "by_provider_tokens": count_values(by_provider_tokens, usize::MAX),
+            "unpriced_models": count_values(
+                by_model_tokens.iter().filter(|(model, _)| super::pricing::price_for(model, prices).is_none())
+                    .map(|(model, tokens)| (model.clone(), *tokens)).collect(),
+                128
+            ),
             "by_model_tokens": count_values(by_model_tokens, usize::MAX),
             "by_cwd": count_values(by_cwd, 16),
             "by_tool": activity_values(by_tool, 32),

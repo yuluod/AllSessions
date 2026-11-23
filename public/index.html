@@ -2776,6 +2776,42 @@
     </dialog>
 
     <dialog
+      id="workspace-conflicts-dialog"
+      class="delete-dialog"
+      aria-labelledby="workspace-conflicts-title"
+    >
+      <div class="delete-dialog-header">
+        <h2
+          id="workspace-conflicts-title"
+          data-i18n="settingsWorkspaceConflictsTitle"
+        >
+          处理导入冲突
+        </h2>
+      </div>
+      <form>
+        <div class="delete-dialog-body"></div>
+        <div class="delete-dialog-actions">
+          <button
+            type="submit"
+            value="cancel"
+            class="ghost-button"
+            data-i18n="cancel"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            value="continue"
+            class="ghost-button button--primary"
+            data-i18n="settingsWorkspaceContinue"
+          >
+            继续
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog
       id="model-price-dialog"
       class="delete-dialog"
       aria-labelledby="model-price-title"

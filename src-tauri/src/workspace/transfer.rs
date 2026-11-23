@@ -115,6 +115,7 @@ impl WorkspaceTransfer {
         &'a self,
         local: &WorkspaceSnapshot,
         target_session: impl Fn(&str) -> Option<String>,
+        replacements: &BTreeSet<String>,
     ) -> Result<ImportPlan<'a>, String> {
         let mut plan = ImportPlan::default();
         let mut hash = Sha256::new();
@@ -122,7 +123,7 @@ impl WorkspaceTransfer {
         for (key, entry) in &self.sessions {
             let Some(target) = target_session(key) else {
                 plan.unmatched.push(key);
-                plan.record(Decision::Unmatched, &mut hash);
+                plan.record(Decision::Unmatched, false, &mut hash);
                 continue;
             };
             hash.update((target.len() as u64).to_le_bytes());
@@ -132,7 +133,7 @@ impl WorkspaceTransfer {
                 plan.remapped += 1;
                 plan.skipped_messages += entry.removed_messages.len();
                 if entry.workspace.is_none() {
-                    plan.record(Decision::Skipped, &mut hash);
+                    plan.record(Decision::Skipped, false, &mut hash);
                     continue;
                 }
             }
@@ -140,17 +141,33 @@ impl WorkspaceTransfer {
             let local_messages = local.removed_messages.get(&target);
             let decision = if local_workspace.is_none() && (remapped || local_messages.is_none()) {
                 Decision::Import
-            } else if entry.workspace.as_ref() == local_workspace
+            } else if (entry.workspace.is_none() || entry.workspace.as_ref() == local_workspace)
                 && (remapped
                     || local_messages == Some(&entry.removed_messages)
                     || (local_messages.is_none() && entry.removed_messages.is_empty()))
             {
                 Decision::Unchanged
             } else {
+                let id = format!("session:{key}");
+                let state = json!({
+                    "workspace": local_workspace.filter(|_| entry.workspace.is_some()),
+                    "removed_messages": local_messages.filter(|_| !remapped),
+                });
+                plan.conflict_items.push(json!({
+                    "id": id, "kind": "session", "key": target,
+                    "local": state,
+                    "incoming": {
+                        "workspace": entry.workspace,
+                        "removed_messages": (!remapped).then_some(&entry.removed_messages),
+                    },
+                }));
+                hash.update(serde_json::to_vec(&state).map_err(error_text)?);
                 Decision::Conflict
             };
-            if plan.record(decision, &mut hash) {
-                plan.sessions.push((target, entry, remapped));
+            let replace =
+                decision == Decision::Conflict && replacements.contains(&format!("session:{key}"));
+            if plan.record(decision, replace, &mut hash) {
+                plan.sessions.push((target, entry, remapped, replace));
             }
         }
         let local_filters = local
@@ -164,11 +181,24 @@ impl WorkspaceTransfer {
                 Some(local) if local.name == filter.name && local.filter == filter.filter => {
                     Decision::Unchanged
                 }
-                Some(_) => Decision::Conflict,
+                Some(local) => {
+                    plan.conflict_items.push(json!({
+                        "id": format!("filter:{}", filter.id), "kind": "filter", "key": filter.id,
+                        "local": {"name": local.name, "filter": local.filter},
+                        "incoming": {"name": filter.name, "filter": filter.filter},
+                    }));
+                    hash.update(serde_json::to_vec(local).map_err(error_text)?);
+                    Decision::Conflict
+                }
             };
-            if plan.record(decision, &mut hash) {
+            let replace = decision == Decision::Conflict
+                && replacements.contains(&format!("filter:{}", filter.id));
+            if plan.record(decision, replace, &mut hash) {
                 plan.filters.push(filter);
             }
+        }
+        if plan.replaced != replacements.len() {
+            return Err("导入冲突选项已变化，请重新预览".into());
         }
         plan.token = hash
             .finalize()
@@ -179,7 +209,7 @@ impl WorkspaceTransfer {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Decision {
     Import,
     Unmatched,
@@ -190,19 +220,25 @@ enum Decision {
 
 #[derive(Default)]
 struct ImportPlan<'a> {
-    sessions: Vec<(String, &'a SessionEntry, bool)>,
+    sessions: Vec<(String, &'a SessionEntry, bool, bool)>,
     filters: Vec<&'a SavedFilter>,
     unmatched: Vec<&'a str>,
     remapped: usize,
     skipped_messages: usize,
     unchanged: usize,
     conflicts: usize,
+    replaced: usize,
+    conflict_items: Vec<Value>,
     token: String,
 }
 
 impl ImportPlan<'_> {
-    fn record(&mut self, decision: Decision, hash: &mut Sha256) -> bool {
-        hash.update([decision as u8]);
+    fn record(&mut self, decision: Decision, replace: bool, hash: &mut Sha256) -> bool {
+        hash.update([decision as u8, u8::from(replace)]);
+        if replace {
+            self.replaced += 1;
+            return true;
+        }
         match decision {
             Decision::Import => return true,
             Decision::Unmatched | Decision::Skipped => {}
@@ -222,6 +258,7 @@ impl ImportPlan<'_> {
             "skipped_messages": self.skipped_messages,
             "unchanged": self.unchanged,
             "conflicts": self.conflicts,
+            "replaced": self.replaced,
             "token": self.token,
         })
     }
@@ -234,14 +271,27 @@ impl ImportPlan<'_> {
             )
             .map_err(error_text)?;
         let updated_at = now();
-        for (key, entry, remapped) in &self.sessions {
+        for (key, entry, remapped, replace) in &self.sessions {
             if let Some(state) = &entry.workspace {
                 write_session_state(transaction, key, state)?;
+                if *replace {
+                    transaction
+                        .execute("delete from session_tags where session_key = ?1", [key])
+                        .map_err(error_text)?;
+                }
                 insert_session_tags(transaction, key, &state.tags)?;
             }
             // 新会话键下的消息标识可能指向不同消息。
             if *remapped {
                 continue;
+            }
+            if *replace {
+                transaction
+                    .execute(
+                        "delete from message_workspace where session_key = ?1",
+                        [key],
+                    )
+                    .map_err(error_text)?;
             }
             for message in &entry.removed_messages {
                 remove_message
@@ -250,7 +300,9 @@ impl ImportPlan<'_> {
             }
         }
         let mut insert_filter = transaction.prepare(
-            "insert into saved_filters(id, name, filter_json, updated_at) values(?1, ?2, ?3, ?4)",
+            "insert into saved_filters(id, name, filter_json, updated_at) values(?1, ?2, ?3, ?4)
+             on conflict(id) do update set name = excluded.name, filter_json = excluded.filter_json,
+                 updated_at = excluded.updated_at",
         ).map_err(error_text)?;
         for filter in &self.filters {
             insert_filter
@@ -293,14 +345,27 @@ impl WorkspaceStore {
         &self,
         transfer: &WorkspaceTransfer,
         target_session: impl Fn(&str) -> Option<String>,
+        replacements: &BTreeSet<String>,
+        previous_token: Option<&str>,
     ) -> Result<Value, String> {
-        Ok(transfer.plan(&self.snapshot()?, target_session)?.summary())
+        let snapshot = self.snapshot()?;
+        if !replacements.is_empty() {
+            let previous = transfer.plan(&snapshot, &target_session, &BTreeSet::new())?;
+            if previous_token != Some(previous.token.as_str()) {
+                return Err("导入预览已变化，请重新选择文件并确认".into());
+            }
+        }
+        let plan = transfer.plan(&snapshot, target_session, replacements)?;
+        let mut summary = plan.summary();
+        summary["conflict_items"] = json!(plan.conflict_items);
+        Ok(summary)
     }
 
     pub(crate) fn import_transfer(
         &mut self,
         transfer: &WorkspaceTransfer,
         target_session: impl Fn(&str) -> Option<String>,
+        replacements: &BTreeSet<String>,
         token: &str,
     ) -> Result<Value, String> {
         let transaction = self
@@ -308,7 +373,7 @@ impl WorkspaceStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(error_text)?;
         let snapshot = Self::read_snapshot(&transaction, &self.path)?;
-        let plan = transfer.plan(&snapshot, target_session)?;
+        let plan = transfer.plan(&snapshot, target_session, replacements)?;
         if token != plan.token {
             return Err("导入预览已变化，请重新选择文件并确认".into());
         }
@@ -411,14 +476,21 @@ mod tests {
             .unwrap();
         let before = target.snapshot().unwrap();
         let known = |key: &str| key.starts_with("codex:").then(|| key.to_owned());
-        let preview = target.preview_transfer(&transfer, known).unwrap();
+        let preview = target
+            .preview_transfer(&transfer, known, &BTreeSet::new(), None)
+            .unwrap();
         assert_eq!(preview["sessions"], 2);
         assert_eq!(preview["filters"], 1);
         assert_eq!(preview["conflicts"], 2);
         assert_eq!(preview["unmatched"], 1);
         assert_eq!(preview["unmatched_keys"], json!(["missing:path"]));
         let result = target
-            .import_transfer(&transfer, known, preview["token"].as_str().unwrap())
+            .import_transfer(
+                &transfer,
+                known,
+                &BTreeSet::new(),
+                preview["token"].as_str().unwrap(),
+            )
             .unwrap();
 
         let after = target.snapshot().unwrap();
@@ -458,12 +530,102 @@ mod tests {
             before.value()["saved_filters"]
         );
 
-        let repeated = target.preview_transfer(&transfer, known).unwrap();
+        let repeated = target
+            .preview_transfer(&transfer, known, &BTreeSet::new(), None)
+            .unwrap();
         assert_eq!(repeated["unchanged"], 3);
         let repeated = target
-            .import_transfer(&transfer, known, repeated["token"].as_str().unwrap())
+            .import_transfer(
+                &transfer,
+                known,
+                &BTreeSet::new(),
+                repeated["token"].as_str().unwrap(),
+            )
             .unwrap();
         assert!(repeated.get("backup_path").is_none());
+    }
+
+    #[test]
+    fn 逐项覆盖冲突并拒绝过期预览() {
+        let dir = tempdir().unwrap();
+        let mut source = WorkspaceStore::open_at(&dir.path().join("source.sqlite")).unwrap();
+        let mut target = WorkspaceStore::open_at(&dir.path().join("target.sqlite")).unwrap();
+        for (store, value) in [(&mut source, "导入"), (&mut target, "本地")] {
+            for key in ["replace", "keep", "remap"] {
+                store
+                    .update_session(&json!({
+                        "sessionKey": key, "note": value, "tags": [value]
+                    }))
+                    .unwrap();
+                store
+                    .update_message(&json!({
+                        "sessionKey": key, "messageKey": value, "removed": true
+                    }))
+                    .unwrap();
+            }
+            store
+                .save_filter(&json!({
+                    "id": "replace", "name": value, "filter": {"q": value}
+                }))
+                .unwrap();
+        }
+        let transfer = WorkspaceTransfer::parse(&source.export_transfer().unwrap()).unwrap();
+        let matched = |key: &str| Some(if key == "remap" { "new" } else { key }.to_owned());
+        target
+            .update_session(&json!({"sessionKey": "new", "note": "原备注"}))
+            .unwrap();
+        target
+            .update_message(&json!({
+                "sessionKey": "new", "messageKey": "local", "removed": true
+            }))
+            .unwrap();
+        let initial = target
+            .preview_transfer(&transfer, matched, &BTreeSet::new(), None)
+            .unwrap();
+        assert_eq!(initial["conflict_items"].as_array().unwrap().len(), 4);
+        let selected = ["session:replace", "session:remap", "filter:replace"]
+            .map(str::to_owned)
+            .into_iter()
+            .collect();
+        let review = |target: &WorkspaceStore, previous: &Value| {
+            target.preview_transfer(&transfer, matched, &selected, previous["token"].as_str())
+        };
+        target
+            .update_session(&json!({"sessionKey": "replace", "note": "预览后变更"}))
+            .unwrap();
+        assert!(review(&target, &initial).is_err());
+        let initial = target
+            .preview_transfer(&transfer, matched, &BTreeSet::new(), None)
+            .unwrap();
+        let preview = review(&target, &initial).unwrap();
+        assert_eq!(preview["conflicts"], 1);
+        assert_eq!(preview["replaced"], 3);
+        let token = preview["token"].as_str().unwrap();
+        assert!(
+            target
+                .import_transfer(&transfer, matched, &BTreeSet::new(), token)
+                .is_err()
+        );
+        let result = target
+            .import_transfer(&transfer, matched, &selected, token)
+            .unwrap();
+        let after = target.snapshot().unwrap();
+        assert_eq!(
+            after.sessions["replace"].tags,
+            BTreeSet::from(["导入".into()])
+        );
+        assert!(after.message_removed("replace", "导入"));
+        assert!(!after.message_removed("replace", "本地"));
+        assert_eq!(after.sessions["keep"].note, "本地");
+        assert_eq!(after.sessions["new"].note, "导入");
+        assert!(after.message_removed("new", "local"));
+        assert!(!after.message_removed("new", "导入"));
+        assert_eq!(after.saved_filters[0].filter["q"], "导入");
+        let backup = WorkspaceStore::open_at(Path::new(result["backup_path"].as_str().unwrap()))
+            .unwrap()
+            .snapshot()
+            .unwrap();
+        assert_eq!(backup.sessions["replace"].note, "预览后变更");
     }
 
     #[test]
@@ -482,15 +644,19 @@ mod tests {
         )
         .unwrap();
         let preview = store
-            .preview_transfer(&transfer, |key| {
-                (key == "codex:first").then(|| key.to_owned())
-            })
+            .preview_transfer(
+                &transfer,
+                |key| (key == "codex:first").then(|| key.to_owned()),
+                &BTreeSet::new(),
+                None,
+            )
             .unwrap();
         assert!(
             store
                 .import_transfer(
                     &transfer,
                     |key| (key == "codex:second").then(|| key.to_owned()),
+                    &BTreeSet::new(),
                     preview["token"].as_str().unwrap()
                 )
                 .is_err()
@@ -511,16 +677,20 @@ mod tests {
         let transfer = WorkspaceTransfer::parse(&source.export_transfer().unwrap()).unwrap();
         let mut store = WorkspaceStore::open_at(&dir.path().join("target.sqlite")).unwrap();
         let matched = |_: &str| Some("new".into());
-        let preview = store.preview_transfer(&transfer, matched).unwrap();
+        let preview = store
+            .preview_transfer(&transfer, matched, &BTreeSet::new(), None)
+            .unwrap();
         assert_eq!(preview["remapped"], 1);
         assert_eq!(preview["skipped_messages"], 1);
         let token = preview["token"].as_str().unwrap();
         assert!(
             store
-                .import_transfer(&transfer, |_| Some("other".into()), token)
+                .import_transfer(&transfer, |_| Some("other".into()), &BTreeSet::new(), token)
                 .is_err()
         );
-        store.import_transfer(&transfer, matched, token).unwrap();
+        store
+            .import_transfer(&transfer, matched, &BTreeSet::new(), token)
+            .unwrap();
         let snapshot = store.snapshot().unwrap();
         assert_eq!(snapshot.sessions["new"].note, "合成备注");
         assert!(snapshot.sessions["new"].favorite);
@@ -568,12 +738,18 @@ mod tests {
             )
             .unwrap();
         let preview = store
-            .preview_transfer(&transfer, |key| Some(key.to_owned()))
+            .preview_transfer(
+                &transfer,
+                |key| Some(key.to_owned()),
+                &BTreeSet::new(),
+                None,
+            )
             .unwrap();
         let error = store
             .import_transfer(
                 &transfer,
                 |key| Some(key.to_owned()),
+                &BTreeSet::new(),
                 preview["token"].as_str().unwrap(),
             )
             .unwrap_err();

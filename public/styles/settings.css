@@ -926,13 +926,15 @@ html.settings-modal-open body {
   gap: 8px;
 }
 
-#workspace-matches-dialog form {
+#workspace-matches-dialog form,
+.export-rules-form {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 110px);
 }
 
-#workspace-matches-dialog .delete-dialog-body {
+#workspace-matches-dialog .delete-dialog-body,
+.export-rules-form .delete-dialog-body {
   overflow: auto;
 }
 

@@ -40,6 +40,7 @@ const SOURCE_KINDS: [&str; 20] = [
 pub struct AppConfig {
     pub sources: SourceRoots,
     pub preferences: Preferences,
+    pub export_redaction: crate::export_redaction::ExportRedaction,
     #[serde(skip_serializing_if = "ModelPrices::is_empty")]
     pub(crate) model_prices: ModelPrices,
 }

@@ -1,4 +1,5 @@
 import { reviewSessionExport } from "./export-preview.js";
+import { fetchJson } from "./api-client.js";
 import { t } from "./i18n.js";
 import { formatTimestamp, providerLabel } from "./session-format.js";
 
@@ -12,8 +13,26 @@ export function downloadBlob(content, filename, type) {
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
-async function downloadSessionFile(build, redact) {
-  const file = await reviewSessionExport(build, redact);
+async function downloadSessionFile(details, build, redact) {
+  const rules = await fetchJson("/api/settings/export-redaction");
+  const prepared = details.map((detail) => prepareExportDetail(detail));
+  const document = rules.enabled
+    ? await fetchJson("/api/export/redact", {
+        method: "POST",
+        body: { rules, document: prepared },
+      })
+    : prepared;
+  const file = await reviewSessionExport(
+    (hidePaths) =>
+      build(
+        hidePaths
+          ? document.map((detail) => cleanExportDetail(detail, true))
+          : document,
+        hidePaths || rules.enabled
+      ),
+    redact,
+    rules.enabled
+  );
   if (file) downloadBlob(file.content, file.filename, file.type);
 }
 
@@ -93,8 +112,12 @@ export function prepareExportDetail(detail, { redact = false } = {}) {
             (message) => message.text_truncated === true
           ),
         };
+  return cleanExportDetail({ ...detail, export_info: exportInfo }, redact);
+}
+
+function cleanExportDetail(detail, redact) {
   return JSON.parse(
-    JSON.stringify({ ...detail, export_info: exportInfo }, (key, value) => {
+    JSON.stringify(detail, (key, value) => {
       if (INTERNAL_FIELDS.has(key)) return undefined;
       if (redact && REDACTED_FIELDS.has(key) && value) {
         return key === "cwd" || key === "file_path"
@@ -165,24 +188,27 @@ export function sessionMarkdown(detail) {
 function exportSingleSession(detail, format, options) {
   const markdown = format === "markdown";
   const stamp = new Date().toISOString();
-  return downloadSessionFile((redact) => {
-    const prepared = prepareExportDetail(detail, { redact });
-    return {
-      content: markdown
-        ? sessionMarkdown(prepared)
-        : JSON.stringify(prepared, null, 2),
-      filename: exportFilename(
-        detail,
-        markdown ? "md" : "json",
-        redact,
-        options.full === true,
-        stamp
-      ),
-      type: markdown
-        ? "text/markdown; charset=utf-8"
-        : "application/json; charset=utf-8",
-    };
-  }, options.redact === true);
+  return downloadSessionFile(
+    [detail],
+    ([prepared], anonymousFilename) => {
+      return {
+        content: markdown
+          ? sessionMarkdown(prepared)
+          : JSON.stringify(prepared, null, 2),
+        filename: exportFilename(
+          detail,
+          markdown ? "md" : "json",
+          anonymousFilename,
+          options.full === true,
+          stamp
+        ),
+        type: markdown
+          ? "text/markdown; charset=utf-8"
+          : "application/json; charset=utf-8",
+      };
+    },
+    options.redact === true
+  );
 }
 
 export function exportSessionMarkdown(detail, options = {}) {
@@ -196,18 +222,19 @@ export function exportSessionJson(detail, options = {}) {
 export function exportSessionCollection(details, format, options = {}) {
   const stamp = new Date().toISOString();
   const markdown = format === "markdown";
-  return downloadSessionFile((redact) => {
-    const prepared = details.map((detail) =>
-      prepareExportDetail(detail, { redact })
-    );
-    return {
-      content: markdown
-        ? prepared.map(sessionMarkdown).join("\n\n---\n\n")
-        : JSON.stringify({ exported_at: stamp, sessions: prepared }, null, 2),
-      filename: `allsessions-export-${stamp.slice(0, 10)}.${markdown ? "md" : "json"}`,
-      type: markdown
-        ? "text/markdown; charset=utf-8"
-        : "application/json; charset=utf-8",
-    };
-  }, options.redact === true);
+  return downloadSessionFile(
+    details,
+    (prepared) => {
+      return {
+        content: markdown
+          ? prepared.map(sessionMarkdown).join("\n\n---\n\n")
+          : JSON.stringify({ exported_at: stamp, sessions: prepared }, null, 2),
+        filename: `allsessions-export-${stamp.slice(0, 10)}.${markdown ? "md" : "json"}`,
+        type: markdown
+          ? "text/markdown; charset=utf-8"
+          : "application/json; charset=utf-8",
+      };
+    },
+    options.redact === true
+  );
 }

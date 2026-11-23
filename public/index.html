@@ -2462,6 +2462,13 @@
             <input type="checkbox" />
             <span data-i18n="redactExportHint">隐藏本地路径和会话标识</span>
           </label>
+          <p
+            id="export-preview-custom-redaction"
+            data-i18n="exportCustomApplied"
+            hidden
+          >
+            已应用自定义脱敏规则
+          </p>
           <section class="export-preview-warning" hidden>
             <p id="export-preview-warning" role="status"></p>
             <div id="export-preview-hits"></div>
@@ -2728,6 +2735,82 @@
           放弃草稿
         </button>
       </div>
+    </dialog>
+
+    <dialog
+      id="export-rules-dialog"
+      class="delete-dialog"
+      aria-labelledby="export-rules-title"
+    >
+      <div class="delete-dialog-header">
+        <h2 id="export-rules-title" data-i18n="settingsExportRules">
+          自定义导出脱敏
+        </h2>
+      </div>
+      <form class="export-rules-form">
+        <div class="delete-dialog-body">
+          <label class="export-redact-option">
+            <input name="enabled" type="checkbox" />
+            <span data-i18n="settingsExportRulesEnabled"
+              >自动应用于会话导出</span
+            >
+          </label>
+          <label class="workspace-match-field">
+            <span data-i18n="settingsExportRulesPatterns"
+              >正则表达式，每行一条</span
+            >
+            <textarea
+              name="patterns"
+              rows="4"
+              maxlength="6156"
+              spellcheck="false"
+              autocomplete="off"
+            ></textarea>
+          </label>
+          <p data-i18n="settingsExportRulesSyntax">
+            按顺序用 [redacted] 替换字符串中的匹配。支持 Rust 正则语法。
+          </p>
+          <label class="workspace-match-field">
+            <span data-i18n="settingsExportRulesSample">测试文本</span>
+            <textarea
+              name="sample"
+              rows="3"
+              maxlength="32768"
+              spellcheck="false"
+              autocomplete="off"
+            ></textarea>
+          </label>
+          <button
+            type="button"
+            class="ghost-button"
+            data-i18n="settingsExportRulesTest"
+          >
+            测试规则
+          </button>
+          <label class="workspace-match-field" hidden>
+            <span data-i18n="settingsExportRulesResult">测试结果</span>
+            <textarea name="result" rows="3" readonly></textarea>
+          </label>
+          <p role="status"></p>
+        </div>
+        <div class="delete-dialog-actions">
+          <button
+            type="button"
+            value="cancel"
+            class="ghost-button"
+            data-i18n="cancel"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            class="ghost-button button--primary"
+            data-i18n="settingsExportRulesSave"
+          >
+            保存
+          </button>
+        </div>
+      </form>
     </dialog>
 
     <dialog
@@ -3624,6 +3707,24 @@
                   role="switch"
                 />
               </label>
+              <div class="settings-general-row">
+                <div class="settings-general-copy">
+                  <strong data-i18n="settingsExportRules"
+                    >自定义导出脱敏</strong
+                  >
+                  <span data-i18n="settingsExportRulesHint"
+                    >在会话导出时遮盖匹配自定义规则的内容</span
+                  >
+                </div>
+                <button
+                  type="button"
+                  id="settings-export-rules"
+                  class="ghost-button"
+                  data-i18n="settingsExportRulesEdit"
+                >
+                  编辑规则
+                </button>
+              </div>
             </div>
           </div>
         </section>

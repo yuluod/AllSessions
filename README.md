@@ -318,6 +318,8 @@ When enabled, AllSessions removes known session identifiers and common local-pat
 
 Session JSON and Markdown exports open a paginated preview of the generated file. Toggle redaction in the preview to see the effect on paths and session identifiers. AllSessions checks the file locally for common credential patterns and lists their types and line numbers. Select a location to jump to it in the preview. Review the contents before downloading and sharing.
 
+In **Settings → General → Custom export redaction**, enter one Rust regular expression per line and test the rules with sample text before saving. When enabled, the rules replace non-empty matches in exported string values with `[redacted]` in the order listed. They apply to loaded, full and batch session exports in both formats. The path and session identifier toggle remains available in the preview. Sample text stays in memory and is cleared when the editor closes.
+
 > [!WARNING]
 >
 > - Review and sanitize export files, logs, screenshots, and issues before sharing.

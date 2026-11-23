@@ -753,12 +753,26 @@ fn route_request(
                     .map_err(ApiError::invalid)?
             };
             let target_session = |key: &str| matches.targets.get(key).cloned();
+            let replacements = request
+                .body
+                .get("replacements")
+                .map(|value| {
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| ApiError::invalid("导入冲突选项无效"))
+                })
+                .transpose()?
+                .unwrap_or_default();
             if path.ends_with("/preview") {
                 let mut preview = state
                     .workspace
                     .lock()
                     .map_err(lock_error)?
-                    .preview_transfer(&transfer, target_session)?;
+                    .preview_transfer(
+                        &transfer,
+                        target_session,
+                        &replacements,
+                        request.body["previous_token"].as_str(),
+                    )?;
                 preview["ambiguous"] = json!(matches.ambiguous);
                 preview["omitted_candidates"] = json!(matches.omitted_candidates);
                 return Ok(preview);
@@ -771,7 +785,7 @@ fn route_request(
                 .workspace
                 .lock()
                 .map_err(lock_error)?
-                .import_transfer(&transfer, target_session, token)?;
+                .import_transfer(&transfer, target_session, &replacements, token)?;
             if result.get("backup_path").is_some()
                 && let Err(error) = state.refresh_tray(&app, None)
             {

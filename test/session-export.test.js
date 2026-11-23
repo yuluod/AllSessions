@@ -308,6 +308,26 @@ test("自定义规则应用于预览和下载，处理失败时终止导出", as
   assert.equal(dialog.open, false);
 });
 
+test("自定义规则遮盖路径前缀时，切换路径脱敏仍隐藏完整路径", async (t) => {
+  const { dialog, downloads, field } = mockExport(t, (document) =>
+    JSON.parse(JSON.stringify(document).replaceAll("/home/", "[redacted]"))
+  );
+  const detail = detailFixture();
+  detail.conversation_messages[0].text = "日志 /home/alice/client-a/notes.txt";
+  const exporting = exportSessionCollection([detail], "markdown");
+  await waitForPreview(dialog);
+  assert.match(field("pre").textContent, /\[redacted\]alice/);
+  const toggle = field("input");
+  toggle.checked = true;
+  toggle.dispatchEvent(new Event("change"));
+  const preview = field("pre").textContent;
+  assert.match(preview, /日志 \[local path\]/);
+  assert.doesNotMatch(preview, /alice|client-a|notes\.txt/);
+  dialog.close("download");
+  await exporting;
+  assert.equal(await downloads[0].text(), preview);
+});
+
 test("普通导出保留来源信息但移除内部实现字段", () => {
   const original = detailFixture();
   const prepared = prepareExportDetail(original);

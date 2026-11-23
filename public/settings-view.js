@@ -29,7 +29,10 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { createIcon } from "./app/icons.js";
 import { downloadBlob } from "./session-export.js";
 import { openExportRules } from "./export-rules-view.js";
-import { reviewWorkspaceMatches } from "./workspace-import-view.js";
+import {
+  reviewWorkspaceConflicts,
+  reviewWorkspaceMatches,
+} from "./workspace-import-view.js";
 
 const MAX_WORKSPACE_FILE_BYTES = 16 * 1024 * 1024;
 
@@ -853,8 +856,23 @@ export function createSettingsController({
         }
       }
       if (!stillOpen()) return;
+      if (preview.conflict_items?.length) {
+        const replacements = await reviewWorkspaceConflicts(
+          preview.conflict_items
+        );
+        if (!replacements || !stillOpen()) return;
+        if (replacements.length) {
+          body.replacements = replacements;
+          preview = await fetchJson("/api/workspace/import/preview", {
+            method: "POST",
+            body: { ...body, previous_token: preview.token },
+          });
+        }
+      }
+      if (!stillOpen()) return;
       const summary = [
         t("settingsWorkspaceImportSummary", preview),
+        preview.replaced ? t("settingsWorkspaceImportReplaced", preview) : "",
         preview.remapped ? t("settingsWorkspaceImportRemapped", preview) : "",
       ]
         .filter(Boolean)

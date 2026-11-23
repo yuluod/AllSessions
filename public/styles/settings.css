@@ -926,30 +926,37 @@ html.settings-modal-open body {
   gap: 8px;
 }
 
-#workspace-matches-dialog form,
+:is(#workspace-matches-dialog, #workspace-conflicts-dialog) form,
 .export-rules-form {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 110px);
 }
 
-#workspace-matches-dialog .delete-dialog-body,
+:is(#workspace-matches-dialog, #workspace-conflicts-dialog) .delete-dialog-body,
 .export-rules-form .delete-dialog-body {
   overflow: auto;
 }
 
 #workspace-match-options,
 .workspace-match-field:not([hidden]),
-#workspace-match-options label {
+#workspace-match-options label,
+#workspace-conflicts-dialog fieldset {
   display: grid;
   gap: 6px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-#workspace-match-options select {
+#workspace-match-options select,
+#workspace-conflicts-dialog select {
   width: 100%;
   min-width: 0;
+}
+
+#workspace-conflicts-dialog pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .settings-storage-hint {

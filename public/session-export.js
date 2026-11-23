@@ -16,18 +16,21 @@ export function downloadBlob(content, filename, type) {
 async function downloadSessionFile(details, build, redact) {
   const rules = await fetchJson("/api/settings/export-redaction");
   const prepared = details.map((detail) => prepareExportDetail(detail));
-  const document = rules.enabled
-    ? await fetchJson("/api/export/redact", {
-        method: "POST",
-        body: { rules, document: prepared },
-      })
-    : prepared;
+  const applyRules = (document) =>
+    fetchJson("/api/export/redact", {
+      method: "POST",
+      body: { rules, document },
+    });
+  const document = rules.enabled ? await applyRules(prepared) : prepared;
+  const hideLocalPaths = () =>
+    prepared.map((detail) => cleanExportDetail(detail, true));
+  const protectedDocument = rules.enabled
+    ? await applyRules(hideLocalPaths())
+    : null;
   const file = await reviewSessionExport(
     (hidePaths) =>
       build(
-        hidePaths
-          ? document.map((detail) => cleanExportDetail(detail, true))
-          : document,
+        hidePaths ? (protectedDocument ?? hideLocalPaths()) : document,
         hidePaths || rules.enabled
       ),
     redact,

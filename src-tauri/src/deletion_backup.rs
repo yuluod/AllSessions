@@ -11,8 +11,12 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
+pub(crate) use age::secrecy::SecretString;
+
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+
+mod encrypted;
 
 pub const KEEP_LATEST: usize = 10;
 pub const MIN_KEEP_LATEST: usize = 1;
@@ -60,9 +64,29 @@ pub fn create(
     source_kind: &str,
     session_id: &str,
     paths: &[PathBuf],
+    passphrase: Option<SecretString>,
 ) -> Result<Value, String> {
     let root = backup_root()?;
-    create_at(&root, operation, source_kind, session_id, paths)
+    create_at(&root, operation, source_kind, session_id, paths, passphrase)
+}
+
+pub fn decrypt(name: &str, directory: &Path, passphrase: SecretString) -> Result<PathBuf, String> {
+    encrypted::decrypt_at(&backup_root()?, name, directory, passphrase)
+}
+
+pub fn passphrase(value: Value, required: bool) -> Result<Option<SecretString>, String> {
+    match value {
+        Value::String(value) => {
+            let valid = !value.trim().is_empty() && value.len() <= 1024;
+            let secret = SecretString::from(value);
+            if !valid {
+                return Err("请输入有效的备份口令（最多 1024 字节）".into());
+            }
+            Ok(Some(secret))
+        }
+        Value::Null if !required => Ok(None),
+        _ => Err("请输入备份口令".into()),
+    }
 }
 
 fn backup_root() -> Result<PathBuf, String> {
@@ -85,6 +109,7 @@ pub(crate) fn create_at(
     source_kind: &str,
     session_id: &str,
     paths: &[PathBuf],
+    passphrase: Option<SecretString>,
 ) -> Result<Value, String> {
     let targets = paths
         .iter()
@@ -98,60 +123,63 @@ pub(crate) fn create_at(
     fs::create_dir_all(root)
         .map_err(|error| format!("无法创建删除备份目录（{}）：{error}", root.display()))?;
     lock_down_directory(root)?;
-    let name = format!(
-        "{}-{}",
-        Timestamp::now().strftime("%Y%m%dT%H%M%SZ"),
-        Uuid::new_v4()
-    );
+    let now = Timestamp::now();
+    let name = format!("{}-{}", now.strftime("%Y%m%dT%H%M%SZ"), Uuid::new_v4());
     let backup_dir = root.join(name);
     let staging_dir = root.join(format!(".{}.tmp", Uuid::new_v4()));
+    fs::create_dir(&staging_dir).map_err(error_text)?;
     let result = (|| -> Result<Value, String> {
-        let resources = staging_dir.join("resources");
-        fs::create_dir_all(&resources).map_err(error_text)?;
         lock_down_directory(&staging_dir)?;
-        lock_down_directory(&resources)?;
 
-        let mut manifest_targets = Vec::new();
-        let mut copied_files = 0_usize;
-        for (index, source) in targets.iter().enumerate() {
-            let file_name = source
-                .file_name()
-                .and_then(|value| value.to_str())
-                .unwrap_or("data");
-            let relative = PathBuf::from("resources").join(format!("{index:02}-{file_name}"));
-            let destination = staging_dir.join(&relative);
-            copied_files += copy_target(source, &destination)?;
-            manifest_targets.push(json!({
-                "original": source.to_string_lossy(),
-                "backup": relative.to_string_lossy(),
-            }));
-        }
-        let created_at = Timestamp::now()
-            .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
+        let resources = targets
+            .iter()
+            .enumerate()
+            .map(|(index, source)| {
+                let file_name = source
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("data");
+                (source, format!("resources/{index:02}-{file_name}"))
+            })
+            .collect::<Vec<_>>();
+        let created_at = now.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
         let manifest = json!({
             "version": 1,
             "created_at": created_at,
             "operation": operation,
             "source_kind": source_kind,
             "session_id": session_id,
-            "targets": manifest_targets,
+            "targets": resources.iter().map(|(source, relative)| json!({
+                "original": source.to_string_lossy(),
+                "backup": relative,
+            })).collect::<Vec<_>>(),
         });
-        let manifest_path = staging_dir.join("manifest.json");
-        fs::write(
-            &manifest_path,
-            format!(
-                "{}\n",
-                serde_json::to_string_pretty(&manifest).map_err(error_text)?
-            ),
-        )
-        .map_err(error_text)?;
-        lock_down_file(&manifest_path)?;
+        let manifest = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&manifest).map_err(error_text)?
+        );
+        let encrypted = passphrase.is_some();
+        let copied_files = if let Some(passphrase) = passphrase {
+            encrypted::write(&staging_dir, &resources, &manifest, passphrase)?
+        } else {
+            let resource_dir = staging_dir.join("resources");
+            fs::create_dir(&resource_dir).map_err(error_text)?;
+            lock_down_directory(&resource_dir)?;
+            let mut copied_files = 0;
+            for (source, relative) in resources {
+                copied_files += copy_target(source, &staging_dir.join(relative))?;
+            }
+            let manifest_path = staging_dir.join("manifest.json");
+            fs::write(&manifest_path, &manifest).map_err(error_text)?;
+            lock_down_file(&manifest_path)?;
+            copied_files
+        };
         fs::rename(&staging_dir, &backup_dir).map_err(error_text)?;
         Ok(json!({
             "path": backup_dir.to_string_lossy(),
             "copied_files": copied_files,
             "created_at": created_at,
+            "encrypted": encrypted,
         }))
     })();
     if result.is_err()
@@ -170,6 +198,7 @@ struct BackupEntry {
     name: String,
     created_at: Timestamp,
     bytes: u64,
+    encrypted: bool,
 }
 
 #[derive(Deserialize)]
@@ -191,6 +220,7 @@ impl BackupEntry {
             "name": self.name,
             "created_at": self.created_at.to_string(),
             "bytes": self.bytes,
+            "encrypted": self.encrypted,
         })
     }
 }
@@ -225,6 +255,9 @@ fn backup_entry(path: &Path, name: &str) -> Result<Option<BackupEntry>, String> 
     };
     if !metadata.is_dir() || is_link(&metadata) {
         return Ok(None);
+    }
+    if let Some(metadata) = metadata_if_exists(&path.join(encrypted::ARCHIVE_NAME))? {
+        return encrypted::entry(path, name, &metadata);
     }
     let manifest_path = path.join("manifest.json");
     let Some(metadata) = metadata_if_exists(&manifest_path)? else {
@@ -272,6 +305,7 @@ fn backup_entry(path: &Path, name: &str) -> Result<Option<BackupEntry>, String> 
         name: name.to_string(),
         created_at,
         bytes,
+        encrypted: false,
     }))
 }
 
@@ -422,7 +456,9 @@ mod tests {
     use serde_json::{Value, json};
     use tempfile::tempdir;
 
-    use super::{cleanup, cleanup_at, create_at, delete_at, valid_backups};
+    use super::{
+        SecretString, cleanup, cleanup_at, create_at, delete_at, encrypted, valid_backups,
+    };
 
     #[test]
     fn 永久删除备份会复制文件并记录清单() {
@@ -437,6 +473,7 @@ mod tests {
             "codex",
             "session-1",
             std::slice::from_ref(&source),
+            None,
         )
         .unwrap();
 
@@ -464,6 +501,7 @@ mod tests {
             "codex",
             "session-1",
             std::slice::from_ref(&source),
+            None,
         )
         .unwrap();
         let name = std::path::Path::new(result["path"].as_str().unwrap())
@@ -498,6 +536,7 @@ mod tests {
                 "codex",
                 &format!("session-{index}"),
                 std::slice::from_ref(&source),
+                None,
             )
             .unwrap();
             let backup_dir = std::path::PathBuf::from(result["path"].as_str().unwrap());
@@ -535,6 +574,100 @@ mod tests {
     }
 
     #[test]
+    fn 加密备份可解密且完整性校验失败时不发布归档() {
+        use std::{fs, io::Read, path::Path};
+
+        let directory = tempdir().unwrap();
+        let source = directory.path().join("synthetic");
+        let nested = source.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        let content = "合成的会话备份\n".repeat(8000);
+        fs::write(nested.join("data.jsonl"), &content).unwrap();
+        let root = directory.path().join("backups");
+        let destination = directory.path().join("restore");
+        fs::create_dir(&destination).unwrap();
+        let secret = || SecretString::from("合成口令 · synthetic passphrase".to_owned());
+        let result = create_at(
+            &root,
+            "delete_session",
+            "codex",
+            "synthetic-session",
+            &[source],
+            Some(secret()),
+        )
+        .unwrap();
+        let name = Path::new(result["path"].as_str().unwrap())
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
+        let backup = root.join(name);
+        let ciphertext = backup.join(encrypted::ARCHIVE_NAME);
+        let mut encrypted_bytes = fs::read(&ciphertext).unwrap();
+        assert_eq!(fs::read_dir(&backup).unwrap().count(), 1);
+        assert!(
+            !encrypted_bytes
+                .windows(17)
+                .any(|bytes| bytes == b"synthetic-session")
+        );
+        let entries = valid_backups(&root).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].encrypted);
+        assert_eq!(result["copied_files"], 1);
+        assert!(encrypted::decrypt_at(&root, name, &backup, secret()).is_err());
+        assert!(
+            encrypted::decrypt_at(
+                &root,
+                name,
+                &destination,
+                SecretString::from("错误口令".to_owned())
+            )
+            .is_err()
+        );
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
+
+        let archive = encrypted::decrypt_at(&root, name, &destination, secret()).unwrap();
+        {
+            let mut tar = tar::Archive::new(fs::File::open(&archive).unwrap());
+            let mut entries = tar.entries().unwrap();
+            let manifest: Value =
+                serde_json::from_reader(entries.next().unwrap().unwrap()).unwrap();
+            assert_eq!(manifest["session_id"], "synthetic-session");
+            for _ in 0..2 {
+                assert!(
+                    entries
+                        .next()
+                        .unwrap()
+                        .unwrap()
+                        .header()
+                        .entry_type()
+                        .is_dir()
+                );
+            }
+            let mut data = entries.next().unwrap().unwrap();
+            assert_eq!(
+                data.path().unwrap(),
+                Path::new("resources/00-synthetic/nested/data.jsonl")
+            );
+            let mut text = String::new();
+            data.read_to_string(&mut text).unwrap();
+            assert_eq!(text, content);
+        }
+        assert!(encrypted::decrypt_at(&root, name, &destination, secret()).is_err());
+        fs::remove_file(archive).unwrap();
+
+        *encrypted_bytes.last_mut().unwrap() ^= 1;
+        fs::write(&ciphertext, &encrypted_bytes).unwrap();
+        assert!(encrypted::decrypt_at(&root, name, &destination, secret()).is_err());
+        encrypted_bytes.truncate(encrypted_bytes.len() - 16);
+        fs::write(&ciphertext, encrypted_bytes).unwrap();
+        assert!(encrypted::decrypt_at(&root, name, &destination, secret()).is_err());
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 0);
+        delete_at(&root, name).unwrap();
+        assert!(valid_backups(&root).unwrap().is_empty());
+    }
+
+    #[test]
     fn 备份统计忽略没有清单的目录() {
         let directory = tempdir().unwrap();
         let incomplete = directory.path().join(".incomplete.tmp");
@@ -559,6 +692,7 @@ mod tests {
             "codex",
             "id",
             std::slice::from_ref(&source),
+            None,
         )
         .unwrap();
         let path = std::path::PathBuf::from(result["path"].as_str().unwrap());
@@ -606,6 +740,7 @@ mod tests {
             "gemini",
             "session-1",
             &[source],
+            None,
         );
 
         assert!(result.is_err());

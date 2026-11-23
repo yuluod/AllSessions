@@ -808,6 +808,28 @@ const DICT = {
     settingsDeletionBackupPath: "永久删除备份",
     settingsDeletionBackupCount: "备份数量",
     settingsDeletionBackupSize: "备份占用空间",
+    settingsEncryptDeletionBackups: "为新备份启用口令加密",
+    settingsEncryptDeletionBackupsHint:
+      "永久删除时输入口令。忘记口令后将无法恢复该备份。",
+    settingsBackupEncrypted: "已加密",
+    settingsBackupPlain: "未加密",
+    settingsDecryptBackup: "解密归档",
+    settingsDecryptNamedBackup: "解密备份 {name}",
+    settingsDecryptBackupDirectory: "选择解密归档保存目录",
+    settingsDecryptingBackup: "正在解密备份…",
+    settingsDecryptedBackup:
+      "已保存解密归档 {path}。可解包后参照清单手动恢复。",
+    backupEncryptTitle: "设置本次备份的口令",
+    backupEncryptPrompt: "请妥善保管口令。忘记口令后将无法恢复该备份。",
+    backupDecryptPrompt:
+      "输入创建备份时的口令。解密后的 TAR 含原始记录，请妥善保管。",
+    backupEncryptDelete: "加密备份并永久删除",
+    backupPassphrase: "备份口令",
+    backupPassphraseRepeat: "再次输入口令",
+    backupPassphraseInvalid: "请输入有效的备份口令（最多 1024 字节）。",
+    backupPassphraseMismatch: "两次输入的口令不同。",
+    backupEncryptedBeforeDelete: "确认后将先加密备份原始数据，再执行删除。",
+    backupPlainBeforeDelete: "确认后将先创建未加密的本地备份，再执行删除。",
     settingsDeleteBackup: "删除备份",
     settingsDeleteNamedBackup: "删除备份 {name}",
     settingsDeleteBackupConfirm: "将永久删除备份 {name}。确定继续吗？",
@@ -1771,6 +1793,33 @@ const DICT = {
     settingsDeletionBackupPath: "Permanent deletion backups",
     settingsDeletionBackupCount: "Backup count",
     settingsDeletionBackupSize: "Backup storage",
+    settingsEncryptDeletionBackups: "Encrypt new backups with a passphrase",
+    settingsEncryptDeletionBackupsHint:
+      "Enter a passphrase at permanent deletion. You will need it to recover the backup.",
+    settingsBackupEncrypted: "Encrypted",
+    settingsBackupPlain: "Unencrypted",
+    settingsDecryptBackup: "Decrypt archive",
+    settingsDecryptNamedBackup: "Decrypt backup {name}",
+    settingsDecryptBackupDirectory:
+      "Choose where to save the decrypted archive",
+    settingsDecryptingBackup: "Decrypting backup…",
+    settingsDecryptedBackup:
+      "Saved the decrypted archive to {path}. Extract it and use the manifest to restore files manually.",
+    backupEncryptTitle: "Set a passphrase for this backup",
+    backupEncryptPrompt:
+      "Keep the passphrase somewhere safe. You will need it to recover the backup.",
+    backupDecryptPrompt:
+      "Enter the passphrase used to create the backup. The decrypted TAR contains original records. Keep it private.",
+    backupEncryptDelete: "Encrypt backup and permanently delete",
+    backupPassphrase: "Backup passphrase",
+    backupPassphraseRepeat: "Repeat passphrase",
+    backupPassphraseInvalid:
+      "Enter a valid backup passphrase (up to 1024 bytes).",
+    backupPassphraseMismatch: "The passphrases do not match.",
+    backupEncryptedBeforeDelete:
+      "AllSessions will encrypt the backup before deleting the original data.",
+    backupPlainBeforeDelete:
+      "AllSessions will create an unencrypted local backup before deleting the original data.",
     settingsDeleteBackup: "Delete backup",
     settingsDeleteNamedBackup: "Delete backup {name}",
     settingsDeleteBackupConfirm: "Permanently delete backup {name}?",

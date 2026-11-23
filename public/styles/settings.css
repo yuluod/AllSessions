@@ -913,8 +913,21 @@ html.settings-modal-open body {
   font-size: 0.68rem;
 }
 
-.settings-deletion-backup-remove {
+.settings-deletion-backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
   flex: 0 0 auto;
+}
+
+.settings-deletion-backup-actions > button {
+  flex: 0 0 auto;
+}
+
+.backup-passphrase-field:not([hidden]) {
+  display: grid;
+  gap: 6px;
 }
 
 .settings-workspace-transfer {

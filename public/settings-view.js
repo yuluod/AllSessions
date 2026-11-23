@@ -28,6 +28,7 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createIcon } from "./app/icons.js";
 import { downloadBlob } from "./session-export.js";
+import { requestBackupPassphrase } from "./backup-passphrase-view.js";
 import { reviewWorkspaceMatches } from "./workspace-import-view.js";
 
 const MAX_WORKSPACE_FILE_BYTES = 16 * 1024 * 1024;
@@ -125,6 +126,7 @@ export function createSettingsController({
   let loadVersion = 0;
   let discardPending = false;
   let deletingBackup = false;
+  let savingBackupEncryption = false;
   let transferringWorkspace = false;
 
   function dialog() {
@@ -770,6 +772,12 @@ export function createSettingsController({
       elements.settingsClearCache.disabled = !cache.enabled;
     }
     renderDeletionBackups(payload?.deletion_backup);
+    const encryption = elements.settingsEncryptDeletionBackups;
+    if (encryption) {
+      encryption.checked = payload?.encrypt_deletion_backups === true;
+      encryption.disabled =
+        savingBackupEncryption || !payload?.deletion_backup?.enabled;
+    }
     const workspace = payload?.workspace_storage || { enabled: false };
     if (elements.settingsWorkspacePath) {
       elements.settingsWorkspacePath.textContent = workspace.enabled
@@ -931,10 +939,34 @@ export function createSettingsController({
           const name = document.createElement("code");
           name.textContent = entry.name || "";
           const meta = document.createElement("span");
-          meta.textContent = `${formatDiagnosticTime(entry.created_at)} · ${formatBytes(entry.bytes)}`;
+          meta.textContent = [
+            formatDiagnosticTime(entry.created_at),
+            formatBytes(entry.bytes),
+            t(
+              entry.encrypted
+                ? "settingsBackupEncrypted"
+                : "settingsBackupPlain"
+            ),
+          ].join(" · ");
           details.append(name, meta);
+          const actions = document.createElement("div");
+          actions.className = "settings-deletion-backup-actions";
+          if (entry.encrypted) {
+            const decrypt = document.createElement("button");
+            decrypt.className = "ghost-button";
+            decrypt.type = "button";
+            decrypt.textContent = t("settingsDecryptBackup");
+            decrypt.setAttribute(
+              "aria-label",
+              t("settingsDecryptNamedBackup", { name: entry.name })
+            );
+            decrypt.addEventListener("click", () =>
+              decryptDeletionBackup(entry, decrypt)
+            );
+            actions.append(decrypt);
+          }
           const remove = document.createElement("button");
-          remove.className = "danger-button settings-deletion-backup-remove";
+          remove.className = "danger-button";
           remove.type = "button";
           remove.textContent = t("settingsDeleteBackup");
           remove.setAttribute(
@@ -942,7 +974,8 @@ export function createSettingsController({
             t("settingsDeleteNamedBackup", { name: entry.name })
           );
           remove.addEventListener("click", () => removeDeletionBackups(entry));
-          row.append(details, remove);
+          actions.append(remove);
+          row.append(details, actions);
           elements.settingsDeletionBackupList.append(row);
         }
       } else if (backup.enabled) {
@@ -964,6 +997,57 @@ export function createSettingsController({
         !backup?.enabled ||
         (input && !input.validity.valid) ||
         backup.count <= (input?.valueAsNumber ?? backup.keep_latest);
+    }
+  }
+
+  async function saveBackupEncryption(event) {
+    const input = event.currentTarget;
+    if (!latestPayload || savingBackupEncryption) return;
+    savingBackupEncryption = true;
+    input.disabled = true;
+    try {
+      const { enabled } = await fetchJson(
+        "/api/settings/deletion-backup/encryption",
+        {
+          method: "POST",
+          body: { enabled: input.checked },
+        }
+      );
+      latestPayload.encrypt_deletion_backups = enabled;
+      setStatus("");
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      savingBackupEncryption = false;
+      input.checked = latestPayload?.encrypt_deletion_backups === true;
+      input.disabled = !latestPayload?.deletion_backup?.enabled;
+    }
+  }
+
+  async function decryptDeletionBackup(entry, button) {
+    if (button.disabled) return;
+    button.disabled = true;
+    const version = loadVersion;
+    const stillOpen = () => dialog()?.open && version === loadVersion;
+    try {
+      const directory = await openPathDialog({
+        title: t("settingsDecryptBackupDirectory"),
+        directory: true,
+      });
+      if (typeof directory !== "string" || !stillOpen()) return;
+      const passphrase = await requestBackupPassphrase();
+      if (passphrase === null || !stillOpen()) return;
+      setStatus(t("settingsDecryptingBackup"));
+      const result = await fetchJson("/api/settings/deletion-backup/decrypt", {
+        method: "POST",
+        body: { name: entry.name, directory, passphrase },
+      });
+      if (stillOpen()) setStatus(t("settingsDecryptedBackup", result));
+    } catch (error) {
+      if (stillOpen()) setStatus(error.message, true);
+    } finally {
+      button.disabled = false;
+      if (stillOpen() && button.isConnected) button.focus();
     }
   }
 
@@ -1445,6 +1529,10 @@ export function createSettingsController({
     );
     elements.settingsBackupKeepLatest?.addEventListener("input", () =>
       syncBackupCleanup()
+    );
+    elements.settingsEncryptDeletionBackups?.addEventListener(
+      "change",
+      saveBackupEncryption
     );
     elements.settingsRescan?.addEventListener("click", rescanSources);
     elements.settingsCopyDiagnostics?.addEventListener(

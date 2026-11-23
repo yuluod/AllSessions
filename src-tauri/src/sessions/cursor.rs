@@ -1163,7 +1163,8 @@ mod tests {
                     "cursor:shared",
                     detail["conversation_messages"][0]["_message_key"]
                         .as_str()
-                        .unwrap()
+                        .unwrap(),
+                    None,
                 )
                 .is_err()
         );

@@ -108,6 +108,7 @@ impl BackendState {
                 "message": recovery_error,
             },
             "deletion_backup": deletion_backup,
+            "encrypt_deletion_backups": config.encrypt_deletion_backups,
             "workspace_storage": workspace.value()["storage"].clone(),
             "terminal_options": crate::resume::terminal_options(),
         }))
@@ -115,6 +116,14 @@ impl BackendState {
 
     fn workspace_snapshot(&self) -> Result<WorkspaceSnapshot, String> {
         self.workspace.lock().map_err(lock_error)?.snapshot()
+    }
+
+    fn backup_encryption(&self) -> Result<bool, String> {
+        Ok(self
+            .config
+            .lock()
+            .map_err(lock_error)?
+            .encrypt_deletion_backups)
     }
 
     fn clear_startup_error(&self) -> Result<(), String> {
@@ -411,7 +420,7 @@ pub fn cancel_read_request(
 fn route_request(
     app: AppHandle,
     state: BackendState,
-    request: FrontendRequest,
+    mut request: FrontendRequest,
 ) -> Result<Value, ApiError> {
     let parsed = Url::parse(&format!("http://allsessions.local{}", request.url))
         .map_err(|_| ApiError::invalid("请求地址无效"))?;
@@ -428,6 +437,8 @@ fn route_request(
                 | "/api/settings/clear-cache"
                 | "/api/settings/deletion-backup/delete"
                 | "/api/settings/deletion-backup/cleanup"
+                | "/api/settings/deletion-backup/encryption"
+                | "/api/settings/deletion-backup/decrypt"
                 | "/api/sessions/delete"
                 | "/api/sessions/delete-message"
                 | "/api/workspace/import"
@@ -551,6 +562,11 @@ fn route_request(
                     "永久删除需要显式确认",
                 ));
             }
+            let passphrase = crate::deletion_backup::passphrase(
+                request.body["passphrase"].take(),
+                state.backup_encryption()?,
+            )
+            .map_err(ApiError::invalid)?;
             let session_key = request
                 .body
                 .get("sessionKey")
@@ -561,7 +577,7 @@ fn route_request(
                 .store
                 .lock()
                 .map_err(lock_error)?
-                .delete_session(session_key)?;
+                .delete_session(session_key, passphrase)?;
             if let Err(error) = state
                 .workspace
                 .lock()
@@ -602,6 +618,11 @@ fn route_request(
                     "永久删除需要显式确认",
                 ));
             }
+            let passphrase = crate::deletion_backup::passphrase(
+                request.body["passphrase"].take(),
+                state.backup_encryption()?,
+            )
+            .map_err(ApiError::invalid)?;
             let session_key = request
                 .body
                 .get("sessionKey")
@@ -614,11 +635,11 @@ fn route_request(
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| ApiError::invalid("缺少 messageKey"))?;
-            let result = state
-                .store
-                .lock()
-                .map_err(lock_error)?
-                .delete_message(session_key, message_key)?;
+            let result = state.store.lock().map_err(lock_error)?.delete_message(
+                session_key,
+                message_key,
+                passphrase,
+            )?;
             if let Err(error) = state
                 .workspace
                 .lock()
@@ -864,6 +885,41 @@ fn route_request(
             // 清空后需要全量重扫和索引重建，同样走后台路径避免阻塞界面读取。
             state.scan_locked(&app, None)?;
             Ok(state.settings_payload(&app)?)
+        }
+        ("GET", "/api/settings/deletion-backup/encryption") => {
+            Ok(json!({"enabled": state.backup_encryption()?}))
+        }
+        ("POST", "/api/settings/deletion-backup/encryption") => {
+            let enabled = request.body["enabled"]
+                .as_bool()
+                .ok_or_else(|| ApiError::invalid("缺少备份加密开关"))?;
+            let path = state
+                .config_path
+                .as_deref()
+                .ok_or_else(|| ApiError::invalid("无法确定配置文件位置"))?;
+            let mut config = state.config.lock().map_err(lock_error)?;
+            let mut updated = config.clone();
+            updated.encrypt_deletion_backups = enabled;
+            config::save(path, &updated)?;
+            *config = updated;
+            state.clear_startup_error()?;
+            Ok(json!({"enabled": enabled}))
+        }
+        ("POST", "/api/settings/deletion-backup/decrypt") => {
+            let passphrase =
+                crate::deletion_backup::passphrase(request.body["passphrase"].take(), true)
+                    .map_err(ApiError::invalid)?
+                    .ok_or_else(|| ApiError::invalid("请输入备份口令"))?;
+            let name = request.body["name"]
+                .as_str()
+                .ok_or_else(|| ApiError::invalid("缺少备份名称"))?;
+            let directory = request.body["directory"]
+                .as_str()
+                .ok_or_else(|| ApiError::invalid("缺少归档保存目录"))?;
+            let path =
+                crate::deletion_backup::decrypt(name, std::path::Path::new(directory), passphrase)
+                    .map_err(ApiError::invalid)?;
+            Ok(json!({"path": path.to_string_lossy()}))
         }
         (
             "POST",

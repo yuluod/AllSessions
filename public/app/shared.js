@@ -332,6 +332,9 @@ export const elements = {
   settingsDeletionBackupList: document.querySelector(
     "#settings-deletion-backup-list"
   ),
+  settingsEncryptDeletionBackups: document.querySelector(
+    "#settings-encrypt-deletion-backups"
+  ),
   settingsDeleteOldBackups: document.querySelector(
     "#settings-delete-old-backups"
   ),
@@ -377,6 +380,9 @@ export const elements = {
   deleteDialogTitle: document.querySelector("#delete-dialog-title"),
   deleteDialogDescription: document.querySelector("#delete-dialog-description"),
   deleteDialogWarning: document.querySelector("#delete-dialog-warning"),
+  deleteBackupEncryptionNote: document.querySelector(
+    "#delete-backup-encryption-note"
+  ),
   deleteDialogStatus: document.querySelector("#delete-dialog-status"),
   deleteDialogClose: document.querySelector("#delete-dialog-close"),
   deleteSoftBtn: document.querySelector("#delete-soft-btn"),

@@ -316,7 +316,7 @@ mod tests {
             store.detail("claude_cowork:cli-id").unwrap()["summary"]["title"],
             "虚构标题"
         );
-        assert!(store.delete_session("claude_cowork:cli-id").is_err());
+        assert!(store.delete_session("claude_cowork:cli-id", None).is_err());
         let hits = store
             .search(
                 &std::collections::HashMap::from([("q".into(), "虚构结果".into())]),

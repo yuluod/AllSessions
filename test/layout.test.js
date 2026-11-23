@@ -1353,6 +1353,7 @@ test("设置对话框使用四个顶部分类并在来源页或有草稿时显�
   assert.match(html, /id="settings-toggle"[\s\S]*aria-haspopup="dialog"/);
   assert.match(html, /<dialog\s+id="settings-dialog"/);
   assert.match(html, /id="settings-language-select"/);
+  assert.match(html, /<option value="system" data-i18n="schemeSystem">/);
   assert.match(html, /id="settings-sources"/);
   assert.match(
     html,
@@ -1453,10 +1454,6 @@ test("设置视图通过专用接口读写配置并支持语言切换", async ()
   assert.match(
     backend,
     /\("POST", "\/api\/settings\/preferences"\)[\s\S]*config::parse_preferences/
-  );
-  assert.match(
-    source,
-    /setLang\(event\.target\.value === "en" \? "en" : "zh"\)/
   );
   assert.match(source, /originKey[\s\S]*resolved\.origin/);
   assert.match(source, /t\(`settingsOrigin_\$\{source\.originKey\}`\)/);

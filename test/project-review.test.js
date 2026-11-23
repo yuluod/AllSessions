@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-globalThis.localStorage = { getItem: () => null };
+globalThis.localStorage = {
+  getItem: (key) => (key === "allsessions_lang" ? "zh" : null),
+};
 const {
   expireProjectReviewActivity,
   renderProjectReview,

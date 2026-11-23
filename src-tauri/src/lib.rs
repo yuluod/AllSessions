@@ -107,8 +107,23 @@ fn compact_menu_text(text: &str, width_limit: usize) -> String {
     out
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum TrayLanguage {
+    Chinese,
+    English,
+}
+
+impl TrayLanguage {
+    fn text(self, chinese: &'static str, english: &'static str) -> &'static str {
+        match self {
+            Self::Chinese => chinese,
+            Self::English => english,
+        }
+    }
+}
+
 /// 「最近会话」菜单项：时间前缀 + 标题 + 来源后缀，与列表标题口径一致。
-fn tray_session_label(summary: &Value) -> String {
+fn tray_session_label(language: TrayLanguage, summary: &Value) -> String {
     let title = summary["title"]
         .as_str()
         .map(|title| compact_menu_text(title, TRAY_MENU_TITLE_WIDTH))
@@ -120,7 +135,7 @@ fn tray_session_label(summary: &Value) -> String {
                 .map(str::to_string)
         })
         .or_else(|| summary["id"].as_str().map(str::to_string))
-        .unwrap_or_else(|| "未命名会话".to_string());
+        .unwrap_or_else(|| language.text("未命名会话", "Untitled session").to_string());
     let time = summary["last_timestamp"]
         .as_str()
         .or_else(|| summary["timestamp"].as_str())
@@ -134,7 +149,7 @@ fn tray_session_label(summary: &Value) -> String {
                 .yesterday()
                 .is_ok_and(|yesterday| local.date() == yesterday)
             {
-                "昨天".to_string()
+                language.text("昨天", "Yesterday").to_string()
             } else {
                 local.strftime("%m-%d").to_string()
             })
@@ -156,6 +171,7 @@ fn tray_session_label(summary: &Value) -> String {
 /// 一组会话子菜单（收藏段/最近段共用结构）。
 fn build_session_submenus(
     app: &tauri::AppHandle,
+    language: TrayLanguage,
     sessions: &[Value],
 ) -> tauri::Result<Vec<Submenu<tauri::Wry>>> {
     let mut items = Vec::with_capacity(sessions.len());
@@ -166,7 +182,7 @@ fn build_session_submenus(
         let open_item = MenuItem::with_id(
             app,
             format!("{TRAY_SESSION_OPEN_PREFIX}{key}"),
-            "打开详情",
+            language.text("打开详情", "Open details"),
             true,
             None::<&str>,
         )?;
@@ -178,7 +194,7 @@ fn build_session_submenus(
         let resume_item = MenuItem::with_id(
             app,
             format!("{TRAY_SESSION_RESUME_PREFIX}{key}"),
-            "恢复会话",
+            language.text("恢复会话", "Resume session"),
             resumable,
             None::<&str>,
         )?;
@@ -187,7 +203,7 @@ fn build_session_submenus(
         items.push(Submenu::with_id_and_items(
             app,
             format!("session-group:{key}"),
-            tray_session_label(summary),
+            tray_session_label(language, summary),
             true,
             &[&open_item, &resume_item],
         )?);
@@ -197,23 +213,58 @@ fn build_session_submenus(
 
 fn build_tray_menu(
     app: &tauri::AppHandle,
+    language: TrayLanguage,
     favorites: &[Value],
     recents: &[Value],
 ) -> tauri::Result<Menu<tauri::Wry>> {
-    let open_item = MenuItem::with_id(app, "open", "打开 AllSessions", true, None::<&str>)?;
-    let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
-    let update_item = MenuItem::with_id(app, "update", "检查更新", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let open_item = MenuItem::with_id(
+        app,
+        "open",
+        language.text("打开 AllSessions", "Open AllSessions"),
+        true,
+        None::<&str>,
+    )?;
+    let settings_item = MenuItem::with_id(
+        app,
+        "settings",
+        language.text("设置…", "Settings…"),
+        true,
+        None::<&str>,
+    )?;
+    let update_item = MenuItem::with_id(
+        app,
+        "update",
+        language.text("检查更新", "Check for updates"),
+        true,
+        None::<&str>,
+    )?;
+    let quit_item = MenuItem::with_id(
+        app,
+        "quit",
+        language.text("退出", "Quit"),
+        true,
+        None::<&str>,
+    )?;
     let sessions_separator = PredefinedMenuItem::separator(app)?;
     let quit_separator = PredefinedMenuItem::separator(app)?;
     // 分节标题做成禁用项，既分组又不抢点击。
-    let favorites_header =
-        MenuItem::with_id(app, "section-favorites", "收藏会话", false, None::<&str>)?;
-    let recents_header =
-        MenuItem::with_id(app, "section-recents", "最近会话", false, None::<&str>)?;
+    let favorites_header = MenuItem::with_id(
+        app,
+        "section-favorites",
+        language.text("收藏会话", "Favorite sessions"),
+        false,
+        None::<&str>,
+    )?;
+    let recents_header = MenuItem::with_id(
+        app,
+        "section-recents",
+        language.text("最近会话", "Recent sessions"),
+        false,
+        None::<&str>,
+    )?;
 
-    let favorite_items = build_session_submenus(app, favorites)?;
-    let recent_items = build_session_submenus(app, recents)?;
+    let favorite_items = build_session_submenus(app, language, favorites)?;
+    let recent_items = build_session_submenus(app, language, recents)?;
 
     let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> =
         vec![&open_item, &settings_item, &update_item];
@@ -237,23 +288,16 @@ fn build_tray_menu(
     Menu::with_items(app, &items)
 }
 
-/// 会话列表发布后同步托盘会话段；失败只记日志，不影响发布结果。
-pub(crate) fn refresh_tray_menu(app: &tauri::AppHandle) {
-    let Some(tray) = app.tray_by_id(app_icon::TRAY_ID) else {
-        return;
-    };
-    let (favorites, recents) = app
-        .try_state::<BackendState>()
-        .map(|state| state.tray_sessions())
-        .unwrap_or_default();
-    match build_tray_menu(app, &favorites, &recents) {
-        Ok(menu) => {
-            if let Err(error) = tray.set_menu(Some(menu)) {
-                eprintln!("更新托盘菜单失败：{error}");
-            }
-        }
-        Err(error) => eprintln!("构建托盘菜单失败：{error}"),
-    }
+fn replace_tray_menu(
+    app: &tauri::AppHandle,
+    language: TrayLanguage,
+    favorites: &[Value],
+    recents: &[Value],
+) -> Result<(), String> {
+    let tray = app.tray_by_id(app_icon::TRAY_ID).ok_or("找不到托盘图标")?;
+    let menu =
+        build_tray_menu(app, language, favorites, recents).map_err(|error| error.to_string())?;
+    tray.set_menu(Some(menu)).map_err(|error| error.to_string())
 }
 
 /// 把登录自启动偏好同步到系统注册项；已处于目标状态时不再重写注册。
@@ -281,8 +325,8 @@ pub(crate) fn sync_autostart(app: &tauri::AppHandle, enabled: bool) {
 
 fn create_tray(app: &tauri::App) -> tauri::Result<()> {
     // 首次扫描尚未发布，菜单先不含会话段；扫描完成后由
-    // refresh_tray_menu 重建补齐。
-    let menu = build_tray_menu(app.handle(), &[], &[])?;
+    // 后台刷新补齐。
+    let menu = build_tray_menu(app.handle(), TrayLanguage::Chinese, &[], &[])?;
 
     TrayIconBuilder::with_id(app_icon::TRAY_ID)
         .icon(transparent_tray_icon()?)
@@ -357,9 +401,9 @@ pub fn run() {
         .setup(|app| {
             let backend = BackendState::load().map_err(|error| format!("加载会话失败：{error}"))?;
             app.manage(backend);
+            create_tray(app)?;
             app.manage(watcher::start(app.handle()));
             app.state::<BackendState>().spawn_initial_scan(app.handle());
-            create_tray(app)?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -446,28 +490,44 @@ mod tests {
 
     #[test]
     fn 托盘会话标签回退到目录与编号并附来源() {
-        let label = tray_session_label(&json!({
-            "cwd": "/tmp/projects/demo",
-            "display_source": "Claude Code",
-        }));
+        assert_eq!(
+            tray_session_label(super::TrayLanguage::English, &json!({})),
+            "Untitled session"
+        );
+        let label = tray_session_label(
+            super::TrayLanguage::Chinese,
+            &json!({
+                "cwd": "/tmp/projects/demo",
+                "display_source": "Claude Code",
+            }),
+        );
         assert_eq!(label, "demo · Claude Code");
 
-        let label = tray_session_label(&json!({
-            "id": "sess-9",
-            "source_kind": "codex",
-        }));
+        let label = tray_session_label(
+            super::TrayLanguage::Chinese,
+            &json!({
+                "id": "sess-9",
+                "source_kind": "codex",
+            }),
+        );
         assert_eq!(label, "sess-9 · codex");
 
-        assert_eq!(tray_session_label(&json!({})), "未命名会话");
+        assert_eq!(
+            tray_session_label(super::TrayLanguage::Chinese, &json!({})),
+            "未命名会话"
+        );
     }
 
     #[test]
     fn 托盘会话标签带时间前缀() {
         // 固定过去日期一律显示 MM-DD，与运行机器时区无关。
-        let label = tray_session_label(&json!({
-            "title": "排查构建失败",
-            "last_timestamp": "2001-06-15T12:00:00Z",
-        }));
+        let label = tray_session_label(
+            super::TrayLanguage::Chinese,
+            &json!({
+                "title": "排查构建失败",
+                "last_timestamp": "2001-06-15T12:00:00Z",
+            }),
+        );
         let (time, title) = label.split_once(' ').expect("应包含时间前缀");
         assert_eq!(time.len(), 5);
         assert!(time.contains('-'));
@@ -481,10 +541,13 @@ mod tests {
             .expect("本地正午可解析")
             .timestamp()
             .to_string();
-        let label = tray_session_label(&json!({
-            "title": "今天的会话",
-            "last_timestamp": noon,
-        }));
+        let label = tray_session_label(
+            super::TrayLanguage::Chinese,
+            &json!({
+                "title": "今天的会话",
+                "last_timestamp": noon,
+            }),
+        );
         let (time, title) = label.split_once(' ').expect("应包含时间前缀");
         assert_eq!(time, "12:00");
         assert_eq!(title, "今天的会话");

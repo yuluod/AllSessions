@@ -185,7 +185,10 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
   );
   assert.match(mainSource, /windows_subsystem = "windows"/);
   assert.match(rustSource, /tauri_plugin_updater::Builder/);
-  assert.match(rustSource, /MenuItem::with_id\(app, "settings", "设置…"/);
+  assert.match(
+    rustSource,
+    /"settings",\s*language\.text\("设置…", "Settings…"\)/
+  );
   assert.match(rustSource, /"settings" => show_settings\(app\)/);
   assert.match(
     rustSource,

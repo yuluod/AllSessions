@@ -449,6 +449,50 @@ fn route_request(
     };
 
     match (method.as_str(), path) {
+        ("GET", "/api/settings/export-redaction") => {
+            let config = state.config.lock().map_err(lock_error)?;
+            Ok(json!(config.export_redaction))
+        }
+        ("POST", "/api/settings/export-redaction") => {
+            let rules = crate::export_redaction::ExportRedaction::parse(request.body)
+                .map_err(ApiError::invalid)?;
+            let path = state
+                .config_path
+                .as_deref()
+                .ok_or_else(|| ApiError::invalid("无法确定配置文件位置"))?;
+            let mut config = state.config.lock().map_err(lock_error)?;
+            let mut updated = config.clone();
+            updated.export_redaction = rules;
+            config::save(path, &updated)?;
+            *config = updated;
+            state.clear_startup_error()?;
+            Ok(json!(config.export_redaction))
+        }
+        ("POST", "/api/settings/export-redaction/test") => {
+            let rules =
+                crate::export_redaction::ExportRedaction::parse(request.body["rules"].take())
+                    .map_err(ApiError::invalid)?;
+            let sample = request.body["sample"]
+                .as_str()
+                .ok_or_else(|| ApiError::invalid("缺少脱敏测试文本"))?;
+            Ok(json!(rules.test(sample).map_err(ApiError::invalid)?))
+        }
+        ("POST", "/api/export/redact") => {
+            let rules = state
+                .config
+                .lock()
+                .map_err(lock_error)?
+                .export_redaction
+                .clone();
+            if request.body["rules"] != json!(rules) {
+                return Err(ApiError::invalid(
+                    "自定义脱敏设置已变化，请重新打开导出预览",
+                ));
+            }
+            rules
+                .apply(request.body["document"].take())
+                .map_err(ApiError::invalid)
+        }
         ("POST", "/api/tray/language") => {
             let language = match request.body["language"].as_str() {
                 Some("en") => crate::TrayLanguage::English,
@@ -730,12 +774,26 @@ fn route_request(
                     .map_err(ApiError::invalid)?
             };
             let target_session = |key: &str| matches.targets.get(key).cloned();
+            let replacements = request
+                .body
+                .get("replacements")
+                .map(|value| {
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| ApiError::invalid("导入冲突选项无效"))
+                })
+                .transpose()?
+                .unwrap_or_default();
             if path.ends_with("/preview") {
                 let mut preview = state
                     .workspace
                     .lock()
                     .map_err(lock_error)?
-                    .preview_transfer(&transfer, target_session)?;
+                    .preview_transfer(
+                        &transfer,
+                        target_session,
+                        &replacements,
+                        request.body["previous_token"].as_str(),
+                    )?;
                 preview["ambiguous"] = json!(matches.ambiguous);
                 preview["omitted_candidates"] = json!(matches.omitted_candidates);
                 return Ok(preview);
@@ -748,7 +806,7 @@ fn route_request(
                 .workspace
                 .lock()
                 .map_err(lock_error)?
-                .import_transfer(&transfer, target_session, token)?;
+                .import_transfer(&transfer, target_session, &replacements, token)?;
             if result.get("backup_path").is_some()
                 && let Err(error) = state.refresh_tray(&app, None)
             {

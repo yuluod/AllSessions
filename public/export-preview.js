@@ -72,12 +72,13 @@ export function previewRange(content, page) {
   };
 }
 
-export function reviewSessionExport(build, redact) {
+export function reviewSessionExport(build, redact, customRedaction) {
   const dialog = document.querySelector("#export-preview-dialog");
   if (previewActive) throw new Error(t("exportPreviewAlreadyOpen"));
   const form = dialog.querySelector("form");
   const filename = dialog.querySelector("#export-preview-filename");
   const toggle = dialog.querySelector("input");
+  const customStatus = dialog.querySelector("#export-preview-custom-redaction");
   const warning = dialog.querySelector("#export-preview-warning");
   const hits = dialog.querySelector("#export-preview-hits");
   const remaining = dialog.querySelector("#export-preview-remaining");
@@ -159,6 +160,7 @@ export function reviewSessionExport(build, redact) {
     }
     previewActive = true;
     toggle.checked = redact;
+    customStatus.hidden = !customRedaction;
     dialog.returnValue = "";
     try {
       renderFile();

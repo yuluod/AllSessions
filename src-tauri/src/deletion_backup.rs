@@ -610,6 +610,19 @@ mod tests {
                 .windows(17)
                 .any(|bytes| bytes == b"synthetic-session")
         );
+        // 复制回来的旧备份即使修改时间更新，也应先于当前备份被清理。
+        let old_name = "20000101T000000Z-00000000-0000-4000-8000-000000000001";
+        let old_dir = root.join(old_name);
+        fs::create_dir(&old_dir).unwrap();
+        fs::copy(&ciphertext, old_dir.join(encrypted::ARCHIVE_NAME)).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&ciphertext)
+            .unwrap()
+            .set_modified(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap();
+        cleanup_at(&root, 1, Some(&[old_name.to_owned()])).unwrap();
+        assert!(!old_dir.exists());
         let entries = valid_backups(&root).unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].encrypted);

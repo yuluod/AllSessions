@@ -41,6 +41,7 @@ pub struct AppConfig {
     pub sources: SourceRoots,
     pub preferences: Preferences,
     pub encrypt_deletion_backups: bool,
+    pub export_redaction: crate::export_redaction::ExportRedaction,
     #[serde(skip_serializing_if = "ModelPrices::is_empty")]
     pub(crate) model_prices: ModelPrices,
 }

@@ -113,10 +113,14 @@ pub(super) fn entry(
     if magic != AGE_MAGIC {
         return Ok(None);
     }
+    let Ok(created_at) = jiff::civil::DateTime::strptime("%Y%m%dT%H%M%SZ", &name[..16])
+        .and_then(|time| time.to_zoned(jiff::tz::TimeZone::UTC))
+    else {
+        return Ok(None);
+    };
     Ok(Some(BackupEntry {
         name: name.to_string(),
-        created_at: Timestamp::try_from(metadata.modified().map_err(error_text)?)
-            .map_err(error_text)?,
+        created_at: created_at.timestamp(),
         bytes: metadata.len(),
         encrypted: true,
     }))

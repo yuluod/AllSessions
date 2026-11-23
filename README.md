@@ -308,7 +308,7 @@ Claude Cowork, Grok Build, Pi, Oh My Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, C
 
 Display names, favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
 
-Use **Settings → Storage** to export or import a workspace JSON file up to 16 MB. Configure your sources and complete a scan before importing. A full session key takes precedence. When the key has changed, import can match a Codex session across active and archived sources by UUID, or a JetBrains Air session across project directories by thread ID. Review multiple candidates and short Air thread IDs before importing. The preview lists unmatched entries, which are skipped. Local data wins conflicts, and message removal markers are skipped when the session key changes. Keep the file private because notes, identifiers, and saved filters may contain sensitive content or local paths.
+Use **Settings → Storage** to export or import a workspace JSON file up to 16 MB. Configure your sources and complete a scan before importing. A full session key takes precedence. When the key has changed, import can match a Codex session across active and archived sources by UUID, or a JetBrains Air session across project directories by thread ID. Review multiple candidates and short Air thread IDs before importing. The preview lists unmatched entries, which are skipped. Review each session or saved filter conflict and choose whether to keep the local data or use the imported version. Entries containing only message removal markers replace only those markers. When session keys differ, local message removal markers are preserved. Keep the file private because notes, identifiers, and saved filters may contain sensitive content or local paths.
 
 Before writing, AllSessions creates a SQLite backup beside the workspace database and displays its path after import. To restore it, fully quit AllSessions, including the tray process. Move the current database and any matching `-wal` and `-shm` files to a safe location, then copy the backup to the original database path and restart the app.
 
@@ -319,6 +319,8 @@ Export redaction is off by default.
 When enabled, AllSessions removes known session identifiers and common local-path patterns — but automatic redaction cannot cover every kind of sensitive information.
 
 Session JSON and Markdown exports open a paginated preview of the generated file. Toggle redaction in the preview to see the effect on paths and session identifiers. AllSessions checks the file locally for common credential patterns and lists their types and line numbers. Select a location to jump to it in the preview. Review the contents before downloading and sharing.
+
+In **Settings → General → Custom export redaction**, enter one Rust regular expression per line and test the rules with sample text before saving. When enabled, the rules replace non-empty matches in exported string values with `[redacted]` in the order listed. They apply to loaded, full and batch session exports in both formats. The path and session identifier toggle remains available in the preview. Sample text stays in memory and is cleared when the editor closes.
 
 > [!WARNING]
 >

@@ -298,6 +298,7 @@ export const elements = {
   settingsOpenExternalLinks: document.querySelector(
     "#settings-open-external-links"
   ),
+  settingsExportRules: document.querySelector("#settings-export-rules"),
   settingsStartupUpdates: document.querySelector("#settings-startup-updates"),
   settingsAppIconInputs: Array.from(
     document.querySelectorAll('[name="settings-app-icon"]')

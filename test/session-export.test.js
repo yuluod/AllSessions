@@ -147,9 +147,26 @@ class PreviewElement extends EventTarget {
   scrollIntoView() {}
 }
 
-function mockExport(t) {
+function mockExport(t, redact) {
   const downloads = [];
   const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.window = {
+    __TAURI__: {
+      core: {
+        invoke: async (_, { request }) => {
+          if (request.url === "/api/settings/export-redaction") {
+            return {
+              enabled: Boolean(redact),
+              patterns: redact ? ["alice"] : [],
+            };
+          }
+          assert.equal(request.url, "/api/export/redact");
+          return redact(request.body.document);
+        },
+      },
+    },
+  };
   const selectors = new Map();
   const dialog = new PreviewElement();
   dialog.querySelector = (selector) => {
@@ -175,8 +192,14 @@ function mockExport(t) {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   t.after(() => {
     globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
   });
   return { dialog, downloads, field: dialog.querySelector };
+}
+
+async function waitForPreview(dialog) {
+  await new Promise(setImmediate);
+  assert.equal(dialog.open, true);
 }
 
 test("预览列出类型和行号，跳到实际命中位置，取消后清除内容且不下载", async (t) => {
@@ -193,6 +216,7 @@ test("预览列出类型和行号，跳到实际命中位置，取消后清除�
   const expected = sessionMarkdown(prepareExportDetail(detail));
   const line = expected.split(/\r?\n/).indexOf(samples[0]) + 1;
   const exporting = exportSessionMarkdown(detail);
+  await waitForPreview(dialog);
   const hits = field("#export-preview-hits").children;
   assert.equal(hits.length, 5);
   assert.match(field("#export-preview-warning").textContent, /发现 5 处/);
@@ -222,6 +246,7 @@ test("完整和批量 JSON 下载预览中的内容，脱敏可切换且扫描�
     () => exportSessionCollection([detailFixture(), detail], "json"),
   ]) {
     const exporting = exportFile();
+    await waitForPreview(dialog);
     assert.match(field("pre").textContent, /alice/);
     const toggle = field("input");
     toggle.checked = true;
@@ -245,6 +270,7 @@ test("无凭据的导出同样需要确认，预览异常不生成文件", async
   const detail = detailFixture();
   detail.conversation_messages[0]._message_key = `ghp_${"z".repeat(36)}`;
   const preview = exportSessionJson(detail);
+  await waitForPreview(dialog);
   assert.equal(downloads.length, 0);
   assert.equal(field("#export-preview-warning").textContent, "");
   dialog.close("download");
@@ -255,6 +281,51 @@ test("无凭据的导出同样需要确认，预览异常不生成文件", async
   };
   await assert.rejects(exportSessionJson(detail), /预览不可用/);
   assert.equal(downloads.length, 1);
+});
+
+test("自定义规则应用于预览和下载，处理失败时终止导出", async (t) => {
+  let fail = false;
+  const { dialog, downloads, field } = mockExport(t, (document) => {
+    if (fail) throw new Error("脱敏失败");
+    return JSON.parse(
+      JSON.stringify(document).replaceAll("alice", "[redacted]")
+    );
+  });
+  for (const exportFile of [exportSessionJson, exportSessionMarkdown]) {
+    const exporting = exportFile(detailFixture());
+    await waitForPreview(dialog);
+    const preview = field("pre").textContent;
+    assert.doesNotMatch(preview, /alice/);
+    assert.match(preview, /\[redacted\]/);
+    assert.equal(field("#export-preview-custom-redaction").hidden, false);
+    dialog.close("download");
+    await exporting;
+    assert.equal(await downloads.at(-1).text(), preview);
+  }
+  fail = true;
+  await assert.rejects(exportSessionJson(detailFixture()), /脱敏失败/);
+  assert.equal(downloads.length, 2);
+  assert.equal(dialog.open, false);
+});
+
+test("自定义规则遮盖路径前缀时，切换路径脱敏仍隐藏完整路径", async (t) => {
+  const { dialog, downloads, field } = mockExport(t, (document) =>
+    JSON.parse(JSON.stringify(document).replaceAll("/home/", "[redacted]"))
+  );
+  const detail = detailFixture();
+  detail.conversation_messages[0].text = "日志 /home/alice/client-a/notes.txt";
+  const exporting = exportSessionCollection([detail], "markdown");
+  await waitForPreview(dialog);
+  assert.match(field("pre").textContent, /\[redacted\]alice/);
+  const toggle = field("input");
+  toggle.checked = true;
+  toggle.dispatchEvent(new Event("change"));
+  const preview = field("pre").textContent;
+  assert.match(preview, /日志 \[local path\]/);
+  assert.doesNotMatch(preview, /alice|client-a|notes\.txt/);
+  dialog.close("download");
+  await exporting;
+  assert.equal(await downloads[0].text(), preview);
 });
 
 test("普通导出保留来源信息但移除内部实现字段", () => {

@@ -2446,6 +2446,76 @@
     </dialog>
 
     <dialog
+      id="export-preview-dialog"
+      class="delete-dialog export-preview-dialog"
+      aria-labelledby="export-preview-title"
+    >
+      <form>
+        <div class="delete-dialog-header">
+          <h2 id="export-preview-title" data-i18n="exportPreviewTitle">
+            导出预览
+          </h2>
+        </div>
+        <div class="delete-dialog-body export-preview-body">
+          <p id="export-preview-filename"></p>
+          <label class="export-redact-option">
+            <input type="checkbox" />
+            <span data-i18n="redactExportHint">隐藏本地路径和会话标识</span>
+          </label>
+          <section class="export-preview-warning" hidden>
+            <p id="export-preview-warning" role="status"></p>
+            <div id="export-preview-hits"></div>
+            <p id="export-preview-remaining"></p>
+          </section>
+          <pre
+            tabindex="0"
+            role="region"
+            data-i18n="exportPreviewContent"
+            data-i18n-attr="aria-label"
+            aria-label="导出文件内容"
+          ></pre>
+          <div class="export-preview-navigation">
+            <button
+              id="export-preview-previous"
+              type="button"
+              class="ghost-button"
+              data-i18n="exportPreviewPrevious"
+            >
+              上一页
+            </button>
+            <span id="export-preview-page" role="status"></span>
+            <button
+              id="export-preview-next"
+              type="button"
+              class="ghost-button"
+              data-i18n="exportPreviewNext"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+        <div class="delete-dialog-actions">
+          <button
+            type="submit"
+            value="cancel"
+            class="ghost-button"
+            data-i18n="cancel"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            value="download"
+            class="ghost-button button--primary"
+            data-i18n="exportPreviewDownload"
+          >
+            下载
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog
       id="resume-confirm-dialog"
       class="delete-dialog resume-confirm-dialog"
       aria-labelledby="resume-confirm-title"

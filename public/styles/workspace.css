@@ -4671,6 +4671,61 @@ body.is-resizing {
   width: min(880px, calc(100vw - 28px));
 }
 
+.export-preview-dialog {
+  width: min(880px, calc(100vw - 28px));
+}
+
+.export-preview-dialog form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+}
+
+.export-preview-body {
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.export-preview-body pre {
+  height: min(42vh, 420px);
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--bg);
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.export-preview-body mark {
+  background: var(--warning-soft);
+  color: var(--warning);
+  outline: 1px solid var(--warning);
+}
+
+.export-preview-navigation,
+#export-preview-hits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-preview-navigation {
+  justify-content: space-between;
+}
+
+#export-preview-hits {
+  max-height: 18vh;
+  margin: 8px 0;
+  overflow: auto;
+}
+
+.export-preview-warning {
+  color: var(--warning);
+}
+
 .handoff-dialog-body {
   gap: 14px;
 }

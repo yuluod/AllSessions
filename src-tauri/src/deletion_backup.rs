@@ -15,6 +15,8 @@ use walkdir::WalkDir;
 use std::os::unix::fs::PermissionsExt;
 
 pub const KEEP_LATEST: usize = 10;
+pub const MIN_KEEP_LATEST: usize = 1;
+pub const MAX_KEEP_LATEST: usize = 100;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 
 pub fn storage_info() -> Value {
@@ -46,6 +48,15 @@ pub fn delete(name: &str) -> Result<(), String> {
 
 pub fn cleanup() -> Result<(), String> {
     cleanup_at(&backup_root()?, KEEP_LATEST)
+}
+
+pub fn cleanup_with_keep(keep: usize) -> Result<(), String> {
+    if !(MIN_KEEP_LATEST..=MAX_KEEP_LATEST).contains(&keep) {
+        return Err(format!(
+            "备份保留数量必须在 {MIN_KEEP_LATEST} 到 {MAX_KEEP_LATEST} 之间"
+        ));
+    }
+    cleanup_at(&backup_root()?, keep)
 }
 
 pub fn create(
@@ -406,7 +417,7 @@ mod tests {
     use serde_json::{Value, json};
     use tempfile::tempdir;
 
-    use super::{cleanup_at, create_at, delete_at, valid_backups};
+    use super::{cleanup_at, cleanup_with_keep, create_at, delete_at, valid_backups};
 
     #[test]
     fn 永久删除备份会复制文件并记录清单() {
@@ -502,6 +513,12 @@ mod tests {
         let backups = valid_backups(&backup_root).unwrap();
         assert_eq!(backups.len(), 1);
         assert_eq!(backups[0].name, newest);
+    }
+
+    #[test]
+    fn 自定义保留数量限制在安全范围内() {
+        assert!(cleanup_with_keep(0).is_err());
+        assert!(cleanup_with_keep(101).is_err());
     }
 
     #[test]

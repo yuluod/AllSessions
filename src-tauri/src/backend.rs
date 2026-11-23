@@ -845,7 +845,16 @@ fn route_request(
                 ));
             }
             let result = if path.ends_with("/cleanup") {
-                crate::deletion_backup::cleanup()
+                let keep = request
+                    .body
+                    .get("keep_latest")
+                    .and_then(Value::as_u64)
+                    .ok_or_else(|| ApiError::invalid("缺少备份保留数量"))?;
+                if keep as usize == crate::deletion_backup::KEEP_LATEST {
+                    crate::deletion_backup::cleanup()
+                } else {
+                    crate::deletion_backup::cleanup_with_keep(keep as usize)
+                }
             } else {
                 let name = request
                     .body

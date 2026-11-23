@@ -804,6 +804,7 @@ const DICT = {
     settingsDeleteOldBackups: "清理旧备份",
     settingsDeleteOldBackupsConfirm:
       "将保留最新的 {n} 个备份，其余备份将被永久删除。确定继续吗？",
+    settingsBackupKeepLatest: "保留数量",
     settingsBackupDeleting: "正在清理备份…",
     settingsBackupDeleted: "备份已删除",
     settingsOldBackupsDeleted: "旧备份已清理",
@@ -1746,6 +1747,7 @@ const DICT = {
     settingsDeleteOldBackups: "Clean up old backups",
     settingsDeleteOldBackupsConfirm:
       "Keep the latest {n} backups and permanently delete the rest?",
+    settingsBackupKeepLatest: "Keep count",
     settingsBackupDeleting: "Cleaning backups…",
     settingsBackupDeleted: "Backup deleted",
     settingsOldBackupsDeleted: "Old backups cleaned",

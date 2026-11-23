@@ -902,7 +902,18 @@ export function createSettingsController({
     const backups = backup.backups || [];
     if (elements.settingsDeleteOldBackups) {
       elements.settingsDeleteOldBackups.disabled =
-        !backup.enabled || backups.length <= backup.keep_latest;
+        !backup.enabled ||
+        backups.length <=
+          Number(
+            elements.settingsBackupKeepLatest?.value || backup.keep_latest
+          );
+    }
+    if (
+      elements.settingsBackupKeepLatest &&
+      backup.keep_latest &&
+      document.activeElement !== elements.settingsBackupKeepLatest
+    ) {
+      elements.settingsBackupKeepLatest.value = String(backup.keep_latest);
     }
     if (elements.settingsDeletionBackupList) {
       elements.settingsDeletionBackupList.replaceChildren();
@@ -1264,7 +1275,11 @@ export function createSettingsController({
       const confirmed = await confirmBackupDeletion(
         entry
           ? t("settingsDeleteBackupConfirm", { name: entry.name })
-          : t("settingsDeleteOldBackupsConfirm", { n: backup.keep_latest }),
+          : t("settingsDeleteOldBackupsConfirm", {
+              n: Number(
+                elements.settingsBackupKeepLatest?.value || backup.keep_latest
+              ),
+            }),
         {
           title: label,
           kind: "warning",
@@ -1280,7 +1295,13 @@ export function createSettingsController({
         `/api/settings/deletion-backup/${action}`,
         {
           method: "POST",
-          body: { name: entry?.name, confirmed: true },
+          body: {
+            name: entry?.name,
+            confirmed: true,
+            keep_latest: Number(
+              elements.settingsBackupKeepLatest?.value || backup.keep_latest
+            ),
+          },
         }
       );
       latestPayload.deletion_backup = payload.deletion_backup;
@@ -1399,6 +1420,11 @@ export function createSettingsController({
     elements.settingsDeleteOldBackups?.addEventListener("click", () =>
       removeDeletionBackups()
     );
+    elements.settingsBackupKeepLatest?.addEventListener("input", () => {
+      if (latestPayload?.deletion_backup) {
+        renderDeletionBackups(latestPayload.deletion_backup);
+      }
+    });
     elements.settingsRescan?.addEventListener("click", rescanSources);
     elements.settingsCopyDiagnostics?.addEventListener(
       "click",

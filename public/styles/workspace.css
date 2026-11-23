@@ -217,15 +217,14 @@
   min-height: calc(max(var(--segment-height-compact), 25px) + 8px);
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: var(--radius-small);
   box-shadow: none;
-  background: var(--surface-sunken);
+  background: transparent;
   color: var(--text-secondary);
 }
-.sidebar-footer .sidebar-settings-button:hover {
-  border-color: var(--line-strong);
-  background: var(--surface-sunken);
+.sidebar-footer .sidebar-settings-button:hover:not(:disabled) {
+  background: var(--surface-muted);
   color: var(--accent-strong);
 }
 /* 键盘焦点环画在芯片内侧，避免被滚动视口的 overflow 裁掉。 */
@@ -253,6 +252,14 @@
 .sidebar-settings-button:hover .roll-track,
 .sidebar-settings-button:focus-visible .roll-track {
   transform: translateY(-15px);
+}
+.sidebar-footer .scheme-control {
+  border-color: transparent;
+  background: transparent;
+}
+.sidebar-footer .scheme-control button:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--accent-strong);
 }
 .scheme-control svg {
   width: 15px;

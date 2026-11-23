@@ -548,6 +548,7 @@ const DICT = {
     scanningSessions: "正在扫描本地会话…",
     backendError_invalid_request: "请求参数无效",
     backendError_confirmation_required: "永久删除需要显式确认",
+    backendError_workspace_scan_required: "请完成会话扫描后再导入工作台数据",
     backendError_session_not_found: "会话不存在，可能已被删除；请刷新列表",
     backendError_read_only_source: "该来源为只读模式，请在原 Agent 中删除",
     backendError_file_changed: "原始文件已经变化，请刷新列表后重试",
@@ -787,6 +788,18 @@ const DICT = {
     settingsWorkspaceSummary: "{sessions} 条会话 · {filters} 个常用筛选",
     settingsWorkspaceStorageHint:
       "索引缓存可以安全重建；工作台数据保存收藏、标签、备注和常用筛选，不会随清理缓存删除。",
+    settingsWorkspaceTransferHint:
+      "导出工作台数据用于迁移。文件包含备注和可能含有本地路径的标识，请妥善保管。",
+    settingsWorkspaceExport: "导出工作台 JSON",
+    settingsWorkspaceImport: "导入工作台 JSON",
+    settingsWorkspaceFileTooLarge: "工作台文件不能超过 16 MB。",
+    settingsWorkspaceImportSummary:
+      "可导入 {sessions} 条会话和 {filters} 个常用筛选。保留 {conflicts} 个有冲突的本地条目，跳过 {unmatched} 条找不到对应会话的记录和 {unchanged} 个相同条目。",
+    settingsWorkspaceImportBackup: "确认后会先在工作台数据库所在目录创建备份。",
+    settingsWorkspaceImportDone:
+      "已导入 {sessions} 条会话和 {filters} 个常用筛选。备份保存在 {backup_path}",
+    settingsWorkspaceImportRefreshFailed: "导入已完成，刷新工作台时出错。",
+    settingsWorkspaceImporting: "正在导入工作台数据…",
     settingsAbout: "关于",
     settingsAboutDescription: "本地 AI 会话工作台",
     settingsLicense: "Apache License 2.0",
@@ -1437,6 +1450,8 @@ const DICT = {
     backendError_invalid_request: "Invalid request parameters",
     backendError_confirmation_required:
       "Permanent deletion requires explicit confirmation",
+    backendError_workspace_scan_required:
+      "Wait for the session scan to finish before importing workspace data",
     backendError_session_not_found:
       "Session not found; it may have been deleted. Refresh the list",
     backendError_read_only_source:
@@ -1688,6 +1703,21 @@ const DICT = {
     settingsWorkspaceSummary: "{sessions} sessions · {filters} saved filters",
     settingsWorkspaceStorageHint:
       "The index cache can be rebuilt safely. Workspace data stores favorites, tags, notes, and saved filters and is not deleted when the cache is cleared.",
+    settingsWorkspaceTransferHint:
+      "Export workspace data for migration. The file contains notes and identifiers that may include local paths. Keep it private.",
+    settingsWorkspaceExport: "Export workspace JSON",
+    settingsWorkspaceImport: "Import workspace JSON",
+    settingsWorkspaceFileTooLarge:
+      "The workspace file must be 16 MB or smaller.",
+    settingsWorkspaceImportSummary:
+      "Ready to import {sessions} sessions and {filters} saved filters. Keep {conflicts} conflicting local entries and skip {unmatched} sessions with no match and {unchanged} identical entries.",
+    settingsWorkspaceImportBackup:
+      "After confirmation, a backup will be created beside the workspace database.",
+    settingsWorkspaceImportDone:
+      "Imported {sessions} sessions and {filters} saved filters. Backup saved to {backup_path}",
+    settingsWorkspaceImportRefreshFailed:
+      "The import completed, but the workspace could not be refreshed.",
+    settingsWorkspaceImporting: "Importing workspace data…",
     settingsAbout: "About",
     settingsAboutDescription: "Local AI session workspace",
     settingsLicense: "Apache License 2.0",

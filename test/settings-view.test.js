@@ -347,6 +347,91 @@ test("重启请求失败明确显示错误且保留已保存的图标", async ()
   assert.equal(inputs[1].checked, true);
 });
 
+test("工作台导入仅在确认预览后写入并刷新存储信息", async (context) => {
+  const { createSettingsController } =
+    await import("../public/settings-view.js");
+  const calls = [];
+  const storage = { enabled: true, session_count: 0, saved_filter_count: 0 };
+  const content = '{"format":"allsessions-workspace"}';
+  const preview = {
+    sessions: 2,
+    filters: 1,
+    conflicts: 3,
+    unmatched: 4,
+    unchanged: 5,
+    token: "preview-token",
+  };
+  context.mock.property(globalThis, "document", {
+    documentElement: { classList: { add() {}, remove() {} } },
+    addEventListener() {},
+  });
+  context.mock.property(globalThis, "window", {
+    __TAURI__: {
+      core: {
+        invoke: async (_command, { request }) => {
+          calls.push(request);
+          switch (request.url) {
+            case "/api/settings":
+              return { sources: {}, workspace_storage: storage };
+            case "/api/workspace/import/preview":
+              return preview;
+            case "/api/workspace/import":
+              return { ...preview, backup_path: "/demo/backup.sqlite" };
+            default:
+              throw new Error(`意外请求：${request.url}`);
+          }
+        },
+      },
+    },
+  });
+  let confirmed = false;
+  let handleFile;
+  let refreshed = false;
+  const count = {};
+  const status = { textContent: "", dataset: {} };
+  const file = {
+    files: [new File([content], "workspace.json")],
+    addEventListener(_name, handler) {
+      handleFile = handler;
+    },
+  };
+  const controller = createSettingsController({
+    elements: {
+      settingsDialog: {
+        open: false,
+        setAttribute() {},
+        addEventListener() {},
+        showModal() {
+          this.open = true;
+        },
+      },
+      settingsWorkspaceFile: file,
+      settingsWorkspaceCount: count,
+      settingsStatus: status,
+    },
+    confirmWorkspaceImport: async () => confirmed,
+    onWorkspaceImported: async () => {
+      refreshed = true;
+      return { ...storage, session_count: 2, saved_filter_count: 1 };
+    },
+  });
+  controller.bind();
+  await controller.open("storage");
+  await handleFile({ currentTarget: file });
+  assert.equal(calls.at(-1).url, "/api/workspace/import/preview");
+  assert.deepEqual(calls.at(-1).body, { file: content });
+  assert.equal(refreshed, false);
+  assert.match(status.textContent, /冲突/);
+
+  confirmed = true;
+  await handleFile({ currentTarget: file });
+  assert.equal(calls.at(-1).url, "/api/workspace/import");
+  assert.deepEqual(calls.at(-1).body, { file: content, token: preview.token });
+  assert.equal(refreshed, true);
+  assert.match(count.textContent, /2 条会话/);
+  assert.match(status.textContent, /backup\.sqlite/);
+});
+
 test("会话链接开关默认关闭，切换后随常规设置保存", async () => {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;

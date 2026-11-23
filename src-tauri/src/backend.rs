@@ -21,7 +21,7 @@ use crate::{
     maintenance,
     sessions::SessionStore,
     updater,
-    workspace::{WorkspaceSnapshot, WorkspaceStore},
+    workspace::{WorkspaceSnapshot, WorkspaceStore, WorkspaceTransfer},
 };
 
 /// 托盘菜单条目数；取数口径与前端默认列表一致（不含归档/移除/隐藏）。
@@ -411,6 +411,7 @@ fn route_request(
                 | "/api/settings/clear-cache"
                 | "/api/sessions/delete"
                 | "/api/sessions/delete-message"
+                | "/api/workspace/import"
         ) {
         Some(state.scan_lock.lock().map_err(lock_error)?)
     } else {
@@ -624,6 +625,55 @@ fn route_request(
         }
         ("GET", "/api/settings") => Ok(state.settings_payload(&app)?),
         ("GET", "/api/workspace") => Ok(state.workspace_snapshot()?.value()),
+        ("GET", "/api/workspace/export") => Ok(json!(
+            state
+                .workspace
+                .lock()
+                .map_err(lock_error)?
+                .export_transfer()?
+        )),
+        ("POST", "/api/workspace/import/preview" | "/api/workspace/import") => {
+            let transfer = WorkspaceTransfer::parse(
+                request.body["file"]
+                    .as_str()
+                    .ok_or_else(|| ApiError::invalid("缺少工作台文件内容"))?,
+            )
+            .map_err(ApiError::invalid)?;
+            let known = {
+                let store = state.store.lock().map_err(lock_error)?;
+                if store.scanning() && transfer.session_keys().next().is_some() {
+                    return Err(ApiError::new(
+                        "workspace_scan_required",
+                        "请完成会话扫描后再导入工作台数据",
+                    ));
+                }
+                transfer
+                    .session_keys()
+                    .filter(|key| store.contains_session_key(key))
+                    .collect::<BTreeSet<_>>()
+            };
+            let known_session = |key: &str| known.contains(key);
+            if path.ends_with("/preview") {
+                return Ok(state
+                    .workspace
+                    .lock()
+                    .map_err(lock_error)?
+                    .preview_transfer(&transfer, known_session)?);
+            }
+            let token = request.body["token"]
+                .as_str()
+                .filter(|value| value.len() == 64)
+                .ok_or_else(|| ApiError::invalid("请先预览并确认导入"))?;
+            let result = state
+                .workspace
+                .lock()
+                .map_err(lock_error)?
+                .import_transfer(&transfer, known_session, token)?;
+            if result.get("backup_path").is_some() {
+                crate::refresh_tray_menu(&app);
+            }
+            Ok(result)
+        }
         ("POST", "/api/workspace/session") => {
             // 归档/移除/收藏影响托盘会话段可见性；备注、标签更新与
             // 托盘无关，不重建菜单。

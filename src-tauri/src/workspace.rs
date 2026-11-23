@@ -9,8 +9,12 @@ use std::{ffi::OsString, os::unix::fs::PermissionsExt};
 
 use jiff::Timestamp;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
+
+mod transfer;
+pub(crate) use transfer::WorkspaceTransfer;
 
 const MAX_SESSION_KEY_CHARS: usize = 512;
 const MAX_MESSAGE_KEY_CHARS: usize = 512;
@@ -21,7 +25,7 @@ const MAX_TAG_CHARS: usize = 40;
 const MAX_FILTER_NAME_CHARS: usize = 60;
 const MAX_FILTER_JSON_BYTES: usize = 8_192;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Deserialize, PartialEq, Serialize)]
 pub struct SessionWorkspace {
     pub archived: bool,
     pub removed: bool,
@@ -31,7 +35,7 @@ pub struct SessionWorkspace {
     pub tags: BTreeSet<String>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Deserialize, PartialEq, Serialize)]
 pub struct SavedFilter {
     id: String,
     name: String,
@@ -202,13 +206,16 @@ impl WorkspaceStore {
     }
 
     pub fn snapshot(&self) -> Result<WorkspaceSnapshot, String> {
+        Self::read_snapshot(&self.connection, &self.path)
+    }
+
+    fn read_snapshot(connection: &Connection, path: &Path) -> Result<WorkspaceSnapshot, String> {
         let mut snapshot = WorkspaceSnapshot {
-            storage_path: Some(self.path.clone()),
+            storage_path: Some(path.to_path_buf()),
             ..WorkspaceSnapshot::default()
         };
         {
-            let mut statement = self
-                .connection
+            let mut statement = connection
                 .prepare(
                     "select session_key, archived, removed, favorite, note, display_name
                      from session_workspace",
@@ -235,8 +242,7 @@ impl WorkspaceStore {
             }
         }
         {
-            let mut statement = self
-                .connection
+            let mut statement = connection
                 .prepare("select session_key, tag from session_tags order by tag")
                 .map_err(error_text)?;
             let rows = statement
@@ -250,8 +256,7 @@ impl WorkspaceStore {
             }
         }
         {
-            let mut statement = self
-                .connection
+            let mut statement = connection
                 .prepare(
                     "select session_key, message_key from message_workspace
                      where removed = 1 order by message_key",
@@ -272,8 +277,7 @@ impl WorkspaceStore {
             }
         }
         {
-            let mut statement = self
-                .connection
+            let mut statement = connection
                 .prepare(
                     "select id, name, filter_json, updated_at
                      from saved_filters order by updated_at desc, name",
@@ -339,14 +343,7 @@ impl WorkspaceStore {
             transaction
                 .execute("delete from session_tags where session_key = ?1", [&key])
                 .map_err(error_text)?;
-            for tag in &tags {
-                transaction
-                    .execute(
-                        "insert into session_tags(session_key, tag) values(?1, ?2)",
-                        params![key, tag],
-                    )
-                    .map_err(error_text)?;
-            }
+            insert_session_tags(&transaction, &key, &tags)?;
             state.tags = tags;
         }
         transaction.commit().map_err(error_text)?;
@@ -567,6 +564,20 @@ fn write_session_state(
             ],
         )
         .map_err(error_text)?;
+    Ok(())
+}
+
+fn insert_session_tags(
+    transaction: &Transaction<'_>,
+    key: &str,
+    tags: &BTreeSet<String>,
+) -> Result<(), String> {
+    let mut statement = transaction
+        .prepare_cached("insert into session_tags(session_key, tag) values(?1, ?2)")
+        .map_err(error_text)?;
+    for tag in tags {
+        statement.execute(params![key, tag]).map_err(error_text)?;
+    }
     Ok(())
 }
 

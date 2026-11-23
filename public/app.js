@@ -122,6 +122,15 @@ initializeControllers({
   onRequestDelete: (message) => openDeleteDialog({ kind: "message", message }),
   onRestoreMessage: restoreRemovedMessage,
   onLanguageChanged: rerenderLocalizedContent,
+  onWorkspaceImported: async () => {
+    await loadWorkspaceState();
+    await refreshWorkspace(["facets", "diagnostics", "query", "stats"]);
+    const key = state.currentDetail?.summary?._key;
+    if (key && key === state.selectedSessionKey) {
+      await loadSessionDetail(key, { live: true });
+    }
+    return state.workspace.storage;
+  },
   refreshData: () =>
     refreshWorkspace(["facets", "diagnostics", "sessions", "stats"]),
 });

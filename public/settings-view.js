@@ -21,6 +21,9 @@ import {
 } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createIcon } from "./app/icons.js";
+import { downloadBlob } from "./session-export.js";
+
+const MAX_WORKSPACE_FILE_BYTES = 16 * 1024 * 1024;
 
 export function summarizeSourceSupport(payload) {
   const supported = new Set(SOURCE_KINDS.map(({ agent }) => agent)).size;
@@ -100,7 +103,9 @@ export function createSettingsController({
   elements,
   onLanguageChanged,
   onSaved,
+  onWorkspaceImported,
   confirmRestart = askDialog,
+  confirmWorkspaceImport = askDialog,
 }) {
   let draft = null;
   let activeTab = "general";
@@ -111,6 +116,7 @@ export function createSettingsController({
   let loading = false;
   let loadVersion = 0;
   let discardPending = false;
+  let transferringWorkspace = false;
 
   function dialog() {
     return elements.settingsDialog;
@@ -785,6 +791,98 @@ export function createSettingsController({
           })
         : "—";
     }
+    syncWorkspaceTransferControls();
+  }
+
+  function syncWorkspaceTransferControls() {
+    const disabled =
+      transferringWorkspace ||
+      latestPayload?.workspace_storage?.enabled !== true;
+    for (const button of [
+      elements.settingsWorkspaceExport,
+      elements.settingsWorkspaceImport,
+    ]) {
+      if (button) button.disabled = disabled;
+    }
+  }
+
+  async function exportWorkspace() {
+    transferringWorkspace = true;
+    syncWorkspaceTransferControls();
+    setStatus("");
+    try {
+      const file = await fetchJson("/api/workspace/export");
+      downloadBlob(file, "allsessions-workspace.json", "application/json");
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      transferringWorkspace = false;
+      syncWorkspaceTransferControls();
+    }
+  }
+
+  async function importWorkspace(event) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file || transferringWorkspace || !dialog()?.open) return;
+    if (file.size > MAX_WORKSPACE_FILE_BYTES) {
+      setStatus(t("settingsWorkspaceFileTooLarge"), true);
+      return;
+    }
+
+    const requestVersion = loadVersion;
+    transferringWorkspace = true;
+    syncWorkspaceTransferControls();
+    setStatus("");
+    const stillOpen = () => requestVersion === loadVersion && dialog()?.open;
+    try {
+      const content = await file.text();
+      const preview = await fetchJson("/api/workspace/import/preview", {
+        method: "POST",
+        body: { file: content },
+      });
+      if (!stillOpen()) return;
+      const summary = t("settingsWorkspaceImportSummary", preview);
+      setStatus(summary);
+      if (!preview.sessions && !preview.filters) return;
+      const confirmed = await confirmWorkspaceImport(
+        `${summary}\n\n${t("settingsWorkspaceImportBackup")}`,
+        {
+          title: t("settingsWorkspaceImport"),
+          kind: "warning",
+          okLabel: t("settingsWorkspaceImport"),
+          cancelLabel: t("cancel"),
+        }
+      );
+      if (confirmed !== true || !stillOpen()) return;
+      setStatus(t("settingsWorkspaceImporting"));
+      const result = await fetchJson("/api/workspace/import", {
+        method: "POST",
+        body: { file: content, token: preview.token },
+      });
+      const done = t("settingsWorkspaceImportDone", result);
+      if (stillOpen()) setStatus(done);
+      try {
+        const storage = await onWorkspaceImported?.();
+        if (storage && latestPayload) {
+          latestPayload = { ...latestPayload, workspace_storage: storage };
+          renderStorage(latestPayload);
+        }
+      } catch (error) {
+        if (stillOpen()) {
+          setStatus(
+            `${done} ${t("settingsWorkspaceImportRefreshFailed")} ${error.message}`,
+            true
+          );
+        }
+      }
+    } catch (error) {
+      if (stillOpen()) setStatus(error.message, true);
+    } finally {
+      transferringWorkspace = false;
+      syncWorkspaceTransferControls();
+    }
   }
 
   function renderPreferences(payload) {
@@ -1172,6 +1270,14 @@ export function createSettingsController({
       if (event.target === dialog()) close();
     });
     elements.settingsSaveBtn?.addEventListener("click", save);
+    elements.settingsWorkspaceExport?.addEventListener(
+      "click",
+      exportWorkspace
+    );
+    elements.settingsWorkspaceImport?.addEventListener("click", () => {
+      elements.settingsWorkspaceFile?.click();
+    });
+    elements.settingsWorkspaceFile?.addEventListener("change", importWorkspace);
     elements.settingsClearCache?.addEventListener("click", clearCache);
     elements.settingsRescan?.addEventListener("click", rescanSources);
     elements.settingsCopyDiagnostics?.addEventListener(

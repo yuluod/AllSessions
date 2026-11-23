@@ -282,6 +282,10 @@ Claude Cowork, Grok Build, Pi, Oh My Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, C
 
 Display names, favorites, tags, notes, saved filters, and local archive/removal state are AllSessions user data stored separately in `workspace.sqlite`. They never modify agent source records and are not cleared along with the rebuildable index cache.
 
+Use **Settings → Storage** to export or import a workspace JSON file up to 16 MB. Configure your sources and complete a scan before importing. The preview shows how many entries are ready to import, conflict with local data, already match, or have no matching session. Import matches the full session key, keeps local conflicts, and skips unmatched sessions. Keep the file private because notes, identifiers, and saved filters may contain sensitive content or local paths.
+
+Before writing, AllSessions creates a SQLite backup beside the workspace database and displays its path after import. To restore it, fully quit AllSessions, including the tray process. Move the current database and any matching `-wal` and `-shm` files to a safe location, then copy the backup to the original database path and restart the app.
+
 ### Export and local data
 
 Export redaction is off by default.

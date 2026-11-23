@@ -128,6 +128,22 @@
   background: var(--surface);
 }
 
+#stats-unpriced-models {
+  margin: 0 18px 12px;
+}
+
+.model-price-fields label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.model-price-fields :is(input, select) {
+  width: 100%;
+  min-width: 0;
+}
+
 .stats-sessions {
   padding: 18px;
   border-top: 1px solid var(--line);

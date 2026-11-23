@@ -649,6 +649,10 @@ const DICT = {
     statsToolCoverage: "工具统计覆盖 {n}/{total} 个会话",
     statsUndatedTokens: "未分配日期的 Token {n}",
     statsEstCost: "估算成本",
+    statsModelPriceTitle: "设置未计价模型的单价",
+    statsModelPriceModel: "模型",
+    statsModelPriceUnit: "单位为美元／百万 Token。免费项可填 0。",
+    statsModelPriceSave: "保存并重算",
     statsCostHint:
       "按自定义和内置价格估算的美元成本。未计价 Token {n}（模型没有匹配的价格或来源未记录模型）。",
     statsDailyUsageHint:
@@ -1594,6 +1598,11 @@ const DICT = {
     statsToolCoverage: "Tool statistics for {n}/{total} sessions",
     statsUndatedTokens: "Tokens without a date {n}",
     statsEstCost: "Est. cost",
+    statsModelPriceTitle: "Set prices for unpriced models",
+    statsModelPriceModel: "Model",
+    statsModelPriceUnit:
+      "Prices are in USD per million tokens. Enter 0 for free usage.",
+    statsModelPriceSave: "Save and recalculate",
     statsCostHint:
       "Estimated USD cost using custom and built-in prices. {n} unpriced tokens (no matching price or no model recorded).",
     statsDailyUsageHint:

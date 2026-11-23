@@ -652,6 +652,26 @@ fn route_request(
             Ok(state.index_progress.lock().map_err(lock_error)?.clone())
         }
         ("GET", "/api/settings") => Ok(state.settings_payload(&app)?),
+        ("POST", "/api/settings/model-price") => {
+            let path = state.config_path.as_deref().ok_or("无法确定配置文件位置")?;
+            let model = request.body["model"]
+                .as_str()
+                .ok_or_else(|| ApiError::invalid("缺少模型名称"))?;
+            let price = serde_json::from_value(request.body["price"].clone())
+                .map_err(|error| ApiError::invalid(format!("模型价格无效：{error}")))?;
+            let mut config = state.config.lock().map_err(lock_error)?;
+            if state.startup_error.lock().map_err(lock_error)?.is_some() {
+                return Err(ApiError::invalid("请先在设置中修复配置文件"));
+            }
+            let mut next = config.clone();
+            next.model_prices = config
+                .model_prices
+                .with_price(model, price)
+                .map_err(ApiError::invalid)?;
+            config::save(path, &next)?;
+            *config = next;
+            Ok(json!({ "ok": true }))
+        }
         ("GET", "/api/workspace") => Ok(state.workspace_snapshot()?.value()),
         ("GET", "/api/workspace/export") => Ok(json!(
             state

@@ -706,6 +706,8 @@ export function renderStats(
   { onSelectRanking, onSelectSession, onChangeRange, onSelectDay } = {}
 ) {
   if (!elements.statsDashboard) return;
+  const priceButton = elements.statsUnpricedModels;
+  if (priceButton) priceButton.hidden = !stats.unpriced_models?.length;
   renderStatsRange(stats.range, elements.statsRange, onChangeRange);
   renderProjectReview(
     stats.project_review,

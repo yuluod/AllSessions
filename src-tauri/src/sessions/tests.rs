@@ -908,6 +908,17 @@ fn 自定义成本在活动范围内的汇总每日和相关会话中一致() {
     assert_eq!(stats["total_cost"], 15.0);
     assert_eq!(stats["cost_sessions"], 2);
     assert_eq!(stats["unpriced_tokens"], 4_000_000);
+    assert_eq!(
+        stats["unpriced_models"],
+        json!([{ "label": "custom-unknown", "count": 4_000_000 }])
+    );
+    let price =
+        serde_json::from_value(json!({"input": 1, "output": 2, "cache_read": 4, "cache_write": 8}))
+            .unwrap();
+    let updated = prices.with_price("provider/custom-unknown", price).unwrap();
+    let repriced = store.stats(&query, &workspace, &updated);
+    assert_eq!(repriced["unpriced_models"], json!([]));
+    assert_eq!(repriced["total_cost"], 30.0);
     let related = store.stats_sessions(&query, &workspace, &prices);
     assert_eq!(related["total"], 3);
     for (index, (date, cost)) in [

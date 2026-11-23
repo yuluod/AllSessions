@@ -199,6 +199,8 @@ If the configuration file is damaged, AllSessions starts with safe defaults and 
 
 ### Custom model prices
 
+In Statistics, choose **Set prices for unpriced models**, select a model from the current results, and enter its four unit prices. Saving recalculates the statistics immediately.
+
 Quit AllSessions, add `model_prices` at the top level of `config.json` alongside any existing fields, then relaunch the app.
 
 ```json

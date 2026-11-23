@@ -190,6 +190,8 @@ AllSessions/config.json
 
 ### 自定义模型价格
 
+在统计页点击「设置未计价模型的单价」，从当前结果选择模型并填写四项单价。保存后立即重算统计。
+
 完全退出 AllSessions 后，将 `model_prices` 添加到 `config.json` 顶层，保留已有字段，然后重新启动应用。
 
 ```json

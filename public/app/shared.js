@@ -263,6 +263,7 @@ export const elements = {
   statsExportButtons: [...document.querySelectorAll("[data-stats-export]")],
   statsSessions: document.querySelector("#stats-sessions"),
   statsMetrics: document.querySelector("#stats-metrics"),
+  statsUnpricedModels: document.querySelector("#stats-unpriced-models"),
   statsGrid: document.querySelector("#stats-grid"),
   projectReview: document.querySelector("#project-review"),
   trendChartBody: document.querySelector("#trend-chart-body"),

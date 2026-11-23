@@ -17,6 +17,7 @@ import {
 import { resolveGlobalShortcut, resolveTabIndex } from "./keyboard-nav.js";
 import { exportSessionMarkdown, exportSessionJson } from "./session-export.js";
 import { exportStats } from "./stats-export.js";
+import { bindModelPrices } from "./model-prices-view.js";
 import { expireProjectReviewActivity } from "./project-review.js";
 import { bindTauriSessionEvents } from "./session-events.js";
 import { DESKTOP_RUNTIME_REQUIRED } from "./api-client.js";
@@ -1171,6 +1172,11 @@ async function initialize() {
   maintenanceController.renderLocalized();
 
   settingsController.bind();
+  bindModelPrices({
+    getModels: () => state.stats?.unpriced_models ?? [],
+    requestJson: fetchJson,
+    onSaved: loadStats,
+  });
   // 更新检查与设置事件订阅不阻塞首屏:列表加载完成前不等待这两个
   // 网络往返,失败只记日志。
   void updateController.bind().catch((error) => {

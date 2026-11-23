@@ -1565,7 +1565,9 @@
             >
               <header class="stats-header">
                 <div>
-                  <h2 data-i18n="statsDashboardTitle">统计概览</h2>
+                  <h2 data-i18n="statsDashboardTitle" tabindex="-1">
+                    统计概览
+                  </h2>
                   <p data-i18n="statsDashboardSummary">
                     快速了解会话规模、活跃趋势与使用分布。
                   </p>
@@ -1630,6 +1632,15 @@
                   class="project-review hidden"
                 ></section>
                 <div class="stats-metrics" id="stats-metrics"></div>
+                <button
+                  id="stats-unpriced-models"
+                  class="ghost-button"
+                  type="button"
+                  hidden
+                  data-i18n="statsModelPriceTitle"
+                >
+                  设置未计价模型的单价
+                </button>
                 <div class="stats-charts" id="stats-charts">
                   <div class="chart-card">
                     <h3 data-i18n="statsTrend">会话趋势</h3>
@@ -2689,6 +2700,95 @@
             data-i18n="settingsWorkspaceContinue"
           >
             继续
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog
+      id="model-price-dialog"
+      class="delete-dialog"
+      aria-labelledby="model-price-title"
+    >
+      <div class="delete-dialog-header">
+        <h2 id="model-price-title" data-i18n="statsModelPriceTitle">
+          设置未计价模型的单价
+        </h2>
+      </div>
+      <form id="model-price-form">
+        <div class="delete-dialog-body model-price-fields">
+          <label
+            ><span data-i18n="statsModelPriceModel">模型</span>
+            <select name="model" required autofocus></select>
+          </label>
+          <p data-i18n="statsModelPriceUnit">
+            单位为美元／百万 Token。免费项可填 0。
+          </p>
+          <label
+            ><span data-i18n="statsTokenInput">输入</span>
+            <input
+              name="input"
+              type="number"
+              required
+              min="0"
+              max="1000000"
+              step="any"
+            />
+          </label>
+          <label
+            ><span data-i18n="statsTokenOutput">输出</span>
+            <input
+              name="output"
+              type="number"
+              required
+              min="0"
+              max="1000000"
+              step="any"
+            />
+          </label>
+          <label
+            ><span data-i18n="statsCacheRead">缓存读取</span>
+            <input
+              name="cache_read"
+              type="number"
+              required
+              min="0"
+              max="1000000"
+              step="any"
+            />
+          </label>
+          <label
+            ><span data-i18n="statsCacheWrite">缓存写入</span>
+            <input
+              name="cache_write"
+              type="number"
+              required
+              min="0"
+              max="1000000"
+              step="any"
+            />
+          </label>
+          <p
+            id="model-price-status"
+            class="delete-dialog-status"
+            role="status"
+          ></p>
+        </div>
+        <div class="delete-dialog-actions">
+          <button
+            type="button"
+            class="ghost-button"
+            id="model-price-cancel"
+            data-i18n="cancel"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            class="ghost-button button--primary"
+            data-i18n="statsModelPriceSave"
+          >
+            保存并重算
           </button>
         </div>
       </form>

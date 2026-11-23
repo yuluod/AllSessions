@@ -84,6 +84,7 @@ export const state = {
   },
   selectedSessionKeys: new Set(),
   bulkSelectionMode: false,
+  bulkExportRunning: false,
 };
 
 export function isSearchActive() {

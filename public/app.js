@@ -571,22 +571,18 @@ async function initialize() {
     });
   });
 
-  if (elements.exportMdBtn) {
-    elements.exportMdBtn.addEventListener("click", () => {
-      if (state.currentDetail) {
-        exportSessionMarkdown(state.currentDetail, {
+  for (const [button, exportSession] of [
+    [elements.exportMdBtn, exportSessionMarkdown],
+    [elements.exportJsonBtn, exportSessionJson],
+  ]) {
+    button?.addEventListener("click", async () => {
+      if (!state.currentDetail) return;
+      try {
+        await exportSession(state.currentDetail, {
           redact: elements.exportRedactToggle?.checked === true,
         });
-      }
-    });
-  }
-
-  if (elements.exportJsonBtn) {
-    elements.exportJsonBtn.addEventListener("click", () => {
-      if (state.currentDetail) {
-        exportSessionJson(state.currentDetail, {
-          redact: elements.exportRedactToggle?.checked === true,
-        });
+      } catch (error) {
+        showError(`${t("exportSessionFailed")}: ${error.message}`);
       }
     });
   }
@@ -603,30 +599,32 @@ async function initialize() {
   // 原始事件量巨大的会话先给出规模提示并确认后再解析。
   const FULL_EXPORT_CONFIRM_EVENTS = 20_000;
   let pendingFullExport = null;
+  let fullExportRunning = false;
 
   async function runFullExport() {
     const pending = pendingFullExport;
-    const key = state.currentDetail?.summary?._key;
-    if (!pending || !key) return;
+    if (!pending || fullExportRunning) return;
+    fullExportRunning = true;
     const buttons = [
       elements.exportMdBtn,
       elements.exportJsonBtn,
       elements.exportFullMdBtn,
       elements.exportFullJsonBtn,
+      elements.exportFullDialogConfirm,
     ].filter(Boolean);
     buttons.forEach((button) => (button.disabled = true));
     elements.exportFullDialogStatus.textContent = t("exportFullInProgress");
     try {
       const detail = await fetchJson(
-        `/api/sessions/${encodeURIComponent(key)}/export`
+        `/api/sessions/${encodeURIComponent(pending.key)}/export`
       );
       pendingFullExport = null;
       elements.exportFullDialog?.close();
       const options = { redact: pending.redact, full: true };
       if (pending.format === "json") {
-        exportSessionJson(detail, options);
+        await exportSessionJson(detail, options);
       } else {
-        exportSessionMarkdown(detail, options);
+        await exportSessionMarkdown(detail, options);
       }
     } catch (error) {
       const message = `${t("exportFullFailed")}: ${error.message}`;
@@ -636,14 +634,16 @@ async function initialize() {
         showError(message);
       }
     } finally {
+      fullExportRunning = false;
       buttons.forEach((button) => (button.disabled = false));
     }
   }
 
   function requestFullExport(format) {
     const summary = state.currentDetail?.summary;
-    if (!summary?._key) return;
+    if (!summary?._key || fullExportRunning) return;
     pendingFullExport = {
+      key: summary._key,
       format,
       redact: elements.exportRedactToggle?.checked === true,
     };

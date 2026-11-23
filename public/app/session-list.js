@@ -77,7 +77,9 @@ export function updateBulkToolbar() {
   elements.bulkToolbar?.classList.toggle("hidden", !selecting);
   const toggle = document.querySelector("#bulk-select-toggle");
   toggle?.setAttribute("aria-pressed", String(selecting));
-  if (elements.bulkExportBtn) elements.bulkExportBtn.disabled = count === 0;
+  if (elements.bulkExportBtn) {
+    elements.bulkExportBtn.disabled = count === 0 || state.bulkExportRunning;
+  }
   if (elements.selectVisibleBtn) {
     elements.selectVisibleBtn.disabled = state.sessions.length === 0;
   }

@@ -279,6 +279,8 @@ Claude Cowork、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、Z
 
 启用后，AllSessions 会移除已知的会话标识和常见本地路径模式，但自动脱敏不能保证覆盖所有敏感信息。
 
+导出会话 JSON 或 Markdown 时，应用在本机检查最终内容。命中常见凭据格式时会在下载前提示类型和文件行号，正文按当前导出设置保留。分享前仍需人工检查。
+
 > [!WARNING]
 >
 > - 分享导出文件、日志、截图或 issue 前，请人工检查并脱敏。

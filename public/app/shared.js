@@ -322,6 +322,15 @@ export const elements = {
   settingsDeletionBackupCount: document.querySelector(
     "#settings-deletion-backup-count"
   ),
+  settingsDeletionBackupSize: document.querySelector(
+    "#settings-deletion-backup-size"
+  ),
+  settingsDeletionBackupList: document.querySelector(
+    "#settings-deletion-backup-list"
+  ),
+  settingsDeleteOldBackups: document.querySelector(
+    "#settings-delete-old-backups"
+  ),
   settingsWorkspacePath: document.querySelector("#settings-workspace-path"),
   settingsWorkspaceCount: document.querySelector("#settings-workspace-count"),
   settingsClearCache: document.querySelector("#settings-clear-cache"),

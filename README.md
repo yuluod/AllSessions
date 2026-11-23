@@ -180,7 +180,8 @@ Click **Settings** in the toolbar to:
 - Inspect source health status
 - Copy sanitized diagnostics
 - View and clear the index cache
-- Review the permanent-deletion backup location
+- Review permanent-deletion backup location, count, and storage usage
+- Delete an individual backup or clean up older backups, keeping the latest 10
 
 Source paths support `~` expansion.
 
@@ -275,6 +276,8 @@ AllSessions works with local AI session data, which may contain:
 Normal browsing, search, and export never modify agent source data.
 
 After explicit confirmation of permanent deletion, AllSessions creates a local backup before modifying the original Codex, Claude Code, or Gemini CLI records.
+
+Deleting backups is always explicit. AllSessions does not remove backups automatically, and backups remain unencrypted original records.
 
 The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
 

@@ -81,12 +81,23 @@ export function sessionTimestamp(session) {
   return session.last_timestamp || session.timestamp || "";
 }
 
-// 文件最近写入在该窗口内视为"进行中"：agent 持续输出时 mtime 紧贴当前时间。
-export const RUNNING_WINDOW_MS = 90_000;
+export function hasRecentWrite(ms, now = Date.now()) {
+  const age = now - ms;
+  return ms > 0 && age >= 0 && age < 90_000;
+}
 
-export function isSessionRunning(session, now = Date.now()) {
-  const mtime = Number(session?.file_mtime_ms || 0);
-  return mtime > 0 && now - mtime < RUNNING_WINDOW_MS;
+export function formatRelativeWriteTime(ms, now = Date.now()) {
+  const delta = ms - now;
+  const formatter = new Intl.RelativeTimeFormat(locale(), { numeric: "auto" });
+  for (const [unit, width] of [
+    ["day", 86_400_000],
+    ["hour", 3_600_000],
+    ["minute", 60_000],
+  ]) {
+    if (Math.abs(delta) >= width)
+      return formatter.format(Math.trunc(delta / width), unit);
+  }
+  return formatter.format(0, "second");
 }
 
 // 列表摘要与已打开详情对比：源文件切换、消息数或时间变化时重载。

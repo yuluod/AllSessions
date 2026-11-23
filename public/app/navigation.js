@@ -20,6 +20,7 @@ import {
   renderActiveFilters,
   resetFilterState,
   syncFilterControls,
+  syncSessionSortControl,
   syncUrl,
 } from "./filters.js";
 import { closeInspectorDrawer, setPropsPlaceholder } from "./detail-view.js";
@@ -90,6 +91,7 @@ export async function openReviewSession(key) {
 
 export async function activateWorkspaceView(panel) {
   state.activeView = panel;
+  syncSessionSortControl();
   // 复用同一组筛选控件，统计页也明确展示当前条件，避免隐藏筛选影响结果。
   const filterControls = document.querySelector("#session-query-controls");
   const filterSlot = document.querySelector(

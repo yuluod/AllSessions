@@ -769,9 +769,54 @@ fn 列表摘要附带文件最近写入时间且不写回缓存摘要() {
         .unwrap()
         .as_millis() as i64;
     assert!((0..120_000).contains(&(now - mtime)));
+    assert_eq!(store.summaries[0]["session_write_ms"], mtime);
     // 盖章发生在列表构建层，records 内的缓存摘要不被污染。
     let record = store.records.values().next().unwrap();
     assert!(record.summary["file_mtime_ms"].is_null());
+    assert!(record.summary["session_write_ms"].is_null());
+}
+
+#[test]
+fn 会话按独立文件写入时间排序后分页且未知时间排末尾() {
+    let (_directory, mut store) = structured_search_store();
+    let base = &store.summaries[0];
+    store.summaries = [
+        ("opencode:shared", "opencode", None),
+        ("codex:older-write", "codex", Some(1_000)),
+        ("claude_code:new-write", "claude_code", Some(2_000)),
+        ("codex:tied-write", "codex", Some(2_000)),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, (key, source, write))| {
+        let mut summary = base.clone();
+        summary["_key"] = json!(key);
+        summary["source_kind"] = json!(source);
+        summary["last_timestamp"] = json!(format!("2026-03-01T12:00:0{}Z", 9 - index));
+        summary["file_mtime_ms"] = json!(3_000);
+        summary["session_write_ms"] = json!(write);
+        summary
+    })
+    .collect();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let default_order = store.list(&HashMap::new(), &workspace);
+    assert_eq!(default_order["sessions"][0]["_key"], "opencode:shared");
+
+    let mut query = HashMap::from([
+        ("sort".into(), "last_write".into()),
+        ("limit".into(), "2".into()),
+    ]);
+    let first = store.list(&query, &workspace);
+    assert_eq!(first["sessions"][0]["_key"], "claude_code:new-write");
+    assert_eq!(first["sessions"][1]["_key"], "codex:tied-write");
+    query.insert(
+        "cursor".into(),
+        first["next_cursor"].as_str().unwrap().into(),
+    );
+    let second = store.list(&query, &workspace);
+    assert_eq!(second["sessions"][0]["_key"], "codex:older-write");
+    assert_eq!(second["sessions"][1]["_key"], "opencode:shared");
+    assert_eq!(second["has_more"], false);
 }
 
 #[test]

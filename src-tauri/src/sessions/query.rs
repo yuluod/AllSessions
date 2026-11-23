@@ -70,7 +70,16 @@ impl SessionStore {
         query: &HashMap<String, String>,
         workspace: &crate::workspace::WorkspaceSnapshot,
     ) -> Value {
-        let sessions = self.filtered(query, workspace);
+        let mut sessions = self.filtered(query, workspace);
+        if query.get("sort").is_some_and(|sort| sort == "last_write") {
+            sessions.sort_by(|a, b| {
+                b["session_write_ms"]
+                    .as_i64()
+                    .cmp(&a["session_write_ms"].as_i64())
+                    .then_with(|| timestamp_of(b).cmp(timestamp_of(a)))
+                    .then_with(|| a["_key"].as_str().cmp(&b["_key"].as_str()))
+            });
+        }
         let total = sessions.len();
         paginate(
             sessions,
@@ -473,15 +482,7 @@ impl DetailPlan {
             parse_detail(&self.record.path, &self.record.source)
         }
         .map_err(|error| ApiError::new(ApiError::SESSION_READ_FAILED, error))?;
-        // 与列表摘要一致的最近写入时间，供"进行中"标记与实时刷新判断。
-        if let Some(ms) = std::fs::metadata(&self.record.path)
-            .ok()
-            .and_then(|metadata| metadata.modified().ok())
-            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .and_then(|duration| i64::try_from(duration.as_millis()).ok())
-        {
-            detail["summary"]["file_mtime_ms"] = json!(ms);
-        }
+        self.record.annotate_write_times(&mut detail["summary"]);
         if let Some(messages) = detail["conversation_messages"].as_array_mut() {
             for message in messages {
                 super::annotate_activity(message);

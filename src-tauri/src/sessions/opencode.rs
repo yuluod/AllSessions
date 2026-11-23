@@ -1001,6 +1001,27 @@ mod tests {
     }
 
     #[test]
+    fn 共享数据库的修改时间不归属于单个会话() {
+        let (_directory, source) = fixture();
+        let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();
+        for session in parsed.sessions {
+            let record = crate::sessions::StoredSession {
+                summary: session.summary,
+                search_text: session.search_text,
+                path: session.path,
+                source: source.clone(),
+                detail_locator: Some(crate::sessions::DetailLocator::OpenCode(
+                    session.detail_locator,
+                )),
+            };
+            let mut summary = record.summary.clone();
+            record.annotate_write_times(&mut summary);
+            assert!(summary["file_mtime_ms"].is_number());
+            assert!(summary["session_write_ms"].is_null());
+        }
+    }
+
+    #[test]
     fn 详情会映射文本_思考和工具结果且不暴露删除引用() {
         let (_directory, source) = fixture();
         let parsed = parse_source(&source, &IndexCache::disabled()).unwrap();

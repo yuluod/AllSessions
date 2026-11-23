@@ -8,7 +8,7 @@ import {
   formatCount,
   formatTimestamp,
   formatTokensCompact,
-  isSessionRunning,
+  hasRecentWrite,
   providerLabel,
 } from "../session-format.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -143,8 +143,10 @@ export function renderDetailTags(summary) {
     },
     { text: hiddenReasonLabel(summary), cls: "tag-hidden" },
     {
-      text: isSessionRunning(summary) ? t("sessionRunning") : "",
-      cls: "tag-running",
+      text: hasRecentWrite(summary.session_write_ms)
+        ? t("sessionLastWrite")
+        : "",
+      cls: "tag-recent-write",
     },
     {
       text: workspace.removed === true ? t("removedSession") : "",

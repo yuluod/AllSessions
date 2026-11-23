@@ -40,7 +40,7 @@ import {
 import {
   renderSessionList,
   setSessionSelected,
-  syncRunningBadges,
+  syncSessionWriteTimes,
   updateBulkToolbar,
 } from "./app/session-list.js";
 import {
@@ -378,6 +378,12 @@ async function initialize() {
     state.filters.tag = event.target.value;
     syncUrl();
     await refreshWorkspace(["query", "stats"]);
+  });
+
+  elements.sessionSort?.addEventListener("change", (event) => {
+    state.sessionSort = event.target.value;
+    syncUrl();
+    void loadSessions({ background: true });
   });
 
   elements.resetFilters?.addEventListener("click", async () => {
@@ -1211,8 +1217,7 @@ async function initialize() {
     });
   });
 
-  // 进行中徽标依赖 mtime 新鲜度，会话停写后靠定时摘除，无需整表重渲。
-  setInterval(() => syncRunningBadges(), 30_000);
+  setInterval(() => syncSessionWriteTimes(), 30_000);
   await loadInitialWorkspace();
 }
 

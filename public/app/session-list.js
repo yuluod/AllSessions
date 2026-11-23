@@ -6,9 +6,10 @@ import {
   displaySessionTitle,
   formatDateGroup,
   formatListTimestamp,
+  formatRelativeWriteTime,
   formatTimestamp,
+  hasRecentWrite,
   isDefaultSessionSource,
-  isSessionRunning,
   providerLabel,
   sessionTimestamp,
 } from "../session-format.js";
@@ -135,7 +136,9 @@ let renderedSessionCount = 0;
 let lastRenderedGroupKey = "";
 
 export function shouldGroupSessions() {
-  return !isSearchActive() || state.searchSort === "recent";
+  return isSearchActive()
+    ? state.searchSort === "recent"
+    : state.sessionSort !== "last_write";
 }
 
 export function sessionGroupCounts(sessions) {
@@ -290,9 +293,22 @@ export function appendSessionItems(sessions) {
     titleEl.textContent = title;
     titleEl.title = title;
     const timeEl = button.querySelector(".session-time");
-    timeEl.textContent = formatListTimestamp(sessionTimestamp(session));
-    timeEl.title = formatTimestamp(sessionTimestamp(session));
-    timeEl.dateTime = sessionTimestamp(session);
+    const writeMs = session.session_write_ms;
+    const sortByWrite = !isSearchActive() && state.sessionSort === "last_write";
+    if (sortByWrite && writeMs > 0) {
+      timeEl.dateTime = new Date(writeMs).toISOString();
+      timeEl.textContent = formatRelativeWriteTime(writeMs);
+      timeEl.title = t("sessionWrittenAt", { time: formatTimestamp(writeMs) });
+      timeEl.dataset.relativeWrite = "true";
+    } else if (sortByWrite) {
+      timeEl.textContent = "—";
+      timeEl.title = t("sessionWriteUnknown");
+    } else {
+      timeEl.textContent = formatListTimestamp(sessionTimestamp(session));
+      timeEl.title = formatTimestamp(sessionTimestamp(session));
+      timeEl.dateTime = sessionTimestamp(session);
+    }
+    if (writeMs > 0) button.dataset.sessionWrite = String(writeMs);
     const providerEl = button.querySelector(".session-provider");
     providerEl.textContent = providerLabel(session);
     // 徽章按 max-width 截断，完整模型名通过悬浮提示查看。
@@ -336,13 +352,7 @@ export function appendSessionItems(sessions) {
       "aria-label",
       t("sessionMessageCount", { n: messageCount })
     );
-    button.dataset.fileMtime = String(session.file_mtime_ms || 0);
-    if (isSessionRunning(session)) {
-      const runningBadge = document.createElement("span");
-      runningBadge.className = "session-running-badge";
-      runningBadge.textContent = t("sessionRunning");
-      button.querySelector(".session-tertiary").append(runningBadge);
-    }
+    if (!sortByWrite) syncRecentWriteBadge(button, hasRecentWrite(writeMs));
     const hiddenReason = hiddenReasonLabel(session);
     if (hiddenReason) {
       const hiddenBadge = document.createElement("span");
@@ -584,23 +594,28 @@ export function renderSessionList() {
   }
 }
 
-// 进行中徽标随时间自然过期：会话停写后不再有刷新事件，靠定时器原地摘除。
-export function syncRunningBadges(now = Date.now()) {
+function syncRecentWriteBadge(button, recent) {
+  const badge = button.querySelector(".session-write-badge");
+  if (!recent) badge?.remove();
+  else if (!badge) {
+    const next = document.createElement("span");
+    next.className = "session-write-badge";
+    next.textContent = t("sessionLastWrite");
+    button.querySelector(".session-tertiary").append(next);
+  }
+}
+
+// 没有新写入时也原地更新时间和徽标，避免重绘列表影响焦点。
+export function syncSessionWriteTimes(now = Date.now()) {
   elements.sessionList
-    ?.querySelectorAll(".session-item[data-file-mtime]")
+    ?.querySelectorAll(".session-item[data-session-write]")
     .forEach((button) => {
-      const running = isSessionRunning(
-        { file_mtime_ms: Number(button.dataset.fileMtime) },
-        now
-      );
-      let badge = button.querySelector(".session-running-badge");
-      if (running && !badge) {
-        badge = document.createElement("span");
-        badge.className = "session-running-badge";
-        badge.textContent = t("sessionRunning");
-        button.querySelector(".session-tertiary")?.append(badge);
-      } else if (!running && badge) {
-        badge.remove();
-      }
+      const ms = Number(button.dataset.sessionWrite);
+      const time = button.querySelector("[data-relative-write]");
+      if (time) time.textContent = formatRelativeWriteTime(ms, now);
+      else syncRecentWriteBadge(button, hasRecentWrite(ms, now));
     });
+  if (!hasRecentWrite(state.currentDetail?.summary?.session_write_ms, now)) {
+    elements.detailTags?.querySelector(".tag-recent-write")?.remove();
+  }
 }

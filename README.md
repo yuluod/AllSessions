@@ -49,7 +49,7 @@ AllSessions is built on Tauri 2. Session discovery, parsing, search, caching, fi
 - Use Session insights for file operations, related parent/subagent sessions, and usage trends; review and filter tool operations and jump to the original messages
 - Load session images on demand and open larger previews
 - Hide sessions marked as subagents or sidechains by default, with a filter to show them; injected context is shown by default in session details and can be toggled, while thinking appears within normalized messages
-- Watch source files and refresh automatically; sessions still being written show a Running badge, and an open detail view appends new messages live
+- Watch source files and refresh automatically. Sort the session list by Recent writes to see relative file write times, with unavailable times at the end. Syncing or compression can affect these times. Open session details append new messages live.
 
 ### Full-text search
 

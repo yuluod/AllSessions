@@ -869,13 +869,7 @@ html.settings-modal-open body {
 }
 
 .settings-backup-retention input {
-  width: 64px;
-  min-height: var(--control-height);
-  padding: 5px 7px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-small);
-  color: var(--text);
-  background: var(--field-background);
+  width: 5em;
 }
 
 .settings-deletion-backup-list {

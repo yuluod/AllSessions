@@ -46,17 +46,13 @@ pub fn delete(name: &str) -> Result<(), String> {
     delete_at(&root, name)
 }
 
-pub fn cleanup() -> Result<(), String> {
-    cleanup_at(&backup_root()?, KEEP_LATEST)
-}
-
-pub fn cleanup_with_keep(keep: usize) -> Result<(), String> {
+pub fn cleanup(keep: usize, expected: Option<&[String]>) -> Result<(), String> {
     if !(MIN_KEEP_LATEST..=MAX_KEEP_LATEST).contains(&keep) {
         return Err(format!(
             "备份保留数量必须在 {MIN_KEEP_LATEST} 到 {MAX_KEEP_LATEST} 之间"
         ));
     }
-    cleanup_at(&backup_root()?, keep)
+    cleanup_at(&backup_root()?, keep, expected)
 }
 
 pub fn create(
@@ -291,8 +287,17 @@ fn delete_at(root: &Path, name: &str) -> Result<(), String> {
     fs::remove_dir_all(&target).map_err(error_text)
 }
 
-fn cleanup_at(root: &Path, keep: usize) -> Result<(), String> {
+fn cleanup_at(root: &Path, keep: usize, expected: Option<&[String]>) -> Result<(), String> {
     let backups = valid_backups(root)?;
+    if let Some(expected) = expected
+        && !backups
+            .iter()
+            .skip(keep)
+            .map(|backup| &backup.name)
+            .eq(expected)
+    {
+        return Err("备份列表已变化，请核对更新后的列表再清理".into());
+    }
     for backup in backups.into_iter().skip(keep).rev() {
         delete_at(root, &backup.name)?;
     }
@@ -417,7 +422,7 @@ mod tests {
     use serde_json::{Value, json};
     use tempfile::tempdir;
 
-    use super::{cleanup_at, cleanup_with_keep, create_at, delete_at, valid_backups};
+    use super::{cleanup, cleanup_at, create_at, delete_at, valid_backups};
 
     #[test]
     fn 永久删除备份会复制文件并记录清单() {
@@ -509,7 +514,15 @@ mod tests {
         }
         assert!(delete_at(&backup_root, "../backups").is_err());
         let newest = valid_backups(&backup_root).unwrap().remove(0).name;
-        cleanup_at(&backup_root, 1).unwrap();
+        assert!(cleanup_at(&backup_root, 1, Some(&[])).is_err());
+        assert_eq!(valid_backups(&backup_root).unwrap().len(), 3);
+        let expected = valid_backups(&backup_root)
+            .unwrap()
+            .into_iter()
+            .skip(1)
+            .map(|backup| backup.name)
+            .collect::<Vec<_>>();
+        cleanup_at(&backup_root, 1, Some(&expected)).unwrap();
         let backups = valid_backups(&backup_root).unwrap();
         assert_eq!(backups.len(), 1);
         assert_eq!(backups[0].name, newest);
@@ -517,8 +530,8 @@ mod tests {
 
     #[test]
     fn 自定义保留数量限制在安全范围内() {
-        assert!(cleanup_with_keep(0).is_err());
-        assert!(cleanup_with_keep(101).is_err());
+        assert!(cleanup(0, None).is_err());
+        assert!(cleanup(101, None).is_err());
     }
 
     #[test]
@@ -557,7 +570,7 @@ mod tests {
         assert!(delete_at(&root, name).is_err());
         std::fs::remove_file(&manifest).unwrap();
         std::fs::write(&manifest, "{}").unwrap();
-        cleanup_at(&root, 0).unwrap();
+        cleanup_at(&root, 0, None).unwrap();
         assert!(path.is_dir());
         std::fs::copy(&saved_manifest, &manifest).unwrap();
 

@@ -845,16 +845,22 @@ fn route_request(
                 ));
             }
             let result = if path.ends_with("/cleanup") {
-                let keep = request
+                let keep = match request.body.get("keep_latest") {
+                    Some(value) => value
+                        .as_u64()
+                        .and_then(|keep| usize::try_from(keep).ok())
+                        .ok_or_else(|| ApiError::invalid("备份保留数量无效"))?,
+                    None => crate::deletion_backup::KEEP_LATEST,
+                };
+                let names = request
                     .body
-                    .get("keep_latest")
-                    .and_then(Value::as_u64)
-                    .ok_or_else(|| ApiError::invalid("缺少备份保留数量"))?;
-                if keep as usize == crate::deletion_backup::KEEP_LATEST {
-                    crate::deletion_backup::cleanup()
-                } else {
-                    crate::deletion_backup::cleanup_with_keep(keep as usize)
-                }
+                    .get("names")
+                    .map(|value| {
+                        serde_json::from_value::<Vec<String>>(value.clone())
+                            .map_err(|_| ApiError::invalid("待清理备份列表无效"))
+                    })
+                    .transpose()?;
+                crate::deletion_backup::cleanup(keep, names.as_deref())
             } else {
                 let name = request
                     .body

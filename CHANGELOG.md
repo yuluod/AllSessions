@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-23
+
+### 新增
+
+- 工作台支持导出和导入 JSON，可迁移收藏、标签和备注。跨设备导入可按来源会话 ID 匹配，预览会列出未匹配项和有歧义的候选项，数据冲突可逐项选择保留本地或采用导入值。（[#35](https://github.com/yuluod/AllSessions/pull/35)、[#37](https://github.com/yuluod/AllSessions/pull/37)、[#40](https://github.com/yuluod/AllSessions/pull/40)）
+- 会话导出支持预览即将下载的内容并定位疑似凭据。可在设置中添加自定义脱敏规则，导出前查看规则替换后的结果。（[#30](https://github.com/yuluod/AllSessions/pull/30)、[#39](https://github.com/yuluod/AllSessions/pull/39)、[#41](https://github.com/yuluod/AllSessions/pull/41)）
+- 设置页可查看永久删除备份及其占用，按指定数量保留最近备份，并为新备份启用口令加密。恢复时可输入原口令解密并导出 TAR 归档。（[#34](https://github.com/yuluod/AllSessions/pull/34)、[#38](https://github.com/yuluod/AllSessions/pull/38)、[#42](https://github.com/yuluod/AllSessions/pull/42)）
+- 统计页可从未计价模型直接打开预填单价表单，保存后即时重算成本估算。自定义价格也可覆盖内置单价。（[#31](https://github.com/yuluod/AllSessions/pull/31)、[#36](https://github.com/yuluod/AllSessions/pull/36)）
+- 界面语言支持跟随系统，同步更新设置页和托盘菜单。（[#33](https://github.com/yuluod/AllSessions/pull/33)）
+
+### 优化
+
+- 项目回顾新增跨 Agent 会话时间线，支持按来源筛选并打开会话。（[#29](https://github.com/yuluod/AllSessions/pull/29)）
+- 会话列表可按文件最近写入时间排序，并显示相对时间。（[#32](https://github.com/yuluod/AllSessions/pull/32)）
+
 ## [0.4.1] - 2026-11-22
 
 ### 新增

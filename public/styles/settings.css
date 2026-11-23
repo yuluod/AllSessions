@@ -904,6 +904,15 @@ html.settings-modal-open body {
   flex: 0 0 auto;
 }
 
+.settings-workspace-transfer {
+  margin-top: 12px;
+}
+
+.settings-workspace-transfer .settings-storage-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .settings-storage-hint {
   margin: 0;
   padding: 9px 12px;

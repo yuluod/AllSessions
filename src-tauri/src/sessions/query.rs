@@ -255,6 +255,10 @@ impl SessionStore {
         Some(self.records.get(&resolved)?.summary.clone())
     }
 
+    pub(crate) fn contains_session_key(&self, key: &str) -> bool {
+        self.records.contains_key(key)
+    }
+
     pub(crate) fn resolve_record_key(&self, key: &str) -> Option<String> {
         if self.records.contains_key(key) {
             return Some(key.to_string());

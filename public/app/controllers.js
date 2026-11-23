@@ -27,6 +27,7 @@ export function initializeControllers({
   onRequestDelete,
   onRestoreMessage,
   onLanguageChanged,
+  onWorkspaceImported,
   refreshData,
 }) {
   conversationView = createConversationView({
@@ -66,6 +67,7 @@ export function initializeControllers({
   settingsController = createSettingsController({
     elements,
     onLanguageChanged,
+    onWorkspaceImported,
     onSaved: () => {
       refreshData().catch((error) => showError(error.message));
     },

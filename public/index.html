@@ -3537,6 +3537,40 @@
                 class="settings-deletion-backup-list"
               ></div>
             </div>
+            <div class="settings-storage-card settings-workspace-transfer">
+              <p
+                class="settings-storage-hint"
+                data-i18n="settingsWorkspaceTransferHint"
+              >
+                导出工作台数据用于迁移。文件包含备注和可能含有本地路径的标识，请妥善保管。
+              </p>
+              <div class="settings-storage-actions">
+                <button
+                  id="settings-workspace-export"
+                  class="ghost-button"
+                  type="button"
+                  disabled
+                  data-i18n="settingsWorkspaceExport"
+                >
+                  导出工作台 JSON
+                </button>
+                <button
+                  id="settings-workspace-import"
+                  class="ghost-button"
+                  type="button"
+                  disabled
+                  data-i18n="settingsWorkspaceImport"
+                >
+                  导入工作台 JSON
+                </button>
+                <input
+                  id="settings-workspace-file"
+                  type="file"
+                  accept=".json,application/json"
+                  hidden
+                />
+              </div>
+            </div>
           </div>
         </section>
         <section

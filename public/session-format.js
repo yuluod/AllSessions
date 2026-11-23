@@ -81,9 +81,11 @@ export function sessionTimestamp(session) {
   return session.last_timestamp || session.timestamp || "";
 }
 
+export const RUNNING_WINDOW_MS = 90_000;
+
 export function hasRecentWrite(ms, now = Date.now()) {
   const age = now - ms;
-  return ms > 0 && age >= 0 && age < 90_000;
+  return ms > 0 && age >= 0 && age < RUNNING_WINDOW_MS;
 }
 
 export function formatRelativeWriteTime(ms, now = Date.now()) {

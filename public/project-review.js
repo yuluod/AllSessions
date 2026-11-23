@@ -1,8 +1,27 @@
 import { t } from "./i18n.js";
-import { displaySessionTitle, formatListTimestamp } from "./session-format.js";
+import {
+  displaySessionTitle,
+  formatListTimestamp,
+  RUNNING_WINDOW_MS,
+} from "./session-format.js";
 
 // 每组默认展示条数；后端最多返回 50 条，其余按步长展开。
 export const PROJECT_REVIEW_PAGE_SIZE = 8;
+
+function isRecentActivity(timestamp, now) {
+  const age = now - timestamp;
+  return age >= 0 && age < RUNNING_WINDOW_MS;
+}
+
+export function expireProjectReviewActivity(container, now = Date.now()) {
+  container
+    ?.querySelectorAll("[data-project-last-activity]")
+    .forEach((hint) => {
+      if (!isRecentActivity(Number(hint.dataset.projectLastActivity), now)) {
+        hint.remove();
+      }
+    });
+}
 
 export function renderProjectReview(review, container, onSelectSession) {
   if (!container) return;
@@ -19,7 +38,7 @@ export function renderProjectReview(review, container, onSelectSession) {
   const columns = document.createElement("div");
   columns.className = "stats-grid";
   for (const [key, title] of [
-    ["recent", "projectRecentSessions"],
+    ["recent", "projectTimeline"],
     ["saved", "projectSavedSessions"],
   ]) {
     const section = document.createElement("section");
@@ -34,8 +53,9 @@ export function renderProjectReview(review, container, onSelectSession) {
       empty.textContent = t(key === "saved" ? "projectNoSaved" : "noResults");
       section.append(empty);
     }
-    const list = document.createElement("ul");
+    const list = document.createElement(key === "recent" ? "ol" : "ul");
     list.className = "project-review-list";
+    list.setAttribute("role", "list");
     const renderItem = (session) => {
       const item = document.createElement("li");
       const button = document.createElement("button");
@@ -46,14 +66,24 @@ export function renderProjectReview(review, container, onSelectSession) {
       button.addEventListener("click", () => onSelectSession?.(session.key));
       const meta = document.createElement("p");
       meta.className = "project-review-meta";
-      meta.textContent = [
-        session.source,
-        formatListTimestamp(session.timestamp),
-        session.favorite ? t("favorite") : "",
+      const timestamp = Date.parse(session.timestamp);
+      const time = document.createElement(
+        Number.isFinite(timestamp) ? "time" : "span"
+      );
+      time.textContent = formatListTimestamp(session.timestamp);
+      if (Number.isFinite(timestamp)) time.dateTime = session.timestamp;
+      meta.append(session.source || t("unknownSource"), " · ", time);
+      const details = [
+        session.favorite && t("favorite"),
         ...(session.tags || []),
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      ].filter(Boolean);
+      if (details.length) meta.append(" · ", details.join(" · "));
+      if (key === "recent" && isRecentActivity(timestamp, Date.now())) {
+        const hint = document.createElement("span");
+        hint.dataset.projectLastActivity = String(timestamp);
+        hint.textContent = ` · ${t("projectRecentActivity")}`;
+        meta.append(hint);
+      }
       item.append(button, meta);
       if (session.note) {
         const note = document.createElement("p");
@@ -62,6 +92,7 @@ export function renderProjectReview(review, container, onSelectSession) {
         item.append(note);
       }
       list.append(item);
+      return button;
     };
     let shown = Math.min(PROJECT_REVIEW_PAGE_SIZE, sessions.length);
     sessions.slice(0, shown).forEach(renderItem);
@@ -81,8 +112,10 @@ export function renderProjectReview(review, container, onSelectSession) {
           shown + PROJECT_REVIEW_PAGE_SIZE,
           sessions.length
         );
-        sessions.slice(shown, next).forEach(renderItem);
+        const added = sessions.slice(shown, next).map(renderItem);
         shown = next;
+        if (document.activeElement === more && onSelectSession)
+          added[0].focus();
         if (shown >= sessions.length) more.remove();
         else updateLabel();
       });

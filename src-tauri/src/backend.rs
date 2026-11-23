@@ -36,6 +36,7 @@ pub struct BackendState {
     config: Arc<Mutex<AppConfig>>,
     config_path: Option<PathBuf>,
     startup_error: Arc<Mutex<Option<String>>>,
+    tray_language: Arc<Mutex<crate::TrayLanguage>>,
     maintenance_enabled: Arc<AtomicBool>,
     maintenance_lock: Arc<Mutex<()>>,
     scan_lock: Arc<Mutex<()>>,
@@ -68,6 +69,7 @@ impl BackendState {
             config: Arc::new(Mutex::new(config)),
             config_path,
             startup_error: Arc::new(Mutex::new(startup_error)),
+            tray_language: Arc::new(Mutex::new(crate::TrayLanguage::Chinese)),
             maintenance_enabled: Arc::new(AtomicBool::new(false)),
             maintenance_lock: Arc::new(Mutex::new(())),
             scan_lock: Arc::new(Mutex::new(())),
@@ -269,6 +271,20 @@ impl BackendState {
         Ok(self.store.lock().map_err(lock_error)?.watch_roots())
     }
 
+    fn refresh_tray(
+        &self,
+        app: &AppHandle,
+        language: Option<crate::TrayLanguage>,
+    ) -> Result<(), String> {
+        // 串行构建和替换菜单，避免后台扫描把旧语言重新写回托盘。
+        let mut current = self.tray_language.lock().map_err(lock_error)?;
+        if let Some(language) = language {
+            *current = language;
+        }
+        let (favorites, recents) = self.tray_sessions();
+        crate::replace_tray_menu(app, *current, &favorites, &recents)
+    }
+
     /// 托盘菜单数据：(收藏段, 最近段)；锁失败时返回空列表，托盘只显示固定项。
     pub fn tray_sessions(&self) -> (Vec<Value>, Vec<Value>) {
         let Ok(workspace) = self
@@ -422,6 +438,15 @@ fn route_request(
     };
 
     match (method.as_str(), path) {
+        ("POST", "/api/tray/language") => {
+            let language = match request.body["language"].as_str() {
+                Some("en") => crate::TrayLanguage::English,
+                Some("zh") => crate::TrayLanguage::Chinese,
+                _ => return Err(ApiError::invalid("托盘语言必须是 zh 或 en")),
+            };
+            state.refresh_tray(&app, Some(language))?;
+            Ok(json!({}))
+        }
         ("GET", "/api/capabilities") => {
             let enabled = state.maintenance_enabled.load(Ordering::SeqCst);
             let mut capabilities = state
@@ -672,8 +697,10 @@ fn route_request(
                 .lock()
                 .map_err(lock_error)?
                 .import_transfer(&transfer, known_session, token)?;
-            if result.get("backup_path").is_some() {
-                crate::refresh_tray_menu(&app);
+            if result.get("backup_path").is_some()
+                && let Err(error) = state.refresh_tray(&app, None)
+            {
+                eprintln!("更新托盘菜单失败：{error}");
             }
             Ok(result)
         }
@@ -688,8 +715,8 @@ fn route_request(
                 .lock()
                 .map_err(lock_error)?
                 .update_session(&request.body)?;
-            if affects_tray {
-                crate::refresh_tray_menu(&app);
+            if affects_tray && let Err(error) = state.refresh_tray(&app, None) {
+                eprintln!("更新托盘菜单失败：{error}");
             }
             Ok(result)
         }
@@ -980,7 +1007,9 @@ fn emit_sessions_changed(app: &AppHandle, payload: Value) -> Result<(), String> 
     let result = app
         .emit("sessions-changed", payload)
         .map_err(|error| error.to_string());
-    crate::refresh_tray_menu(app);
+    if let Err(error) = app.state::<BackendState>().refresh_tray(app, None) {
+        eprintln!("更新托盘菜单失败：{error}");
+    }
     result
 }
 

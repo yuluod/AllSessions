@@ -175,7 +175,7 @@ Windows, macOS, and Linux share the same Tauri 2 app shell, system tray, and sig
 
 Click **Settings** in the toolbar to:
 
-- Switch language and appearance
+- Follow the system language (Chinese or English), or choose a language and appearance manually
 - Edit per-source session paths
 - Inspect source health status
 - Copy sanitized diagnostics

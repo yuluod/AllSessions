@@ -75,6 +75,7 @@ export function syncUrl() {
   if (state.showHidden) params.set("show_hidden", "1");
   if (state.showRemoved) params.set("show_removed", "1");
   if (state.favoriteOnly) params.set("favorite", "1");
+  if (state.sessionSort === "last_write") params.set("list_sort", "last_write");
   if (state.selectedSessionKey) params.set("session", state.selectedSessionKey);
   const search = params.toString();
   history.replaceState(null, "", search ? `?${search}` : location.pathname);
@@ -109,6 +110,8 @@ export function restoreFromUrl() {
     params.get("show_removed") === "1" || params.get("show_removed") === "true";
   state.favoriteOnly =
     params.get("favorite") === "1" || params.get("favorite") === "true";
+  state.sessionSort =
+    params.get("list_sort") === "last_write" ? "last_write" : "recent";
   state.selectedSessionKey = params.get("session") || null;
 }
 export async function setSourceKindFilter(sourceKind) {
@@ -299,7 +302,15 @@ export function syncSessionRoot() {
       : t("localSourcesCount", { n: roots.length });
   elements.sessionRoot.title = roots.join("\n");
 }
+export function syncSessionSortControl() {
+  if (!elements.sessionSort) return;
+  elements.sessionSort.value = state.sessionSort;
+  elements.sessionSort.closest("label").hidden =
+    state.activeView !== "list" || isSearchActive();
+}
+
 export function syncFilterControls() {
+  syncSessionSortControl();
   document
     .querySelector("#search-results-toolbar")
     ?.classList.toggle("hidden", !isSearchActive() && !hasSearchOptions());
@@ -388,11 +399,11 @@ export function buildFacetsQuery() {
 }
 
 export function buildSessionsUrl({ cursor } = {}) {
-  const query = buildSessionQuery();
-  const prefix = query ? `/api/sessions?${query}&` : "/api/sessions?";
-  let url = `${prefix}limit=${PAGE_LIMIT}`;
-  if (cursor) url += `&cursor=${cursor}`;
-  return url;
+  const params = new URLSearchParams(buildSessionQuery());
+  params.set("limit", PAGE_LIMIT);
+  if (state.sessionSort === "last_write") params.set("sort", "last_write");
+  if (cursor) params.set("cursor", cursor);
+  return `/api/sessions?${params}`;
 }
 
 export function buildSearchUrl({ cursor } = {}) {

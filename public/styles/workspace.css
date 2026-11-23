@@ -1389,7 +1389,7 @@ body.is-resizing {
 .session-source-kind,
 .session-hidden-reason,
 .session-workspace-badge,
-.session-running-badge,
+.session-write-badge,
 .detail-tag,
 .message-role,
 .message-tool,
@@ -1429,7 +1429,7 @@ body.is-resizing {
   font-size: 0.6875rem;
 }
 
-.session-running-badge {
+.session-write-badge {
   padding: 2px 6px;
   gap: 4px;
   color: var(--success);
@@ -1437,34 +1437,17 @@ body.is-resizing {
   font-size: 0.6875rem;
 }
 
-.session-running-badge::before {
+.session-write-badge::before {
   content: "";
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--success);
-  animation: running-pulse 1.6s ease-in-out infinite;
 }
 
-.detail-tag.tag-running {
+.detail-tag.tag-recent-write {
   color: var(--success);
   background: var(--success-soft);
-}
-
-@keyframes running-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.3;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .session-running-badge::before {
-    animation: none;
-  }
 }
 
 .session-workspace-badge {

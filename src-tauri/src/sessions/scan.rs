@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap, hash_map::Entry};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::helpers::{
     diagnostic_source_kind, error_text, is_placeholder_session, search_fingerprint, timestamp_of,
@@ -748,16 +748,8 @@ impl SessionStore {
             .values()
             .map(|record| {
                 let mut summary = record.summary.clone();
-                // 文件最近写入时间用于"进行中"标记；按列表构建时采集，
-                // 不写进摘要缓存，避免缓存里混入易变事实。
-                if let Some(ms) = fs::metadata(&record.path)
-                    .ok()
-                    .and_then(|metadata| metadata.modified().ok())
-                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                    .and_then(|duration| i64::try_from(duration.as_millis()).ok())
-                {
-                    summary["file_mtime_ms"] = json!(ms);
-                }
+                // 在列表构建时采集，避免把易变的文件时间写进摘要缓存。
+                record.annotate_write_times(&mut summary);
                 summary
             })
             .collect();

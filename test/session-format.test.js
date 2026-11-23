@@ -9,20 +9,33 @@ globalThis.localStorage = {
 const {
   displaySessionTitle,
   formatListTimestamp,
+  formatRelativeWriteTime,
+  hasRecentWrite,
   isDefaultSessionSource,
-  isSessionRunning,
   sessionNeedsLiveReload,
   sessionTimestamp,
   providerLabel,
 } = await import("../public/session-format.js");
 
-test("进行中标记以文件写入窗口为准并自然过期", () => {
+test("最近写入标记随时间过期，未知或未来时间不显示标记", () => {
   const now = 1_700_000_000_000;
-  assert.equal(isSessionRunning({ file_mtime_ms: now - 10_000 }, now), true);
-  assert.equal(isSessionRunning({ file_mtime_ms: now - 91_000 }, now), false);
-  assert.equal(isSessionRunning({ file_mtime_ms: 0 }, now), false);
-  assert.equal(isSessionRunning({}, now), false);
-  assert.equal(isSessionRunning(undefined, now), false);
+  assert.equal(hasRecentWrite(now - 10_000, now), true);
+  assert.equal(hasRecentWrite(now - 90_000, now), false);
+  assert.equal(hasRecentWrite(now + 10_000, now), false);
+  assert.equal(hasRecentWrite(undefined, now), false);
+});
+
+test("写入时间以相对时间显示，经过一分钟后更新单位", () => {
+  const write = 1_700_000_000_000;
+  const i18n = new Intl.RelativeTimeFormat("zh-CN", { numeric: "auto" });
+  assert.equal(
+    formatRelativeWriteTime(write, write + 59_999),
+    i18n.format(0, "second")
+  );
+  assert.equal(
+    formatRelativeWriteTime(write, write + 60_000),
+    i18n.format(-1, "minute")
+  );
 });
 
 test("实时重载识别源文件切换、消息数和时间变化", () => {

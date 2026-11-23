@@ -143,6 +143,25 @@ pub(crate) struct StoredSession {
     detail_locator: Option<DetailLocator>,
 }
 
+impl StoredSession {
+    fn annotate_write_times(&self, summary: &mut Value) {
+        let Some(ms) = std::fs::metadata(&self.path)
+            .ok()
+            .filter(std::fs::Metadata::is_file)
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+        else {
+            return;
+        };
+        summary["file_mtime_ms"] = json!(ms);
+        // 通过定位器读取的会话可能来自共享库或聚合日志。
+        if ms > 0 && self.detail_locator.is_none() {
+            summary["session_write_ms"] = json!(ms);
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct SourceScanDiagnostic {
     discovered_paths: BTreeSet<PathBuf>,

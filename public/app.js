@@ -41,7 +41,7 @@ import {
 import {
   renderSessionList,
   setSessionSelected,
-  syncRunningBadges,
+  syncSessionWriteTimes,
   updateBulkToolbar,
 } from "./app/session-list.js";
 import {
@@ -379,6 +379,12 @@ async function initialize() {
     state.filters.tag = event.target.value;
     syncUrl();
     await refreshWorkspace(["query", "stats"]);
+  });
+
+  elements.sessionSort?.addEventListener("change", (event) => {
+    state.sessionSort = event.target.value;
+    syncUrl();
+    void loadSessions({ background: true });
   });
 
   elements.resetFilters?.addEventListener("click", async () => {
@@ -1214,7 +1220,7 @@ async function initialize() {
 
   // 原地更新会过期的活动提示，保留列表和时间线里的焦点。
   setInterval(() => {
-    syncRunningBadges();
+    syncSessionWriteTimes();
     expireProjectReviewActivity(elements.projectReview);
   }, 30_000);
   await loadInitialWorkspace();

@@ -335,6 +335,9 @@ export const elements = {
   settingsDeleteOldBackups: document.querySelector(
     "#settings-delete-old-backups"
   ),
+  settingsBackupKeepLatest: document.querySelector(
+    "#settings-backup-keep-latest"
+  ),
   settingsWorkspacePath: document.querySelector("#settings-workspace-path"),
   settingsWorkspaceCount: document.querySelector("#settings-workspace-count"),
   settingsWorkspaceExport: document.querySelector("#settings-workspace-export"),

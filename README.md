@@ -181,7 +181,7 @@ Click **Settings** in the toolbar to:
 - Copy sanitized diagnostics
 - View and clear the index cache
 - Review permanent-deletion backup location, count, and storage usage
-- Delete an individual backup or clean up older backups, keeping the latest 10
+- Delete an individual backup or clean up older backups with a selectable retention count from 1 to 100
 
 Source paths support `~` expansion.
 

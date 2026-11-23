@@ -859,6 +859,19 @@ html.settings-modal-open body {
   background: var(--surface-subtle);
 }
 
+.settings-backup-retention {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.settings-backup-retention input {
+  width: 5em;
+}
+
 .settings-deletion-backup-list {
   display: grid;
   gap: 6px;

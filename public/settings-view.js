@@ -919,10 +919,7 @@ export function createSettingsController({
         : "—";
     }
     const backups = backup.backups || [];
-    if (elements.settingsDeleteOldBackups) {
-      elements.settingsDeleteOldBackups.disabled =
-        !backup.enabled || backups.length <= backup.keep_latest;
-    }
+    syncBackupCleanup(backup);
     if (elements.settingsDeletionBackupList) {
       elements.settingsDeletionBackupList.replaceChildren();
       if (backup.enabled && backups.length > 0) {
@@ -954,6 +951,19 @@ export function createSettingsController({
         empty.textContent = t("settingsNoDeletionBackups");
         elements.settingsDeletionBackupList.append(empty);
       }
+    }
+  }
+
+  function syncBackupCleanup(backup = latestPayload?.deletion_backup) {
+    const input = elements.settingsBackupKeepLatest;
+    const button = elements.settingsDeleteOldBackups;
+    if (input) input.disabled = deletingBackup || !backup?.enabled;
+    if (button) {
+      button.disabled =
+        deletingBackup ||
+        !backup?.enabled ||
+        (input && !input.validity.valid) ||
+        backup.count <= (input?.valueAsNumber ?? backup.keep_latest);
     }
   }
 
@@ -1273,8 +1283,13 @@ export function createSettingsController({
   async function removeDeletionBackups(entry = null) {
     const backup = latestPayload?.deletion_backup;
     if (deletingBackup || loading || !backup?.enabled) return;
-    if (!entry && backup.count <= backup.keep_latest) return;
+    const input = elements.settingsBackupKeepLatest;
+    const keep = input?.valueAsNumber ?? backup.keep_latest;
+    if (!entry && ((input && !input.validity.valid) || keep >= backup.count))
+      return;
+    const focused = document.activeElement;
     deletingBackup = true;
+    if (input) input.disabled = true;
     const version = loadVersion;
     try {
       const label = t(
@@ -1283,7 +1298,10 @@ export function createSettingsController({
       const confirmed = await confirmBackupDeletion(
         entry
           ? t("settingsDeleteBackupConfirm", { name: entry.name })
-          : t("settingsDeleteOldBackupsConfirm", { n: backup.keep_latest }),
+          : t("settingsDeleteOldBackupsConfirm", {
+              n: keep,
+              removed: backup.count - keep,
+            }),
         {
           title: label,
           kind: "warning",
@@ -1299,14 +1317,20 @@ export function createSettingsController({
         `/api/settings/deletion-backup/${action}`,
         {
           method: "POST",
-          body: { name: entry?.name, confirmed: true },
+          body: entry
+            ? { name: entry.name, confirmed: true }
+            : {
+                confirmed: true,
+                keep_latest: keep,
+                names: backup.backups.slice(keep).map(({ name }) => name),
+              },
         }
       );
       latestPayload.deletion_backup = payload.deletion_backup;
       const list = elements.settingsDeletionBackupList;
       const cleanup = elements.settingsDeleteOldBackups;
-      const focused = document.activeElement;
       const focusedBackup = list?.contains(focused);
+      deletingBackup = false;
       renderDeletionBackups(payload.deletion_backup);
       if (
         focusedBackup ||
@@ -1329,6 +1353,7 @@ export function createSettingsController({
       setStatus(error.message, true);
     } finally {
       deletingBackup = false;
+      syncBackupCleanup();
     }
   }
 
@@ -1417,6 +1442,9 @@ export function createSettingsController({
     elements.settingsClearCache?.addEventListener("click", clearCache);
     elements.settingsDeleteOldBackups?.addEventListener("click", () =>
       removeDeletionBackups()
+    );
+    elements.settingsBackupKeepLatest?.addEventListener("input", () =>
+      syncBackupCleanup()
     );
     elements.settingsRescan?.addEventListener("click", rescanSources);
     elements.settingsCopyDiagnostics?.addEventListener(

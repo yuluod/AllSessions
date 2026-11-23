@@ -10,8 +10,7 @@
   --radius-small: 2px;
   --radius-large: 5px;
   --density: 1;
-  --preview-line-width: 1px;
-  --preview-shadow: none;
+  --user-message-background: var(--surface-raised);
   /* 组件视觉参数；交互行为由共享组件负责。 */
   --control-height: 36px;
   --control-height-compact: 34px;
@@ -79,15 +78,15 @@
 [data-theme="blind"][data-scheme="dark"],
 :root[data-scheme="dark"] .settings-theme-option[data-preview-theme="blind"] {
   --bg: #14100c;
-  --surface: #1d4a2f;
-  --surface-raised: #25583a;
-  --surface-sunken: #10291b;
-  --stripe-a: #1d4a2f;
-  --stripe-b: #1a4229;
-  --line: #0e2a1a;
+  --surface: #193428;
+  --surface-raised: #244536;
+  --surface-sunken: #11271e;
+  --stripe-a: var(--surface);
+  --stripe-b: #1d3b2d;
+  --line: #375043;
   --line-strong: #75846f;
   --line-accent: #f4c400;
-  --text: #f4c400;
+  --text: #f4efda;
   --text-secondary: #e1dcc7;
   --muted: #d0cbb9;
   --text-inverse: #162719;

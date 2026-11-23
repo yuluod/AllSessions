@@ -7,8 +7,7 @@
   --radius-small: 2px;
   --radius-large: 4px;
   --density: 1;
-  --preview-line-width: 1px;
-  --preview-shadow: none;
+  --session-row-alternate: var(--stripe-b);
   /* 组件视觉参数；交互行为由共享组件负责。 */
   --control-weight: 600;
   --control-round: 2px;
@@ -69,12 +68,12 @@
 [data-theme="greenbar"][data-scheme="dark"],
 :root[data-scheme="dark"]
   .settings-theme-option[data-preview-theme="greenbar"] {
-  --bg: #11151a;
-  --surface: #151b21;
-  --surface-raised: #1b232b;
-  --surface-sunken: #0d1115;
-  --stripe-a: #11151a;
-  --stripe-b: #161c23;
+  --bg: #151b17;
+  --surface: #19211b;
+  --surface-raised: #222c24;
+  --surface-sunken: #111813;
+  --stripe-a: #19211b;
+  --stripe-b: #202b22;
   --line: #33413a;
   --line-strong: #617269;
   --line-accent: #6fbf94;

@@ -1,3 +1,11 @@
+:where(:root, .settings-theme-option[data-preview-theme]) {
+  --preview-line-width: 1px;
+  --preview-shadow: none;
+  --sidebar-background: var(--surface-sunken);
+  --session-row-alternate: transparent;
+  --user-message-background: var(--accent-soft);
+}
+
 :root {
   --control-height: 34px;
   --control-font-size: 0.8rem;

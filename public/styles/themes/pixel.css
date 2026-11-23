@@ -25,6 +25,7 @@
   --control-motion: 0ms;
   --preview-line-width: 2px;
   --preview-shadow: 1px 1px 0 var(--line-strong);
+  --user-message-background: var(--surface-sunken);
 }
 
 [data-theme="pixel"][data-scheme="light"],

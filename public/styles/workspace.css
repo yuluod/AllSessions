@@ -470,6 +470,7 @@
 }
 .session-pane-heading h2 {
   margin: 0;
+  font-family: var(--font-display);
   font-size: 1.12rem;
   font-weight: 720;
 }
@@ -655,8 +656,7 @@
   flex-direction: column;
   overflow: hidden;
   border-right: 1px solid var(--line);
-  /* 侧栏下沉一档，与白色内容区形成层次。 */
-  background: var(--surface-sunken);
+  background: var(--sidebar-background);
   container-name: rail;
   container-type: inline-size;
 }
@@ -1715,6 +1715,7 @@ body.is-resizing {
   display: -webkit-box;
   overflow: hidden;
   color: var(--text);
+  font-family: var(--font-display);
   font-size: var(--detail-title-size);
   font-weight: 760;
   line-height: 1.35;
@@ -2503,7 +2504,7 @@ body.is-resizing {
   max-width: min(84%, 760px);
   margin-left: auto;
   margin-right: 36px;
-  --message-bg: var(--info-soft);
+  --message-bg: var(--user-message-background);
   border-color: transparent;
 }
 
@@ -4114,10 +4115,13 @@ body.is-resizing {
   background: var(--surface);
 }
 
-/* 行式列表：常态透明，靠 hover 底色与选中左条表达状态，不再描边/斑马纹。 */
-.session-list > :nth-child(odd of .session-row) .session-item,
-.session-list > :nth-child(even of .session-row) .session-item {
+/* 分组标题不参与行号，换组时背景节奏保持连续。 */
+.session-list > :nth-child(odd of .session-row) .session-item {
   background: transparent;
+}
+
+.session-list > :nth-child(even of .session-row) .session-item {
+  background: var(--session-row-alternate);
 }
 
 .session-item {
@@ -4134,7 +4138,7 @@ body.is-resizing {
   transition: background-color 150ms var(--ease-out);
 }
 
-/* 与透明行背景同优先级并靠后声明，保证 hover/选中背景生效。 */
+/* 悬停和选中覆盖普通行背景。 */
 .session-list > .session-row .session-item:hover {
   background: var(--surface-subtle);
 }

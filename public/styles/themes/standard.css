@@ -10,8 +10,6 @@
   --radius-small: 7px;
   --radius-large: 14px;
   --density: 1;
-  --preview-line-width: 1px;
-  --preview-shadow: none;
   /* 组件视觉参数；交互行为由共享组件负责。 */
   --control-height: 36px;
   --control-height-compact: 32px;
@@ -33,19 +31,19 @@
   --bg: #fafafa;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f3f4f6;
+  --surface-sunken: #f0f5f4;
   --stripe-a: #ffffff;
   --stripe-b: #ffffff;
   --line: #e5e7eb;
   --line-strong: #9ca3af;
-  --line-accent: #2563eb;
+  --line-accent: #0e7490;
   --text: #0f1115;
   --text-secondary: #374151;
   --muted: #5f6876;
   --text-inverse: #ffffff;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-soft: #eaf3ff;
+  --accent: #0e7490;
+  --accent-strong: #155e75;
+  --accent-soft: #e3f3f5;
   --chart: #059669;
   --chart-strong: #047857;
   --chart-soft: #d1fae5;
@@ -72,7 +70,7 @@
   --shadow-raised:
     0 2px 6px rgb(15 17 21 / 6%), 0 12px 32px rgb(15 17 21 / 12%);
   --shadow-hover: 0 2px 4px rgb(15 17 21 / 6%), 0 6px 16px rgb(15 17 21 / 9%);
-  --focus-ring: #2563eb;
+  --focus-ring: #0e7490;
 }
 
 [data-theme="standard"][data-scheme="dark"],

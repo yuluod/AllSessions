@@ -621,7 +621,7 @@ test("会话列表项使用卡片式堆叠信息层级", async () => {
   );
   assert.match(
     css,
-    /\.session-list > :nth-child\(odd of \.session-row\) \.session-item,\s*\.session-list > :nth-child\(even of \.session-row\) \.session-item\s*\{[^}]*background: transparent/
+    /\.session-list > :nth-child\(even of \.session-row\) \.session-item\s*\{[^}]*background: var\(--session-row-alternate\)/
   );
   assert.doesNotMatch(css, /\.session-row:hover \.session-select-control/);
   assert.match(css, /\.session-list\.is-selecting \.session-select-control/);

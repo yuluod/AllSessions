@@ -220,7 +220,7 @@ html.settings-modal-open body {
   gap: 7px;
   min-height: 66px;
   padding: 7px;
-  border: var(--preview-line-width, 1px) solid var(--line);
+  border: var(--preview-line-width) solid var(--line);
   border-radius: var(--radius-small);
   color: var(--text-secondary);
   background: var(--surface-raised);
@@ -250,11 +250,11 @@ html.settings-modal-open body {
   grid-template-columns: 24% minmax(0, 1fr);
   height: 42px;
   overflow: hidden;
-  border: var(--preview-line-width, 1px) solid var(--line);
+  border: var(--preview-line-width) solid var(--line);
   border-radius: var(--radius-small);
   background: var(--surface);
   color: var(--text);
-  box-shadow: var(--preview-shadow, none);
+  box-shadow: var(--preview-shadow);
   font-family: var(--font-ui);
   font-size: calc(0.58rem * var(--density));
   font-weight: var(--control-weight);
@@ -266,7 +266,7 @@ html.settings-modal-open body {
   gap: 5px;
   padding: 6px 4px;
   border-right: 1px solid var(--line);
-  background: var(--surface-sunken);
+  background: var(--sidebar-background);
 }
 
 .settings-preview-nav i {

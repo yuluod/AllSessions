@@ -114,20 +114,35 @@ impl WorkspaceTransfer {
     fn plan<'a>(
         &'a self,
         local: &WorkspaceSnapshot,
-        known_session: impl Fn(&str) -> bool,
+        target_session: impl Fn(&str) -> Option<String>,
     ) -> Result<ImportPlan<'a>, String> {
         let mut plan = ImportPlan::default();
         let mut hash = Sha256::new();
         hash.update(serde_json::to_vec(self).map_err(error_text)?);
         for (key, entry) in &self.sessions {
-            let local_workspace = local.sessions.get(key);
-            let local_messages = local.removed_messages.get(key);
-            let decision = if !known_session(key) {
-                Decision::Unmatched
-            } else if local_workspace.is_none() && local_messages.is_none() {
+            let Some(target) = target_session(key) else {
+                plan.unmatched.push(key);
+                plan.record(Decision::Unmatched, &mut hash);
+                continue;
+            };
+            hash.update((target.len() as u64).to_le_bytes());
+            hash.update(target.as_bytes());
+            let remapped = target != *key;
+            if remapped {
+                plan.remapped += 1;
+                plan.skipped_messages += entry.removed_messages.len();
+                if entry.workspace.is_none() {
+                    plan.record(Decision::Skipped, &mut hash);
+                    continue;
+                }
+            }
+            let local_workspace = local.sessions.get(&target);
+            let local_messages = local.removed_messages.get(&target);
+            let decision = if local_workspace.is_none() && (remapped || local_messages.is_none()) {
                 Decision::Import
             } else if entry.workspace.as_ref() == local_workspace
-                && (local_messages == Some(&entry.removed_messages)
+                && (remapped
+                    || local_messages == Some(&entry.removed_messages)
                     || (local_messages.is_none() && entry.removed_messages.is_empty()))
             {
                 Decision::Unchanged
@@ -135,7 +150,7 @@ impl WorkspaceTransfer {
                 Decision::Conflict
             };
             if plan.record(decision, &mut hash) {
-                plan.sessions.push((key, entry));
+                plan.sessions.push((target, entry, remapped));
             }
         }
         let local_filters = local
@@ -170,13 +185,16 @@ enum Decision {
     Unmatched,
     Unchanged,
     Conflict,
+    Skipped,
 }
 
 #[derive(Default)]
 struct ImportPlan<'a> {
-    sessions: Vec<(&'a str, &'a SessionEntry)>,
+    sessions: Vec<(String, &'a SessionEntry, bool)>,
     filters: Vec<&'a SavedFilter>,
-    unmatched: usize,
+    unmatched: Vec<&'a str>,
+    remapped: usize,
+    skipped_messages: usize,
     unchanged: usize,
     conflicts: usize,
     token: String,
@@ -187,7 +205,7 @@ impl ImportPlan<'_> {
         hash.update([decision as u8]);
         match decision {
             Decision::Import => return true,
-            Decision::Unmatched => self.unmatched += 1,
+            Decision::Unmatched | Decision::Skipped => {}
             Decision::Unchanged => self.unchanged += 1,
             Decision::Conflict => self.conflicts += 1,
         }
@@ -198,7 +216,10 @@ impl ImportPlan<'_> {
         json!({
             "sessions": self.sessions.len(),
             "filters": self.filters.len(),
-            "unmatched": self.unmatched,
+            "unmatched": self.unmatched.len(),
+            "unmatched_keys": self.unmatched,
+            "remapped": self.remapped,
+            "skipped_messages": self.skipped_messages,
             "unchanged": self.unchanged,
             "conflicts": self.conflicts,
             "token": self.token,
@@ -213,10 +234,14 @@ impl ImportPlan<'_> {
             )
             .map_err(error_text)?;
         let updated_at = now();
-        for (key, entry) in &self.sessions {
+        for (key, entry, remapped) in &self.sessions {
             if let Some(state) = &entry.workspace {
                 write_session_state(transaction, key, state)?;
                 insert_session_tags(transaction, key, &state.tags)?;
+            }
+            // 新会话键下的消息标识可能指向不同消息。
+            if *remapped {
+                continue;
             }
             for message in &entry.removed_messages {
                 remove_message
@@ -267,15 +292,15 @@ impl WorkspaceStore {
     pub(crate) fn preview_transfer(
         &self,
         transfer: &WorkspaceTransfer,
-        known_session: impl Fn(&str) -> bool,
+        target_session: impl Fn(&str) -> Option<String>,
     ) -> Result<Value, String> {
-        Ok(transfer.plan(&self.snapshot()?, known_session)?.summary())
+        Ok(transfer.plan(&self.snapshot()?, target_session)?.summary())
     }
 
     pub(crate) fn import_transfer(
         &mut self,
         transfer: &WorkspaceTransfer,
-        known_session: impl Fn(&str) -> bool,
+        target_session: impl Fn(&str) -> Option<String>,
         token: &str,
     ) -> Result<Value, String> {
         let transaction = self
@@ -283,7 +308,7 @@ impl WorkspaceStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(error_text)?;
         let snapshot = Self::read_snapshot(&transaction, &self.path)?;
-        let plan = transfer.plan(&snapshot, known_session)?;
+        let plan = transfer.plan(&snapshot, target_session)?;
         if token != plan.token {
             return Err("导入预览已变化，请重新选择文件并确认".into());
         }
@@ -385,12 +410,13 @@ mod tests {
             .save_filter(&json!({"id": "conflict", "name": "本地筛选", "filter": {}}))
             .unwrap();
         let before = target.snapshot().unwrap();
-        let known = |key: &str| key.starts_with("codex:");
+        let known = |key: &str| key.starts_with("codex:").then(|| key.to_owned());
         let preview = target.preview_transfer(&transfer, known).unwrap();
         assert_eq!(preview["sessions"], 2);
         assert_eq!(preview["filters"], 1);
         assert_eq!(preview["conflicts"], 2);
         assert_eq!(preview["unmatched"], 1);
+        assert_eq!(preview["unmatched_keys"], json!(["missing:path"]));
         let result = target
             .import_transfer(&transfer, known, preview["token"].as_str().unwrap())
             .unwrap();
@@ -456,18 +482,50 @@ mod tests {
         )
         .unwrap();
         let preview = store
-            .preview_transfer(&transfer, |key| key == "codex:first")
+            .preview_transfer(&transfer, |key| {
+                (key == "codex:first").then(|| key.to_owned())
+            })
             .unwrap();
         assert!(
             store
                 .import_transfer(
                     &transfer,
-                    |key| key == "codex:second",
+                    |key| (key == "codex:second").then(|| key.to_owned()),
                     preview["token"].as_str().unwrap()
                 )
                 .is_err()
         );
         assert!(store.snapshot().unwrap().removed_messages.is_empty());
+    }
+
+    #[test]
+    fn 跨键导入整理状态且跳过消息移除标记() {
+        let dir = tempdir().unwrap();
+        let mut source = WorkspaceStore::open_at(&dir.path().join("source.sqlite")).unwrap();
+        source
+            .update_session(&json!({"sessionKey": "old", "favorite": true, "note": "合成备注"}))
+            .unwrap();
+        source
+            .update_message(&json!({"sessionKey": "old", "messageKey": "m1", "removed": true}))
+            .unwrap();
+        let transfer = WorkspaceTransfer::parse(&source.export_transfer().unwrap()).unwrap();
+        let mut store = WorkspaceStore::open_at(&dir.path().join("target.sqlite")).unwrap();
+        let matched = |_: &str| Some("new".into());
+        let preview = store.preview_transfer(&transfer, matched).unwrap();
+        assert_eq!(preview["remapped"], 1);
+        assert_eq!(preview["skipped_messages"], 1);
+        let token = preview["token"].as_str().unwrap();
+        assert!(
+            store
+                .import_transfer(&transfer, |_| Some("other".into()), token)
+                .is_err()
+        );
+        store.import_transfer(&transfer, matched, token).unwrap();
+        let snapshot = store.snapshot().unwrap();
+        assert_eq!(snapshot.sessions["new"].note, "合成备注");
+        assert!(snapshot.sessions["new"].favorite);
+        assert!(!snapshot.message_removed("new", "m1"));
+        assert!(!snapshot.sessions.contains_key("old"));
     }
 
     #[test]
@@ -509,9 +567,15 @@ mod tests {
              end;",
             )
             .unwrap();
-        let preview = store.preview_transfer(&transfer, |_| true).unwrap();
+        let preview = store
+            .preview_transfer(&transfer, |key| Some(key.to_owned()))
+            .unwrap();
         let error = store
-            .import_transfer(&transfer, |_| true, preview["token"].as_str().unwrap())
+            .import_transfer(
+                &transfer,
+                |key| Some(key.to_owned()),
+                preview["token"].as_str().unwrap(),
+            )
             .unwrap_err();
         assert!(error.contains("写入失败"));
         assert!(store.snapshot().unwrap().removed_messages.is_empty());

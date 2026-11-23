@@ -819,6 +819,15 @@ const DICT = {
       "导出工作台数据用于迁移。文件包含备注和可能含有本地路径的标识，请妥善保管。",
     settingsWorkspaceExport: "导出工作台 JSON",
     settingsWorkspaceImport: "导入工作台 JSON",
+    settingsWorkspaceMatchesTitle: "检查会话匹配",
+    settingsWorkspaceUnmatchedList: "找不到对应会话的条目",
+    settingsWorkspaceSkipMatch: "跳过此条记录",
+    settingsWorkspaceDuplicateMatch: "同一会话只能关联一条导入记录。",
+    settingsWorkspaceMatchLimit:
+      "候选过多，已跳过 {omitted_candidates} 条记录的候选列表。下方仍列出这些记录。",
+    settingsWorkspaceContinue: "继续",
+    settingsWorkspaceImportRemapped:
+      "按原始标识匹配了 {remapped} 条会话，跳过这些会话的 {skipped_messages} 个消息移除标记。",
     settingsWorkspaceFileTooLarge: "工作台文件不能超过 16 MB。",
     settingsWorkspaceImportSummary:
       "可导入 {sessions} 条会话和 {filters} 个常用筛选。保留 {conflicts} 个有冲突的本地条目，跳过 {unmatched} 条找不到对应会话的记录和 {unchanged} 个相同条目。",
@@ -1761,6 +1770,15 @@ const DICT = {
       "Export workspace data for migration. The file contains notes and identifiers that may include local paths. Keep it private.",
     settingsWorkspaceExport: "Export workspace JSON",
     settingsWorkspaceImport: "Import workspace JSON",
+    settingsWorkspaceMatchesTitle: "Review session matches",
+    settingsWorkspaceUnmatchedList: "Entries with no matching session",
+    settingsWorkspaceSkipMatch: "Skip this entry",
+    settingsWorkspaceDuplicateMatch: "Choose each local session only once.",
+    settingsWorkspaceMatchLimit:
+      "There are too many candidates to review. Candidate lists for {omitted_candidates} entries were skipped. Those entries are still listed below.",
+    settingsWorkspaceContinue: "Continue",
+    settingsWorkspaceImportRemapped:
+      "Matched {remapped} sessions by their original IDs. Skipping their {skipped_messages} message removal markers.",
     settingsWorkspaceFileTooLarge:
       "The workspace file must be 16 MB or smaller.",
     settingsWorkspaceImportSummary:

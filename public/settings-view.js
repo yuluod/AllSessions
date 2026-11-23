@@ -28,6 +28,7 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createIcon } from "./app/icons.js";
 import { downloadBlob } from "./session-export.js";
+import { reviewWorkspaceMatches } from "./workspace-import-view.js";
 
 const MAX_WORKSPACE_FILE_BYTES = 16 * 1024 * 1024;
 
@@ -833,12 +834,30 @@ export function createSettingsController({
     const stillOpen = () => requestVersion === loadVersion && dialog()?.open;
     try {
       const content = await file.text();
-      const preview = await fetchJson("/api/workspace/import/preview", {
+      const body = { file: content };
+      let preview = await fetchJson("/api/workspace/import/preview", {
         method: "POST",
-        body: { file: content },
+        body,
       });
       if (!stillOpen()) return;
-      const summary = t("settingsWorkspaceImportSummary", preview);
+      if (preview.unmatched_keys?.length) {
+        const choices = await reviewWorkspaceMatches(preview);
+        if (!choices || !stillOpen()) return;
+        if (Object.keys(choices).length) {
+          body.choices = choices;
+          preview = await fetchJson("/api/workspace/import/preview", {
+            method: "POST",
+            body,
+          });
+        }
+      }
+      if (!stillOpen()) return;
+      const summary = [
+        t("settingsWorkspaceImportSummary", preview),
+        preview.remapped ? t("settingsWorkspaceImportRemapped", preview) : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
       setStatus(summary);
       if (!preview.sessions && !preview.filters) return;
       const confirmed = await confirmWorkspaceImport(
@@ -854,7 +873,7 @@ export function createSettingsController({
       setStatus(t("settingsWorkspaceImporting"));
       const result = await fetchJson("/api/workspace/import", {
         method: "POST",
-        body: { file: content, token: preview.token },
+        body: { ...body, token: preview.token },
       });
       const done = t("settingsWorkspaceImportDone", result);
       if (stillOpen()) setStatus(done);

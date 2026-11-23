@@ -2650,6 +2650,51 @@
     </dialog>
 
     <dialog
+      id="workspace-matches-dialog"
+      class="delete-dialog"
+      aria-labelledby="workspace-matches-title"
+    >
+      <div class="delete-dialog-header">
+        <h2
+          id="workspace-matches-title"
+          data-i18n="settingsWorkspaceMatchesTitle"
+        >
+          检查会话匹配
+        </h2>
+      </div>
+      <form>
+        <div class="delete-dialog-body">
+          <p id="workspace-match-limit" hidden></p>
+          <label class="workspace-match-field">
+            <span data-i18n="settingsWorkspaceUnmatchedList"
+              >找不到对应会话的条目</span
+            >
+            <textarea readonly rows="5" wrap="off"></textarea>
+          </label>
+          <div id="workspace-match-options"></div>
+        </div>
+        <div class="delete-dialog-actions">
+          <button
+            type="submit"
+            value="cancel"
+            class="ghost-button"
+            data-i18n="cancel"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            value="continue"
+            class="ghost-button button--primary"
+            data-i18n="settingsWorkspaceContinue"
+          >
+            继续
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog
       id="delete-dialog"
       class="delete-dialog"
       aria-labelledby="delete-dialog-title"

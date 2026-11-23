@@ -926,14 +926,15 @@ html.settings-modal-open body {
   gap: 8px;
 }
 
-:is(#workspace-matches-dialog, #workspace-conflicts-dialog) form {
+:is(#workspace-matches-dialog, #workspace-conflicts-dialog) form,
+.export-rules-form {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 110px);
 }
 
-:is(#workspace-matches-dialog, #workspace-conflicts-dialog)
-  .delete-dialog-body {
+:is(#workspace-matches-dialog, #workspace-conflicts-dialog) .delete-dialog-body,
+.export-rules-form .delete-dialog-body {
   overflow: auto;
 }
 

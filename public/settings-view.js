@@ -28,6 +28,7 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createIcon } from "./app/icons.js";
 import { downloadBlob } from "./session-export.js";
+import { openExportRules } from "./export-rules-view.js";
 import {
   reviewWorkspaceConflicts,
   reviewWorkspaceMatches,
@@ -1418,6 +1419,11 @@ export function createSettingsController({
   }
 
   function bind() {
+    elements.settingsExportRules?.addEventListener("click", () => {
+      openExportRules(fetchJson).catch((error) =>
+        setStatus(error.message, true)
+      );
+    });
     elements.settingsConfirmResume?.addEventListener("change", (event) => {
       try {
         setConfirmResume(event.target.checked);

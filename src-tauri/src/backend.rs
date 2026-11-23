@@ -84,6 +84,7 @@ impl BackendState {
         let config = self.config.lock().map_err(lock_error)?.clone();
         let recovery_error = self.startup_error.lock().map_err(lock_error)?.clone();
         let workspace = self.workspace_snapshot()?;
+        let deletion_backup = crate::deletion_backup::storage_info();
         let store = self.store.lock().map_err(lock_error)?;
         let watcher = app
             .try_state::<crate::watcher::WatcherState>()
@@ -106,7 +107,7 @@ impl BackendState {
                 "required": recovery_error.is_some(),
                 "message": recovery_error,
             },
-            "deletion_backup": crate::deletion_backup::storage_info(),
+            "deletion_backup": deletion_backup,
             "workspace_storage": workspace.value()["storage"].clone(),
             "terminal_options": crate::resume::terminal_options(),
         }))
@@ -425,6 +426,8 @@ fn route_request(
             path,
             "/api/settings"
                 | "/api/settings/clear-cache"
+                | "/api/settings/deletion-backup/delete"
+                | "/api/settings/deletion-backup/cleanup"
                 | "/api/sessions/delete"
                 | "/api/sessions/delete-message"
         ) {
@@ -778,6 +781,31 @@ fn route_request(
             // 清空后需要全量重扫和索引重建，同样走后台路径避免阻塞界面读取。
             state.scan_locked(&app, None)?;
             Ok(state.settings_payload(&app)?)
+        }
+        (
+            "POST",
+            "/api/settings/deletion-backup/delete" | "/api/settings/deletion-backup/cleanup",
+        ) => {
+            if request.body.get("confirmed").and_then(Value::as_bool) != Some(true) {
+                return Err(ApiError::new(
+                    ApiError::CONFIRMATION_REQUIRED,
+                    "删除备份需要显式确认",
+                ));
+            }
+            let result = if path.ends_with("/cleanup") {
+                crate::deletion_backup::cleanup()
+            } else {
+                let name = request
+                    .body
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ApiError::invalid("缺少备份名称"))?;
+                crate::deletion_backup::delete(name)
+            };
+            Ok(json!({
+                "deletion_backup": crate::deletion_backup::storage_info(),
+                "error": result.err(),
+            }))
         }
         ("POST", "/api/settings/check-update") => {
             updater::check_for_updates(app);

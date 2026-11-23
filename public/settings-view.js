@@ -107,6 +107,7 @@ export function createSettingsController({
   onLanguageChanged,
   onSaved,
   confirmRestart = askDialog,
+  confirmBackupDeletion = askDialog,
 }) {
   let draft = null;
   let activeTab = "general";
@@ -117,6 +118,7 @@ export function createSettingsController({
   let loading = false;
   let loadVersion = 0;
   let discardPending = false;
+  let deletingBackup = false;
 
   function dialog() {
     return elements.settingsDialog;
@@ -178,7 +180,7 @@ export function createSettingsController({
       sourceConfigDialogEl.close();
       return;
     }
-    if (savingSources) return;
+    if (savingSources || deletingBackup) return;
     if (loading) {
       loadVersion += 1;
       loading = false;
@@ -760,20 +762,7 @@ export function createSettingsController({
     if (elements.settingsClearCache) {
       elements.settingsClearCache.disabled = !cache.enabled;
     }
-    const backup = payload?.deletion_backup || { enabled: false };
-    if (elements.settingsDeletionBackupPath) {
-      elements.settingsDeletionBackupPath.textContent = backup.enabled
-        ? backup.path
-        : t("settingsBackupUnavailable");
-      elements.settingsDeletionBackupPath.title = backup.enabled
-        ? backup.path
-        : "";
-    }
-    if (elements.settingsDeletionBackupCount) {
-      elements.settingsDeletionBackupCount.textContent = backup.enabled
-        ? String(backup.count || 0)
-        : "—";
-    }
+    renderDeletionBackups(payload?.deletion_backup);
     const workspace = payload?.workspace_storage || { enabled: false };
     if (elements.settingsWorkspacePath) {
       elements.settingsWorkspacePath.textContent = workspace.enabled
@@ -790,6 +779,64 @@ export function createSettingsController({
             filters: workspace.saved_filter_count || 0,
           })
         : "—";
+    }
+  }
+
+  function renderDeletionBackups(backup = { enabled: false }) {
+    if (elements.settingsDeletionBackupPath) {
+      elements.settingsDeletionBackupPath.textContent = backup.enabled
+        ? backup.path
+        : t("settingsBackupUnavailable");
+      elements.settingsDeletionBackupPath.title = backup.enabled
+        ? backup.path
+        : backup.error || "";
+    }
+    if (elements.settingsDeletionBackupCount) {
+      elements.settingsDeletionBackupCount.textContent = backup.enabled
+        ? String(backup.count || 0)
+        : "—";
+    }
+    if (elements.settingsDeletionBackupSize) {
+      elements.settingsDeletionBackupSize.textContent = backup.enabled
+        ? formatBytes(backup.bytes)
+        : "—";
+    }
+    const backups = backup.backups || [];
+    if (elements.settingsDeleteOldBackups) {
+      elements.settingsDeleteOldBackups.disabled =
+        !backup.enabled || backups.length <= backup.keep_latest;
+    }
+    if (elements.settingsDeletionBackupList) {
+      elements.settingsDeletionBackupList.replaceChildren();
+      if (backup.enabled && backups.length > 0) {
+        for (const entry of backups) {
+          const row = document.createElement("div");
+          row.className = "settings-deletion-backup-row";
+          const details = document.createElement("div");
+          details.className = "settings-deletion-backup-details";
+          const name = document.createElement("code");
+          name.textContent = entry.name || "";
+          const meta = document.createElement("span");
+          meta.textContent = `${formatDiagnosticTime(entry.created_at)} · ${formatBytes(entry.bytes)}`;
+          details.append(name, meta);
+          const remove = document.createElement("button");
+          remove.className = "danger-button settings-deletion-backup-remove";
+          remove.type = "button";
+          remove.textContent = t("settingsDeleteBackup");
+          remove.setAttribute(
+            "aria-label",
+            t("settingsDeleteNamedBackup", { name: entry.name })
+          );
+          remove.addEventListener("click", () => removeDeletionBackups(entry));
+          row.append(details, remove);
+          elements.settingsDeletionBackupList.append(row);
+        }
+      } else if (backup.enabled) {
+        const empty = document.createElement("span");
+        empty.className = "settings-deletion-backup-empty";
+        empty.textContent = t("settingsNoDeletionBackups");
+        elements.settingsDeletionBackupList.append(empty);
+      }
     }
   }
 
@@ -1094,6 +1141,8 @@ export function createSettingsController({
       const payload = await fetchJson("/api/settings/clear-cache", {
         method: "POST",
       });
+      if (latestPayload)
+        latestPayload.deletion_backup = payload.deletion_backup;
       renderStorage(payload);
       setStatus(t("settingsCacheCleared"));
     } catch (error) {
@@ -1101,6 +1150,68 @@ export function createSettingsController({
     } finally {
       if (elements.settingsClearCache)
         elements.settingsClearCache.disabled = false;
+    }
+  }
+
+  async function removeDeletionBackups(entry = null) {
+    const backup = latestPayload?.deletion_backup;
+    if (deletingBackup || loading || !backup?.enabled) return;
+    if (!entry && backup.count <= backup.keep_latest) return;
+    deletingBackup = true;
+    const version = loadVersion;
+    try {
+      const label = t(
+        entry ? "settingsDeleteBackup" : "settingsDeleteOldBackups"
+      );
+      const confirmed = await confirmBackupDeletion(
+        entry
+          ? t("settingsDeleteBackupConfirm", { name: entry.name })
+          : t("settingsDeleteOldBackupsConfirm", { n: backup.keep_latest }),
+        {
+          title: label,
+          kind: "warning",
+          okLabel: label,
+          cancelLabel: t("cancel"),
+        }
+      );
+      if (confirmed !== true || !dialog()?.open || version !== loadVersion)
+        return;
+      setStatus(t("settingsBackupDeleting"));
+      const action = entry ? "delete" : "cleanup";
+      const payload = await fetchJson(
+        `/api/settings/deletion-backup/${action}`,
+        {
+          method: "POST",
+          body: { name: entry?.name, confirmed: true },
+        }
+      );
+      latestPayload.deletion_backup = payload.deletion_backup;
+      const list = elements.settingsDeletionBackupList;
+      const cleanup = elements.settingsDeleteOldBackups;
+      const focused = document.activeElement;
+      const focusedBackup = list?.contains(focused);
+      renderDeletionBackups(payload.deletion_backup);
+      if (
+        focusedBackup ||
+        (cleanup && focused === cleanup && cleanup.disabled)
+      ) {
+        (
+          list?.querySelector("button") ||
+          elements.settingsTabs?.find(
+            (tab) => tab.dataset.settingsTab === "storage"
+          )
+        )?.focus();
+      }
+      const error = payload.error || payload.deletion_backup.error;
+      setStatus(
+        error ||
+          t(entry ? "settingsBackupDeleted" : "settingsOldBackupsDeleted"),
+        Boolean(error)
+      );
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      deletingBackup = false;
     }
   }
 
@@ -1179,6 +1290,9 @@ export function createSettingsController({
     });
     elements.settingsSaveBtn?.addEventListener("click", save);
     elements.settingsClearCache?.addEventListener("click", clearCache);
+    elements.settingsDeleteOldBackups?.addEventListener("click", () =>
+      removeDeletionBackups()
+    );
     elements.settingsRescan?.addEventListener("click", rescanSources);
     elements.settingsCopyDiagnostics?.addEventListener(
       "click",

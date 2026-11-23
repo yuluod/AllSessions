@@ -933,6 +933,10 @@ async function initialize() {
       bulkSelection:
         state.bulkSelectionMode || state.selectedSessionKeys.size > 0,
       focusedSession: Boolean(activeElement?.matches?.(".session-item")),
+      focusedSessionKey: activeElement
+        ?.closest?.(".session-row")
+        ?.querySelector(".session-item")?.dataset.sessionKey,
+      detailSessionKey: state.currentDetail?.summary?._key,
       dialogOpen: Boolean(document.querySelector("dialog[open]")),
       settingsDialogActive:
         activeElement?.closest?.("dialog[open]") === elements.settingsDialog,
@@ -1058,9 +1062,8 @@ async function initialize() {
         }
         break;
       case "load-more": {
-        const loadMore = (
-          elements.sessionListFooter || elements.sessionList
-        )?.querySelector(".load-more-btn");
+        const loadMore =
+          elements.sessionListPagination?.querySelector(".load-more-btn");
         if (loadMore && !loadMore.disabled) {
           event.preventDefault();
           loadMore.click();

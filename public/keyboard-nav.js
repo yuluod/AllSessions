@@ -95,6 +95,13 @@ export function resolveGlobalShortcut(event, context) {
   if (key === "/") return { type: "focus-detail-search" };
   if (key === "?") return { type: "shortcuts-help" };
   const bare = key.toLowerCase();
+  // 切换确认和详情加载期间，焦点可能已经移到另一条会话。
+  if (
+    ["f", "a", "r"].includes(bare) &&
+    context.focusedSessionKey &&
+    context.focusedSessionKey !== context.detailSessionKey
+  )
+    return null;
   if (bare === "f") return { type: "toggle-favorite" };
   if (bare === "a") return { type: "toggle-archive" };
   if (bare === "r") return { type: "resume-session" };

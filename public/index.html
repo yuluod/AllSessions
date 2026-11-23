@@ -892,16 +892,20 @@
                   </button>
                 </div>
               </div>
-              <div
-                id="session-list"
-                class="session-list"
-                role="listbox"
-                aria-label="会话列表"
-                data-i18n="listAriaLabel"
-                data-i18n-attr="aria-label"
-              ></div>
-              <!-- listbox 内只允许 option 子节点：加载更多与空态渲染在
-                   listbox 之外，roving tabindex 只作用于会话行。 -->
+              <div class="session-list-scroll">
+                <div
+                  id="session-list"
+                  class="session-list"
+                  role="listbox"
+                  aria-label="会话列表"
+                  data-i18n="listAriaLabel"
+                  data-i18n-attr="aria-label"
+                ></div>
+                <div
+                  id="session-list-pagination"
+                  class="session-list-pagination"
+                ></div>
+              </div>
               <div id="session-list-footer" class="session-list-footer"></div>
             </div>
           </section>
@@ -3413,10 +3417,6 @@
         role="status"
         aria-live="polite"
       ></span>
-      <div class="settings-body">
-        <section
-          id="settings-panel-general"
-          class="settings-section"
       <div
         id="settings-update-result"
         class="settings-status settings-update-result"
@@ -3432,6 +3432,10 @@
           查看详情
         </button>
       </div>
+      <div class="settings-body">
+        <section
+          id="settings-panel-general"
+          class="settings-section"
           role="tabpanel"
           data-settings-panel="general"
           aria-labelledby="settings-general-title"

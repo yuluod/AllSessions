@@ -605,7 +605,7 @@ test("会话列表项使用卡片式堆叠信息层级", async () => {
     source,
     /querySelector\("\.session-message-count-value"\)\.textContent =\s*String\(messageCount\)/
   );
-  assert.match(css, /\.session-list\s*\{[\s\S]*overflow-x: hidden/);
+  assert.match(css, /\.session-list-scroll\s*\{[^}]*overflow-x: hidden/);
   assert.match(
     css,
     /\.session-item\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) auto/
@@ -633,14 +633,14 @@ test("会话列表只保留一个 Tab 停靠点，非 option 内容移出 listbo
   const source = await readProjectFile("public/app.js");
   const css = await readProjectFile("public/styles.css");
 
-  // listbox 仅容纳 option：加载更多与空态渲染在独立的 footer 容器。
+  // 分页与空态都在 listbox 之外，只有分页随会话滚动。
   assert.match(
     html,
-    /id="session-list"[\s\S]*?role="listbox"[\s\S]*?id="session-list-footer"/
+    /class="session-list-scroll">\s*<div\s+id="session-list"[\s\S]*?role="listbox"[\s\S]*?<\/div>\s*<div\s+id="session-list-pagination"[^>]*><\/div>\s*<\/div>\s*<div id="session-list-footer"/
   );
   assert.match(
     source,
-    /sessionListFooter \|\| elements\.sessionList[\s\S]*\.load-more-btn/
+    /elements\.sessionListPagination\?\.querySelector\("\.load-more-btn"\)/
   );
   // 行容器与辅助控件不抢 Tab 序：roving tabindex 只作用于 .session-item。
   assert.match(html, /class="session-row" role="presentation"/);

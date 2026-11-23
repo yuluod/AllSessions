@@ -193,6 +193,26 @@ test("会话详情与列表操作提供裸键快捷键，? 打开快捷键图例
   });
 });
 
+test("分页后会话快捷键只在焦点与详情指向同一条会话时生效", () => {
+  for (const [key, type] of [
+    ["a", "toggle-archive"],
+    ["f", "toggle-favorite"],
+    ["r", "resume-session"],
+  ]) {
+    const context = { ...idle, focusedSessionKey: "new" };
+    for (const detailSessionKey of ["old", undefined]) {
+      assert.equal(
+        resolveGlobalShortcut({ key }, { ...context, detailSessionKey }),
+        null
+      );
+    }
+    assert.deepEqual(
+      resolveGlobalShortcut({ key }, { ...context, detailSessionKey: "new" }),
+      { type }
+    );
+  }
+});
+
 test("裸键快捷键在输入框与对话框中不触发", () => {
   const editing = { ...idle, editableTarget: true };
   const dialog = { ...idle, dialogOpen: true };

@@ -46,6 +46,56 @@ async function loadModule(file, globals) {
   return context;
 }
 
+test("加载更多后仅从分页按钮用键盘激活才选择新会话", async () => {
+  for (const [detail, buttonFocused, shouldSelect] of [
+    [1, true, false],
+    [0, true, true],
+    [0, false, false],
+  ]) {
+    let click;
+    const button = {
+      addEventListener: (_, listener) => {
+        click = listener;
+      },
+    };
+    const document = { body: {}, createElement: () => button };
+    document.activeElement = buttonFocused ? button : document.body;
+    const row = {
+      focus: () => {
+        document.activeElement = row;
+      },
+    };
+    const state = {
+      hasMore: true,
+      sessions: [{ _key: "first" }],
+      selectedSessionKey: "first",
+    };
+    const app = await loadModule("app/session-list.js", {
+      document,
+      state,
+      CSS: { escape: (key) => key },
+      t: (key) => key,
+      elements: {
+        sessionListPagination: { replaceChildren() {}, append() {} },
+        sessionList: { querySelector: () => row },
+      },
+      loadMoreSessions: async () => {
+        state.sessions.push({ _key: "next" });
+        document.activeElement = document.body;
+        return true;
+      },
+    });
+    app.selectSession = (key) => {
+      state.selectedSessionKey = key;
+    };
+    app.renderLoadMoreButton();
+    await click({ detail });
+    assert.equal(state.sessions.length, 2);
+    assert.equal(state.selectedSessionKey, shouldSelect ? "next" : "first");
+    assert.equal(document.activeElement === row, shouldSelect);
+  }
+});
+
 function node() {
   return {
     classList: { add() {}, remove() {}, toggle() {} },

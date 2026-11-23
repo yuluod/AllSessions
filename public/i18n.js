@@ -574,7 +574,7 @@ const DICT = {
     collapseRawEvent: "收起原始事件",
     linePrefix: "第 {n} 行",
     loadMore: "加载更多",
-    loadMoreTitle: "加载更多 (L)",
+    loadMoreSessionsTitle: "加载更多会话 (L)",
     loadingMore: "加载中...",
     noResults: "当前筛选条件下没有会话。",
     noResultsCrossFilter: "当前项目内没有该来源的会话，可切换来源或项目。",
@@ -1570,7 +1570,7 @@ const DICT = {
     collapseRawEvent: "Collapse raw event",
     linePrefix: "Line {n}",
     loadMore: "Load more",
-    loadMoreTitle: "Load more (L)",
+    loadMoreSessionsTitle: "Load more sessions (L)",
     loadingMore: "Loading...",
     noResults: "No sessions match the current filters.",
     noResultsCrossFilter:

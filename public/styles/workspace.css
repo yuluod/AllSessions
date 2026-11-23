@@ -1171,18 +1171,26 @@ body.is-resizing {
   font-size: 0.7rem;
 }
 
-.session-list {
-  display: grid;
+.session-list-scroll {
   min-height: 0;
   flex: 1;
-  align-content: start;
-  gap: 6px;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
 
-/* 列表尾部的非 option 区域（加载更多、空态）：留在 listbox 之外。 */
+.session-list {
+  display: grid;
+  align-content: start;
+}
+
+.session-list-pagination:not(:empty) {
+  display: flex;
+  justify-content: center;
+  padding: 6px 10px;
+}
+
+/* 空态和查询错误留在滚动区之外，避免被历史结果遮住。 */
 .session-list-footer {
   display: grid;
   flex: 0 0 auto;
@@ -1592,10 +1600,6 @@ body.is-resizing {
 .session-hidden-reason {
   color: var(--info);
   background: var(--info-soft);
-}
-
-.load-more-btn {
-  width: 100%;
 }
 
 .hero-copy {
@@ -4095,10 +4099,6 @@ body.is-resizing {
 .session-list-header,
 .bulk-toolbar {
   padding-inline: 10px;
-}
-
-.session-list {
-  gap: 0;
 }
 
 .session-group-header {

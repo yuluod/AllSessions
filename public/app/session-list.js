@@ -489,26 +489,47 @@ export function selectSession(
 }
 
 export function renderLoadMoreButton() {
-  const footer = elements.sessionListFooter || elements.sessionList;
-  let btn = footer.querySelector(".load-more-btn");
-  if (btn) btn.remove();
+  const pagination = elements.sessionListPagination;
+  if (!pagination) return;
+  pagination.replaceChildren();
 
   if (!state.hasMore || state.sessionsLoading || state.lastSessionError) return;
 
-  btn = document.createElement("button");
+  const btn = document.createElement("button");
+  btn.type = "button";
   btn.className = "ghost-button load-more-btn";
-  btn.textContent = t("loadMore");
-  btn.title = t("loadMoreTitle");
-  btn.addEventListener("click", async () => {
+  btn.textContent = t("shortcutLoadMore");
+  btn.title = t("loadMoreSessionsTitle");
+  btn.addEventListener("click", async (event) => {
+    const keyboardActivation =
+      event.detail === 0 && document.activeElement === btn;
+    const start = state.sessions.length;
     btn.textContent = t("loadingMore");
     btn.disabled = true;
     const loaded = await loadMoreSessions();
     if (!loaded && btn.isConnected) {
-      btn.textContent = t("loadMore");
+      btn.textContent = t("shortcutLoadMore");
       btn.disabled = false;
     }
+    if (keyboardActivation && document.activeElement === document.body) {
+      const key = loaded && state.sessions[start]?._key;
+      const next =
+        key &&
+        elements.sessionList.querySelector(
+          `.session-item[data-session-key="${CSS.escape(key)}"]`
+        );
+      if (next) {
+        next.focus();
+        selectSession(key, next);
+      } else {
+        (btn.isConnected
+          ? btn
+          : elements.sessionList.querySelector('.session-item[tabindex="0"]')
+        )?.focus();
+      }
+    }
   });
-  footer.append(btn);
+  pagination.append(btn);
 }
 
 export function renderSessionList() {

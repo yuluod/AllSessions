@@ -180,6 +180,7 @@ export const elements = {
   projectList: document.querySelector("#project-list"),
   activeFilterBar: document.querySelector("#active-filter-bar"),
   sessionList: document.querySelector("#session-list"),
+  sessionListPagination: document.querySelector("#session-list-pagination"),
   sessionListFooter: document.querySelector("#session-list-footer"),
   bulkToolbar: document.querySelector("#bulk-toolbar"),
   selectVisibleBtn: document.querySelector("#select-visible-btn"),

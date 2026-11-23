@@ -549,6 +549,11 @@ mod tests {
         let server = std::thread::spawn(move || {
             let manifest =
                 r#"{"version":"1.1.0","url":"https://example.invalid/update","signature":"test"}"#;
+            // Windows 的 closesocket 在对端仍有未读数据或 FIN 悬置时会
+            // 发 RST 而非优雅 FIN，客户端会把整个请求判为失败（macOS/Linux
+            // 上同样时序是优雅关闭）。连接保持到桩线程结束再统一关闭，
+            // 让内核完成握手与数据送达。
+            let mut streams = Vec::new();
             for (status, body) in [
                 ("429 Too Many Requests", ""),
                 ("429 Too Many Requests", ""),
@@ -573,7 +578,9 @@ mod tests {
                     body.len()
                 )
                 .unwrap();
+                streams.push(stream);
             }
+            drop(streams);
         });
         let cached = Mutex::new(Some(("1.1.0", "test", vec![1u8])));
         let run = || {
@@ -645,6 +652,9 @@ mod tests {
                 "version": "1.1.0", "url": format!("{url}/package"), "signature": "test"
             })
             .to_string();
+            // 与上文相同：连接保持到桩线程结束，避免 Windows closesocket
+            // 在未读 FIN 悬置时回 RST。
+            let mut streams = Vec::new();
             for request in 0..3 {
                 let (mut stream, _) = listener.accept().unwrap();
                 for line in BufReader::new(&stream).lines() {
@@ -661,7 +671,9 @@ mod tests {
                 } else {
                     write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{manifest}", manifest.len()).unwrap();
                 }
+                streams.push(stream);
             }
+            drop(streams);
         });
         let check_release = || {
             check(

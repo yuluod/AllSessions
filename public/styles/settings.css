@@ -851,10 +851,57 @@ html.settings-modal-open body {
 
 .settings-storage-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
   padding: 10px 12px;
   border-top: 1px solid var(--line);
   background: var(--surface-subtle);
+}
+
+.settings-deletion-backup-list {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.settings-deletion-backup-list:empty {
+  display: none;
+}
+
+.settings-deletion-backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.settings-deletion-backup-details {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-deletion-backup-details code {
+  overflow: hidden;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-deletion-backup-details span,
+.settings-deletion-backup-empty {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.settings-deletion-backup-remove {
+  flex: 0 0 auto;
 }
 
 .settings-workspace-transfer {

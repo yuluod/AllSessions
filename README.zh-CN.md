@@ -72,7 +72,7 @@ AllSessions 基于 Tauri 2 构建。会话发现、解析、搜索、缓存、�
 ### 整理与统计
 
 - 收藏会话并添加标签、备注，还可自定义会话名称（列表与详情优先显示，原始标题作为兜底）
-- 选择项目后打开“项目回顾”，查看近期会话及收藏、标签、备注，并直接返回会话；回顾遵循当前筛选条件，每组默认展示 8 条，可逐步展开至最多 50 条。
+- 选择项目后打开“项目回顾”，按最近记录的活动时间浏览跨 Agent 会话时间线，也可用来源栏筛选。条目显示来源、收藏、标签和备注，可直接打开会话。每组默认展示 8 条，可逐步展开至最多 50 条。
 - 统计页支持统一活动日期范围、会话／Token 热力图切换及日期点击筛选；相关会话可按最近活动或范围内用量排序、分页并打开详情。
 - 查看缓存命中率与常用工具、命令排行，点击排行条目追溯对应调用
 - 保存常用筛选
@@ -171,7 +171,8 @@ Windows、macOS 和 Linux 共用 Tauri 2 应用壳、系统托盘和签名更新
 - 查看来源健康状态
 - 复制脱敏诊断信息
 - 查看并清除索引缓存
-- 查看永久删除备份位置
+- 查看永久删除备份的位置、数量和占用空间
+- 手动删除单个备份，或清理旧备份并保留最近 10 个
 
 来源路径支持 `~` 展开。
 
@@ -267,6 +268,8 @@ AllSessions 处理的是本地 AI 会话数据，其中可能包含：
 
 显式确认永久删除后，AllSessions 会先创建本地备份，再修改 Codex、Claude Code 或 Gemini CLI 的原始记录。
 
+删除备份属于显式用户操作，AllSessions 不会自动清理备份。备份仍以未加密的原始记录保存。
+
 Codex Provider 维护工具同样只有在用户主动启用维护模式并确认执行后才会修改 Codex 数据。
 
 Claude Cowork、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、ZCode、Cursor、Devin、GitHub Copilot、Hermes Agent、VS Code Copilot Chat、DeepSeek Harness、JetBrains Air 和 WorkBuddy 当前保持只读。它们的会话可以从 AllSessions 中本地移除，但删除原始记录需要在对应 Agent 中完成。
@@ -282,6 +285,8 @@ Claude Cowork、Grok Build、Pi、Oh My Pi、Kimi Code CLI、OpenCode、Kilo、Z
 导出脱敏功能默认关闭。
 
 启用后，AllSessions 会移除已知的会话标识和常见本地路径模式，但自动脱敏不能保证覆盖所有敏感信息。
+
+导出会话 JSON 或 Markdown 时，应用在本机检查最终内容。命中常见凭据格式时会在下载前提示类型和文件行号，正文按当前导出设置保留。分享前仍需人工检查。
 
 > [!WARNING]
 >

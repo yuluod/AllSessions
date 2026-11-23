@@ -98,6 +98,7 @@ export async function loadWorkspaceState() {
   updateBulkToolbar();
 }
 export async function exportSelectedSessions() {
+  if (state.bulkExportRunning) return;
   const keys = Array.from(state.selectedSessionKeys);
   if (!keys.length) return;
   if (keys.length > MAX_BULK_EXPORT_SESSIONS) {
@@ -108,6 +109,9 @@ export async function exportSelectedSessions() {
     );
     return;
   }
+  const format = elements.bulkExportFormat?.value || "json";
+  const redact = elements.bulkRedactToggle?.checked === true;
+  state.bulkExportRunning = true;
   elements.bulkExportBtn.disabled = true;
   const originalLabel = elements.bulkExportBtn.textContent;
   elements.bulkExportBtn.textContent = t("bulkExporting");
@@ -117,15 +121,12 @@ export async function exportSelectedSessions() {
       BULK_EXPORT_CONCURRENCY,
       (key) => fetchJson(`/api/sessions/${encodeURIComponent(key)}`)
     );
-    exportSessionCollection(
-      details,
-      elements.bulkExportFormat?.value || "json",
-      { redact: elements.bulkRedactToggle?.checked === true }
-    );
+    await exportSessionCollection(details, format, { redact });
   } catch (error) {
     showError(`${t("bulkExportFailed")}: ${error.message}`);
   } finally {
-    elements.bulkExportBtn.disabled = false;
+    state.bulkExportRunning = false;
     elements.bulkExportBtn.textContent = originalLabel;
+    updateBulkToolbar();
   }
 }

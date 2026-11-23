@@ -3481,6 +3481,10 @@
                   <dd id="settings-deletion-backup-count">-</dd>
                 </div>
                 <div>
+                  <dt data-i18n="settingsDeletionBackupSize">备份占用空间</dt>
+                  <dd id="settings-deletion-backup-size">-</dd>
+                </div>
+                <div>
                   <dt data-i18n="settingsWorkspacePath">工作台数据</dt>
                   <dd id="settings-workspace-path">-</dd>
                 </div>
@@ -3504,7 +3508,20 @@
                 >
                   清除索引缓存并重建
                 </button>
+                <button
+                  id="settings-delete-old-backups"
+                  class="danger-button"
+                  type="button"
+                  data-i18n="settingsDeleteOldBackups"
+                  disabled
+                >
+                  清理旧备份
+                </button>
               </div>
+              <div
+                id="settings-deletion-backup-list"
+                class="settings-deletion-backup-list"
+              ></div>
             </div>
             <div class="settings-storage-card settings-workspace-transfer">
               <p

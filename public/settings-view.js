@@ -4,7 +4,13 @@ import {
   shouldConfirmResume,
   setConfirmResume,
 } from "./interaction-preferences.js";
-import { t, getLang, setLang, translateBackendError } from "./i18n.js";
+import {
+  t,
+  getLang,
+  getLangPreference,
+  setLang,
+  translateBackendError,
+} from "./i18n.js";
 import {
   DESKTOP_RUNTIME_REQUIRED,
   fetchJson as requestJson,
@@ -916,7 +922,7 @@ export function createSettingsController({
     const requestVersion = ++loadVersion;
     setStatus("");
     if (elements.settingsLanguageSelect) {
-      elements.settingsLanguageSelect.value = getLang();
+      elements.settingsLanguageSelect.value = getLangPreference();
     }
     syncAppearance();
     if (!target.open) target.showModal();
@@ -1259,15 +1265,38 @@ export function createSettingsController({
       });
     });
     elements.settingsLanguageSelect?.addEventListener("change", (event) => {
-      setLang(event.target.value === "en" ? "en" : "zh");
-      onLanguageChanged?.();
-      if (latestPayload) {
-        renderSources(latestPayload);
-        renderStorage(latestPayload);
-        renderDiagnostics(latestPayload);
-      }
+      if (setLang(event.target.value)) onLanguageChanged?.();
     });
   }
 
-  return { bind, open, close };
+  function renderLocalized() {
+    if (!dialog()?.open) return;
+    if (elements.settingsLanguageSelect) {
+      elements.settingsLanguageSelect.value = getLangPreference();
+    }
+    if (!latestPayload || loading) return;
+    renderSources(latestPayload);
+    renderStorage(latestPayload);
+    renderDiagnostics(latestPayload);
+    if (sourceConfigDialogEl?.open) {
+      const key = sourceConfigDialogEl.dataset.sourceKey;
+      const source = SOURCE_KINDS.find((item) => item.key === key);
+      const controls = "button, input";
+      const focused = document.activeElement;
+      const index = [
+        ...sourceConfigDialogEl.querySelectorAll(controls),
+      ].indexOf(focused);
+      const selection =
+        focused?.tagName === "INPUT"
+          ? [focused.selectionStart, focused.selectionEnd]
+          : null;
+      openSourceConfigDialog(latestPayload, key, source.label);
+      const replacement =
+        sourceConfigDialogEl.querySelectorAll(controls)[index];
+      replacement?.focus();
+      if (selection) replacement?.setSelectionRange(...selection);
+    }
+  }
+
+  return { bind, open, close, renderLocalized };
 }

@@ -1764,7 +1764,26 @@ function readStoredLang() {
   return legacy;
 }
 
-let currentLang = readStoredLang() || "zh";
+function normalizePreference(value) {
+  return value === "en" || value === "zh" ? value : "system";
+}
+
+let preference = normalizePreference(readStoredLang());
+
+function resolveLanguage() {
+  if (preference !== "system") return preference;
+  const locale =
+    globalThis.navigator?.languages?.[0] ||
+    globalThis.navigator?.language ||
+    "";
+  return /^zh(?:-|$)/i.test(locale) ? "zh" : "en";
+}
+
+let currentLang = resolveLanguage();
+
+export function getLangPreference() {
+  return preference;
+}
 
 // 将后端错误码翻译为当前语言；未知错误码返回 null 以便调用方回退到原始文案。
 // 后端 message 携带具体原因（如"iTerm2 未安装"），统一拼在码文案之后，
@@ -1782,10 +1801,18 @@ export function t(key, vars = {}) {
 }
 
 export function setLang(lang) {
-  currentLang = lang;
-  localStorage.setItem(LANG_KEY, lang);
-  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  preference = normalizePreference(lang);
+  localStorage.setItem(LANG_KEY, preference);
+  return refreshLanguage();
+}
+
+export function refreshLanguage() {
+  const next = resolveLanguage();
+  if (next === currentLang) return false;
+  currentLang = next;
+  document.documentElement.lang = next === "zh" ? "zh-CN" : "en";
   updateStaticI18n();
+  return true;
 }
 
 export function getLang() {

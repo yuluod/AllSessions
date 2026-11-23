@@ -1,5 +1,11 @@
 // 应用入口:装配各模块、绑定全局事件并执行初始化与首屏加载。
-import { t, getLang, setLang, updateStaticI18n } from "./i18n.js";
+import {
+  t,
+  getLang,
+  setLang,
+  refreshLanguage,
+  updateStaticI18n,
+} from "./i18n.js";
 import { initTheme, setScheme } from "./theme-manager.js";
 import { initPaneLayout, syncRailToggle } from "./pane-layout.js";
 import { initReadingToolbar } from "./reading-toolbar.js";
@@ -130,6 +136,18 @@ initTheme();
 initPaneLayout();
 initReadingToolbar();
 
+let trayLanguageUpdate = Promise.resolve();
+
+function syncTrayLanguage() {
+  if (!window.__TAURI__?.core?.invoke) return;
+  const language = getLang();
+  trayLanguageUpdate = trayLanguageUpdate
+    .then(() =>
+      fetchJson("/api/tray/language", { method: "POST", body: { language } })
+    )
+    .catch((error) => console.error("更新托盘语言失败", error));
+}
+
 export function rerenderLocalizedContent() {
   syncSchemeToggle();
   syncRailToggle();
@@ -163,6 +181,8 @@ export function rerenderLocalizedContent() {
   }
   renderWorkspaceStatus();
   syncShortcutHints();
+  settingsController.renderLocalized();
+  syncTrayLanguage();
   maintenanceController.renderLocalized();
   updateController.renderLocalized();
   handoffController?.onLanguageChanged();
@@ -302,6 +322,10 @@ async function loadInitialWorkspace() {
 }
 
 async function initialize() {
+  window.addEventListener("languagechange", () => {
+    if (refreshLanguage()) rerenderLocalizedContent();
+  });
+  syncTrayLanguage();
   restoreFromUrl();
   maintenanceController.bind();
   syncInspectorLayout();

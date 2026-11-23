@@ -121,23 +121,52 @@ function detailFixture() {
   };
 }
 
-function mockExport(t, answer) {
-  const warnings = [];
+class PreviewElement extends EventTarget {
+  children = [];
+  #text = "";
+  set textContent(text) {
+    this.#text = text;
+    this.children = [];
+  }
+  get textContent() {
+    return this.#text;
+  }
+  closest() {
+    return this;
+  }
+  focus() {}
+  click() {
+    this.dispatchEvent(new Event("click"));
+  }
+  append(child) {
+    this.children.push(child);
+  }
+  replaceChildren(...children) {
+    this.children = children;
+  }
+  scrollIntoView() {}
+}
+
+function mockExport(t) {
   const downloads = [];
-  const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
-  globalThis.window = {
-    __TAURI_INTERNALS__: {
-      invoke: async (command, warning) => {
-        assert.equal(command, "plugin:dialog|message");
-        warnings.push(warning);
-        if (answer instanceof Error) throw answer;
-        return answer;
-      },
-    },
+  const selectors = new Map();
+  const dialog = new PreviewElement();
+  dialog.querySelector = (selector) => {
+    if (!selectors.has(selector)) selectors.set(selector, new PreviewElement());
+    return selectors.get(selector);
+  };
+  dialog.showModal = () => {
+    dialog.open = true;
+  };
+  dialog.close = (value) => {
+    if (value !== undefined) dialog.returnValue = value;
+    dialog.open = false;
+    dialog.dispatchEvent(new Event("close"));
   };
   globalThis.document = {
-    createElement: () => ({ click() {} }),
+    querySelector: () => dialog,
+    createElement: () => new PreviewElement(),
   };
   t.mock.method(URL, "createObjectURL", (blob) => {
     downloads.push(blob);
@@ -145,14 +174,13 @@ function mockExport(t, answer) {
   });
   t.mock.timers.enable({ apis: ["setTimeout"] });
   t.after(() => {
-    globalThis.window = previousWindow;
     globalThis.document = previousDocument;
   });
-  return { downloads, warnings };
+  return { dialog, downloads, field: dialog.querySelector };
 }
 
-test("凭据提醒仅显示最终文件的行号、类型和计数，取消时不会生成下载", async (t) => {
-  const { downloads, warnings } = mockExport(t, "取消");
+test("预览列出类型和行号，跳到实际命中位置，取消后清除内容且不下载", async (t) => {
+  const { dialog, downloads, field } = mockExport(t);
   const detail = detailFixture();
   const samples = [
     `sk-proj-${"x".repeat(32)}`,
@@ -161,60 +189,72 @@ test("凭据提醒仅显示最终文件的行号、类型和计数，取消时�
     `Bearer\t${"x".repeat(24)}`,
     "-----BEGIN OPENSSH PRIVATE KEY-----",
   ];
-  detail.conversation_messages[0].text = `合成示例\r\n${samples.join("\r\n")}\r\n${samples[0]}\r\n${samples[0]}`;
-  const lines = sessionMarkdown(prepareExportDetail(detail)).split(/\r?\n/);
-  const credentialLine = lines.indexOf(samples[0]) + 1;
-  await exportSessionMarkdown(detail);
+  detail.conversation_messages[0].text = `合成示例\r\n${samples.join("\r\n")}`;
+  const expected = sessionMarkdown(prepareExportDetail(detail));
+  const line = expected.split(/\r?\n/).indexOf(samples[0]) + 1;
+  const exporting = exportSessionMarkdown(detail);
+  const hits = field("#export-preview-hits").children;
+  assert.equal(hits.length, 5);
+  assert.match(field("#export-preview-warning").textContent, /发现 5 处/);
+  assert.match(
+    hits[0].textContent,
+    new RegExp(`第 ${line} 行 · OpenAI API 密钥`)
+  );
+  for (const sample of samples) {
+    assert.ok(hits.every((entry) => !entry.textContent.includes(sample)));
+  }
+  hits[0].onclick();
+  assert.equal(field("pre").children[1].textContent, samples[0]);
+  dialog.close("cancel");
+  await exporting;
   assert.equal(downloads.length, 0);
-  assert.equal(warnings.length, 1);
-  const { message } = warnings[0];
-  assert.match(
-    message,
-    new RegExp(`第 ${credentialLine} 行 · OpenAI API 密钥`)
-  );
-  assert.match(message, /发现 7 处/);
-  assert.match(
-    message,
-    /GitHub 令牌.*\n.*AWS 访问密钥 ID.*\n.*Bearer 令牌.*\n.*私钥块/
-  );
-  assert.match(message, /另有 1 处未列出/);
-  for (const sample of samples) assert.equal(message.includes(sample), false);
+  assert.deepEqual(field("pre").children, []);
 });
 
-test("完整和批量 JSON 导出在确认后下载原文件，扫描覆盖 JSON 转义换行", async (t) => {
-  const { downloads, warnings } = mockExport(t, "仍然下载");
+test("完整和批量 JSON 下载预览中的内容，脱敏可切换且扫描覆盖转义换行", async (t) => {
+  const { dialog, downloads, field } = mockExport(t);
   const detail = detailFixture();
   const token = `ghp_${"y".repeat(36)}`;
   detail.raw_events = [{ payload: { command: `合成输出\n${token}` } }];
   detail.export_info = { scope: "full_session", partial: false };
-  await exportSessionJson(detail, { full: true, redact: true });
-  await exportSessionCollection([detailFixture(), detail], "json");
-  assert.equal(warnings.length, 2);
-  assert.equal(downloads.length, 2);
-  for (let index = 0; index < downloads.length; index++) {
-    const lines = (await downloads[index].text()).split("\n");
-    const line = lines.findIndex((text) => text.includes(token)) + 1;
+  for (const exportFile of [
+    () => exportSessionJson(detail, { full: true }),
+    () => exportSessionCollection([detailFixture(), detail], "json"),
+  ]) {
+    const exporting = exportFile();
+    assert.match(field("pre").textContent, /alice/);
+    const toggle = field("input");
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event("change"));
+    const preview = field("pre").textContent;
+    assert.doesNotMatch(preview, /alice/);
+    assert.match(preview, /\[local path\]/);
+    const line =
+      preview.split("\n").findIndex((text) => text.includes(token)) + 1;
     assert.ok(line > 0);
-    assert.match(
-      warnings[index].message,
-      new RegExp(`第 ${line} 行 · GitHub 令牌`)
-    );
-    assert.equal(warnings[index].message.includes(token), false);
+    const hit = field("#export-preview-hits").children[0];
+    assert.match(hit.textContent, new RegExp(`第 ${line} 行 · GitHub 令牌`));
+    dialog.close("download");
+    await exporting;
+    assert.equal(await downloads.at(-1).text(), preview);
   }
 });
 
-test("普通导出直接下载，凭据确认发生错误时中止并上报", async (t) => {
-  const error = new Error("对话框不可用");
-  const { downloads, warnings } = mockExport(t, error);
+test("无凭据的导出同样需要确认，预览异常不生成文件", async (t) => {
+  const { dialog, downloads, field } = mockExport(t);
   const detail = detailFixture();
   detail.conversation_messages[0]._message_key = `ghp_${"z".repeat(36)}`;
-  await exportSessionJson(detail, { redact: true });
+  const preview = exportSessionJson(detail);
+  assert.equal(downloads.length, 0);
+  assert.equal(field("#export-preview-warning").textContent, "");
+  dialog.close("download");
+  await preview;
   assert.equal(downloads.length, 1);
-  assert.equal(warnings.length, 0);
-  detail.conversation_messages[0].text = `ghp_${"z".repeat(36)}`;
-  await assert.rejects(exportSessionJson(detail), error);
+  dialog.showModal = () => {
+    throw new Error("预览不可用");
+  };
+  await assert.rejects(exportSessionJson(detail), /预览不可用/);
   assert.equal(downloads.length, 1);
-  assert.equal(warnings.length, 1);
 });
 
 test("普通导出保留来源信息但移除内部实现字段", () => {

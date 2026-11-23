@@ -1,4 +1,4 @@
-import { ask as askDialog } from "@tauri-apps/plugin-dialog";
+import { reviewSessionExport } from "./export-preview.js";
 import { t } from "./i18n.js";
 import { formatTimestamp, providerLabel } from "./session-format.js";
 
@@ -12,68 +12,9 @@ export function downloadBlob(content, filename, type) {
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
-const CREDENTIAL_PATTERNS = [
-  ["exportCredentialOpenAI", /(?:\b|\\[nrt])sk-[A-Za-z0-9_-]{20,}/g],
-  [
-    "exportCredentialGitHub",
-    /(?:\b|\\[nrt])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})/g,
-  ],
-  ["exportCredentialAws", /(?:\b|\\[nrt])(?:AKIA|ASIA)[A-Z0-9]{16}\b/g],
-  [
-    "exportCredentialBearer",
-    /(?:\b|\\[nrt])Bearer(?:[ \t]|\\t)+[A-Za-z0-9._~+/-]{12,}=*/gi,
-  ],
-  [
-    "exportCredentialPrivateKey",
-    /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/g,
-  ],
-];
-const CREDENTIAL_LOCATION_LIMIT = 6;
-
-function credentialLocations(content) {
-  const locations = [];
-  let line = 0;
-  let total = 0;
-  for (const [text] of content.matchAll(/[^\r\n]*(?:\r\n?|\n|$)/g)) {
-    line += 1;
-    for (const [kind, pattern] of CREDENTIAL_PATTERNS) {
-      const count = text.match(pattern)?.length || 0;
-      if (!count) continue;
-      total += count;
-      if (locations.length < CREDENTIAL_LOCATION_LIMIT) {
-        locations.push({ line, kind, count });
-      }
-    }
-  }
-  return { locations, total };
-}
-
-async function downloadSessionFile(content, filename, type) {
-  // 扫描最终文件，只把类型、行号与计数交给系统对话框。
-  const { locations, total } = credentialLocations(content);
-  if (total) {
-    const lines = locations.map(({ line, kind, count }) =>
-      t("exportCredentialLocation", {
-        line,
-        kind: t(kind),
-        count,
-      })
-    );
-    const remaining =
-      total - locations.reduce((sum, hit) => sum + hit.count, 0);
-    if (remaining) lines.push(t("exportCredentialMore", { n: remaining }));
-    const confirmed = await askDialog(
-      [t("exportCredentialWarning", { n: total }), "", ...lines].join("\n"),
-      {
-        title: t("exportCredentialTitle"),
-        kind: "warning",
-        okLabel: t("exportCredentialContinue"),
-        cancelLabel: t("cancel"),
-      }
-    );
-    if (!confirmed) return;
-  }
-  downloadBlob(content, filename, type);
+async function downloadSessionFile(build, redact) {
+  const file = await reviewSessionExport(build, redact);
+  if (file) downloadBlob(file.content, file.filename, file.type);
 }
 
 const INTERNAL_FIELDS = new Set([
@@ -165,9 +106,9 @@ export function prepareExportDetail(detail, { redact = false } = {}) {
   );
 }
 
-function exportFilename(detail, extension, redact, full = false) {
+function exportFilename(detail, extension, redact, full, timestamp) {
   const suffix = redact
-    ? new Date().toISOString().replace(/[:.]/g, "-")
+    ? timestamp.replace(/[:.]/g, "-")
     : String(detail.summary.id).slice(0, 12);
   return `session-${full ? "full-" : ""}${suffix}.${extension}`;
 }
@@ -221,52 +162,52 @@ export function sessionMarkdown(detail) {
   return lines.join("\n");
 }
 
+function exportSingleSession(detail, format, options) {
+  const markdown = format === "markdown";
+  const stamp = new Date().toISOString();
+  return downloadSessionFile((redact) => {
+    const prepared = prepareExportDetail(detail, { redact });
+    return {
+      content: markdown
+        ? sessionMarkdown(prepared)
+        : JSON.stringify(prepared, null, 2),
+      filename: exportFilename(
+        detail,
+        markdown ? "md" : "json",
+        redact,
+        options.full === true,
+        stamp
+      ),
+      type: markdown
+        ? "text/markdown; charset=utf-8"
+        : "application/json; charset=utf-8",
+    };
+  }, options.redact === true);
+}
+
 export function exportSessionMarkdown(detail, options = {}) {
-  const prepared = prepareExportDetail(detail, options);
-  return downloadSessionFile(
-    sessionMarkdown(prepared),
-    exportFilename(
-      detail,
-      "md",
-      options.redact === true,
-      options.full === true
-    ),
-    "text/markdown; charset=utf-8"
-  );
+  return exportSingleSession(detail, "markdown", options);
 }
 
 export function exportSessionJson(detail, options = {}) {
-  return downloadSessionFile(
-    JSON.stringify(prepareExportDetail(detail, options), null, 2),
-    exportFilename(
-      detail,
-      "json",
-      options.redact === true,
-      options.full === true
-    ),
-    "application/json; charset=utf-8"
-  );
+  return exportSingleSession(detail, "json", options);
 }
 
 export function exportSessionCollection(details, format, options = {}) {
-  const prepared = details.map((detail) =>
-    prepareExportDetail(detail, options)
-  );
-  const stamp = new Date().toISOString().slice(0, 10);
-  if (format === "markdown") {
-    return downloadSessionFile(
-      prepared.map(sessionMarkdown).join("\n\n---\n\n"),
-      `allsessions-export-${stamp}.md`,
-      "text/markdown; charset=utf-8"
+  const stamp = new Date().toISOString();
+  const markdown = format === "markdown";
+  return downloadSessionFile((redact) => {
+    const prepared = details.map((detail) =>
+      prepareExportDetail(detail, { redact })
     );
-  }
-  return downloadSessionFile(
-    JSON.stringify(
-      { exported_at: new Date().toISOString(), sessions: prepared },
-      null,
-      2
-    ),
-    `allsessions-export-${stamp}.json`,
-    "application/json; charset=utf-8"
-  );
+    return {
+      content: markdown
+        ? prepared.map(sessionMarkdown).join("\n\n---\n\n")
+        : JSON.stringify({ exported_at: stamp, sessions: prepared }, null, 2),
+      filename: `allsessions-export-${stamp.slice(0, 10)}.${markdown ? "md" : "json"}`,
+      type: markdown
+        ? "text/markdown; charset=utf-8"
+        : "application/json; charset=utf-8",
+    };
+  }, options.redact === true);
 }

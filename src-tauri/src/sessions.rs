@@ -26,6 +26,7 @@ mod opencode;
 mod parse;
 mod pi;
 mod pricing;
+pub(crate) use pricing::ModelPrices;
 mod query;
 pub(crate) use query::DetailRead;
 mod roots;

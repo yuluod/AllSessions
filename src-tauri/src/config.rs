@@ -8,6 +8,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::sessions::ModelPrices;
+
 const ROOT_LIMIT_PER_KIND: usize = 16;
 const ROOT_TEXT_LIMIT: usize = 1024;
 const SOURCE_KINDS: [&str; 20] = [
@@ -38,6 +40,8 @@ const SOURCE_KINDS: [&str; 20] = [
 pub struct AppConfig {
     pub sources: SourceRoots,
     pub preferences: Preferences,
+    #[serde(skip_serializing_if = "ModelPrices::is_empty")]
+    pub(crate) model_prices: ModelPrices,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -281,6 +285,7 @@ mod tests {
         std::fs::write(&path, r#"{"sources":{}}"#).unwrap();
         let config = load(&path).unwrap();
         assert_eq!(config.preferences, Preferences::default());
+        assert!(config.model_prices.is_empty());
         assert!(config.preferences.keep_running_in_tray);
         assert!(config.preferences.check_updates_on_startup);
     }
@@ -289,10 +294,38 @@ mod tests {
     fn 配置保存后可以原样读回() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("nested").join("config.json");
-        let mut config = AppConfig::default();
-        config.sources.codex = Some(vec!["~/codex-alt".to_string()]);
+        let config = serde_json::from_value(json!({
+            "sources": {"codex": ["~/codex-alt"]},
+            "model_prices": {
+                "Provider/Custom-Local": {"input": 1.5, "output": 3, "cache_read": 0, "cache_write": 0}
+            }
+        })).unwrap();
         save(&path, &config).unwrap();
         assert_eq!(load(&path).unwrap(), config);
+        assert_eq!(
+            serde_json::to_value(config).unwrap()["model_prices"]["custom-local"]["input"],
+            1.5
+        );
+    }
+
+    #[test]
+    fn 无效的模型单价和重复前缀会报错() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("config.json");
+        let price = json!({"input": 1, "output": 2, "cache_read": 0, "cache_write": 0});
+        for (prices, message) in [
+            (
+                json!({"custom": {"input": -1, "output": 2, "cache_read": 0, "cache_write": 0}}),
+                "模型单价",
+            ),
+            (
+                json!({"custom": price, "provider/CUSTOM": price}),
+                "重复的归一化前缀",
+            ),
+        ] {
+            std::fs::write(&path, json!({"model_prices": prices}).to_string()).unwrap();
+            assert!(load(&path).unwrap_err().contains(message));
+        }
     }
 
     #[test]

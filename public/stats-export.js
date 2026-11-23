@@ -55,14 +55,6 @@ function breakdownRows(stats, redact) {
   return rows;
 }
 
-// 未计价时成本为 null，不能写成 0，避免把“未知”误读为“免费”。
-// 后端按日只累加已计价成本：当天有 token 而成本为 0，说明全部未计价。
-function dailyCost(stats, day) {
-  if (stats.total_cost == null || day.cost == null) return null;
-  if (day.cost === 0 && Number(day.tokens) > 0) return null;
-  return day.cost;
-}
-
 export function statsExportData(stats, { redact = false } = {}) {
   const totals = {};
   for (const field of TOTAL_FIELDS) totals[field] = stats[field] ?? null;
@@ -84,7 +76,7 @@ export function statsExportData(stats, { redact = false } = {}) {
       date: day.label,
       sessions: day.count ?? 0,
       tokens: day.tokens ?? null,
-      cost: dailyCost(stats, day),
+      cost: day.cost ?? null,
     })),
     ...breakdowns,
   };
@@ -110,7 +102,7 @@ export function statsDailyCsv(stats) {
       day.label,
       day.count ?? 0,
       day.tokens ?? null,
-      dailyCost(stats, day),
+      day.cost ?? null,
     ])
   );
 }

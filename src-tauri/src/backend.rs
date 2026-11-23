@@ -781,24 +781,36 @@ fn route_request(
         ("GET", "/api/stats/sessions") => {
             if query
                 .get("sort")
-                .is_some_and(|sort| !matches!(sort.as_str(), "recent" | "tokens"))
+                .is_some_and(|sort| !matches!(sort.as_str(), "recent" | "tokens" | "cost"))
             {
                 return Err(ApiError::invalid("相关会话排序方式无效"));
             }
             let workspace = state.workspace_snapshot()?;
+            let prices = state
+                .config
+                .lock()
+                .map_err(lock_error)?
+                .model_prices
+                .clone();
             Ok(state
                 .store
                 .lock()
                 .map_err(lock_error)?
-                .stats_sessions(&query, &workspace))
+                .stats_sessions(&query, &workspace, &prices))
         }
         ("GET", "/api/stats") => {
             let workspace = state.workspace_snapshot()?;
+            let prices = state
+                .config
+                .lock()
+                .map_err(lock_error)?
+                .model_prices
+                .clone();
             Ok(state
                 .store
                 .lock()
                 .map_err(lock_error)?
-                .stats(&query, &workspace))
+                .stats(&query, &workspace, &prices))
         }
         ("GET", "/api/refresh") => {
             state.refresh_and_emit(&app)?;

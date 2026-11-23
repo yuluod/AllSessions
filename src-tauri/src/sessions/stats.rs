@@ -4,11 +4,11 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use super::SessionStore;
 use super::helpers::{
     agent_kind, compact, count_values, diagnostic_source_kind, increment, insert_string,
     matches_filters, paginate, timestamp_of,
 };
+use super::{ModelPrices, SessionStore};
 
 /// 只影响列表可见性、不改变导航维度的查询开关。
 const DISPLAY_FLAGS: [&str; 4] = [
@@ -19,10 +19,11 @@ const DISPLAY_FLAGS: [&str; 4] = [
 ];
 
 impl SessionStore {
-    pub fn stats_sessions(
+    pub(crate) fn stats_sessions(
         &self,
         query: &HashMap<String, String>,
         workspace: &crate::workspace::WorkspaceSnapshot,
+        prices: &ModelPrices,
     ) -> Value {
         let mut sessions = self
             .filtered(query, workspace)
@@ -34,7 +35,7 @@ impl SessionStore {
                     .iter()
                     .map(|field| summary[*field].as_u64().unwrap_or_default())
                     .sum::<u64>();
-                let (cost, priced, _) = super::pricing::usage_cost(&summary["usage"], query);
+                let (cost, priced, _) = super::pricing::usage_cost(&summary["usage"], query, prices);
                 let calls = summary["tool_counts"].as_object().map(|counts| {
                     counts.values().filter_map(Value::as_u64).sum::<u64>()
                 });
@@ -179,10 +180,11 @@ impl SessionStore {
         json!({ "session_roots": self.session_roots(), "sources": sources, "providers": providers, "source_kinds": source_kinds, "source_counts": source_counts, "dates": date_values, "cwds": cwds, "hidden_reasons": hidden_reasons, "projects": project_values })
     }
 
-    pub fn stats(
+    pub(crate) fn stats(
         &self,
         query: &HashMap<String, String>,
         workspace: &crate::workspace::WorkspaceSnapshot,
+        prices: &ModelPrices,
     ) -> Value {
         let mut filtered = self.filtered(query, workspace);
         for summary in &mut filtered {
@@ -268,10 +270,12 @@ impl SessionStore {
                     for (date, value) in days {
                         let day = by_date.entry(date.clone()).or_default();
                         day.tokens += usage_total(value);
-                        day.cost += super::pricing::date_cost(usage, date);
+                        if let Some(cost) = super::pricing::date_cost(usage, date, prices) {
+                            *day.cost.get_or_insert(0.0) += cost;
+                        }
                     }
                 }
-                let (cost, priced, unpriced) = super::pricing::usage_cost(usage, query);
+                let (cost, priced, unpriced) = super::pricing::usage_cost(usage, query, prices);
                 if priced {
                     cost_sessions += 1;
                     total_cost += cost;
@@ -518,7 +522,7 @@ struct ProjectFacet {
 struct DayUsage {
     count: u64,
     tokens: u64,
-    cost: f64,
+    cost: Option<f64>,
 }
 impl ProjectFacet {
     fn value(self) -> Value {

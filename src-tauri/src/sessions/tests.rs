@@ -93,7 +93,7 @@ use crate::cache::IndexCache;
 
 use super::{
     DETAIL_CACHE_BYTES, DETAIL_EVENT_LIMIT, DETAIL_MESSAGE_LIMIT, DetailCache, HeadTail,
-    ScanDiagnostics, SessionStore, Source, SourceFormat, compact, configured_sources,
+    ModelPrices, ScanDiagnostics, SessionStore, Source, SourceFormat, compact, configured_sources,
     delete_jsonl_message, delete_legacy_session, describe_inherited_sources,
     describe_protected_source_roots, describe_sources, existing_watch_root,
     existing_watch_root_within, generic_conversation_message, is_synthetic_context, local_date_key,
@@ -791,17 +791,18 @@ fn 相关会话按范围用量排序稳定分页且保留未知状态() {
         summary
     }).collect();
     let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let prices = ModelPrices::default();
     let mut query = HashMap::from([
         ("sort".into(), "tokens".into()),
         ("limit".into(), "1".into()),
     ]);
     assert_eq!(
-        store.stats_sessions(&query, &workspace)["sessions"][0]["_key"],
+        store.stats_sessions(&query, &workspace, &prices)["sessions"][0]["_key"],
         "codex:related-0"
     );
     query.insert("activity_from".into(), "2026-03-01".into());
     query.insert("activity_to".into(), "2026-03-01".into());
-    let first = store.stats_sessions(&query, &workspace);
+    let first = store.stats_sessions(&query, &workspace, &prices);
     assert_eq!(first["total"], 3);
     assert_eq!(first["sessions"][0]["_key"], "codex:related-1");
     assert_eq!(first["sessions"][0]["tokens"], 30);
@@ -809,16 +810,74 @@ fn 相关会话按范围用量排序稳定分页且保留未知状态() {
         "cursor".into(),
         first["next_cursor"].as_str().unwrap().into(),
     );
-    let second = store.stats_sessions(&query, &workspace);
+    let second = store.stats_sessions(&query, &workspace, &prices);
     assert_eq!(second["sessions"][0]["_key"], "codex:related-0");
     assert_eq!(second["sessions"][0]["tokens"], 10);
     query.insert(
         "cursor".into(),
         second["next_cursor"].as_str().unwrap().into(),
     );
-    let third = store.stats_sessions(&query, &workspace);
+    let third = store.stats_sessions(&query, &workspace, &prices);
     assert!(third["sessions"][0]["tokens"].is_null());
     assert_eq!(third["has_more"], false);
+}
+
+#[test]
+fn 自定义成本在活动范围内的汇总每日和相关会话中一致() {
+    let (_directory, mut store) = structured_search_store();
+    let base = store.summaries[0].clone();
+    let usage = json!({"input": 1_000_000, "output": 1_000_000, "cache_read": 1_000_000, "cache_write": 1_000_000});
+    store.summaries = [
+        ("provider/custom-paid-20260301", "2026-03-01"),
+        ("custom-free", "2026-03-02"),
+        ("custom-unknown", "2026-03-03"),
+        ("custom-paid", "2026-03-04"),
+    ]
+    .into_iter()
+    .map(|(model, date)| {
+        let mut summary = base.clone();
+        summary["_key"] = json!(format!("codex:{date}"));
+        summary["activity"] = Value::Null;
+        summary["last_timestamp"] = json!(format!("{date}T12:00:00Z"));
+        summary["usage"] = json!({
+            "known": true,
+            "totals": usage,
+            "by_date": {date: usage},
+            "by_model": {model: {"totals": usage, "by_date": {date: usage}}}
+        });
+        summary
+    })
+    .collect();
+    let workspace = crate::workspace::WorkspaceSnapshot::default();
+    let prices = serde_json::from_value(json!({
+        "custom-paid": {"input": 1, "output": 2, "cache_read": 4, "cache_write": 8},
+        "custom-free": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+    }))
+    .unwrap();
+    let query = HashMap::from([
+        ("activity_from".into(), "2026-03-01".into()),
+        ("activity_to".into(), "2026-03-03".into()),
+        ("sort".into(), "cost".into()),
+    ]);
+    let stats = store.stats(&query, &workspace, &prices);
+    assert_eq!(stats["total_cost"], 15.0);
+    assert_eq!(stats["cost_sessions"], 2);
+    assert_eq!(stats["unpriced_tokens"], 4_000_000);
+    let related = store.stats_sessions(&query, &workspace, &prices);
+    assert_eq!(related["total"], 3);
+    for (index, (date, cost)) in [
+        ("2026-03-01", json!(15.0)),
+        ("2026-03-02", json!(0.0)),
+        ("2026-03-03", Value::Null),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(stats["by_date"][index]["label"], date);
+        assert_eq!(stats["by_date"][index]["cost"], cost);
+        assert_eq!(related["sessions"][index]["_key"], format!("codex:{date}"));
+        assert_eq!(related["sessions"][index]["cost"], cost);
+    }
 }
 
 #[test]
@@ -849,7 +908,8 @@ fn 时间范围统一筛选跨天会话用量排行及调用定位() {
         ("activity_from".into(), "2026-03-01".into()),
         ("activity_to".into(), "2026-03-01".into()),
     ]);
-    let stats = store.stats(&query, &workspace);
+    let prices = ModelPrices::default();
+    let stats = store.stats(&query, &workspace, &prices);
     assert_eq!(stats["total"], 1);
     assert_eq!(stats["total_tokens"], 110);
     assert_eq!(stats["total_messages"], 2);
@@ -872,7 +932,7 @@ fn 时间范围统一筛选跨天会话用量排行及调用定位() {
     assert_eq!(store.search(&query, &workspace).unwrap()["total"], 1);
     query.insert("activity_from".into(), "2026-03-02".into());
     query.insert("activity_to".into(), "2026-03-02".into());
-    let stats = store.stats(&query, &workspace);
+    let stats = store.stats(&query, &workspace, &prices);
     assert_eq!(stats["total_tokens"], 230);
     assert_eq!(stats["by_command"][0]["label"], "git");
 }
@@ -1024,6 +1084,7 @@ fn 项目回顾保留用户整理并限制条数且遵守可见性() {
     let stats = store.stats(
         &HashMap::from([("cwd".into(), "/project".into())]),
         &workspace,
+        &ModelPrices::default(),
     );
     assert_eq!(stats["total"], 57);
     let review = &stats["project_review"];
@@ -1032,7 +1093,10 @@ fn 项目回顾保留用户整理并限制条数且遵守可见性() {
     assert_eq!(review["saved"][0]["key"], "codex:review-0");
     assert_eq!(review["saved"][0]["note"], "用户确认的解决方法");
     assert_eq!(review["saved"][0]["tags"], json!(["已验证"]));
-    assert!(store.stats(&HashMap::new(), &workspace)["project_review"].is_null());
+    assert!(
+        store.stats(&HashMap::new(), &workspace, &ModelPrices::default())["project_review"]
+            .is_null()
+    );
 }
 
 #[test]
@@ -1310,7 +1374,11 @@ fn 统计按_agent_归并归档和兼容来源() {
     };
     let query = HashMap::from([("show_codex_archived".into(), "true".into())]);
 
-    let stats = store.stats(&query, &crate::workspace::WorkspaceSnapshot::default());
+    let stats = store.stats(
+        &query,
+        &crate::workspace::WorkspaceSnapshot::default(),
+        &ModelPrices::default(),
+    );
 
     assert_eq!(
         stats["by_agent"],
@@ -1725,13 +1793,14 @@ fn 统计日图使用用量日期并明确无日期用量() {
     let stats = store.stats(
         &HashMap::new(),
         &crate::workspace::WorkspaceSnapshot::default(),
+        &ModelPrices::default(),
     );
     assert_eq!(stats["total_cache_read_tokens"], 60);
     assert_eq!(stats["cache_eligible_input_tokens"], 90);
     assert_eq!(stats["undated_tokens"], 47);
     assert_eq!(
         stats["by_date"][0],
-        json!({ "label": "2026-09-01", "count": 1, "tokens": 47, "cost": 0.0 })
+        json!({ "label": "2026-09-01", "count": 1, "tokens": 47, "cost": null })
     );
     assert_eq!(stats["by_date"][1]["tokens"], 0);
 }

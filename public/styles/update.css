@@ -41,8 +41,9 @@ html.update-modal-open body {
 
 .update-dialog-header h2,
 .update-dialog-header p,
-.update-dialog-body p,
-.update-notes-section h3 {
+.update-status,
+.update-notes-truncated,
+#update-notes-title {
   margin: 0;
 }
 
@@ -82,7 +83,8 @@ html.update-modal-open body {
   overflow-y: auto;
 }
 
-.update-status {
+.update-status,
+.update-notes-truncated {
   color: var(--text-secondary);
   font-size: 0.82rem;
   line-height: 1.55;
@@ -98,7 +100,7 @@ html.update-modal-open body {
   gap: 7px;
 }
 
-.update-notes-section h3 {
+#update-notes-title {
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 700;
@@ -117,7 +119,6 @@ html.update-modal-open body {
   font-size: 0.78rem;
   line-height: 1.65;
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
 }
 
 .update-progress-region {

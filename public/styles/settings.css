@@ -1112,6 +1112,14 @@ html.settings-modal-open body {
   color: var(--danger);
 }
 
+.settings-update-result:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .settings-save-btn {
   flex: 0 0 auto;
   border-color: var(--accent-strong);

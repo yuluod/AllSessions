@@ -10,6 +10,12 @@ export function progressPercent(downloaded, total) {
 export function shouldShowAvailableVersion(phase, version) {
   return (
     Boolean(version) &&
-    ["available", "downloading", "installing"].includes(phase)
+    [
+      "available",
+      "downloading",
+      "ready",
+      "installing",
+      "install_error",
+    ].includes(phase)
   );
 }

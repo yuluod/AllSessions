@@ -1023,6 +1023,10 @@ fn route_request(
             updater::check_for_updates(app);
             Ok(json!({ "ok": true }))
         }
+        ("POST", "/api/settings/download-update") => {
+            updater::download_update(app)?;
+            Ok(json!({ "ok": true }))
+        }
         ("POST", "/api/settings/install-update") => {
             updater::install_update(app)?;
             Ok(json!({ "ok": true }))

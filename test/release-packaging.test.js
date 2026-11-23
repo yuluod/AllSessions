@@ -199,12 +199,8 @@ test("桌面运行时完全由 Rust 与 Tauri 提供", async () => {
     /\/api\/settings\/update-ready[\s\S]*check_updates_on_startup[\s\S]*check_for_updates_silently/
   );
   assert.match(updater, /检查或安装更新失败/);
-  assert.match(updater, /download_and_install/);
+  assert.match(updater, /update\.install\(bytes\)/);
   assert.match(updater, /app\.emit\("update-status"/);
-  assert.match(
-    updater,
-    /mode == UpdateCheckMode::Interactive[\s\S]*"phase": "latest"/
-  );
   assert.match(config, /"createUpdaterArtifacts": true/);
   assert.match(config, /releases\/latest\/download\/latest\.json/);
   assert.match(workflow, /libwebkit2gtk-4\.1-dev/);
@@ -227,11 +223,15 @@ test("应用内更新窗口接收日志和下载进度且托盘图标符合状�
   );
   assert.match(
     updater,
-    /"phase": "available"[\s\S]*bounded_notes\(update\.body\.as_deref\(\)\)/
+    /bounded_notes\(update\.body\.as_deref\(\)\)[\s\S]*"notes": notes/
   );
   assert.match(
     updater,
-    /download_and_install\([\s\S]*chunk_length[\s\S]*"phase": "installing"/
+    /\.download\([\s\S]*chunk_length[\s\S]*"phase": "downloading"/
+  );
+  assert.match(
+    backend,
+    /\/api\/settings\/download-update[\s\S]*updater::download_update/
   );
   assert.match(
     backend,

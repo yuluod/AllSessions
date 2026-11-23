@@ -74,6 +74,7 @@ export function initializeControllers({
   });
   updateController = createUpdateController({
     requestJson: fetchJson,
+    announce,
   });
   maintenanceController = createMaintenanceController({
     requestJson: fetchJson,

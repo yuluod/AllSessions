@@ -3291,8 +3291,19 @@
           aria-live="polite"
         ></p>
         <section id="update-notes-section" class="update-notes-section hidden">
-          <h3 data-i18n="updateNotes">更新日志</h3>
-          <pre id="update-notes" class="update-notes"></pre>
+          <h3 id="update-notes-title" data-i18n="updateNotes">更新日志</h3>
+          <div
+            id="update-notes"
+            class="update-notes markdown-body"
+            role="region"
+            aria-labelledby="update-notes-title"
+            tabindex="0"
+          ></div>
+          <p
+            id="update-notes-truncated"
+            class="update-notes-truncated hidden"
+            data-i18n="updateNotesTruncated"
+          ></p>
         </section>
         <div id="update-progress-region" class="update-progress-region hidden">
           <progress id="update-progress" max="100"></progress>
@@ -3406,6 +3417,21 @@
         <section
           id="settings-panel-general"
           class="settings-section"
+      <div
+        id="settings-update-result"
+        class="settings-status settings-update-result"
+        hidden
+      >
+        <span id="settings-update-result-text" role="status"></span>
+        <button
+          id="settings-update-result-action"
+          class="ghost-button"
+          type="button"
+          data-i18n="updateViewDetails"
+        >
+          查看详情
+        </button>
+      </div>
           role="tabpanel"
           data-settings-panel="general"
           aria-labelledby="settings-general-title"

@@ -99,6 +99,7 @@ dependencies = [
  "objc2-foundation",
  "percent-encoding",
  "regex",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",

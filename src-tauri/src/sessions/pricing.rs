@@ -1,18 +1,64 @@
-//! 内置模型价格表与用量账本的成本估算。
+//! 内置与自定义模型价格表，以及用量账本的成本估算。
 //! 价目是公开牌价的近似值（美元 / 百万 token），随版本更新，只用于估算展示；
 //! 未识别模型的用量不计入成本，并汇总为未计价 token 供界面提示覆盖率。
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::activity::{has_range, in_range};
 use super::usage::TokenUsage;
 
-struct ModelPrice {
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ModelPrice {
     input: f64,
     output: f64,
     cache_read: f64,
     cache_write: f64,
+}
+
+const MAX_PRICE_ENTRIES: usize = 128;
+const MAX_MODEL_PREFIX_BYTES: usize = 128;
+const MAX_UNIT_PRICE: f64 = 1_000_000.0;
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(try_from = "BTreeMap<String, ModelPrice>")]
+pub(crate) struct ModelPrices(BTreeMap<String, ModelPrice>);
+
+impl TryFrom<BTreeMap<String, ModelPrice>> for ModelPrices {
+    type Error = String;
+
+    fn try_from(entries: BTreeMap<String, ModelPrice>) -> Result<Self, Self::Error> {
+        if entries.len() > MAX_PRICE_ENTRIES {
+            return Err(format!("模型价格最多配置 {MAX_PRICE_ENTRIES} 项"));
+        }
+        let mut prices = BTreeMap::new();
+        for (prefix, price) in entries {
+            let prefix = normalize_model(&prefix);
+            if prefix.is_empty()
+                || prefix.len() > MAX_MODEL_PREFIX_BYTES
+                || prefix.chars().any(|c| c.is_whitespace() || c.is_control())
+            {
+                return Err("模型价格包含无效的模型前缀".into());
+            }
+            if [
+                price.input,
+                price.output,
+                price.cache_read,
+                price.cache_write,
+            ]
+            .iter()
+            .any(|rate| !(0.0..=MAX_UNIT_PRICE).contains(rate))
+            {
+                return Err(format!("模型单价必须在 0 到 {MAX_UNIT_PRICE} 美元之间"));
+            }
+            if prices.insert(prefix, price).is_some() {
+                return Err("模型价格包含重复的归一化前缀".into());
+            }
+        }
+        Ok(Self(prices))
+    }
 }
 
 impl ModelPrice {
@@ -94,18 +140,33 @@ fn normalize_model(model: &str) -> String {
 
 /// 命中最长前缀；`claude-sonnet-4-5-20250929` 这类带日期后缀的名字也能归到
 /// `claude-sonnet-4-5`，未知名称返回 None（对应用量记为未计价）。
-fn price_for(model: &str) -> Option<&'static ModelPrice> {
+fn price_for<'a>(model: &str, custom: &'a ModelPrices) -> Option<&'a ModelPrice> {
     let normalized = normalize_model(model);
-    if normalized.is_empty() {
-        return None;
-    }
-    PRICES
+    let matches = |prefix: &str| {
+        normalized == prefix
+            || normalized
+                .strip_prefix(prefix)
+                .is_some_and(|suffix| suffix.starts_with('-'))
+    };
+    custom
+        .0
         .iter()
-        .filter(|(prefix, _)| {
-            normalized == *prefix || normalized.starts_with(&format!("{prefix}-"))
-        })
+        .filter(|(prefix, _)| matches(prefix))
         .max_by_key(|(prefix, _)| prefix.len())
         .map(|(_, price)| price)
+        .or_else(|| {
+            PRICES
+                .iter()
+                .filter(|(prefix, _)| matches(prefix))
+                .max_by_key(|(prefix, _)| prefix.len())
+                .map(|(_, price)| price)
+        })
+}
+
+impl ModelPrices {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 fn tokens(value: &Value) -> TokenUsage {
@@ -120,7 +181,11 @@ fn tokens(value: &Value) -> TokenUsage {
 /// 汇总序列化 usage 账本的估算成本。
 /// 返回（美元成本, 是否有可计价模型, 未计价 token）。query 带活动范围时按
 /// 各模型逐日用量中落在范围内的部分计；无范围时按模型总量（含无日期部分）。
-pub(crate) fn usage_cost(usage: &Value, query: &HashMap<String, String>) -> (f64, bool, u64) {
+pub(crate) fn usage_cost(
+    usage: &Value,
+    query: &HashMap<String, String>,
+    prices: &ModelPrices,
+) -> (f64, bool, u64) {
     let mut cost = 0.0;
     let mut priced = false;
     let mut unpriced = 0_u64;
@@ -141,7 +206,10 @@ pub(crate) fn usage_cost(usage: &Value, query: &HashMap<String, String>) -> (f64
         } else {
             bucket = tokens(&entry["totals"]);
         }
-        match price_for(model) {
+        if bucket.sum() == 0 {
+            continue;
+        }
+        match price_for(model, prices) {
             Some(price) => {
                 priced = true;
                 cost += price.cost(bucket);
@@ -153,16 +221,18 @@ pub(crate) fn usage_cost(usage: &Value, query: &HashMap<String, String>) -> (f64
 }
 
 /// 某一天在账本里的估算成本：各模型当日用量按各自价目相加。
-pub(crate) fn date_cost(usage: &Value, date: &str) -> f64 {
-    let Some(models) = usage["by_model"].as_object() else {
-        return 0.0;
-    };
-    models
+pub(crate) fn date_cost(usage: &Value, date: &str, prices: &ModelPrices) -> Option<f64> {
+    let mut costs = usage["by_model"]
+        .as_object()?
         .iter()
         .filter_map(|(model, entry)| {
-            price_for(model).map(|price| price.cost(tokens(&entry["by_date"][date])))
-        })
-        .sum()
+            let usage = tokens(&entry["by_date"][date]);
+            if usage.sum() == 0 {
+                return None;
+            }
+            price_for(model, prices).map(|price| price.cost(usage))
+        });
+    Some(costs.next()? + costs.sum::<f64>())
 }
 
 #[cfg(test)]
@@ -172,6 +242,7 @@ mod tests {
 
     #[test]
     fn 模型名归一化覆盖日期后缀与provider前缀() {
+        let prices = ModelPrices::default();
         for (name, prefix_hit) in [
             ("claude-sonnet-4-5-20250929", true),
             ("Claude-Sonnet-4-5", true),
@@ -181,23 +252,41 @@ mod tests {
             ("not-a-model", false),
             ("", false),
         ] {
-            assert_eq!(price_for(name).is_some(), prefix_hit, "{name}");
+            assert_eq!(price_for(name, &prices).is_some(), prefix_hit, "{name}");
         }
     }
 
     #[test]
     fn 最长前缀优先匹配细分型号() {
+        let prices = ModelPrices::default();
         // gpt-5.1-codex-mini 应命中自身价目而非 gpt-5.1 的。
-        let mini = price_for("gpt-5.1-codex-mini").unwrap();
+        let mini = price_for("gpt-5.1-codex-mini", &prices).unwrap();
         assert_eq!(mini.input, 0.25);
-        let base = price_for("gpt-5.1-codex").unwrap();
+        let base = price_for("gpt-5.1-codex", &prices).unwrap();
         assert_eq!(base.input, 1.25);
         // 版本号带点号的模型名不被 '.' 归一化截断。
-        assert!(price_for("gpt-5.1").is_some());
+        assert!(price_for("gpt-5.1", &prices).is_some());
+    }
+
+    #[test]
+    fn 自定义价格优先并按最长前缀匹配() {
+        let prices = serde_json::from_value(json!({
+            "provider/GPT-5.1": {"input": 8, "output": 16, "cache_read": 2, "cache_write": 4},
+            "gpt-5.1-codex-max": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0},
+        }))
+        .unwrap();
+        assert_eq!(price_for("gpt-5.1-codex-mini", &prices).unwrap().input, 8.0);
+        assert_eq!(
+            price_for("gpt-5.1-codex-max-dated", &prices).unwrap().input,
+            0.0
+        );
+        assert_eq!(price_for("gpt-5", &prices).unwrap().input, 1.25);
+        assert!(price_for("gpt-5.11", &prices).is_none());
     }
 
     #[test]
     fn 成本按模型分别计价并统计未计价部分() {
+        let prices = ModelPrices::default();
         let usage = json!({
             "by_model": {
                 "claude-sonnet-4-5-20250929": {
@@ -212,7 +301,7 @@ mod tests {
                 }
             }
         });
-        let (cost, priced, unpriced) = usage_cost(&usage, &HashMap::new());
+        let (cost, priced, unpriced) = usage_cost(&usage, &HashMap::new(), &prices);
         assert!(priced);
         // 1M 输入 * 3 + 100k 输出 * 15 = 3 + 1.5 美元。
         assert!((cost - 4.5).abs() < 1e-9);
@@ -222,11 +311,11 @@ mod tests {
             ("activity_from".to_string(), "2026-09-01".to_string()),
             ("activity_to".to_string(), "2026-09-01".to_string()),
         ]);
-        let (cost, priced, _) = usage_cost(&usage, &query);
+        let (cost, priced, _) = usage_cost(&usage, &query, &prices);
         assert!(priced);
         // 600k * 3 + 60k * 15 = 1.8 + 0.9 美元。
         assert!((cost - 2.7).abs() < 1e-9);
-        assert!((date_cost(&usage, "2026-09-02") - 1.8).abs() < 1e-9);
-        assert_eq!(date_cost(&usage, "2026-09-03"), 0.0);
+        assert!((date_cost(&usage, "2026-09-02", &prices).unwrap() - 1.8).abs() < 1e-9);
+        assert_eq!(date_cost(&usage, "2026-09-03", &prices), None);
     }
 }

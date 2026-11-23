@@ -646,7 +646,7 @@ const DICT = {
     statsUndatedTokens: "未分配日期的 Token {n}",
     statsEstCost: "估算成本",
     statsCostHint:
-      "按内置价格表估算的美元成本；未计价 Token {n}（模型未识别或来源未记录模型）",
+      "按自定义和内置价格估算的美元成本。未计价 Token {n}（模型没有匹配的价格或来源未记录模型）。",
     statsDailyUsageHint:
       "统计按活动和用量事件日期筛选；未知日期的用量不计入指定范围。",
     statsToolRanking: "常用工具",
@@ -1565,7 +1565,7 @@ const DICT = {
     statsUndatedTokens: "Tokens without a date {n}",
     statsEstCost: "Est. cost",
     statsCostHint:
-      "Estimated USD cost from the built-in price table; {n} unpriced tokens (model unrecognized or not recorded)",
+      "Estimated USD cost using custom and built-in prices. {n} unpriced tokens (no matching price or no model recorded).",
     statsDailyUsageHint:
       "Statistics use activity and usage event dates. Undated usage is excluded from a specified range.",
     statsToolRanking: "Top Tools",

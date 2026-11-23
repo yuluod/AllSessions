@@ -27,7 +27,7 @@ export function formatTokensCompact(value) {
   return String(count);
 }
 
-// 成本是内置价目的估算值（USD）：不足 1 美分显示下限提示，
+// 成本以美元估算：不足 1 美分显示下限提示，
 // 大额按整数显示避免长小数；空值/非法值交给调用方显示占位符。
 export function formatCost(value) {
   const cost = Number(value);

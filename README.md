@@ -80,7 +80,7 @@ Exports come in two scopes: overview exports contain the loaded session overview
 - Manage local archive/removal state
 - Compare session, message, tool, activity, provider, and working-directory statistics by agent
 - Token usage statistics (input / output / cached); only sources that record usage are covered (Codex, Claude Code, ZCode, Pi, Oh My Pi, OpenCode, Kilo, DeepSeek Harness, JetBrains Air, WorkBuddy, and Gemini CLI chats sessions)
-- Estimated USD cost from a built-in price table: a cost card and cost heatmap in statistics, cost sorting for related sessions; usage on unrecognized models counts as unpriced
+- Estimated USD cost from custom and built-in prices, with a cost card, heatmap, and related-session sorting. Usage without a matching price counts as unpriced.
 - Batch-select loaded sessions and export as JSON or Markdown
 - Full exports re-parse the raw session on the backend, producing every message with integrity metadata
 - Optional export redaction, off by default
@@ -193,9 +193,28 @@ AllSessions/config.json
 
 You can also point `ALLSESSIONS_CONFIG_PATH` elsewhere.
 
-Saved configuration takes effect immediately. Once a source has an explicit configured path, it no longer reads its environment variable; choosing "Restore default" falls back to the environment variable or the system default path.
+Source paths saved in Settings take effect immediately. An explicit path takes precedence over its environment variable. Choosing "Restore default" falls back to the environment variable or the system default path.
 
 If the configuration file is damaged, AllSessions starts with safe defaults and opens Source Settings automatically — no manual file editing required.
+
+### Custom model prices
+
+Quit AllSessions, add `model_prices` at the top level of `config.json` alongside any existing fields, then relaunch the app.
+
+```json
+{
+  "model_prices": {
+    "custom-local": {
+      "input": 1.5,
+      "output": 6,
+      "cache_read": 0.15,
+      "cache_write": 0
+    }
+  }
+}
+```
+
+Supply all four rates in USD per million tokens, with each rate between 0 and 1,000,000. The configuration accepts up to 128 model prefixes. After normalization, a prefix matches the full model name or a name with an additional `-`-separated suffix. The longest matching custom prefix takes priority, followed by the built-in price table. Statistics apply the current rates to existing session usage. Check your provider's invoice for actual charges.
 
 ### Environment variables
 

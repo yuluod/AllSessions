@@ -72,7 +72,7 @@ Exports come in two scopes: overview exports contain the loaded session overview
 ### Organize and statistics
 
 - Favorite sessions, attach tags and notes, and rename sessions with a custom display name shown across lists and details (the original title stays as fallback)
-- Select a project and open Project review to revisit recent sessions, favorites, tags and notes. Each group shows 8 sessions by default within the current filters and can expand to up to 50.
+- Select a project and open Project review for a cross-agent timeline ordered by last recorded activity. Use the source rail to filter, and open sessions directly from the timeline. Entries show their source, favorites, tags, and notes. Each group shows 8 sessions by default and can expand to 50.
 - Statistics share an activity date range. Switch the heatmap between sessions and tokens, select a day to filter, and browse related sessions by recent activity or in-range usage with pagination and detail links.
 - Export the stats for the current range and filters as daily CSV, breakdown CSV, or summary JSON. Exports exclude session content, redact local paths by default, and leave unpriced cost empty.
 - View cache hit rate and rankings of frequently used tools and commands; click a ranking entry to find the corresponding calls
@@ -180,7 +180,8 @@ Click **Settings** in the toolbar to:
 - Inspect source health status
 - Copy sanitized diagnostics
 - View and clear the index cache
-- Review the permanent-deletion backup location
+- Review permanent-deletion backup location, count, and storage usage
+- Delete an individual backup or clean up older backups, keeping the latest 10
 
 Source paths support `~` expansion.
 
@@ -295,6 +296,8 @@ Normal browsing, search, and export never modify agent source data.
 
 After explicit confirmation of permanent deletion, AllSessions creates a local backup before modifying the original Codex, Claude Code, or Gemini CLI records.
 
+Deleting backups is always explicit. AllSessions does not remove backups automatically, and backups remain unencrypted original records.
+
 The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
 
 Claude Cowork, Grok Build, Pi, Oh My Pi, Kimi Code CLI, OpenCode, Kilo, ZCode, Cursor, Devin, GitHub Copilot, Hermes Agent, VS Code Copilot Chat, DeepSeek Harness, JetBrains Air, and WorkBuddy are currently read-only. Their sessions can be removed locally from AllSessions, but deleting the original records must be done in the corresponding agent.
@@ -306,6 +309,8 @@ Display names, favorites, tags, notes, saved filters, and local archive/removal 
 Export redaction is off by default.
 
 When enabled, AllSessions removes known session identifiers and common local-path patterns — but automatic redaction cannot cover every kind of sensitive information.
+
+Before downloading a session as JSON or Markdown, AllSessions checks the generated file locally for common credential patterns. If it finds a match, it shows the type and line number and asks whether to download with the current settings. Review the file before sharing.
 
 > [!WARNING]
 >

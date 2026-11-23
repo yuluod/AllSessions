@@ -1061,6 +1061,12 @@ fn 项目回顾保留用户整理并限制条数且遵守可见性() {
             if index == 11 {
                 summary["cwd"] = json!("/other");
             }
+            if index == 58 {
+                summary["_key"] = json!("claude_code:review-58");
+                summary["source_kind"] = json!("claude_code");
+                summary["display_source"] = json!("Claude Code");
+                summary["last_timestamp"] = json!("2026-02-04T00:00:00+13:30");
+            }
             summary
         })
         .collect();
@@ -1069,6 +1075,7 @@ fn 项目回顾保留用户整理并限制条数且遵守可见性() {
         "codex:review-0".into(),
         crate::workspace::SessionWorkspace {
             favorite: true,
+            display_name: "重要会话".into(),
             note: "用户确认的解决方法".into(),
             tags: BTreeSet::from(["已验证".into()]),
             ..Default::default()
@@ -1090,9 +1097,24 @@ fn 项目回顾保留用户整理并限制条数且遵守可见性() {
     let review = &stats["project_review"];
     assert_eq!(review["recent"].as_array().unwrap().len(), 50);
     assert_eq!(review["recent"][0]["key"], "codex:review-59");
+    assert_eq!(review["recent"][1]["key"], "claude_code:review-58");
+    assert_eq!(review["recent"][1]["source"], "Claude Code");
     assert_eq!(review["saved"][0]["key"], "codex:review-0");
+    assert_eq!(review["saved"][0]["workspace"]["display_name"], "重要会话");
     assert_eq!(review["saved"][0]["note"], "用户确认的解决方法");
     assert_eq!(review["saved"][0]["tags"], json!(["已验证"]));
+    let scoped = store.stats(
+        &HashMap::from([
+            ("cwd".into(), "/project".into()),
+            ("source_kind".into(), "claude_code".into()),
+        ]),
+        &workspace,
+        &ModelPrices::default(),
+    );
+    let review = &scoped["project_review"];
+    assert_eq!(review["recent"].as_array().unwrap().len(), 1);
+    assert_eq!(review["recent"][0]["key"], "claude_code:review-58");
+    assert_eq!(review["saved"], json!([]));
     assert!(
         store.stats(&HashMap::new(), &workspace, &ModelPrices::default())["project_review"]
             .is_null()

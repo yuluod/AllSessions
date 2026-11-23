@@ -6,8 +6,14 @@ globalThis.localStorage = {
   setItem: () => {},
 };
 
-const { prepareExportDetail, redactText, sessionMarkdown } =
-  await import("../public/session-export.js");
+const {
+  exportSessionCollection,
+  exportSessionJson,
+  exportSessionMarkdown,
+  prepareExportDetail,
+  redactText,
+  sessionMarkdown,
+} = await import("../public/session-export.js");
 const { translateBackendError } = await import("../public/i18n.js");
 
 test("长会话导出注明省略范围且不把占位符算作消息", () => {
@@ -114,6 +120,102 @@ function detailFixture() {
     ],
   };
 }
+
+function mockExport(t, answer) {
+  const warnings = [];
+  const downloads = [];
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  globalThis.window = {
+    __TAURI_INTERNALS__: {
+      invoke: async (command, warning) => {
+        assert.equal(command, "plugin:dialog|message");
+        warnings.push(warning);
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+    },
+  };
+  globalThis.document = {
+    createElement: () => ({ click() {} }),
+  };
+  t.mock.method(URL, "createObjectURL", (blob) => {
+    downloads.push(blob);
+    return "blob:synthetic";
+  });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.after(() => {
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+  });
+  return { downloads, warnings };
+}
+
+test("凭据提醒仅显示最终文件的行号、类型和计数，取消时不会生成下载", async (t) => {
+  const { downloads, warnings } = mockExport(t, "取消");
+  const detail = detailFixture();
+  const samples = [
+    `sk-proj-${"x".repeat(32)}`,
+    `ghp_${"x".repeat(36)}`,
+    `AKIA${"X".repeat(16)}`,
+    `Bearer\t${"x".repeat(24)}`,
+    "-----BEGIN OPENSSH PRIVATE KEY-----",
+  ];
+  detail.conversation_messages[0].text = `合成示例\r\n${samples.join("\r\n")}\r\n${samples[0]}\r\n${samples[0]}`;
+  const lines = sessionMarkdown(prepareExportDetail(detail)).split(/\r?\n/);
+  const credentialLine = lines.indexOf(samples[0]) + 1;
+  await exportSessionMarkdown(detail);
+  assert.equal(downloads.length, 0);
+  assert.equal(warnings.length, 1);
+  const { message } = warnings[0];
+  assert.match(
+    message,
+    new RegExp(`第 ${credentialLine} 行 · OpenAI API 密钥`)
+  );
+  assert.match(message, /发现 7 处/);
+  assert.match(
+    message,
+    /GitHub 令牌.*\n.*AWS 访问密钥 ID.*\n.*Bearer 令牌.*\n.*私钥块/
+  );
+  assert.match(message, /另有 1 处未列出/);
+  for (const sample of samples) assert.equal(message.includes(sample), false);
+});
+
+test("完整和批量 JSON 导出在确认后下载原文件，扫描覆盖 JSON 转义换行", async (t) => {
+  const { downloads, warnings } = mockExport(t, "仍然下载");
+  const detail = detailFixture();
+  const token = `ghp_${"y".repeat(36)}`;
+  detail.raw_events = [{ payload: { command: `合成输出\n${token}` } }];
+  detail.export_info = { scope: "full_session", partial: false };
+  await exportSessionJson(detail, { full: true, redact: true });
+  await exportSessionCollection([detailFixture(), detail], "json");
+  assert.equal(warnings.length, 2);
+  assert.equal(downloads.length, 2);
+  for (let index = 0; index < downloads.length; index++) {
+    const lines = (await downloads[index].text()).split("\n");
+    const line = lines.findIndex((text) => text.includes(token)) + 1;
+    assert.ok(line > 0);
+    assert.match(
+      warnings[index].message,
+      new RegExp(`第 ${line} 行 · GitHub 令牌`)
+    );
+    assert.equal(warnings[index].message.includes(token), false);
+  }
+});
+
+test("普通导出直接下载，凭据确认发生错误时中止并上报", async (t) => {
+  const error = new Error("对话框不可用");
+  const { downloads, warnings } = mockExport(t, error);
+  const detail = detailFixture();
+  detail.conversation_messages[0]._message_key = `ghp_${"z".repeat(36)}`;
+  await exportSessionJson(detail, { redact: true });
+  assert.equal(downloads.length, 1);
+  assert.equal(warnings.length, 0);
+  detail.conversation_messages[0].text = `ghp_${"z".repeat(36)}`;
+  await assert.rejects(exportSessionJson(detail), error);
+  assert.equal(downloads.length, 1);
+  assert.equal(warnings.length, 1);
+});
 
 test("普通导出保留来源信息但移除内部实现字段", () => {
   const original = detailFixture();

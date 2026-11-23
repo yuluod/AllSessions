@@ -1,7 +1,9 @@
 //! 聚合视图:筛选项(facets)、按 Agent/日期/来源统计与项目维度归并。
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use super::helpers::{
@@ -458,15 +460,17 @@ const PROJECT_REVIEW_LIMIT: usize = 50;
 
 fn project_review(summaries: &[Value], cwd: &str) -> Value {
     let mut recent = summaries.iter().collect::<Vec<_>>();
-    recent.sort_by(|a, b| {
-        timestamp_of(b)
-            .cmp(timestamp_of(a))
-            .then_with(|| a["_key"].as_str().cmp(&b["_key"].as_str()))
+    recent.sort_by_cached_key(|summary| {
+        (
+            Reverse(timestamp_of(summary).parse::<Timestamp>().ok()),
+            summary["_key"].as_str(),
+        )
     });
     let entry = |summary: &&Value| {
         json!({
             "key": summary["_key"], "title": summary["title"],
             "source": summary["display_source"], "timestamp": timestamp_of(summary),
+            "workspace": { "display_name": summary["workspace"]["display_name"] },
             "favorite": summary["workspace"]["favorite"],
             "tags": summary["workspace"]["tags"],
             "note": super::helpers::compact(summary["workspace"]["note"].as_str().unwrap_or_default(), 240)

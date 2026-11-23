@@ -298,7 +298,9 @@ Normal browsing, search, and export never modify agent source data.
 
 After explicit confirmation of permanent deletion, AllSessions creates a local backup before modifying the original Codex, Claude Code, or Gemini CLI records.
 
-Deleting backups is always explicit. AllSessions does not remove backups automatically, and backups remain unencrypted original records.
+Deleting backups is always explicit. New backups are unencrypted by default. Enable **Settings → Storage → Encrypt new backups with a passphrase** to encrypt future backups. Enter a passphrase twice at each permanent deletion. Keep that passphrase somewhere safe, since it is required to recover the backup.
+
+Choose **Decrypt archive** next to an encrypted backup, select a folder, and enter the original passphrase. AllSessions writes a verified TAR archive. Extract it in a private location and use `manifest.json` to identify where the files came from before restoring them manually. The archive and previously created unencrypted backups contain sensitive original records.
 
 The Codex provider maintenance tool likewise only modifies Codex data after you enable maintenance mode and confirm execution.
 

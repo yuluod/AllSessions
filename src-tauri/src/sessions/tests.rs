@@ -2602,7 +2602,7 @@ fn codex整会话删除会备份两个匹配副本并保留其他会话() {
     store.refresh().unwrap();
     let backup_root = directory.path().join("backups");
     let backup = |kind: &str, id: &str, paths: &[PathBuf]| {
-        crate::deletion_backup::create_at(&backup_root, "delete_session", kind, id, paths)
+        crate::deletion_backup::create_at(&backup_root, "delete_session", kind, id, paths, None)
     };
     let error = store
         .delete_session_with_backup("codex:unverified", |_, _, _| {
@@ -2615,6 +2615,27 @@ fn codex整会话删除会备份两个匹配副本并保留其他会话() {
         .delete_session_with_backup("codex:same", |_, _, _| Ok(json!({"copied_files":1})))
         .unwrap_err();
     assert_eq!(error.code, crate::error::ApiError::FILE_CHANGED);
+    assert!(sources.join("rollout-same.jsonl").exists());
+    assert!(sources.join("rollout-same.jsonl.zst").exists());
+
+    let blocked_root = directory.path().join("blocked");
+    std::fs::write(&blocked_root, "合成内容").unwrap();
+    assert!(
+        store
+            .delete_session_with_backup("codex:same", |kind, id, paths| {
+                crate::deletion_backup::create_at(
+                    &blocked_root,
+                    "delete_session",
+                    kind,
+                    id,
+                    paths,
+                    Some(crate::deletion_backup::SecretString::from(
+                        "synthetic passphrase".to_owned(),
+                    )),
+                )
+            })
+            .is_err()
+    );
     assert!(sources.join("rollout-same.jsonl").exists());
     assert!(sources.join("rollout-same.jsonl.zst").exists());
 
@@ -3585,7 +3606,7 @@ fn grok展示回放接入搜索刷新并保持只读() {
         .search(&HashMap::from([("q".into(), "撤回".into())]), &workspace)
         .unwrap();
     assert!(removed["sessions"].as_array().unwrap().is_empty());
-    assert!(store.delete_session("grok:grok-main").is_err());
+    assert!(store.delete_session("grok:grok-main", None).is_err());
     metadata["generated_title"] = json!("改名后的 Grok");
     metadata["info"]["cwd"] = json!("/work/moved");
     std::fs::write(&meta_path, metadata.to_string()).unwrap();

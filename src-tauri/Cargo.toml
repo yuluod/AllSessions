@@ -16,6 +16,7 @@ crate-type = ["rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+age = "0.11.3"
 dirs = "7"
 jiff = "1.0"
 md5 = "0.8.1"
@@ -26,20 +27,19 @@ rusqlite = { version = "0.42", features = ["bundled", "backup"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
+tar = { version = "0.4", default-features = false }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2.7.0"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2.5"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2.11"
+tempfile = "3"
 toml = "1"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
 zstd = "0.14"
-
-[dev-dependencies]
-tempfile = "3"
 
 # 运行时切换程序坞图标；这些 crate 已作为 wry 的 macOS 依赖在树中，不引入新代码。
 [target.'cfg(target_os = "macos")'.dependencies]

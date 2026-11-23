@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::deletion_backup::SecretString;
 use crate::error::ApiError;
 
 use super::helpers::{error_text, read_only_source_error};
@@ -15,9 +16,13 @@ use super::roots::{codex_rollout_counterpart, is_compressed_codex_rollout};
 use super::{DetailLocator, SessionStore, SourceFormat, StoredSession, gemini};
 
 impl SessionStore {
-    pub fn delete_session(&mut self, key: &str) -> Result<Value, ApiError> {
+    pub fn delete_session(
+        &mut self,
+        key: &str,
+        passphrase: Option<SecretString>,
+    ) -> Result<Value, ApiError> {
         self.delete_session_with_backup(key, |kind, id, paths| {
-            crate::deletion_backup::create("delete_session", kind, id, paths)
+            crate::deletion_backup::create("delete_session", kind, id, paths, passphrase)
         })
     }
 
@@ -176,7 +181,12 @@ impl SessionStore {
         Ok((resolved, record))
     }
 
-    pub fn delete_message(&mut self, key: &str, message_key: &str) -> Result<Value, ApiError> {
+    pub fn delete_message(
+        &mut self,
+        key: &str,
+        message_key: &str,
+        passphrase: Option<SecretString>,
+    ) -> Result<Value, ApiError> {
         let (resolved, record) = self.resolve_writable_record(key)?;
         if record.source.format == SourceFormat::Codex && is_compressed_codex_rollout(&record.path)
         {
@@ -236,6 +246,7 @@ impl SessionStore {
             record.source.kind,
             session_id,
             &backup_paths,
+            passphrase,
         )?;
         if let Some(locator) = &record.detail_locator {
             match locator {

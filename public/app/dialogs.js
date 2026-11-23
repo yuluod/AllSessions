@@ -2,6 +2,7 @@
 import { t } from "../i18n.js";
 import { displaySessionTitle } from "../session-format.js";
 import { showDialogFromPopover } from "../ui-components.js";
+import { requestBackupPassphrase } from "../backup-passphrase-view.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   announce,
@@ -236,28 +237,51 @@ export async function applySoftDeletion() {
   }
 }
 
-export function showPermanentDeleteConfirmation() {
-  if (!pendingDeletion) return;
-  elements.deleteDialogWarning.classList.remove("hidden");
-  elements.deleteSoftBtn.classList.add("hidden");
-  elements.deletePermanentBtn.classList.add("hidden");
-  elements.deleteConfirmBtn.classList.remove("hidden");
-  elements.deleteConfirmBtn.focus();
+export async function showPermanentDeleteConfirmation() {
+  if (!pendingDeletion || elements.deletePermanentBtn.disabled) return;
+  const target = pendingDeletion;
+  elements.deletePermanentBtn.disabled = true;
+  elements.deleteDialogStatus.textContent = "";
+  try {
+    const { enabled } = await fetchJson(
+      "/api/settings/deletion-backup/encryption"
+    );
+    if (target !== pendingDeletion || !elements.deleteDialog.open) return;
+    target.encryptBackup = enabled;
+    elements.deleteBackupEncryptionNote.textContent = t(
+      enabled ? "backupEncryptedBeforeDelete" : "backupPlainBeforeDelete"
+    );
+    elements.deleteDialogWarning.classList.remove("hidden");
+    elements.deleteSoftBtn.classList.add("hidden");
+    elements.deletePermanentBtn.classList.add("hidden");
+    elements.deleteConfirmBtn.classList.remove("hidden");
+    elements.deleteConfirmBtn.focus();
+  } catch (error) {
+    if (target === pendingDeletion)
+      elements.deleteDialogStatus.textContent = error.message;
+  } finally {
+    elements.deletePermanentBtn.disabled = false;
+  }
 }
 
 export async function confirmPermanentDeletion() {
-  if (!pendingDeletion) return;
+  if (!pendingDeletion || elements.deleteConfirmBtn.disabled) return;
   const target = { ...pendingDeletion };
   elements.deleteConfirmBtn.disabled = true;
   elements.deleteDialogClose.disabled = true;
-  elements.deleteDialogStatus.textContent = t("deleting");
   try {
+    const passphrase = target.encryptBackup
+      ? await requestBackupPassphrase(true)
+      : null;
+    if (target.encryptBackup && passphrase === null) return;
+    elements.deleteDialogStatus.textContent = t("deleting");
     const url =
       target.kind === "session"
         ? "/api/sessions/delete"
         : "/api/sessions/delete-message";
     const body = { sessionKey: target.sessionKey, confirmed: true };
     if (target.messageKey) body.messageKey = target.messageKey;
+    if (passphrase !== null) body.passphrase = passphrase;
     const result = await fetchJson(url, { method: "POST", body });
     pendingDeletion = null;
     elements.deleteDialog.close();
@@ -299,6 +323,7 @@ export async function confirmPermanentDeletion() {
   } finally {
     elements.deleteConfirmBtn.disabled = false;
     elements.deleteDialogClose.disabled = false;
+    if (elements.deleteDialog.open) elements.deleteConfirmBtn.focus();
   }
 }
 

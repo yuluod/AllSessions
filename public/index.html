@@ -2984,6 +2984,52 @@
     </dialog>
 
     <dialog
+      id="backup-passphrase-dialog"
+      class="delete-dialog"
+      aria-labelledby="backup-passphrase-title"
+      aria-describedby="backup-passphrase-prompt"
+    >
+      <div class="delete-dialog-header">
+        <h2 id="backup-passphrase-title"></h2>
+      </div>
+      <form>
+        <div class="delete-dialog-body">
+          <p id="backup-passphrase-prompt"></p>
+          <label class="backup-passphrase-field">
+            <span data-i18n="backupPassphrase">备份口令</span>
+            <input
+              type="password"
+              name="passphrase"
+              autocomplete="off"
+              maxlength="1024"
+              required
+            />
+          </label>
+          <label class="backup-passphrase-field" hidden>
+            <span data-i18n="backupPassphraseRepeat">再次输入口令</span>
+            <input
+              type="password"
+              name="repeat"
+              autocomplete="off"
+              maxlength="1024"
+            />
+          </label>
+        </div>
+        <div class="delete-dialog-actions">
+          <button
+            type="button"
+            value="cancel"
+            class="ghost-button"
+            data-i18n="cancel"
+          >
+            取消
+          </button>
+          <button type="submit" class="ghost-button button--primary"></button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog
       id="delete-dialog"
       class="delete-dialog"
       aria-labelledby="delete-dialog-title"
@@ -3035,6 +3081,7 @@
             这会修改 Agent
             的原始会话数据。关联的工具调用、结果或同一原始记录中的内容也可能一起删除。
           </p>
+          <p id="delete-backup-encryption-note"></p>
         </div>
         <p
           id="delete-dialog-status"
@@ -3901,6 +3948,23 @@
                 id="settings-deletion-backup-list"
                 class="settings-deletion-backup-list"
               ></div>
+              <label class="settings-general-row">
+                <div class="settings-general-copy">
+                  <strong data-i18n="settingsEncryptDeletionBackups"
+                    >为新备份启用口令加密</strong
+                  >
+                  <span data-i18n="settingsEncryptDeletionBackupsHint"
+                    >永久删除时输入口令。忘记口令后将无法恢复该备份。</span
+                  >
+                </div>
+                <input
+                  id="settings-encrypt-deletion-backups"
+                  class="settings-switch"
+                  type="checkbox"
+                  role="switch"
+                  disabled
+                />
+              </label>
             </div>
             <div class="settings-storage-card settings-workspace-transfer">
               <p

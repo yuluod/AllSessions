@@ -30,12 +30,7 @@ import { createIcon } from "./app/icons.js";
 import { downloadBlob } from "./session-export.js";
 import { requestBackupPassphrase } from "./backup-passphrase-view.js";
 import { openExportRules } from "./export-rules-view.js";
-import {
-  reviewWorkspaceConflicts,
-  reviewWorkspaceMatches,
-} from "./workspace-import-view.js";
-
-const MAX_WORKSPACE_FILE_BYTES = 16 * 1024 * 1024;
+import { importWorkspaceFile } from "./workspace-import-view.js";
 
 export function summarizeSourceSupport(payload) {
   const supported = new Set(SOURCE_KINDS.map(({ agent }) => agent)).size;
@@ -834,10 +829,6 @@ export function createSettingsController({
     const file = input.files?.[0];
     input.value = "";
     if (!file || transferringWorkspace || !dialog()?.open) return;
-    if (file.size > MAX_WORKSPACE_FILE_BYTES) {
-      setStatus(t("settingsWorkspaceFileTooLarge"), true);
-      return;
-    }
 
     const requestVersion = loadVersion;
     transferringWorkspace = true;
@@ -845,63 +836,13 @@ export function createSettingsController({
     setStatus("");
     const stillOpen = () => requestVersion === loadVersion && dialog()?.open;
     try {
-      const content = await file.text();
-      const body = { file: content };
-      let preview = await fetchJson("/api/workspace/import/preview", {
-        method: "POST",
-        body,
+      const result = await importWorkspaceFile(file, {
+        fetchJson,
+        confirmWorkspaceImport,
+        stillOpen,
+        setStatus,
       });
-      if (!stillOpen()) return;
-      if (preview.unmatched_keys?.length) {
-        const choices = await reviewWorkspaceMatches(preview);
-        if (!choices || !stillOpen()) return;
-        if (Object.keys(choices).length) {
-          body.choices = choices;
-          preview = await fetchJson("/api/workspace/import/preview", {
-            method: "POST",
-            body,
-          });
-        }
-      }
-      if (!stillOpen()) return;
-      if (preview.conflict_items?.length) {
-        const replacements = await reviewWorkspaceConflicts(
-          preview.conflict_items
-        );
-        if (!replacements || !stillOpen()) return;
-        if (replacements.length) {
-          body.replacements = replacements;
-          preview = await fetchJson("/api/workspace/import/preview", {
-            method: "POST",
-            body: { ...body, previous_token: preview.token },
-          });
-        }
-      }
-      if (!stillOpen()) return;
-      const summary = [
-        t("settingsWorkspaceImportSummary", preview),
-        preview.replaced ? t("settingsWorkspaceImportReplaced", preview) : "",
-        preview.remapped ? t("settingsWorkspaceImportRemapped", preview) : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      setStatus(summary);
-      if (!preview.sessions && !preview.filters) return;
-      const confirmed = await confirmWorkspaceImport(
-        `${summary}\n\n${t("settingsWorkspaceImportBackup")}`,
-        {
-          title: t("settingsWorkspaceImport"),
-          kind: "warning",
-          okLabel: t("settingsWorkspaceImport"),
-          cancelLabel: t("cancel"),
-        }
-      );
-      if (confirmed !== true || !stillOpen()) return;
-      setStatus(t("settingsWorkspaceImporting"));
-      const result = await fetchJson("/api/workspace/import", {
-        method: "POST",
-        body: { ...body, token: preview.token },
-      });
+      if (!result) return;
       const done = t("settingsWorkspaceImportDone", result);
       if (stillOpen()) setStatus(done);
       try {

@@ -1,5 +1,72 @@
 import { t } from "./i18n.js";
 
+const MAX_WORKSPACE_FILE_BYTES = 16 * 1024 * 1024;
+
+export async function importWorkspaceFile(
+  file,
+  { fetchJson, confirmWorkspaceImport, stillOpen, setStatus }
+) {
+  if (file.size > MAX_WORKSPACE_FILE_BYTES) {
+    setStatus(t("settingsWorkspaceFileTooLarge"), true);
+    return;
+  }
+  const body = { file: await file.text() };
+  if (!stillOpen()) return;
+  let preview = await fetchJson("/api/workspace/import/preview", {
+    method: "POST",
+    body,
+  });
+  if (!stillOpen()) return;
+  if (preview.unmatched_keys?.length) {
+    const choices = await reviewWorkspaceMatches(preview);
+    if (!choices || !stillOpen()) return;
+    if (Object.keys(choices).length) {
+      body.choices = choices;
+      preview = await fetchJson("/api/workspace/import/preview", {
+        method: "POST",
+        body,
+      });
+    }
+  }
+  if (!stillOpen()) return;
+  if (preview.conflict_items?.length) {
+    const replacements = await reviewWorkspaceConflicts(preview.conflict_items);
+    if (!replacements || !stillOpen()) return;
+    if (replacements.length) {
+      body.replacements = replacements;
+      preview = await fetchJson("/api/workspace/import/preview", {
+        method: "POST",
+        body: { ...body, previous_token: preview.token },
+      });
+    }
+  }
+  if (!stillOpen()) return;
+  const summary = [
+    t("settingsWorkspaceImportSummary", preview),
+    preview.replaced ? t("settingsWorkspaceImportReplaced", preview) : "",
+    preview.remapped ? t("settingsWorkspaceImportRemapped", preview) : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  setStatus(summary);
+  if (!preview.sessions && !preview.filters) return;
+  const confirmed = await confirmWorkspaceImport(
+    `${summary}\n\n${t("settingsWorkspaceImportBackup")}`,
+    {
+      title: t("settingsWorkspaceImport"),
+      kind: "warning",
+      okLabel: t("settingsWorkspaceImport"),
+      cancelLabel: t("cancel"),
+    }
+  );
+  if (confirmed !== true || !stillOpen()) return;
+  setStatus(t("settingsWorkspaceImporting"));
+  return fetchJson("/api/workspace/import", {
+    method: "POST",
+    body: { ...body, token: preview.token },
+  });
+}
+
 export function reviewWorkspaceConflicts(conflicts) {
   const dialog = document.querySelector("#workspace-conflicts-dialog");
   const form = dialog.querySelector("form");

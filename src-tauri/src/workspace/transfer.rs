@@ -699,6 +699,59 @@ mod tests {
     }
 
     #[test]
+    fn 最终确认后拒绝覆盖已改变的备注且备份失败时保留数据库() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("workspace.sqlite");
+        let mut target = WorkspaceStore::open_at(&path).unwrap();
+        let mut source = WorkspaceStore::open_at(&dir.path().join("source.sqlite")).unwrap();
+        source
+            .update_session(&json!({"sessionKey": "s", "note": "导入备注"}))
+            .unwrap();
+        let transfer = WorkspaceTransfer::parse(&source.export_transfer().unwrap()).unwrap();
+        let matched = |key: &str| Some(key.to_owned());
+        let replacements = BTreeSet::from(["session:s".to_owned()]);
+        let confirm = |store: &WorkspaceStore| {
+            let first = store
+                .preview_transfer(&transfer, matched, &BTreeSet::new(), None)
+                .unwrap();
+            store
+                .preview_transfer(&transfer, matched, &replacements, first["token"].as_str())
+                .unwrap()
+        };
+        target
+            .update_session(&json!({"sessionKey": "s", "note": "原备注"}))
+            .unwrap();
+        let preview = confirm(&target);
+        target
+            .update_session(&json!({"sessionKey": "s", "note": "新备注"}))
+            .unwrap();
+        let apply = |store: &mut WorkspaceStore, preview: &Value| {
+            store.import_transfer(
+                &transfer,
+                matched,
+                &replacements,
+                preview["token"].as_str().unwrap(),
+            )
+        };
+        assert!(
+            apply(&mut target, &preview)
+                .unwrap_err()
+                .contains("预览已变化")
+        );
+        let preview = confirm(&target);
+        // 已打开的连接仍指向真实临时库，将备份父目录指向普通文件以稳定触发失败。
+        target.path = path.join("unavailable.sqlite");
+        assert!(
+            apply(&mut target, &preview)
+                .unwrap_err()
+                .contains("创建工作台备份失败")
+        );
+        drop(target);
+        let stored = WorkspaceStore::open_at(&path).unwrap().snapshot().unwrap();
+        assert_eq!(stored.sessions["s"].note, "新备注");
+    }
+
+    #[test]
     fn 导入拒绝无效文件并在写入失败时回滚整个事务() {
         assert!(
             WorkspaceTransfer::parse(&"x".repeat(MAX_BYTES + 1))

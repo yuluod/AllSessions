@@ -21,8 +21,11 @@ use crate::{
     maintenance,
     sessions::SessionStore,
     updater,
-    workspace::{WorkspaceSnapshot, WorkspaceStore, WorkspaceTransfer},
+    workspace::{WorkspaceSnapshot, WorkspaceStore},
 };
+
+mod workspace_import;
+use workspace_import::ImportAction;
 
 /// 托盘菜单条目数；取数口径与前端默认列表一致（不含归档/移除/隐藏）。
 /// 收藏段与最近段分开取数，最近段排除已进收藏段的会话避免重复。
@@ -745,68 +748,11 @@ fn route_request(
                 .map_err(lock_error)?
                 .export_transfer()?
         )),
-        ("POST", "/api/workspace/import/preview" | "/api/workspace/import") => {
-            let transfer = WorkspaceTransfer::parse(
-                request.body["file"]
-                    .as_str()
-                    .ok_or_else(|| ApiError::invalid("缺少工作台文件内容"))?,
-            )
-            .map_err(ApiError::invalid)?;
-            let choices = request
-                .body
-                .get("choices")
-                .map(|value| {
-                    serde_json::from_value(value.clone())
-                        .map_err(|_| ApiError::invalid("会话匹配选项无效"))
-                })
-                .transpose()?
-                .unwrap_or_default();
-            let matches = {
-                let store = state.store.lock().map_err(lock_error)?;
-                if store.scanning() && transfer.session_keys().next().is_some() {
-                    return Err(ApiError::new(
-                        "workspace_scan_required",
-                        "请完成会话扫描后再导入工作台数据",
-                    ));
-                }
-                store
-                    .workspace_matches(transfer.session_keys(), &choices)
-                    .map_err(ApiError::invalid)?
-            };
-            let target_session = |key: &str| matches.targets.get(key).cloned();
-            let replacements = request
-                .body
-                .get("replacements")
-                .map(|value| {
-                    serde_json::from_value(value.clone())
-                        .map_err(|_| ApiError::invalid("导入冲突选项无效"))
-                })
-                .transpose()?
-                .unwrap_or_default();
-            if path.ends_with("/preview") {
-                let mut preview = state
-                    .workspace
-                    .lock()
-                    .map_err(lock_error)?
-                    .preview_transfer(
-                        &transfer,
-                        target_session,
-                        &replacements,
-                        request.body["previous_token"].as_str(),
-                    )?;
-                preview["ambiguous"] = json!(matches.ambiguous);
-                preview["omitted_candidates"] = json!(matches.omitted_candidates);
-                return Ok(preview);
-            }
-            let token = request.body["token"]
-                .as_str()
-                .filter(|value| value.len() == 64)
-                .ok_or_else(|| ApiError::invalid("请先预览并确认导入"))?;
-            let result = state
-                .workspace
-                .lock()
-                .map_err(lock_error)?
-                .import_transfer(&transfer, target_session, &replacements, token)?;
+        ("POST", "/api/workspace/import/preview") => {
+            state.workspace_import(ImportAction::Preview, &request.body)
+        }
+        ("POST", "/api/workspace/import") => {
+            let result = state.workspace_import(ImportAction::Apply, &request.body)?;
             if result.get("backup_path").is_some()
                 && let Err(error) = state.refresh_tray(&app, None)
             {
